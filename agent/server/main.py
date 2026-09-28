@@ -10,8 +10,17 @@ from typing import Any
 from aiohttp import WSMsgType, web
 
 from agent.core.version import APP_VERSION, PROTOCOL_VERSION
+from agent.llm.ollama import OllamaProvider, OllamaProviderError
 from agent.server.protocol import envelope, new_id, validate_client_message
 from agent.server.state import InMemoryState
+
+
+SYSTEM_PROMPT = """You are Local Coding Agent, a local software-development assistant.
+You are currently in Phase 2, which is chat-only.
+You do not yet have filesystem, shell, Git, or other local tools.
+Answer coding and architecture questions normally, but never claim that you inspected,
+changed, executed, tested, or verified local files or commands when no tool was actually used.
+Keep answers practical and concise."""
 
 
 def build_health_payload(port: int) -> dict[str, Any]:
@@ -28,7 +37,10 @@ class AgentServer:
     def __init__(self, token: str) -> None:
         self.token = token
         self.state = InMemoryState()
+        self.provider = OllamaProvider()
         self.active_turns: dict[str, asyncio.Task[None]] = {}
+        self.available_models: set[str] = set()
+        self.default_model: str | None = self.provider.preferred_model
 
     def authorized(self, request: web.Request) -> bool:
         return request.headers.get("Authorization") == f"Bearer {self.token}"
@@ -36,7 +48,10 @@ class AgentServer:
     async def health(self, request: web.Request) -> web.Response:
         if not self.authorized(request):
             return web.json_response({"ok": False, "error": "unauthorized"}, status=401)
-        port = int(request.transport.get_extra_info("sockname")[1])
+        transport = request.transport
+        if transport is None:
+            return web.json_response({"ok": False, "error": "transport_missing"}, status=500)
+        port = int(transport.get_extra_info("sockname")[1])
         return web.json_response(build_health_payload(port))
 
     async def shutdown(self, request: web.Request) -> web.Response:
@@ -59,6 +74,9 @@ class AgentServer:
                 {
                     "version": APP_VERSION,
                     "protocol": PROTOCOL_VERSION,
+                    "provider": self.provider.provider_name,
+                    "preferred_model": self.provider.preferred_model,
+                    "context_window": self.provider.context_window,
                 },
             )
         )
@@ -127,14 +145,106 @@ class AgentServer:
                     {
                         "version": APP_VERSION,
                         "protocol": PROTOCOL_VERSION,
+                        "provider": self.provider.provider_name,
+                        "preferred_model": self.provider.preferred_model,
+                        "context_window": self.provider.context_window,
                     },
                     request_id=request_id,
                 )
             )
             return
 
+        if message_type == "model.list":
+            status = await self.provider.get_status()
+            self.available_models = {
+                str(item.get("name"))
+                for item in status["models"]
+                if isinstance(item, dict) and item.get("name")
+            }
+            if status.get("default_model"):
+                self.default_model = str(status["default_model"])
+            await ws.send_json(
+                envelope(
+                    "model.listed",
+                    status,
+                    request_id=request_id,
+                )
+            )
+            return
+
+        if message_type == "model.select":
+            thread_id = str(data.get("thread_id") or payload.get("thread_id") or "")
+            model = str(payload.get("model") or "").strip()
+            thread = self.state.get_thread(thread_id)
+
+            if not thread:
+                await self.send_error(
+                    ws,
+                    "THREAD_NOT_FOUND",
+                    "Thread does not exist.",
+                    request_id=request_id,
+                    thread_id=thread_id or None,
+                )
+                return
+
+            if not model:
+                await self.send_error(
+                    ws,
+                    "MODEL_REQUIRED",
+                    "Model name cannot be empty.",
+                    request_id=request_id,
+                    thread_id=thread_id,
+                )
+                return
+
+            if not self.available_models:
+                status = await self.provider.get_status()
+                if not status["online"]:
+                    error = status.get("error") or {}
+                    await self.send_error(
+                        ws,
+                        str(error.get("code") or "OLLAMA_UNAVAILABLE"),
+                        str(error.get("message") or "Ollama is unavailable."),
+                        request_id=request_id,
+                        thread_id=thread_id,
+                    )
+                    return
+                self.available_models = {
+                    str(item.get("name"))
+                    for item in status["models"]
+                    if isinstance(item, dict) and item.get("name")
+                }
+
+            if model not in self.available_models:
+                await self.send_error(
+                    ws,
+                    "MODEL_NOT_FOUND",
+                    f"Model is not installed in Ollama: {model}",
+                    request_id=request_id,
+                    thread_id=thread_id,
+                )
+                return
+
+            updated = self.state.set_thread_model(thread_id, model)
+            await ws.send_json(
+                envelope(
+                    "model.selected",
+                    {
+                        "model": model,
+                        "thread": updated.to_dict() if updated else None,
+                    },
+                    request_id=request_id,
+                    thread_id=thread_id,
+                )
+            )
+            return
+
         if message_type == "thread.create":
-            thread = self.state.create_thread(payload.get("title"))
+            requested_model = str(payload.get("model") or "").strip() or None
+            thread = self.state.create_thread(
+                payload.get("title"),
+                active_model=requested_model or self.default_model,
+            )
             await ws.send_json(
                 envelope(
                     "thread.created",
@@ -170,7 +280,10 @@ class AgentServer:
             await ws.send_json(
                 envelope(
                     "thread.loaded",
-                    {"thread": thread.to_dict()},
+                    {
+                        "thread": thread.to_dict(),
+                        "messages": self.state.get_messages(thread.id),
+                    },
                     request_id=request_id,
                     thread_id=thread.id,
                 )
@@ -201,12 +314,27 @@ class AgentServer:
                 )
                 return
 
+            model = thread.active_model or self.default_model or self.provider.preferred_model
+            if self.available_models and model not in self.available_models:
+                await self.send_error(
+                    ws,
+                    "MODEL_NOT_FOUND",
+                    f"Model is not installed in Ollama: {model}",
+                    request_id=request_id,
+                    thread_id=thread_id,
+                )
+                return
+
             turn_id = new_id("turn")
             self.state.touch_thread(thread_id)
             await ws.send_json(
                 envelope(
                     "turn.started",
-                    {"prompt": prompt},
+                    {
+                        "prompt": prompt,
+                        "model": model,
+                        "provider": self.provider.provider_name,
+                    },
                     request_id=request_id,
                     thread_id=thread_id,
                     turn_id=turn_id,
@@ -214,7 +342,13 @@ class AgentServer:
             )
 
             task = asyncio.create_task(
-                self.simulate_turn(ws, thread_id, turn_id, prompt),
+                self.run_ollama_turn(
+                    ws,
+                    thread_id=thread_id,
+                    turn_id=turn_id,
+                    prompt=prompt,
+                    model=model,
+                ),
                 name=turn_id,
             )
             self.active_turns[turn_id] = task
@@ -246,35 +380,64 @@ class AgentServer:
             request_id=request_id,
         )
 
-    async def simulate_turn(
+    async def run_ollama_turn(
         self,
         ws: web.WebSocketResponse,
+        *,
         thread_id: str,
         turn_id: str,
         prompt: str,
+        model: str,
     ) -> None:
-        text = (
-            "Phase 1 protocol is working. "
-            f"I received your task: {prompt} "
-            "This response is simulated; Ollama is connected in Phase 2."
-        )
+        history = self.state.get_messages(thread_id)
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            *history,
+            {"role": "user", "content": prompt},
+        ]
+        assistant_parts: list[str] = []
+        finish_reason: str | None = None
+        prompt_eval_count: int | None = None
+        eval_count: int | None = None
 
         try:
-            for start in range(0, len(text), 12):
-                await asyncio.sleep(0.08)
-                await ws.send_json(
-                    envelope(
-                        "turn.delta",
-                        {"delta": text[start : start + 12]},
-                        thread_id=thread_id,
-                        turn_id=turn_id,
+            async for chunk in self.provider.stream_chat(
+                model=model,
+                messages=messages,
+            ):
+                if chunk.content:
+                    assistant_parts.append(chunk.content)
+                    await ws.send_json(
+                        envelope(
+                            "turn.delta",
+                            {"delta": chunk.content},
+                            thread_id=thread_id,
+                            turn_id=turn_id,
+                        )
                     )
-                )
 
+                if chunk.done:
+                    finish_reason = chunk.finish_reason
+                    prompt_eval_count = chunk.prompt_eval_count
+                    eval_count = chunk.eval_count
+
+            assistant_text = "".join(assistant_parts)
+            self.state.append_exchange(
+                thread_id,
+                user=prompt,
+                assistant=assistant_text,
+            )
             await ws.send_json(
                 envelope(
                     "turn.completed",
-                    {"finish_reason": "stop"},
+                    {
+                        "finish_reason": finish_reason or "stop",
+                        "provider": self.provider.provider_name,
+                        "model": model,
+                        "context_window": self.provider.context_window,
+                        "prompt_eval_count": prompt_eval_count,
+                        "eval_count": eval_count,
+                    },
                     thread_id=thread_id,
                     turn_id=turn_id,
                 )
@@ -284,12 +447,32 @@ class AgentServer:
                 await ws.send_json(
                     envelope(
                         "turn.cancelled",
-                        {"reason": "user_cancelled"},
+                        {
+                            "reason": "user_cancelled",
+                            "provider": self.provider.provider_name,
+                            "model": model,
+                        },
                         thread_id=thread_id,
                         turn_id=turn_id,
                     )
                 )
             raise
+        except OllamaProviderError as exc:
+            with suppress(ConnectionResetError, RuntimeError):
+                await ws.send_json(
+                    envelope(
+                        "turn.failed",
+                        {
+                            "code": exc.code,
+                            "message": exc.message,
+                            "recoverable": exc.recoverable,
+                            "provider": self.provider.provider_name,
+                            "model": model,
+                        },
+                        thread_id=thread_id,
+                        turn_id=turn_id,
+                    )
+                )
         except (ConnectionResetError, RuntimeError):
             return
 

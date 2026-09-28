@@ -11,9 +11,32 @@ type Status = {
   error?: string;
 };
 
+type ModelInfo = {
+  name: string;
+  size?: number | null;
+  family?: string | null;
+  parameter_size?: string | null;
+  quantization_level?: string | null;
+};
+
+type ProviderStatus = {
+  provider: string;
+  online: boolean;
+  base_url: string;
+  models: ModelInfo[];
+  default_model?: string | null;
+  preferred_model?: string | null;
+  context_window: number;
+  error?: {
+    code?: string;
+    message?: string;
+  } | null;
+};
+
 type ThreadRecord = {
   id: string;
   title: string;
+  active_model?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -22,6 +45,11 @@ type ChatItem = {
   id: string;
   role: "user" | "agent" | "system";
   text: string;
+};
+
+type StoredMessage = {
+  role: "user" | "assistant";
+  content: string;
 };
 
 const initialStatus: Status = { state: "starting" };
@@ -34,8 +62,18 @@ function readThread(event: AgentEnvelope): ThreadRecord | null {
   return value as ThreadRecord;
 }
 
+function readProvider(event: AgentEnvelope): ProviderStatus | null {
+  const payload = event.payload;
+  if (!payload || typeof payload.provider !== "string") {
+    return null;
+  }
+  return payload as unknown as ProviderStatus;
+}
+
 function App() {
   const [status, setStatus] = useState<Status>(initialStatus);
+  const [provider, setProvider] = useState<ProviderStatus | null>(null);
+  const [selectedModel, setSelectedModel] = useState("");
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
   const [activeThread, setActiveThread] = useState<ThreadRecord | null>(null);
   const [items, setItems] = useState<ChatItem[]>([]);
@@ -73,9 +111,27 @@ function App() {
       if (event.type === "thread.created") {
         const thread = readThread(event);
         if (thread) {
-          setThreads((current) => [thread, ...current.filter((item) => item.id !== thread.id)]);
+          setThreads((current) => [
+            thread,
+            ...current.filter((item) => item.id !== thread.id)
+          ]);
           setActiveThread(thread);
+          setSelectedModel(thread.active_model ?? "");
           setItems([]);
+        }
+        return;
+      }
+
+      if (event.type === "model.selected") {
+        const thread = readThread(event);
+        if (thread) {
+          setThreads((current) =>
+            current.map((item) => (item.id === thread.id ? thread : item))
+          );
+          setActiveThread((current) =>
+            current?.id === thread.id ? thread : current
+          );
+          setSelectedModel(thread.active_model ?? "");
         }
         return;
       }
@@ -104,7 +160,9 @@ function App() {
         (event.type === "turn.completed" || event.type === "turn.cancelled") &&
         event.turn_id
       ) {
-        setRunningTurnId((current) => (current === event.turn_id ? null : current));
+        setRunningTurnId((current) =>
+          current === event.turn_id ? null : current
+        );
         if (event.type === "turn.cancelled") {
           setItems((current) => [
             ...current,
@@ -115,6 +173,25 @@ function App() {
             }
           ]);
         }
+        return;
+      }
+
+      if (event.type === "turn.failed" && event.turn_id) {
+        const message = String(
+          event.payload?.message ?? "Ollama generation failed."
+        );
+        setRunningTurnId((current) =>
+          current === event.turn_id ? null : current
+        );
+        setUiError(message);
+        setItems((current) => [
+          ...current,
+          {
+            id: "system:" + event.turn_id,
+            role: "system",
+            text: "Turn failed: " + message
+          }
+        ]);
         return;
       }
 
@@ -129,30 +206,129 @@ function App() {
       return;
     }
 
-    void window.localAgent
-      .listThreads()
-      .then((event) => {
-        const value = event.payload?.threads;
-        if (Array.isArray(value)) {
-          const loaded = value as ThreadRecord[];
+    const load = async () => {
+      try {
+        const [threadEvent, modelEvent] = await Promise.all([
+          window.localAgent.listThreads(),
+          window.localAgent.listModels()
+        ]);
+
+        const threadValue = threadEvent.payload?.threads;
+        if (Array.isArray(threadValue)) {
+          const loaded = threadValue as ThreadRecord[];
           setThreads(loaded);
-          setActiveThread((current) => current ?? loaded[0] ?? null);
+          if (loaded[0]) {
+            setActiveThread((current) => current ?? loaded[0]);
+          }
         }
-      })
-      .catch((error) => setUiError(String(error)));
+
+        const providerStatus = readProvider(modelEvent);
+        if (providerStatus) {
+          setProvider(providerStatus);
+          const modelNames = providerStatus.models.map((item) => item.name);
+          setSelectedModel((current) => {
+            if (current && modelNames.includes(current)) {
+              return current;
+            }
+            return providerStatus.default_model ?? modelNames[0] ?? "";
+          });
+        }
+      } catch (error) {
+        setUiError(String(error));
+      }
+    };
+
+    void load();
   }, [status.state]);
 
   const detail = useMemo(() => {
     if (status.state === "ready") {
-      return [status.host + ":" + status.port, status.version, status.protocol].join(" · ");
+      return [
+        status.host + ":" + status.port,
+        status.version,
+        status.protocol
+      ].join(" · ");
     }
     return status.error ?? "Waiting for the local Agent process…";
   }, [status]);
 
+  const contextLabel = useMemo(() => {
+    if (!provider?.context_window) {
+      return "";
+    }
+    return Math.round(provider.context_window / 1024) + "K";
+  }, [provider]);
+
+  const refreshModels = async () => {
+    setUiError(null);
+    try {
+      const event = await window.localAgent.listModels();
+      const next = readProvider(event);
+      if (!next) {
+        return;
+      }
+      setProvider(next);
+      const names = next.models.map((item) => item.name);
+      setSelectedModel((current) => {
+        if (current && names.includes(current)) {
+          return current;
+        }
+        return next.default_model ?? names[0] ?? "";
+      });
+    } catch (error) {
+      setUiError(String(error));
+    }
+  };
+
   const createThread = async () => {
     setUiError(null);
     try {
-      await window.localAgent.createThread();
+      await window.localAgent.createThread(selectedModel || undefined);
+    } catch (error) {
+      setUiError(String(error));
+    }
+  };
+
+  const loadThread = async (thread: ThreadRecord) => {
+    if (runningTurnId) {
+      return;
+    }
+
+    setUiError(null);
+    try {
+      const event = await window.localAgent.getThread(thread.id);
+      const loadedThread = readThread(event) ?? thread;
+      const rawMessages = event.payload?.messages;
+      const messages = Array.isArray(rawMessages)
+        ? (rawMessages as StoredMessage[])
+        : [];
+
+      setActiveThread(loadedThread);
+      setSelectedModel(
+        loadedThread.active_model ?? provider?.default_model ?? ""
+      );
+      setItems(
+        messages.map((message, index) => ({
+          id: "history:" + loadedThread.id + ":" + index,
+          role: message.role === "assistant" ? "agent" : "user",
+          text: message.content
+        }))
+      );
+    } catch (error) {
+      setUiError(String(error));
+    }
+  };
+
+  const changeModel = async (model: string) => {
+    setSelectedModel(model);
+    setUiError(null);
+
+    if (!activeThread) {
+      return;
+    }
+
+    try {
+      await window.localAgent.selectModel(activeThread.id, model);
     } catch (error) {
       setUiError(String(error));
     }
@@ -161,7 +337,13 @@ function App() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const prompt = input.trim();
-    if (!activeThread || !prompt || runningTurnId) {
+    if (
+      !activeThread ||
+      !prompt ||
+      runningTurnId ||
+      !provider?.online ||
+      !selectedModel
+    ) {
       return;
     }
 
@@ -177,7 +359,10 @@ function App() {
     ]);
 
     try {
-      const started = await window.localAgent.startTurn(activeThread.id, prompt);
+      const started = await window.localAgent.startTurn(
+        activeThread.id,
+        prompt
+      );
       if (started.turn_id) {
         setRunningTurnId(started.turn_id);
       }
@@ -198,13 +383,15 @@ function App() {
     }
   };
 
+  const providerReady = Boolean(provider?.online && selectedModel);
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">Local Coding Agent</div>
         <button
           className="new-thread"
-          disabled={status.state !== "ready"}
+          disabled={status.state !== "ready" || !providerReady}
           onClick={() => void createThread()}
         >
           + New thread
@@ -221,13 +408,14 @@ function App() {
             threads.map((thread) => (
               <button
                 key={thread.id}
-                className={"thread-item " + (activeThread?.id === thread.id ? "active" : "")}
-                onClick={() => {
-                  setActiveThread(thread);
-                  setItems([]);
-                }}
+                className={
+                  "thread-item " +
+                  (activeThread?.id === thread.id ? "active" : "")
+                }
+                onClick={() => void loadThread(thread)}
               >
-                {thread.title}
+                <span>{thread.title}</span>
+                <small>{thread.active_model ?? "no model"}</small>
               </button>
             ))
           )}
@@ -236,7 +424,9 @@ function App() {
         <div className="sidebar-footer">
           <div className={"status-dot status-" + status.state} />
           <div>
-            <div className="status-title">{formatAgentStatus(status.state)}</div>
+            <div className="status-title">
+              {formatAgentStatus(status.state)}
+            </div>
             <div className="status-detail">{detail}</div>
           </div>
         </div>
@@ -245,29 +435,48 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <div>
-            <strong>{activeThread?.title ?? "Phase 1"}</strong>
-            <span> · Thread / Turn protocol</span>
+            <strong>{activeThread?.title ?? "Phase 2"}</strong>
+            <span> · Ollama Provider</span>
           </div>
-          <span className="platform">{window.localAgent.platform}</span>
+          <div className="topbar-actions">
+            <button
+              className={
+                "provider-pill " +
+                (provider?.online ? "provider-online" : "provider-offline")
+              }
+              onClick={() => void refreshModels()}
+              title="Refresh Ollama status and local models"
+            >
+              Ollama {provider?.online ? "Online" : "Offline"}
+            </button>
+            <span className="platform">{window.localAgent.platform}</span>
+          </div>
         </header>
 
         <section className="conversation">
           {items.length === 0 ? (
             <div className="welcome-card">
-              <div className="eyebrow">PHASE 1</div>
-              <h1>Thread / Turn transport is live.</h1>
+              <div className="eyebrow">PHASE 2</div>
+              <h1>Local model inference is live.</h1>
               <p>
-                Create a thread and send a prompt. The Python Agent Server will stream a simulated
-                response over the authenticated local WebSocket. Ollama replaces the simulator in
-                Phase 2.
+                Messages now stream from your local Ollama model. Thread
+                history stays in memory for the current Agent process. File,
+                shell and Git tools are intentionally still disabled until
+                Phase 3.
               </p>
               <div className="milestones">
-                <span>WebSocket ✓</span>
-                <span>Thread ✓</span>
-                <span>Turn ✓</span>
+                <span>Ollama ✓</span>
+                <span>Local models ✓</span>
                 <span>Streaming ✓</span>
-                <span>Stop ✓</span>
+                <span>Context ✓</span>
+                <span>Cancel ✓</span>
               </div>
+              {!provider?.online ? (
+                <div className="provider-warning">
+                  {provider?.error?.message ??
+                    "Ollama is not available. Start Ollama and refresh."}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="message-list">
@@ -286,23 +495,64 @@ function App() {
           <textarea
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            disabled={!activeThread || status.state !== "ready"}
+            disabled={
+              !activeThread ||
+              status.state !== "ready" ||
+              !providerReady
+            }
             placeholder={
-              activeThread
-                ? "Send a Phase 1 test prompt…"
-                : "Create a thread to start testing the protocol."
+              !provider?.online
+                ? "Ollama is offline. Start Ollama and click the status above to refresh."
+                : activeThread
+                  ? "Ask your local model a coding question…"
+                  : "Create a thread to start chatting with the local model."
             }
           />
           <div className="composer-row">
-            <span>Model: simulator · Permission: protocol only</span>
+            <div className="model-controls">
+              <select
+                className="model-select"
+                value={selectedModel}
+                disabled={
+                  !provider?.online ||
+                  runningTurnId !== null ||
+                  provider.models.length === 0
+                }
+                onChange={(event) => void changeModel(event.target.value)}
+              >
+                {provider?.models.length ? (
+                  provider.models.map((model) => (
+                    <option key={model.name} value={model.name}>
+                      {model.name}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">No local models</option>
+                )}
+              </select>
+              <span>
+                {contextLabel ? "Context " + contextLabel : ""}
+                {contextLabel ? " · " : ""}
+                Permission: chat only
+              </span>
+            </div>
             {runningTurnId ? (
-              <button type="button" className="stop-button" onClick={() => void stop()}>
+              <button
+                type="button"
+                className="stop-button"
+                onClick={() => void stop()}
+              >
                 Stop
               </button>
             ) : (
               <button
                 type="submit"
-                disabled={!activeThread || !input.trim() || status.state !== "ready"}
+                disabled={
+                  !activeThread ||
+                  !input.trim() ||
+                  status.state !== "ready" ||
+                  !providerReady
+                }
               >
                 Send
               </button>

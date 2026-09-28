@@ -280,7 +280,7 @@ function sendRequest(
     const timer = setTimeout(() => {
       pending.delete(requestId);
       reject(new Error("Agent request timed out: " + type));
-    }, 10000);
+    }, 15000);
 
     pending.set(requestId, {
       expectedType,
@@ -356,11 +356,29 @@ function createWindow(): void {
 }
 
 ipcMain.handle("agent:get-status", () => agentStatus);
-ipcMain.handle("agent:thread-create", async (_event, title?: string) => {
-  return sendRequest("thread.create", "thread.created", title ? { title } : {});
+ipcMain.handle("agent:model-list", async () => {
+  return sendRequest("model.list", "model.listed");
+});
+ipcMain.handle("agent:model-select", async (_event, threadId: string, model: string) => {
+  return sendRequest("model.select", "model.selected", { model }, { threadId });
+});
+ipcMain.handle("agent:thread-create", async (_event, model?: string) => {
+  return sendRequest(
+    "thread.create",
+    "thread.created",
+    model ? { model } : {}
+  );
 });
 ipcMain.handle("agent:thread-list", async () => {
   return sendRequest("thread.list", "thread.listed");
+});
+ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
+  return sendRequest(
+    "thread.get",
+    "thread.loaded",
+    { thread_id: threadId },
+    { threadId }
+  );
 });
 ipcMain.handle("agent:turn-start", async (_event, threadId: string, prompt: string) => {
   return sendRequest(

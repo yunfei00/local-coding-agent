@@ -5,8 +5,12 @@ type AgentEventHandler = (event: unknown) => void;
 contextBridge.exposeInMainWorld("localAgent", {
   platform: process.platform,
   getAgentStatus: () => ipcRenderer.invoke("agent:get-status"),
-  createThread: (title?: string) => ipcRenderer.invoke("agent:thread-create", title),
+  listModels: () => ipcRenderer.invoke("agent:model-list"),
+  selectModel: (threadId: string, model: string) =>
+    ipcRenderer.invoke("agent:model-select", threadId, model),
+  createThread: (model?: string) => ipcRenderer.invoke("agent:thread-create", model),
   listThreads: () => ipcRenderer.invoke("agent:thread-list"),
+  getThread: (threadId: string) => ipcRenderer.invoke("agent:thread-get", threadId),
   startTurn: (threadId: string, prompt: string) =>
     ipcRenderer.invoke("agent:turn-start", threadId, prompt),
   cancelTurn: (turnId: string) => ipcRenderer.invoke("agent:turn-cancel", turnId),

@@ -21,8 +21,11 @@ declare global {
         protocol?: string;
         error?: string;
       }>;
-      createThread: (title?: string) => Promise<AgentEnvelope>;
+      listModels: () => Promise<AgentEnvelope>;
+      selectModel: (threadId: string, model: string) => Promise<AgentEnvelope>;
+      createThread: (model?: string) => Promise<AgentEnvelope>;
       listThreads: () => Promise<AgentEnvelope>;
+      getThread: (threadId: string) => Promise<AgentEnvelope>;
       startTurn: (threadId: string, prompt: string) => Promise<AgentEnvelope>;
       cancelTurn: (turnId: string) => Promise<{ ok: boolean }>;
       onAgentEvent: (handler: (event: AgentEnvelope) => void) => () => void;

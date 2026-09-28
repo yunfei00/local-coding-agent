@@ -26,14 +26,22 @@ class ProtocolTests(unittest.TestCase):
         self.assertFalse(valid)
         self.assertEqual(reason, "payload_must_be_object")
 
-    def test_thread_state_create_and_list(self) -> None:
+    def test_thread_state_keeps_model_and_messages(self) -> None:
         state = InMemoryState()
-        first = state.create_thread("First")
-        second = state.create_thread("Second")
+        thread = state.create_thread("First", active_model="qwen3-coder:30b")
+        state.append_exchange(thread.id, user="hello", assistant="hi")
 
-        self.assertIsNotNone(state.get_thread(first.id))
-        ids = {thread.id for thread in state.list_threads()}
-        self.assertEqual(ids, {first.id, second.id})
+        self.assertEqual(
+            state.get_thread(thread.id).active_model,
+            "qwen3-coder:30b",
+        )
+        self.assertEqual(
+            state.get_messages(thread.id),
+            [
+                {"role": "user", "content": "hello"},
+                {"role": "assistant", "content": "hi"},
+            ],
+        )
 
 
 if __name__ == "__main__":
