@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import WebSocket from "ws";
 
@@ -40,6 +41,12 @@ const pending = new Map<string, PendingRequest>();
 
 function repoRoot(): string {
   return path.resolve(__dirname, "..", "..");
+}
+
+function projectPythonPath(): string {
+  return process.platform === "win32"
+    ? path.join(repoRoot(), ".venv", "Scripts", "python.exe")
+    : path.join(repoRoot(), ".venv", "bin", "python");
 }
 
 function broadcastAgentEvent(event: AgentEnvelope): void {
@@ -189,15 +196,16 @@ function updateFromAgentStdout(chunk: Buffer): void {
   }
 }
 
-function launchAgent(command: string, argsPrefix: string[] = []): ChildProcessWithoutNullStreams {
+function launchAgent(command: string): ChildProcessWithoutNullStreams {
   const child = spawn(
     command,
-    [...argsPrefix, "-m", "agent.server.main", "--port", "0"],
+    ["-m", "agent.server.main", "--port", "0"],
     {
       cwd: repoRoot(),
       env: {
         ...process.env,
-        PYTHONUNBUFFERED: "1"
+        PYTHONUNBUFFERED: "1",
+        VIRTUAL_ENV: path.join(repoRoot(), ".venv")
       },
       windowsHide: true
     }
@@ -227,26 +235,23 @@ function startAgent(): void {
   agentStatus = { state: "starting" };
 
   const configuredPython = process.env.LCA_PYTHON;
-  if (configuredPython) {
-    agentProcess = launchAgent(configuredPython);
-    agentProcess.once("error", (error) => {
-      agentStatus = { state: "error", error: String(error) };
-    });
+  const python = configuredPython || projectPythonPath();
+
+  if (!configuredPython && !existsSync(python)) {
+    agentStatus = {
+      state: "error",
+      error: "Project .venv is missing. Run .\\scripts\\dev\\bootstrap.ps1 first."
+    };
     return;
   }
 
-  const primary = process.platform === "win32" ? "python" : "python3";
-  agentProcess = launchAgent(primary);
+  console.log("[desktop] Agent Python: " + python);
+  agentProcess = launchAgent(python);
   agentProcess.once("error", (error) => {
-    if (process.platform === "win32") {
-      console.warn("[desktop] python was not available, trying py -3");
-      agentProcess = launchAgent("py", ["-3"]);
-      agentProcess.once("error", (fallbackError) => {
-        agentStatus = { state: "error", error: String(fallbackError) };
-      });
-      return;
-    }
-    agentStatus = { state: "error", error: String(error) };
+    agentStatus = {
+      state: "error",
+      error: "Unable to start project Agent Python: " + String(error)
+    };
   });
 }
 

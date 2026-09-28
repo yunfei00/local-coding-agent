@@ -5,44 +5,39 @@ Set-Location $repo
 
 Write-Host "== Local Coding Agent bootstrap ==" -ForegroundColor Cyan
 
-$required = @("git", "node", "npm")
+$required = @("git", "node", "npm", "uv")
 foreach ($command in $required) {
     if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
+        if ($command -eq "uv") {
+            throw "uv was not found. Install uv first, then run bootstrap again."
+        }
         throw "Required command not found: $command"
     }
 }
 
-$python = Get-Command python -ErrorAction SilentlyContinue
-if (-not $python) {
-    $py = Get-Command py -ErrorAction SilentlyContinue
-    if (-not $py) {
-        throw "Python 3.11+ was not found. Install Python and retry."
-    }
-}
+Write-Host "Using uv-managed project environment..." -ForegroundColor Cyan
+uv python install 3.12
+uv venv --python 3.12 .venv
+uv pip install -e .
 
-Write-Host "Installing Python Agent dependencies..."
-if ($python) {
-    python -m pip install -e .
-} else {
-    py -3 -m pip install -e .
+$venvPython = Join-Path $repo ".venv\Scripts\python.exe"
+if (-not (Test-Path $venvPython)) {
+    throw "Project virtual environment was not created correctly: $venvPython"
 }
 
 Write-Host "Installing desktop dependencies..."
 npm --prefix desktop install
 
-Write-Host "Running backend checks..."
-if ($python) {
-    python -m compileall agent
-    python -m unittest discover -s tests -v
-} else {
-    py -3 -m compileall agent
-    py -3 -m unittest discover -s tests -v
-}
+Write-Host "Running backend checks with project .venv..."
+& $venvPython -m compileall agent
+& $venvPython -m unittest discover -s tests -v
 
 Write-Host "Running desktop checks..."
 npm --prefix desktop run typecheck
 npm --prefix desktop run test
 
 Write-Host ""
-Write-Host "Bootstrap complete. Start with:" -ForegroundColor Green
+Write-Host "Bootstrap complete." -ForegroundColor Green
+Write-Host "Python runtime: $venvPython"
+Write-Host "Start with:"
 Write-Host "  .\scripts\dev\start.ps1"
