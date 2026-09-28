@@ -1,2 +1,2 @@
 APP_VERSION = "0.1.0-dev"
-PROTOCOL_VERSION = "phase0"
+PROTOCOL_VERSION = "phase1"

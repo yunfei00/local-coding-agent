@@ -24,6 +24,14 @@ textarea {
   font: inherit;
 }
 
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 270px minmax(0, 1fr);
@@ -49,11 +57,19 @@ textarea {
 .new-thread {
   width: 100%;
   padding: 9px 12px;
-  color: #9b9b9b;
+  color: #ddd;
   text-align: left;
-  background: #1f1f1f;
-  border: 1px solid #303030;
+  background: #202020;
+  border: 1px solid #343434;
   border-radius: 8px;
+}
+
+.new-thread:hover:not(:disabled) {
+  background: #292929;
+}
+
+.new-thread:disabled {
+  color: #696969;
 }
 
 .section-label {
@@ -69,6 +85,32 @@ textarea {
   padding: 4px 8px;
   color: #777;
   font-size: 12px;
+}
+
+.thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 36px;
+}
+
+.thread-item {
+  width: 100%;
+  overflow: hidden;
+  padding: 8px 9px;
+  color: #aaa;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+}
+
+.thread-item:hover,
+.thread-item.active {
+  color: #eee;
+  background: #232323;
 }
 
 .sidebar-footer {
@@ -143,14 +185,14 @@ textarea {
 }
 
 .conversation {
-  display: grid;
-  place-items: center;
+  display: flex;
   overflow: auto;
   padding: 32px;
 }
 
 .welcome-card {
   width: min(720px, 100%);
+  margin: auto;
   padding: 34px;
   border: 1px solid #2d2d2d;
   border-radius: 16px;
@@ -192,6 +234,50 @@ p {
   font-size: 11px;
 }
 
+.message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: min(840px, 100%);
+  margin: auto auto 0;
+}
+
+.message {
+  max-width: 88%;
+  padding: 13px 15px;
+  border-radius: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.message.user {
+  align-self: flex-end;
+  background: #262626;
+}
+
+.message.agent {
+  align-self: flex-start;
+  background: #171717;
+  border: 1px solid #2c2c2c;
+}
+
+.message.system {
+  align-self: center;
+  padding: 7px 10px;
+  color: #888;
+  font-size: 12px;
+  background: transparent;
+}
+
+.message-role {
+  margin-bottom: 5px;
+  color: #777;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
 .composer {
   width: min(880px, calc(100% - 40px));
   margin: 0 auto 22px;
@@ -205,10 +291,14 @@ p {
   width: 100%;
   min-height: 66px;
   resize: none;
-  color: #8a8a8a;
+  color: #ddd;
   background: transparent;
   border: 0;
   outline: none;
+}
+
+.composer textarea:disabled {
+  color: #777;
 }
 
 .composer-row {
@@ -221,8 +311,27 @@ p {
 
 .composer button {
   padding: 7px 12px;
-  color: #777;
-  background: #252525;
-  border: 1px solid #333;
+  color: #ddd;
+  background: #292929;
+  border: 1px solid #3b3b3b;
+  border-radius: 8px;
+}
+
+.composer button:disabled {
+  color: #666;
+}
+
+.stop-button {
+  color: #e6b0b0 !important;
+  border-color: #583838 !important;
+}
+
+.error-banner {
+  margin-bottom: 8px;
+  padding: 7px 9px;
+  color: #e7b2b2;
+  font-size: 11px;
+  background: #2b1818;
+  border: 1px solid #512727;
   border-radius: 8px;
 }

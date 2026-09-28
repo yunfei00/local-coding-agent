@@ -20,6 +20,13 @@ if (-not $python) {
     }
 }
 
+Write-Host "Installing Python Agent dependencies..."
+if ($python) {
+    python -m pip install -e .
+} else {
+    py -3 -m pip install -e .
+}
+
 Write-Host "Installing desktop dependencies..."
 npm --prefix desktop install
 
