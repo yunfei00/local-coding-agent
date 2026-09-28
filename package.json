@@ -1,0 +1,13 @@
+{
+  "name": "local-coding-agent",
+  "version": "0.1.0-dev",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix desktop run dev",
+    "desktop:build": "npm --prefix desktop run build",
+    "desktop:typecheck": "npm --prefix desktop run typecheck",
+    "desktop:test": "npm --prefix desktop run test",
+    "agent:check": "python -m compileall agent",
+    "agent:test": "python -m unittest discover -s tests -v"
+  }
+}

@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+  pull_request:
+
+jobs:
+  phase0:
+    name: Phase 0 checks
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Python compile check
+        run: python -m compileall agent
+
+      - name: Python tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm install --no-audit --no-fund
+
+      - name: Desktop typecheck
+        working-directory: desktop
+        run: npm run typecheck
+
+      - name: Desktop tests
+        working-directory: desktop
+        run: npm run test
+
+      - name: Desktop build
+        working-directory: desktop
+        run: npm run build

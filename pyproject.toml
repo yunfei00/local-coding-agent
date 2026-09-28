@@ -1,0 +1,9 @@
+[project]
+name = "local-coding-agent"
+version = "0.1.0.dev0"
+description = "Local-first coding agent core"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["agent*"]

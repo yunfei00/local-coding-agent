@@ -1,0 +1,30 @@
+{
+  "name": "local-coding-agent-desktop",
+  "version": "0.1.0-dev",
+  "private": true,
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k -n VITE,ELECTRON \"vite --host 127.0.0.1\" \"wait-on tcp:127.0.0.1:5173 && npm run electron:dev\"",
+    "electron:dev": "tsc -p electron/tsconfig.json && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
+    "build": "vite build && tsc -p electron/tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p electron/tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.4",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.0.0",
+    "electron": "^38.1.2",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7",
+    "vitest": "^3.2.4",
+    "wait-on": "^8.0.4"
+  }
+}
