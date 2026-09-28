@@ -1,1 +1,59 @@
-name: CI\n\non:\n  push:\n    branches:\n      - main\n      - "feature/**"\n  pull_request:\n\njobs:\n  checks:\n    name: Core checks\n    runs-on: ${{ matrix.os }}\n    strategy:\n      fail-fast: false\n      matrix:\n        os: [windows-latest, ubuntu-latest]\n\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v4\n\n      - name: Setup uv\n        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4\n        with:\n          python-version: "3.12"\n\n      - name: Setup Node\n        uses: actions/setup-node@v4\n        with:\n          node-version: "22"\n\n      - name: Create project virtual environment\n        run: uv venv --python 3.12 .venv\n\n      - name: Install Python dependencies\n        run: uv pip install -e .\n\n      - name: Python compile check\n        run: uv run --no-project python -m compileall agent\n\n      - name: Python tests\n        run: uv run --no-project python -m unittest discover -s tests -v\n\n      - name: Install desktop dependencies\n        working-directory: desktop\n        run: npm install --no-audit --no-fund\n\n      - name: Desktop typecheck\n        working-directory: desktop\n        run: npm run typecheck\n\n      - name: Desktop tests\n        working-directory: desktop\n        run: npm run test\n\n      - name: Desktop build\n        working-directory: desktop\n        run: npm run build\n
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+  pull_request:
+
+jobs:
+  checks:
+    name: Core checks
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Create project virtual environment
+        run: uv venv --python 3.12 .venv
+
+      - name: Install Python dependencies
+        run: uv pip install -e .
+
+      - name: Python compile check
+        run: uv run --no-project python -m compileall agent
+
+      - name: Python tests
+        run: uv run --no-project python -m unittest discover -s tests -v
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm install --no-audit --no-fund
+
+      - name: Desktop typecheck
+        working-directory: desktop
+        run: npm run typecheck
+
+      - name: Desktop tests
+        working-directory: desktop
+        run: npm run test
+
+      - name: Desktop build
+        working-directory: desktop
+        run: npm run build
