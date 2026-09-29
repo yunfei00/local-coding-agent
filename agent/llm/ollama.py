@@ -107,7 +107,13 @@ def _parse_tool_calls(message: dict[str, Any]) -> tuple[ToolCall, ...]:
             arguments = parsed
         if not isinstance(arguments, dict):
             arguments = {}
-        calls.append(\n            ToolCall(\n                name=name,\n                arguments=arguments,\n                id=_optional_string(raw.get("id")),\n            )\n        )
+        calls.append(
+            ToolCall(
+                name=name,
+                arguments=arguments,
+                id=_optional_string(raw.get("id")),
+            )
+        )
     return tuple(calls)
 
 
