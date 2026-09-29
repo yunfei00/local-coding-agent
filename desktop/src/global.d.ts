@@ -22,6 +22,20 @@ declare global {
         protocol?: string;
         error?: string;
       }>;
+      getDiagnostics: () => Promise<{
+        event: AgentEnvelope;
+        desktop: {
+          app_version: string;
+          packaged: boolean;
+          platform: string;
+          architecture: string;
+          electron?: string;
+          chrome?: string;
+          node?: string;
+          secret_storage: "os_protected" | "session_only" | "environment" | "none";
+        };
+      }>;
+      copyDiagnostics: (report: string) => Promise<{ ok: boolean }>;
       getSettings: () => Promise<{
         event: AgentEnvelope;
         secret: {
