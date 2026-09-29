@@ -11,7 +11,6 @@ import {
 import {
   DiffFile,
   ToolCard,
-  ToolChunk,
   ToolView
 } from "./components/ToolCard";
 import { appendOrderedToolChunk } from "./lib/toolStream";
