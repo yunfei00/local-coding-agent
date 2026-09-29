@@ -22,13 +22,13 @@ $OldChecksumsUrl = "$OldBaseUrl/SHA256SUMS.txt"
 $TempBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
 $Root = Join-Path $TempBase "lca-v01-v02-upgrade"
 $InstallDir = Join-Path $Root "install"
-$AppDataRoot = Join-Path $Root "appdata"
+$UserDataDir = Join-Path $env:APPDATA "local-coding-agent-desktop"
 $OldInstaller = Join-Path $Root "Local-Coding-Agent-0.1.0-x64-Setup.exe"
 $OldChecksums = Join-Path $Root "SHA256SUMS-v0.1.0.txt"
 
 Remove-Item $Root -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $Root -Force | Out-Null
-New-Item -ItemType Directory -Path $AppDataRoot -Force | Out-Null
+Remove-Item $UserDataDir -Recurse -Force -ErrorAction SilentlyContinue
 
 function Install-Lca {
     param(
@@ -57,10 +57,10 @@ function Invoke-VersionSmoke {
     Remove-Item $SmokeFile -Force -ErrorAction SilentlyContinue
 
     $OldSmoke = $env:LCA_PACKAGED_SMOKE_FILE
-    $OldAppData = $env:APPDATA
+    $OldData = $env:LCA_DATA_DIR
     $OldOllama = $env:LCA_OLLAMA_URL
     $env:LCA_PACKAGED_SMOKE_FILE = $SmokeFile
-    $env:APPDATA = $AppDataRoot
+    Remove-Item Env:LCA_DATA_DIR -ErrorAction SilentlyContinue
     $env:LCA_OLLAMA_URL = "http://127.0.0.1:1"
 
     try {
@@ -94,7 +94,7 @@ function Invoke-VersionSmoke {
     }
     finally {
         if ($null -eq $OldSmoke) { Remove-Item Env:LCA_PACKAGED_SMOKE_FILE -ErrorAction SilentlyContinue } else { $env:LCA_PACKAGED_SMOKE_FILE = $OldSmoke }
-        if ($null -eq $OldAppData) { Remove-Item Env:APPDATA -ErrorAction SilentlyContinue } else { $env:APPDATA = $OldAppData }
+        if ($null -eq $OldData) { Remove-Item Env:LCA_DATA_DIR -ErrorAction SilentlyContinue } else { $env:LCA_DATA_DIR = $OldData }
         if ($null -eq $OldOllama) { Remove-Item Env:LCA_OLLAMA_URL -ErrorAction SilentlyContinue } else { $env:LCA_OLLAMA_URL = $OldOllama }
     }
 }
@@ -119,12 +119,12 @@ $OldExe = Install-Lca -Installer $OldInstaller -Target $InstallDir
 Invoke-VersionSmoke -Executable $OldExe -ExpectedVersion $OldVersion -Name "v010"
 
 $DatabaseCandidates = @(
-    Get-ChildItem $AppDataRoot -Recurse -File -Filter "local-coding-agent.sqlite3" -ErrorAction SilentlyContinue |
+    Get-ChildItem $UserDataDir -Recurse -File -Filter "local-coding-agent.sqlite3" -ErrorAction SilentlyContinue |
         ForEach-Object { $_.FullName }
 )
 if ($DatabaseCandidates.Count -ne 1) {
     $Discovered = @(
-        Get-ChildItem $AppDataRoot -Recurse -File -ErrorAction SilentlyContinue |
+        Get-ChildItem $UserDataDir -Recurse -File -ErrorAction SilentlyContinue |
             ForEach-Object { $_.FullName }
     )
     Write-Host "Files discovered under isolated APPDATA:"
