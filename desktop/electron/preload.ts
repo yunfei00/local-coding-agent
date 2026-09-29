@@ -6,6 +6,61 @@ contextBridge.exposeInMainWorld("localAgent", {
   platform: process.platform,
   notifyRendererReady: () => ipcRenderer.send("renderer:ready"),
   getAgentStatus: () => ipcRenderer.invoke("agent:get-status"),
+  getSettings: () => ipcRenderer.invoke("agent:settings-get"),
+  applySettings: (
+    settings: Record<string, unknown>,
+    secretUpdate?: {
+      action?: "keep" | "set" | "clear";
+      value?: string;
+    }
+  ) =>
+    ipcRenderer.invoke(
+      "agent:settings-apply",
+      settings,
+      secretUpdate
+    ),
+  resetSettings: () => ipcRenderer.invoke("agent:settings-reset"),
+  getPromptRules: (threadId?: string) =>
+    ipcRenderer.invoke("agent:prompt-rules-get", threadId),
+  setPromptRule: (
+    scope: string,
+    content: string,
+    enabled: boolean,
+    projectId?: string,
+    threadId?: string
+  ) =>
+    ipcRenderer.invoke(
+      "agent:prompt-rule-set",
+      scope,
+      content,
+      enabled,
+      projectId,
+      threadId
+    ),
+  togglePromptRule: (
+    scope: string,
+    enabled: boolean,
+    projectId?: string,
+    threadId?: string
+  ) =>
+    ipcRenderer.invoke(
+      "agent:prompt-rule-toggle",
+      scope,
+      enabled,
+      projectId,
+      threadId
+    ),
+  resetPromptRule: (
+    scope: string,
+    projectId?: string,
+    threadId?: string
+  ) =>
+    ipcRenderer.invoke(
+      "agent:prompt-rule-reset",
+      scope,
+      projectId,
+      threadId
+    ),
   getPermission: () => ipcRenderer.invoke("agent:permission-get"),
   setPermission: (mode: string) =>
     ipcRenderer.invoke("agent:permission-set", mode),
