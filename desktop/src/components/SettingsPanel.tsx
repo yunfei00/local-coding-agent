@@ -41,6 +41,19 @@ type PromptRulesPayload = {
   thread?: PromptRule | null;
 };
 
+type UpdateCheckResult = {
+  ok: boolean;
+  checked_at: string;
+  current_version: string;
+  latest_version?: string;
+  update_available: boolean;
+  release_url?: string;
+  error?: string;
+  automatic: false;
+  can_auto_download: false;
+  can_auto_install: false;
+};
+
 type Tab =
   | "general"
   | "provider"
@@ -139,6 +152,9 @@ export function SettingsPanel({
     thread: true
   });
   const [busy, setBusy] = useState(false);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateResult, setUpdateResult] =
+    useState<UpdateCheckResult | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -209,6 +225,41 @@ export function SettingsPanel({
       current ? { ...current, [key]: value } : current
     );
     setMessage(null);
+  };
+
+  const checkUpdates = async () => {
+    setUpdateBusy(true);
+    setError(null);
+    try {
+      const result = await window.localAgent.checkForUpdates();
+      setUpdateResult(result);
+    } catch (nextError) {
+      setUpdateResult({
+        ok: false,
+        checked_at: new Date().toISOString(),
+        current_version: "unknown",
+        update_available: false,
+        error: String(nextError),
+        automatic: false,
+        can_auto_download: false,
+        can_auto_install: false
+      });
+    } finally {
+      setUpdateBusy(false);
+    }
+  };
+
+  const openRelease = async () => {
+    const url = updateResult?.release_url;
+    if (!url) {
+      return;
+    }
+    setError(null);
+    try {
+      await window.localAgent.openReleasePage(url);
+    } catch (nextError) {
+      setError(String(nextError));
+    }
   };
 
   const save = async () => {
@@ -483,6 +534,67 @@ export function SettingsPanel({
                   <strong>{projectId ? "Open" : "None"}</strong>
                 </div>
               </div>
+              <div className="settings-update-card">
+                <div>
+                  <strong>Updates</strong>
+                  <p>
+                    Update checks are manual in v0.2. The app never downloads
+                    or installs an update automatically.
+                  </p>
+                </div>
+                <div className="settings-update-actions">
+                  <button
+                    type="button"
+                    className="settings-secondary"
+                    disabled={updateBusy}
+                    onClick={() => void checkUpdates()}
+                  >
+                    {updateBusy ? "Checking…" : "Check for updates"}
+                  </button>
+                  {updateResult?.update_available &&
+                  updateResult.release_url ? (
+                    <button
+                      type="button"
+                      onClick={() => void openRelease()}
+                    >
+                      Open release page
+                    </button>
+                  ) : null}
+                </div>
+                {updateResult ? (
+                  <div
+                    className={
+                      "settings-update-result " +
+                      (updateResult.ok ? "ok" : "error")
+                    }
+                  >
+                    {updateResult.ok ? (
+                      updateResult.update_available ? (
+                        <>
+                          Update available: v
+                          {updateResult.current_version} → v
+                          {updateResult.latest_version}
+                        </>
+                      ) : (
+                        <>
+                          Up to date · v{updateResult.current_version}
+                          {updateResult.latest_version
+                            ? " · latest v" + updateResult.latest_version
+                            : ""}
+                        </>
+                      )
+                    ) : (
+                      <>
+                        Update check unavailable
+                        {updateResult.error
+                          ? " · " + updateResult.error
+                          : ""}
+                      </>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+
               <div className="settings-bottom-actions">
                 <button
                   type="button"
