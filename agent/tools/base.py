@@ -4,7 +4,8 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Awaitable, Callable
 
 
-OutputCallback = Callable[[str], Awaitable[None]]
+ToolOutputChunk = dict[str, Any]
+OutputCallback = Callable[[ToolOutputChunk], Awaitable[None]]
 
 
 @dataclass

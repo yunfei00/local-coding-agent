@@ -3,7 +3,10 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+import signal
+import subprocess
 import time
+from contextlib import suppress
 from typing import Any
 
 from agent.tools.base import BaseTool, ToolError, ToolResult
@@ -11,6 +14,7 @@ from agent.tools.workspace import Workspace
 
 
 MAX_OUTPUT_CHARS = 200_000
+GRACEFUL_KILL_SECONDS = 1.5
 
 
 def validate_command(command: str) -> None:
@@ -29,11 +33,59 @@ def shell_command() -> tuple[str, list[str]]:
     return "/bin/bash", ["-lc"]
 
 
+async def terminate_process_tree(
+    process: asyncio.subprocess.Process,
+) -> None:
+    if process.returncode is not None:
+        return
+
+    if os.name == "nt":
+        try:
+            killer = await asyncio.create_subprocess_exec(
+                "taskkill",
+                "/PID",
+                str(process.pid),
+                "/T",
+                "/F",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            with suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(killer.wait(), timeout=5)
+        except (FileNotFoundError, ProcessLookupError, PermissionError):
+            with suppress(ProcessLookupError):
+                process.kill()
+
+        with suppress(asyncio.TimeoutError, ProcessLookupError):
+            await asyncio.wait_for(process.wait(), timeout=3)
+        return
+
+    try:
+        group_id = os.getpgid(process.pid)
+    except ProcessLookupError:
+        return
+
+    with suppress(ProcessLookupError):
+        os.killpg(group_id, signal.SIGTERM)
+
+    try:
+        await asyncio.wait_for(process.wait(), timeout=GRACEFUL_KILL_SECONDS)
+        return
+    except asyncio.TimeoutError:
+        pass
+
+    with suppress(ProcessLookupError):
+        os.killpg(group_id, signal.SIGKILL)
+    with suppress(asyncio.TimeoutError, ProcessLookupError):
+        await asyncio.wait_for(process.wait(), timeout=3)
+
+
 class RunCommandTool(BaseTool):
     name = "run_command"
     description = (
-        "Run a development command and return stdout, stderr and exit code. "
-        "The permission policy may require explicit user approval for destructive, "
+        "Run a development command and return live stdout/stderr, exit code and duration. "
+        "Stopping the Turn terminates the command process tree. "
+        "The permission policy may require explicit approval for destructive, "
         "publishing, system-level or out-of-workspace operations."
     )
     parameters = {
@@ -67,7 +119,10 @@ class RunCommandTool(BaseTool):
         command = str(arguments["command"])
         validate_command(command)
 
-        cwd = self.workspace.resolve(str(arguments.get("cwd") or "."), must_exist=True)
+        cwd = self.workspace.resolve(
+            str(arguments.get("cwd") or "."),
+            must_exist=True,
+        )
         if not cwd.is_dir():
             raise ToolError("NOT_DIRECTORY", "Command cwd must be a directory.")
 
@@ -75,15 +130,34 @@ class RunCommandTool(BaseTool):
         executable, prefix = shell_command()
         started = time.perf_counter()
 
+        spawn_kwargs: dict[str, Any] = {
+            "cwd": str(cwd),
+            "stdout": asyncio.subprocess.PIPE,
+            "stderr": asyncio.subprocess.PIPE,
+            "env": os.environ.copy(),
+        }
+        if os.name == "nt":
+            spawn_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            spawn_kwargs["start_new_session"] = True
+
         process = await asyncio.create_subprocess_exec(
             executable,
             *prefix,
             command,
-            cwd=str(cwd),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=os.environ.copy(),
+            **spawn_kwargs,
         )
+
+        if on_output:
+            await on_output(
+                {
+                    "stream": "meta",
+                    "event": "process_started",
+                    "pid": process.pid,
+                    "command": command,
+                    "cwd": self.workspace.display(cwd),
+                }
+            )
 
         stdout_parts: list[str] = []
         stderr_parts: list[str] = []
@@ -96,28 +170,43 @@ class RunCommandTool(BaseTool):
                 text = chunk.decode("utf-8", errors="replace")
                 target.append(text)
                 if on_output:
-                    await on_output(label + text)
+                    await on_output(
+                        {
+                            "stream": label,
+                            "text": text,
+                        }
+                    )
 
-        stdout_task = asyncio.create_task(consume(process.stdout, stdout_parts, "stdout:"))
-        stderr_task = asyncio.create_task(consume(process.stderr, stderr_parts, "stderr:"))
+        stdout_task = asyncio.create_task(
+            consume(process.stdout, stdout_parts, "stdout")
+        )
+        stderr_task = asyncio.create_task(
+            consume(process.stderr, stderr_parts, "stderr")
+        )
 
         try:
             await asyncio.wait_for(process.wait(), timeout=timeout)
             await asyncio.gather(stdout_task, stderr_task)
         except asyncio.TimeoutError as exc:
-            process.kill()
-            await process.wait()
-            await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
+            await terminate_process_tree(process)
+            await asyncio.gather(
+                stdout_task,
+                stderr_task,
+                return_exceptions=True,
+            )
             raise ToolError(
                 "COMMAND_TIMEOUT",
-                f"Command exceeded timeout of {timeout} seconds.",
+                f"Command exceeded timeout of {timeout} seconds and its process tree was terminated.",
             ) from exc
         except asyncio.CancelledError:
-            process.kill()
-            with suppress_process_lookup():
-                await process.wait()
+            await terminate_process_tree(process)
             stdout_task.cancel()
             stderr_task.cancel()
+            await asyncio.gather(
+                stdout_task,
+                stderr_task,
+                return_exceptions=True,
+            )
             raise
 
         stdout = "".join(stdout_parts)
@@ -130,6 +219,17 @@ class RunCommandTool(BaseTool):
         duration_ms = int((time.perf_counter() - started) * 1000)
         code = int(process.returncode or 0)
 
+        if on_output:
+            await on_output(
+                {
+                    "stream": "meta",
+                    "event": "process_exited",
+                    "pid": process.pid,
+                    "exit_code": code,
+                    "duration_ms": duration_ms,
+                }
+            )
+
         return ToolResult(
             ok=code == 0,
             summary=f"Command exited with code {code} in {duration_ms} ms.",
@@ -140,13 +240,6 @@ class RunCommandTool(BaseTool):
             data={
                 "command": command,
                 "cwd": self.workspace.display(cwd),
+                "pid": process.pid,
             },
         )
-
-
-class suppress_process_lookup:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return exc_type is ProcessLookupError

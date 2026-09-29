@@ -856,6 +856,7 @@ class AgentServer:
                             {
                                 "tool_call_id": call_id,
                                 "name": call.name,
+                                "arguments": call.arguments,
                             },
                             thread_id=thread_id,
                             turn_id=turn_id,
@@ -1079,14 +1080,14 @@ class AgentServer:
         thread_id: str,
         turn_id: str,
     ) -> dict[str, Any]:
-        async def on_output(text: str) -> None:
+        async def on_output(chunk: dict[str, Any]) -> None:
             await ws.send_json(
                 envelope(
                     "tool.output",
                     {
                         "tool_call_id": call_id,
                         "name": call.name,
-                        "output": text,
+                        **chunk,
                     },
                     thread_id=thread_id,
                     turn_id=turn_id,

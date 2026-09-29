@@ -708,3 +708,274 @@ body,
   color: #e4abab;
   border-color: #613a3a;
 }
+
+
+/* Phase 6 terminal cards and structured diff review. */
+.tool-card {
+  align-self: stretch;
+  max-width: 100%;
+  overflow: hidden;
+  background: #121212;
+  border: 1px solid #2b2b2b;
+  border-radius: 12px;
+}
+
+.tool-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  color: #aaa;
+  font-size: 11px;
+  background: #181818;
+  border-bottom: 1px solid #292929;
+}
+
+.tool-card-header > div {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  min-width: 0;
+}
+
+.tool-card-header strong {
+  overflow: hidden;
+  color: #ddd;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-kind {
+  color: #707070;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+
+.tool-running {
+  border-color: #3c4b42;
+}
+
+.tool-failed {
+  border-color: #573434;
+}
+
+.tool-meta,
+.diff-totals {
+  display: flex;
+  flex-shrink: 0;
+  gap: 9px;
+  color: #727272;
+  font-size: 10px;
+}
+
+.terminal-command {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 5px;
+  padding: 10px 12px 7px;
+  color: #d0d0d0;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 11px;
+}
+
+.terminal-command > span {
+  color: #6fb085;
+}
+
+.terminal-command code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.terminal-cwd {
+  padding: 0 12px 8px 35px;
+  overflow: hidden;
+  color: #666;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-output {
+  display: block;
+  max-height: 330px;
+  margin: 0;
+  overflow: auto;
+  padding: 11px 12px;
+  color: #bdbdbd;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #0d0f0e;
+  border-top: 1px solid #242724;
+  border-bottom: 1px solid #242724;
+}
+
+.terminal-output span {
+  white-space: pre-wrap;
+}
+
+.terminal-stdout {
+  color: #b8c0ba;
+}
+
+.terminal-stderr {
+  color: #dc9d9d;
+}
+
+.terminal-empty,
+.diff-empty,
+.diff-binary,
+.diff-truncated {
+  padding: 11px 12px;
+  color: #777;
+  font-size: 10px;
+}
+
+.tool-summary {
+  padding: 8px 12px;
+  color: #858585;
+  font-size: 10px;
+}
+
+.generic-tool-card > pre {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  padding: 10px 12px;
+  color: #999;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diff-plus {
+  color: #79b88a;
+}
+
+.diff-minus {
+  color: #cf8181;
+}
+
+.diff-files {
+  display: flex;
+  flex-direction: column;
+}
+
+.diff-file {
+  border-bottom: 1px solid #252525;
+}
+
+.diff-file:last-child {
+  border-bottom: 0;
+}
+
+.diff-file > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 12px;
+  cursor: pointer;
+  list-style-position: inside;
+  background: #151515;
+}
+
+.diff-file-path {
+  overflow: hidden;
+  color: #ccc;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-file-status {
+  color: #777;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.diff-file-stats {
+  display: flex;
+  gap: 7px;
+  font-size: 9px;
+}
+
+.diff-hunks {
+  overflow-x: auto;
+  background: #101010;
+}
+
+.diff-hunk-header {
+  padding: 6px 10px;
+  color: #8497ba;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 9px;
+  background: #151821;
+}
+
+.diff-line {
+  display: grid;
+  grid-template-columns: 42px 42px 18px minmax(max-content, 1fr);
+  min-width: 100%;
+  width: max-content;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.diff-line > span,
+.diff-line > code {
+  padding-top: 1px;
+  padding-bottom: 1px;
+}
+
+.diff-line-number {
+  padding-right: 6px;
+  color: #585858;
+  text-align: right;
+  user-select: none;
+  border-right: 1px solid #222;
+}
+
+.diff-marker {
+  text-align: center;
+  user-select: none;
+}
+
+.diff-line code {
+  padding-right: 14px;
+  white-space: pre;
+}
+
+.diff-line-add {
+  background: #132019;
+}
+
+.diff-line-add .diff-marker {
+  color: #78b689;
+}
+
+.diff-line-delete {
+  background: #241515;
+}
+
+.diff-line-delete .diff-marker {
+  color: #d17f7f;
+}
+
+.diff-line-context {
+  color: #aaa;
+}
+
+.diff-line-meta {
+  color: #777;
+  font-style: italic;
+}

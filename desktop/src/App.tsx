@@ -6,6 +6,12 @@ import {
   useState
 } from "react";
 
+import {
+  DiffFile,
+  ToolCard,
+  ToolChunk,
+  ToolView
+} from "./components/ToolCard";
 import { shouldSubmitComposer } from "./lib/composer";
 import { AgentState, formatAgentStatus } from "./lib/status";
 
@@ -71,6 +77,7 @@ type ChatItem = {
   id: string;
   role: "user" | "agent" | "system" | "tool";
   text: string;
+  tool?: ToolView;
 };
 
 type StoredMessage = {
@@ -157,6 +164,26 @@ function stringifyArguments(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function appendToolChunk(
+  chunks: ToolChunk[],
+  nextChunk: ToolChunk,
+  maxChars = 24000
+): ToolChunk[] {
+  const next = [...chunks, nextChunk];
+  let total = next.reduce((sum, item) => sum + item.text.length, 0);
+  while (next.length > 1 && total > maxChars) {
+    const removed = next.shift();
+    total -= removed?.text.length ?? 0;
+  }
+  return next;
+}
+
+function resultObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function App() {
@@ -341,30 +368,119 @@ function App() {
       if (event.type === "tool.requested" && event.turn_id) {
         const callId = String(event.payload?.tool_call_id ?? "");
         const name = String(event.payload?.name ?? "tool");
-        const args = stringifyArguments(event.payload?.arguments);
+        const rawArguments = event.payload?.arguments;
+        const args =
+          rawArguments && typeof rawArguments === "object"
+            ? (rawArguments as Record<string, unknown>)
+            : {};
+
         setItems((current) => [
           ...current,
           {
             id: "tool:" + callId,
             role: "tool",
-            text: "▶ " + name + "\n" + args
+            text: "",
+            tool: {
+              id: callId,
+              name,
+              arguments: args,
+              status: "requested",
+              chunks: [],
+              command:
+                name === "run_command"
+                  ? String(args.command ?? "")
+                  : undefined,
+              cwd:
+                name === "run_command"
+                  ? String(args.cwd ?? ".")
+                  : undefined
+            }
           }
         ]);
         return;
       }
 
+      if (event.type === "tool.started") {
+        const callId = String(event.payload?.tool_call_id ?? "");
+        setItems((current) =>
+          current.map((item) =>
+            item.id === "tool:" + callId && item.tool
+              ? {
+                  ...item,
+                  tool: {
+                    ...item.tool,
+                    status: "running"
+                  }
+                }
+              : item
+          )
+        );
+        return;
+      }
+
       if (event.type === "tool.output") {
         const callId = String(event.payload?.tool_call_id ?? "");
-        const output = String(event.payload?.output ?? "");
+        const stream = String(event.payload?.stream ?? "");
+        const eventName = String(event.payload?.event ?? "");
+
         setItems((current) =>
           current.map((item) => {
-            if (item.id !== "tool:" + callId) {
+            if (item.id !== "tool:" + callId || !item.tool) {
               return item;
             }
-            const next = item.text + "\n" + output;
+
+            if (stream === "meta") {
+              const pidValue = event.payload?.pid;
+              const exitValue = event.payload?.exit_code;
+              const durationValue = event.payload?.duration_ms;
+              return {
+                ...item,
+                tool: {
+                  ...item.tool,
+                  status:
+                    eventName === "process_exited"
+                      ? Number(exitValue ?? 0) === 0
+                        ? "completed"
+                        : "failed"
+                      : "running",
+                  pid:
+                    typeof pidValue === "number"
+                      ? pidValue
+                      : item.tool.pid,
+                  cwd:
+                    typeof event.payload?.cwd === "string"
+                      ? event.payload.cwd
+                      : item.tool.cwd,
+                  command:
+                    typeof event.payload?.command === "string"
+                      ? event.payload.command
+                      : item.tool.command,
+                  exitCode:
+                    typeof exitValue === "number"
+                      ? exitValue
+                      : item.tool.exitCode,
+                  durationMs:
+                    typeof durationValue === "number"
+                      ? durationValue
+                      : item.tool.durationMs
+                }
+              };
+            }
+
+            const output = String(event.payload?.text ?? "");
+            if (!output || (stream !== "stdout" && stream !== "stderr")) {
+              return item;
+            }
+
             return {
               ...item,
-              text: next.length > 12000 ? next.slice(-12000) : next
+              tool: {
+                ...item.tool,
+                chunks: appendToolChunk(item.tool.chunks, {
+                  stream,
+                  text: output
+                })
+              }
             };
           })
         );
@@ -373,25 +489,76 @@ function App() {
 
       if (event.type === "tool.completed") {
         const callId = String(event.payload?.tool_call_id ?? "");
-        const result = event.payload?.result;
-        const summary =
-          result && typeof result === "object" && "summary" in result
-            ? String((result as { summary?: unknown }).summary ?? "")
-            : "";
-        const ok =
-          result && typeof result === "object" && "ok" in result
-            ? Boolean((result as { ok?: unknown }).ok)
-            : false;
+        const rawResult = resultObject(event.payload?.result);
+        const summary = String(rawResult.summary ?? "");
+        const ok = Boolean(rawResult.ok);
+        const data = resultObject(rawResult.data);
+        const stdout = String(rawResult.stdout ?? "");
+        const stderr = String(rawResult.stderr ?? "");
+        const rawFiles = data.files;
+        const diffFiles = Array.isArray(rawFiles)
+          ? (rawFiles as DiffFile[])
+          : undefined;
 
         setItems((current) =>
-          current.map((item) =>
-            item.id === "tool:" + callId
-              ? {
-                  ...item,
-                  text: item.text + "\n" + (ok ? "✓ " : "✗ ") + summary
-                }
-              : item
-          )
+          current.map((item) => {
+            if (item.id !== "tool:" + callId || !item.tool) {
+              return item;
+            }
+
+            let chunks = item.tool.chunks;
+            if (chunks.length === 0 && stdout) {
+              chunks = appendToolChunk(chunks, {
+                stream: "stdout",
+                text: stdout
+              });
+            }
+            if (stderr) {
+              chunks = appendToolChunk(chunks, {
+                stream: "stderr",
+                text: stderr
+              });
+            }
+
+            return {
+              ...item,
+              tool: {
+                ...item.tool,
+                status: ok ? "completed" : "failed",
+                summary,
+                chunks,
+                exitCode:
+                  typeof rawResult.exit_code === "number"
+                    ? rawResult.exit_code
+                    : item.tool.exitCode,
+                durationMs:
+                  typeof rawResult.duration_ms === "number"
+                    ? rawResult.duration_ms
+                    : item.tool.durationMs,
+                cwd:
+                  typeof data.cwd === "string"
+                    ? data.cwd
+                    : item.tool.cwd,
+                command:
+                  typeof data.command === "string"
+                    ? data.command
+                    : item.tool.command,
+                pid:
+                  typeof data.pid === "number"
+                    ? data.pid
+                    : item.tool.pid,
+                diffFiles,
+                additions:
+                  typeof data.additions === "number"
+                    ? data.additions
+                    : undefined,
+                deletions:
+                  typeof data.deletions === "number"
+                    ? data.deletions
+                    : undefined
+              }
+            };
+          })
         );
         return;
       }
@@ -842,9 +1009,9 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <div className="topbar-title">
-            <strong>{workspace?.name ?? "Phase 5"}</strong>
+            <strong>{workspace?.name ?? "Phase 6"}</strong>
             <span>
-              {activeThread ? " · " + activeThread.title : " · Permissions & Approval"}
+              {activeThread ? " · " + activeThread.title : " · Terminal & Diff Review"}
             </span>
           </div>
           <div className="topbar-actions">
@@ -865,23 +1032,23 @@ function App() {
         <section className="conversation">
           {items.length === 0 && approvals.length === 0 ? (
             <div className="welcome-card">
-              <div className="eyebrow">PHASE 5</div>
+              <div className="eyebrow">PHASE 6</div>
               <h1>
                 {workspace
-                  ? "Project ready. Permission policy is active."
+                  ? "Project ready. Terminal and Diff review are active."
                   : "Open a local project to begin."}
               </h1>
               <p>
                 {workspace
-                  ? "Choose a permission mode, then send a task. Sensitive operations pause and wait for your explicit approval before execution."
+                  ? "Commands stream into terminal-style cards, Stop terminates the command tree, and Git changes are shown as file-level reviewable diffs."
                   : "Each opened project stays in the left sidebar for this app session. Switching projects changes the active workspace without discarding the others."}
               </p>
               <div className="milestones">
-                <span>Read Only ✓</span>
-                <span>Workspace ✓</span>
-                <span>Full Access ✓</span>
-                <span>Approval ✓</span>
-                <span>Policy guard ✓</span>
+                <span>Live terminal ✓</span>
+                <span>Process-tree Stop ✓</span>
+                <span>Exit status ✓</span>
+                <span>File Diff ✓</span>
+                <span>Untracked files ✓</span>
               </div>
               {!provider?.online ? (
                 <div className="provider-warning">
@@ -892,12 +1059,16 @@ function App() {
             </div>
           ) : (
             <div className="message-list">
-              {items.map((item) => (
-                <div key={item.id} className={"message " + item.role}>
-                  <div className="message-role">{item.role}</div>
-                  <div>{item.text}</div>
-                </div>
-              ))}
+              {items.map((item) =>
+                item.role === "tool" && item.tool ? (
+                  <ToolCard key={item.id} tool={item.tool} />
+                ) : (
+                  <div key={item.id} className={"message " + item.role}>
+                    <div className="message-role">{item.role}</div>
+                    <div>{item.text}</div>
+                  </div>
+                )
+              )}
               {approvals.map((approval) => (
                 <div key={approval.id} className="approval-card">
                   <div className="approval-header">
