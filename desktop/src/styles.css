@@ -1045,3 +1045,221 @@ body,
   background: #1e1815;
   border-top: 1px solid #352820;
 }
+
+
+/* Phase 16 per-file Diff Review v2. */
+.diff-readonly,
+.diff-complete,
+.diff-partial {
+  padding: 2px 6px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid #343434;
+  border-radius: 999px;
+}
+
+.diff-readonly {
+  color: #929292;
+}
+
+.diff-complete {
+  color: #81b68e;
+  border-color: #36513d;
+}
+
+.diff-partial {
+  color: #c2a471;
+  border-color: #594a2e;
+}
+
+.diff-review-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 10px;
+  color: #797979;
+  font-size: 9px;
+  background: #141414;
+  border-bottom: 1px solid #262626;
+}
+
+.diff-review-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 30%) minmax(0, 1fr);
+  min-height: 250px;
+  max-height: 560px;
+  background: #101010;
+}
+
+.diff-file-list {
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-right: 1px solid #292929;
+  background: #141414;
+}
+
+.diff-file-button {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 9px;
+  color: #aaa;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #222;
+}
+
+.diff-file-button:hover,
+.diff-file-button.active {
+  background: #202020;
+}
+
+.diff-file-button.active {
+  box-shadow: inset 2px 0 #777;
+}
+
+.diff-status-badge {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  color: #999;
+  font-size: 9px;
+  font-weight: 800;
+  border: 1px solid #353535;
+  border-radius: 5px;
+}
+
+.diff-status-added,
+.diff-status-untracked {
+  color: #80ba90;
+}
+
+.diff-status-deleted {
+  color: #ca8585;
+}
+
+.diff-status-renamed {
+  color: #9ba9cf;
+}
+
+.diff-file-button-main {
+  min-width: 0;
+}
+
+.diff-file-button-main,
+.diff-file-origin,
+.diff-file-flags {
+  display: block;
+}
+
+.diff-file-origin {
+  overflow: hidden;
+  margin-top: 2px;
+  color: #666;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-file-button .diff-file-stats {
+  align-self: center;
+}
+
+.diff-file-flags {
+  grid-column: 2 / -1;
+  color: #9f8f69;
+  font-size: 8px;
+  text-transform: uppercase;
+}
+
+.diff-preview {
+  min-width: 0;
+  overflow: auto;
+  background: #101010;
+}
+
+.diff-preview-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 9px 11px;
+  background: #171717;
+  border-bottom: 1px solid #292929;
+}
+
+.diff-preview-header > div:first-child {
+  min-width: 0;
+}
+
+.diff-preview-header strong,
+.diff-preview-header span {
+  display: block;
+}
+
+.diff-preview-header strong {
+  overflow: hidden;
+  color: #d0d0d0;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-preview-header > div:first-child > span {
+  margin-top: 2px;
+  color: #707070;
+  font-size: 8px;
+  text-transform: uppercase;
+}
+
+.diff-rename {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  overflow: hidden;
+  color: #7987a8;
+  font-size: 9px;
+  background: #13161d;
+  border-bottom: 1px solid #252936;
+}
+
+.diff-rename code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-preview .diff-hunks {
+  overflow: visible;
+}
+
+@media (max-width: 820px) {
+  .diff-review-layout {
+    grid-template-columns: 1fr;
+    max-height: none;
+  }
+
+  .diff-file-list {
+    max-height: 190px;
+    border-right: 0;
+    border-bottom: 1px solid #292929;
+  }
+
+  .diff-preview {
+    max-height: 420px;
+  }
+}
