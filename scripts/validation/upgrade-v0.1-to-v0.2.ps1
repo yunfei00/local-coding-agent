@@ -118,10 +118,21 @@ Write-Host "[upgrade 3/7] Install and launch official v0.1.0..."
 $OldExe = Install-Lca -Installer $OldInstaller -Target $InstallDir
 Invoke-VersionSmoke -Executable $OldExe -ExpectedVersion $OldVersion -Name "v010"
 
-$Database = Join-Path $AppDataRoot "local-coding-agent-desktop\local-coding-agent.sqlite3"
-if (-not (Test-Path $Database)) {
-    throw "v0.1.0 did not create its SQLite database."
+$DatabaseCandidates = @(
+    Get-ChildItem $AppDataRoot -Recurse -File -Filter "local-coding-agent.sqlite3" -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.FullName }
+)
+if ($DatabaseCandidates.Count -ne 1) {
+    $Discovered = @(
+        Get-ChildItem $AppDataRoot -Recurse -File -ErrorAction SilentlyContinue |
+            ForEach-Object { $_.FullName }
+    )
+    Write-Host "Files discovered under isolated APPDATA:"
+    $Discovered | ForEach-Object { Write-Host "  $_" }
+    throw "Expected exactly one v0.1.0 SQLite database, found $($DatabaseCandidates.Count)."
 }
+$Database = $DatabaseCandidates[0]
+Write-Host "v0.1.0 database: $Database"
 $env:LCA_UPGRADE_DB = $Database
 try {
     uv run --no-project python -c "import os,sqlite3; c=sqlite3.connect(os.environ['LCA_UPGRADE_DB']); v=c.execute('pragma user_version').fetchone()[0]; q=c.execute('pragma quick_check').fetchone()[0]; assert v==1 and q=='ok', (v,q)"
@@ -137,6 +148,9 @@ Write-Host "[upgrade 5/7] Launch upgraded v$CurrentVersion with existing data...
 Invoke-VersionSmoke -Executable $CurrentExe -ExpectedVersion $CurrentVersion -Name "v020"
 
 Write-Host "[upgrade 6/7] Verify SQLite migration v1 -> v2..."
+if (-not (Test-Path $Database)) {
+    throw "The v0.1.0 database disappeared during upgrade: $Database"
+}
 $env:LCA_UPGRADE_DB = $Database
 try {
     uv run --no-project python -c "import os,sqlite3; c=sqlite3.connect(os.environ['LCA_UPGRADE_DB']); v=c.execute('pragma user_version').fetchone()[0]; q=c.execute('pragma quick_check').fetchone()[0]; assert v==2 and q=='ok', (v,q)"
