@@ -130,7 +130,7 @@ class AgentE2ETests(unittest.IsolatedAsyncioTestCase):
                     {
                         "path": "calculator.py",
                         "old_text": "return a - b",
-                        "new_text": "return a + b",
+                        "new_text": "return a + b  # fixed",
                     },
                 ),
                 tool_step(
@@ -188,7 +188,7 @@ class AgentE2ETests(unittest.IsolatedAsyncioTestCase):
                     )
 
                     self.assertIn(
-                        "return a + b",
+                        "return a + b  # fixed",
                         (repo / "calculator.py").read_text(encoding="utf-8"),
                     )
 
