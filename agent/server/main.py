@@ -3,12 +3,15 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
+import platform
 import secrets
+import sys
+from collections import deque
 from contextlib import suppress
 from dataclasses import asdict
+from datetime import datetime, timezone
 from typing import Any
-
-import os
 
 from aiohttp import WSMsgType, web
 
@@ -18,6 +21,13 @@ from agent.core.agent_loop import (
     compact_tool_payload,
 )
 from agent.core.context import ContextBudgetManager
+from agent.core.diagnostics import (
+    database_summary,
+    prompt_rules_summary,
+    redact_path,
+    redact_text,
+    sanitize_provider_status,
+)
 from agent.core.settings import RuntimeSettings
 from agent.core.version import APP_VERSION, PROTOCOL_VERSION
 from agent.llm.base import ProviderError, ToolCall
@@ -127,6 +137,8 @@ class AgentServer:
             except ValueError:
                 pass
         self.approvals = ApprovalManager()
+        self.recent_errors: deque[dict[str, Any]] = deque(maxlen=20)
+        self.last_context_usage: dict[str, Any] | None = None
         self._sync_workspace_permissions()
 
     def authorized(self, request: web.Request) -> bool:
@@ -242,6 +254,16 @@ class AgentServer:
         if message_type == "client.hello":
             await ws.send_json(
                 envelope("server.ready", self._server_ready_payload(), request_id=request_id)
+            )
+            return
+
+        if message_type == "diagnostics.get":
+            await ws.send_json(
+                envelope(
+                    "diagnostics.loaded",
+                    await self._diagnostics_payload(),
+                    request_id=request_id,
+                )
             )
             return
 
@@ -921,6 +943,134 @@ class AgentServer:
         parts.append(self._permission_prompt())
         return "\n\n".join(parts)
 
+    def _record_diagnostic_error(
+        self,
+        code: str,
+        message: str,
+        *,
+        source: str,
+    ) -> None:
+        exact_secrets = tuple(
+            secret
+            for secret in (self.openai_api_key,)
+            if secret
+        )
+        self.recent_errors.append(
+            {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "source": source,
+                "code": str(code),
+                "message": redact_text(
+                    message,
+                    exact_secrets=exact_secrets,
+                    max_chars=300,
+                ),
+            }
+        )
+
+    async def _diagnostics_payload(self) -> dict[str, Any]:
+        exact_secrets = tuple(
+            secret
+            for secret in (self.openai_api_key,)
+            if secret
+        )
+        try:
+            provider_status = await self.provider.get_status()
+        except Exception as exc:
+            self._record_diagnostic_error(
+                "DIAGNOSTICS_PROVIDER_STATUS",
+                str(exc),
+                source="diagnostics",
+            )
+            provider_status = {
+                "provider": self.provider.provider_name,
+                "online": False,
+                "base_url": getattr(self.provider, "base_url", ""),
+                "models": [],
+                "default_model": None,
+                "preferred_model": self.provider.preferred_model,
+                "context_window": self.provider.context_window,
+                "error": {
+                    "code": "DIAGNOSTICS_PROVIDER_STATUS",
+                    "message": str(exc),
+                },
+            }
+
+        project = self.projects.active
+        project_payload: dict[str, Any] | None = None
+        prompt_rules = {
+            "global": {"configured": False, "enabled": False},
+            "project": {"configured": False, "enabled": False},
+            "thread": {"configured": False, "enabled": False},
+        }
+        if project:
+            detection = project.detection()
+            project_payload = {
+                "name": project.name,
+                "path": redact_path(project.path),
+                "thread_count": len(project.state.list_threads()),
+                "active_thread": bool(project.active_thread_id),
+                "detection": detection.to_dict(),
+            }
+            prompt_rules = prompt_rules_summary(
+                self.prompt_rules.hierarchy(
+                    project_id=project.id,
+                    thread_id=project.active_thread_id,
+                )
+            )
+        else:
+            prompt_rules = prompt_rules_summary(
+                self.prompt_rules.hierarchy(
+                    project_id=None,
+                    thread_id=None,
+                )
+            )
+
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "application": {
+                "version": APP_VERSION,
+                "protocol": PROTOCOL_VERSION,
+            },
+            "runtime": {
+                "python": sys.version.split()[0],
+                "platform": platform.system(),
+                "platform_release": platform.release(),
+                "architecture": platform.machine(),
+            },
+            "provider": sanitize_provider_status(
+                provider_status,
+                exact_secrets=exact_secrets,
+            ),
+            "context": {
+                "window_tokens": self.provider.context_window,
+                "reserved_output_tokens": self.context_reserved_output_tokens,
+                "last_usage": self.last_context_usage,
+            },
+            "permission": {
+                "mode": self.permissions.mode.value,
+            },
+            "workspace": project_payload,
+            "prompt_rules": prompt_rules,
+            "database": database_summary(self.store),
+            "agent_limits": {
+                "max_model_steps": self.max_model_steps,
+                "max_tool_calls": self.max_tool_calls,
+                "max_blocked_repeats": self.max_blocked_repeats,
+                "max_consecutive_tool_failures": (
+                    self.max_consecutive_tool_failures
+                ),
+                "model_retry_attempts": self.model_retry_attempts,
+            },
+            "recent_errors": list(self.recent_errors),
+            "redaction": {
+                "api_keys": True,
+                "prompt_rule_content": True,
+                "chat_history": True,
+                "home_path": True,
+            },
+        }
+
     def _settings_payload(self) -> dict[str, Any]:
         configured_key = self.openai_api_key
         if configured_key is None:
@@ -1048,6 +1198,7 @@ class AgentServer:
         )
         messages: list[dict[str, Any]] = initial_context.messages
         context_usage = initial_context.usage
+        self.last_context_usage = context_usage.to_dict()
 
         await ws.send_json(
             envelope(
@@ -1078,6 +1229,7 @@ class AgentServer:
                         )
                         messages = fitted_context.messages
                         context_usage = fitted_context.usage
+                        self.last_context_usage = context_usage.to_dict()
                         await ws.send_json(
                             envelope(
                                 "context.updated",
@@ -1505,6 +1657,11 @@ class AgentServer:
                 )
             raise
         except ProviderError as exc:
+            self._record_diagnostic_error(
+                exc.code,
+                exc.message,
+                source="provider",
+            )
             with suppress(ConnectionResetError, RuntimeError):
                 await ws.send_json(
                     envelope(
@@ -1557,6 +1714,11 @@ class AgentServer:
             )
             return result.to_dict()
         except ToolError as exc:
+            self._record_diagnostic_error(
+                exc.code,
+                exc.message,
+                source="tool:" + call.name,
+            )
             return {
                 "ok": False,
                 "summary": exc.message,
@@ -1567,6 +1729,11 @@ class AgentServer:
                 "changed_paths": [],
             }
         except Exception as exc:
+            self._record_diagnostic_error(
+                "TOOL_INTERNAL_ERROR",
+                str(exc),
+                source="tool:" + call.name,
+            )
             return {
                 "ok": False,
                 "summary": f"Tool failed: {exc}",
@@ -1590,6 +1757,11 @@ class AgentServer:
         thread_id: str | None = None,
         turn_id: str | None = None,
     ) -> None:
+        self._record_diagnostic_error(
+            code,
+            message,
+            source="protocol",
+        )
         await ws.send_json(
             envelope(
                 "error",
