@@ -324,12 +324,19 @@ class ContextBudgetManager:
         content = str(next_message.get("content") or "")
         if len(content) <= max_chars:
             return next_message, False
-        keep = max(max_chars - len(TRUNCATION_MARKER) - 2, 0)
-        next_message["content"] = (
-            TRUNCATION_MARKER
-            if keep <= 0
-            else TRUNCATION_MARKER + "\n" + content[-keep:]
-        )
+        keep = max(max_chars - len(TRUNCATION_MARKER) - 6, 0)
+        if keep <= 0:
+            next_message["content"] = TRUNCATION_MARKER
+        else:
+            head_chars = max(keep // 3, 1)
+            tail_chars = max(keep - head_chars, 0)
+            next_message["content"] = (
+                content[:head_chars]
+                + "\n"
+                + TRUNCATION_MARKER
+                + "\n"
+                + (content[-tail_chars:] if tail_chars else "")
+            )
         return next_message, True
 
     def _latest_user_index(self, messages: list[dict[str, Any]]) -> int:
