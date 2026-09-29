@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def default_data_dir() -> Path:
@@ -95,6 +95,18 @@ class SQLiteStore:
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS prompt_rules (
+                rule_key TEXT PRIMARY KEY,
+                scope TEXT NOT NULL,
+                scope_id TEXT,
+                content TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_prompt_rules_scope
+            ON prompt_rules(scope, scope_id);
             """
         )
         self.connection.execute(
@@ -242,7 +254,72 @@ class SQLiteStore:
             for row in rows
         ]
 
+    def save_prompt_rule(
+        self,
+        *,
+        rule_key: str,
+        scope: str,
+        scope_id: str | None,
+        content: str,
+        enabled: bool,
+        updated_at: str,
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO prompt_rules(
+                rule_key, scope, scope_id, content, enabled, updated_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?)
+            ON CONFLICT(rule_key) DO UPDATE SET
+                scope = excluded.scope,
+                scope_id = excluded.scope_id,
+                content = excluded.content,
+                enabled = excluded.enabled,
+                updated_at = excluded.updated_at
+            """,
+            (
+                rule_key,
+                scope,
+                scope_id,
+                content,
+                1 if enabled else 0,
+                updated_at,
+            ),
+        )
+        self.connection.commit()
+
+    def get_prompt_rule(self, rule_key: str) -> dict[str, Any] | None:
+        row = self.connection.execute(
+            """
+            SELECT rule_key, scope, scope_id, content, enabled, updated_at
+            FROM prompt_rules
+            WHERE rule_key = ?
+            """,
+            (rule_key,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def delete_prompt_rule(self, rule_key: str) -> None:
+        self.connection.execute(
+            "DELETE FROM prompt_rules WHERE rule_key = ?",
+            (rule_key,),
+        )
+        self.connection.commit()
+
     def delete_project(self, project_id: str) -> None:
+        self.connection.execute(
+            """
+            DELETE FROM prompt_rules
+            WHERE (scope = 'project' AND scope_id = ?)
+               OR (
+                    scope = 'thread'
+                    AND scope_id IN (
+                        SELECT id FROM threads WHERE project_id = ?
+                    )
+               )
+            """,
+            (project_id, project_id),
+        )
         self.connection.execute(
             "DELETE FROM projects WHERE id = ?",
             (project_id,),

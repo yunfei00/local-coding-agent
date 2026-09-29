@@ -57,6 +57,14 @@ class SQLitePersistenceTests(unittest.TestCase):
             )
             self.assertIsNotNone(selected)
             store.set_setting("permission_mode", "read_only")
+            store.save_prompt_rule(
+                rule_key="global",
+                scope="global",
+                scope_id=None,
+                content="persisted global rule",
+                enabled=True,
+                updated_at="2026-09-29T00:00:00+00:00",
+            )
             store.close()
 
             reopened_store = SQLiteStore(data_root)
@@ -88,6 +96,14 @@ class SQLitePersistenceTests(unittest.TestCase):
             self.assertEqual(
                 reopened_store.get_setting("permission_mode"),
                 "read_only",
+            )
+            self.assertEqual(
+                reopened_store.get_prompt_rule("global")["content"],
+                "persisted global rule",
+            )
+            self.assertEqual(
+                reopened_store.connection.execute("PRAGMA user_version").fetchone()[0],
+                2,
             )
             reopened_store.close()
 

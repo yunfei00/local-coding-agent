@@ -24,6 +24,7 @@ from agent.permissions.approval import (
 )
 from agent.persistence.store import SQLiteStore
 from agent.permissions.policy import PermissionMode, PermissionPolicy
+from agent.core.prompt_rules import PromptRuleManager
 from agent.server.projects import ProjectRegistry
 from agent.server.protocol import envelope, new_id, validate_client_message
 from agent.tools.base import ToolError
@@ -78,6 +79,7 @@ class AgentServer:
         self.token = token
         self.store = SQLiteStore()
         self.projects = ProjectRegistry(self.store)
+        self.prompt_rules = PromptRuleManager(self.store)
         self.provider = create_provider_from_env()
         self.active_turns: dict[str, asyncio.Task[None]] = {}
         self.available_models: set[str] = set()
@@ -251,6 +253,144 @@ class AgentServer:
                         "available_modes": self.permissions.available_modes,
                     },
                     request_id=request_id,
+                )
+            )
+            return
+
+
+        if message_type == "prompt_rules.get":
+            scope = str(payload.get("scope") or "").strip().lower()
+            if not scope:
+                project = self.projects.active
+                thread_id = str(
+                    payload.get("thread_id")
+                    or data.get("thread_id")
+                    or (project.active_thread_id if project else "")
+                    or ""
+                ).strip() or None
+                await ws.send_json(
+                    envelope(
+                        "prompt_rules.loaded",
+                        {
+                            "project_id": project.id if project else None,
+                            "thread_id": thread_id,
+                            **self.prompt_rules.hierarchy_payload(
+                                project_id=project.id if project else None,
+                                thread_id=thread_id,
+                            ),
+                        },
+                        request_id=request_id,
+                        thread_id=thread_id,
+                    )
+                )
+                return
+
+            try:
+                scope_id = self._resolve_prompt_rule_scope_id(
+                    scope,
+                    payload,
+                    data,
+                )
+                rule = self.prompt_rules.get(scope, scope_id)
+            except ValueError as exc:
+                await self.send_error(
+                    ws,
+                    "PROMPT_RULE_INVALID",
+                    str(exc),
+                    request_id=request_id,
+                    thread_id=data.get("thread_id"),
+                )
+                return
+
+            await ws.send_json(
+                envelope(
+                    "prompt_rules.loaded",
+                    {
+                        "scope": scope,
+                        "scope_id": scope_id,
+                        "rule": rule.to_dict() if rule else None,
+                    },
+                    request_id=request_id,
+                    thread_id=(scope_id if scope == "thread" else data.get("thread_id")),
+                )
+            )
+            return
+
+        if message_type in {
+            "prompt_rules.set",
+            "prompt_rules.toggle",
+            "prompt_rules.reset",
+        }:
+            if any(not task.done() for task in self.active_turns.values()):
+                await self.send_error(
+                    ws,
+                    "TURN_RUNNING",
+                    "Stop the active turn before changing Prompt Rules.",
+                    request_id=request_id,
+                    thread_id=data.get("thread_id"),
+                )
+                return
+
+            scope = str(payload.get("scope") or "").strip().lower()
+            try:
+                scope_id = self._resolve_prompt_rule_scope_id(
+                    scope,
+                    payload,
+                    data,
+                )
+                if message_type == "prompt_rules.set":
+                    if "enabled" in payload and not isinstance(payload["enabled"], bool):
+                        raise ValueError("Prompt rule enabled must be a boolean.")
+                    rule = self.prompt_rules.set(
+                        scope,
+                        scope_id,
+                        str(payload.get("content") or ""),
+                        enabled=bool(payload.get("enabled", True)),
+                    )
+                    changed_payload = {
+                        "scope": scope,
+                        "scope_id": scope_id,
+                        "rule": rule.to_dict(),
+                        "reset": False,
+                    }
+                elif message_type == "prompt_rules.toggle":
+                    if not isinstance(payload.get("enabled"), bool):
+                        raise ValueError("Prompt rule enabled must be a boolean.")
+                    rule = self.prompt_rules.toggle(
+                        scope,
+                        scope_id,
+                        bool(payload["enabled"]),
+                    )
+                    changed_payload = {
+                        "scope": scope,
+                        "scope_id": scope_id,
+                        "rule": rule.to_dict(),
+                        "reset": False,
+                    }
+                else:
+                    self.prompt_rules.reset(scope, scope_id)
+                    changed_payload = {
+                        "scope": scope,
+                        "scope_id": scope_id,
+                        "rule": None,
+                        "reset": True,
+                    }
+            except ValueError as exc:
+                await self.send_error(
+                    ws,
+                    "PROMPT_RULE_INVALID",
+                    str(exc),
+                    request_id=request_id,
+                    thread_id=data.get("thread_id"),
+                )
+                return
+
+            await ws.send_json(
+                envelope(
+                    "prompt_rules.changed",
+                    changed_payload,
+                    request_id=request_id,
+                    thread_id=(scope_id if scope == "thread" else data.get("thread_id")),
                 )
             )
             return
@@ -598,6 +738,58 @@ class AgentServer:
             request_id=request_id,
         )
 
+    def _resolve_prompt_rule_scope_id(
+        self,
+        scope: str,
+        payload: dict[str, Any],
+        data: dict[str, Any],
+    ) -> str | None:
+        normalized_scope = str(scope or "").strip().lower()
+        if normalized_scope == "global":
+            return None
+
+        project = self.projects.active
+        if normalized_scope == "project":
+            requested_project_id = str(payload.get("project_id") or "").strip()
+            project_id = requested_project_id or (project.id if project else "")
+            if not project_id or not self.projects.get(project_id):
+                raise ValueError("Open a valid project before editing project Prompt Rules.")
+            return project_id
+
+        if normalized_scope == "thread":
+            thread_id = str(
+                payload.get("thread_id")
+                or data.get("thread_id")
+                or ""
+            ).strip()
+            if not project or not thread_id or not project.state.get_thread(thread_id):
+                raise ValueError(
+                    "Open a valid thread in the active project before editing Thread Prompt Rules."
+                )
+            return thread_id
+
+        raise ValueError(
+            "Prompt rule scope must be one of: global, project, thread."
+        )
+
+    def _system_prompt(
+        self,
+        *,
+        project_id: str,
+        thread_id: str,
+        workspace_path: str,
+    ) -> str:
+        parts = [SYSTEM_PROMPT]
+        rule_block = self.prompt_rules.render_effective(
+            project_id=project_id,
+            thread_id=thread_id,
+        )
+        if rule_block:
+            parts.append(rule_block)
+        parts.append("Current workspace: " + workspace_path)
+        parts.append(self._permission_prompt())
+        return "\n\n".join(parts)
+
     def _sync_workspace_permissions(self) -> None:
         full_access = self.permissions.mode == PermissionMode.FULL_ACCESS
         for project in self.projects.list_projects():
@@ -683,11 +875,11 @@ class AgentServer:
         messages: list[dict[str, Any]] = [
             {
                 "role": "system",
-                "content": SYSTEM_PROMPT
-                + "\n\nCurrent workspace: "
-                + workspace.display_path
-                + "\n"
-                + self._permission_prompt(),
+                "content": self._system_prompt(
+                    project_id=project.id,
+                    thread_id=thread_id,
+                    workspace_path=workspace.display_path,
+                ),
             },
             *history,
             {"role": "user", "content": prompt},
