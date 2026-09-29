@@ -126,6 +126,7 @@ class OllamaProvider:
         base_url: str | None = None,
         preferred_model: str | None = None,
         context_window: int | None = None,
+        temperature: float | None = None,
     ) -> None:
         self.base_url = (
             base_url
@@ -140,7 +141,11 @@ class OllamaProvider:
         self.context_window = context_window or int(
             os.getenv("LCA_OLLAMA_NUM_CTX", "32768")
         )
-        self.temperature = float(os.getenv("LCA_OLLAMA_TEMPERATURE", "0.2"))
+        self.temperature = (
+            temperature
+            if temperature is not None
+            else float(os.getenv("LCA_OLLAMA_TEMPERATURE", "0.2"))
+        )
 
     async def list_models(self) -> list[ModelInfo]:
         timeout = aiohttp.ClientTimeout(total=10, connect=3)
