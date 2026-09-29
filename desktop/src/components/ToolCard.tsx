@@ -1,5 +1,16 @@
-import { useLayoutEffect, useRef } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 
+import {
+  diffPreviewState,
+  diffStatusLabel,
+  resolveSelectedDiffPath
+} from "../lib/diffReview";
 import { OrderedToolChunk } from "../lib/toolStream";
 
 export type ToolChunk = OrderedToolChunk;
@@ -25,7 +36,26 @@ export type DiffFile = {
   additions?: number;
   deletions?: number;
   truncated?: boolean;
+  similarity?: number | null;
+  hunk_count?: number;
+  preview_line_count?: number;
   hunks?: DiffHunk[];
+};
+
+export type DiffReviewMeta = {
+  read_only?: boolean;
+  mode?: "working_tree" | "staged" | string;
+  complete_preview?: boolean;
+  status_counts?: Record<string, number>;
+  truncated_files?: string[];
+  binary_files?: string[];
+  renamed_files?: Array<{
+    old_path?: string;
+    new_path?: string;
+    similarity?: number | null;
+  }>;
+  preview_files_truncated?: boolean;
+  path_filter?: string | null;
 };
 
 export type ToolView = {
@@ -48,6 +78,7 @@ export type ToolView = {
   exitCode?: number;
   durationMs?: number;
   diffFiles?: DiffFile[];
+  diffReview?: DiffReviewMeta;
   additions?: number;
   deletions?: number;
   streamTruncated?: boolean;
@@ -193,14 +224,42 @@ function DiffLineRow({ line }: { line: DiffLine }) {
 
 function DiffReview({ tool }: { tool: ToolView }) {
   const files = tool.diffFiles ?? [];
+  const review = tool.diffReview;
+  const [selectedPath, setSelectedPath] = useState(() =>
+    resolveSelectedDiffPath(files, null)
+  );
+
+  useEffect(() => {
+    setSelectedPath((current) =>
+      resolveSelectedDiffPath(files, current)
+    );
+  }, [files]);
+
+  const selectedFile = useMemo(
+    () =>
+      files.find((file) => file.path === selectedPath) ??
+      files[0],
+    [files, selectedPath]
+  );
+
+  const statusCounts = Object.entries(review?.status_counts ?? {}).filter(
+    ([, count]) => count > 0
+  );
+
   return (
     <div className={"tool-card diff-card tool-" + tool.status}>
       <div className="tool-card-header">
         <div>
-          <span className="tool-kind">DIFF</span>
+          <span className="tool-kind">REVIEW</span>
           <strong>
             {files.length} file{files.length === 1 ? "" : "s"}
           </strong>
+          <span className="diff-readonly">Read only</span>
+          {review?.complete_preview === false ? (
+            <span className="diff-partial">Partial preview</span>
+          ) : files.length > 0 ? (
+            <span className="diff-complete">Review ready</span>
+          ) : null}
         </div>
         <div className="diff-totals">
           <span className="diff-plus">+{tool.additions ?? 0}</span>
@@ -211,58 +270,146 @@ function DiffReview({ tool }: { tool: ToolView }) {
       {files.length === 0 ? (
         <div className="diff-empty">No changes in this diff.</div>
       ) : (
-        <div className="diff-files">
-          {files.map((file, fileIndex) => (
-            <details
-              className="diff-file"
-              key={file.path + ":" + fileIndex}
-              open={fileIndex < 4}
-            >
-              <summary>
-                <span className="diff-file-path">{file.path}</span>
-                <span className="diff-file-status">
-                  {file.status ?? "modified"}
-                </span>
-                <span className="diff-file-stats">
-                  <span className="diff-plus">
-                    +{file.additions ?? 0}
-                  </span>
-                  <span className="diff-minus">
-                    -{file.deletions ?? 0}
-                  </span>
-                </span>
-              </summary>
+        <>
+          <div className="diff-review-toolbar">
+            <span>
+              {review?.mode === "staged" ? "Staged" : "Working tree"}
+            </span>
+            {statusCounts.map(([status, count]) => (
+              <span key={status}>
+                {diffStatusLabel(status)} {count}
+              </span>
+            ))}
+            {(review?.binary_files?.length ?? 0) > 0 ? (
+              <span>{review?.binary_files?.length} binary</span>
+            ) : null}
+            {(review?.truncated_files?.length ?? 0) > 0 ? (
+              <span>{review?.truncated_files?.length} limited</span>
+            ) : null}
+          </div>
 
-              {file.binary ? (
-                <div className="diff-binary">Binary file changed.</div>
-              ) : (
-                <div className="diff-hunks">
-                  {(file.hunks ?? []).map((hunk, hunkIndex) => (
-                    <div
-                      className="diff-hunk"
-                      key={hunk.header + ":" + hunkIndex}
+          <div className="diff-review-layout">
+            <aside className="diff-file-list" aria-label="Changed files">
+              {files.map((file, fileIndex) => {
+                const states = diffPreviewState(file);
+                const active = file.path === selectedFile?.path;
+                return (
+                  <button
+                    type="button"
+                    className={
+                      "diff-file-button" + (active ? " active" : "")
+                    }
+                    key={file.path + ":" + fileIndex}
+                    onClick={() => setSelectedPath(file.path)}
+                  >
+                    <span
+                      className={
+                        "diff-status-badge diff-status-" +
+                        (file.status ?? "modified")
+                      }
                     >
-                      <div className="diff-hunk-header">
-                        {hunk.header}
-                      </div>
-                      {hunk.lines.map((line, lineIndex) => (
-                        <DiffLineRow
-                          key={hunkIndex + ":" + lineIndex}
-                          line={line}
-                        />
-                      ))}
+                      {diffStatusLabel(file.status)}
+                    </span>
+                    <span className="diff-file-button-main">
+                      <span className="diff-file-path">{file.path}</span>
+                      {file.status === "renamed" && file.old_path ? (
+                        <span className="diff-file-origin">
+                          from {file.old_path}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="diff-file-stats">
+                      <span className="diff-plus">
+                        +{file.additions ?? 0}
+                      </span>
+                      <span className="diff-minus">
+                        -{file.deletions ?? 0}
+                      </span>
+                    </span>
+                    {states.length ? (
+                      <span className="diff-file-flags">
+                        {states.join(" · ")}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </aside>
+
+            <section className="diff-preview">
+              {selectedFile ? (
+                <>
+                  <div className="diff-preview-header">
+                    <div>
+                      <strong>{selectedFile.path}</strong>
+                      <span>
+                        {selectedFile.status ?? "modified"}
+                        {selectedFile.similarity !== null &&
+                        selectedFile.similarity !== undefined
+                          ? " · " + selectedFile.similarity + "% similarity"
+                          : ""}
+                      </span>
                     </div>
-                  ))}
-                  {file.truncated ? (
-                    <div className="diff-truncated">
-                      Diff preview truncated for UI safety.
+                    <div className="diff-file-stats">
+                      <span className="diff-plus">
+                        +{selectedFile.additions ?? 0}
+                      </span>
+                      <span className="diff-minus">
+                        -{selectedFile.deletions ?? 0}
+                      </span>
+                    </div>
+                  </div>
+
+                  {selectedFile.status === "renamed" &&
+                  selectedFile.old_path &&
+                  selectedFile.new_path ? (
+                    <div className="diff-rename">
+                      <code>{selectedFile.old_path}</code>
+                      <span>→</span>
+                      <code>{selectedFile.new_path}</code>
                     </div>
                   ) : null}
-                </div>
-              )}
-            </details>
-          ))}
-        </div>
+
+                  {selectedFile.binary ? (
+                    <div className="diff-binary">
+                      Binary file changed. Text patch preview is unavailable.
+                    </div>
+                  ) : (selectedFile.hunks ?? []).length === 0 ? (
+                    <div className="diff-empty">
+                      No textual patch for this file.
+                    </div>
+                  ) : (
+                    <div className="diff-hunks">
+                      {(selectedFile.hunks ?? []).map((hunk, hunkIndex) => (
+                        <div
+                          className="diff-hunk"
+                          key={hunk.header + ":" + hunkIndex}
+                        >
+                          <div className="diff-hunk-header">
+                            {hunk.header}
+                          </div>
+                          {hunk.lines.map((line, lineIndex) => (
+                            <DiffLineRow
+                              key={hunkIndex + ":" + lineIndex}
+                              line={line}
+                            />
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {selectedFile.truncated ? (
+                    <div className="diff-truncated">
+                      This file preview was truncated for UI safety. Git
+                      statistics still describe the full detected change.
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </section>
+          </div>
+        </>
       )}
 
       {tool.summary ? (
