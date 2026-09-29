@@ -28,13 +28,14 @@ class PermissionPolicyTests(unittest.TestCase):
         policy = PermissionPolicy(PermissionMode.READ_ONLY)
         visible = policy.visible_tools(
             [
+                "file_exists",
                 "read_file",
                 "write_file",
                 "run_command",
                 "git_status",
             ]
         )
-        self.assertEqual(visible, ["git_status", "read_file"])
+        self.assertEqual(visible, ["file_exists", "git_status", "read_file"])
 
     def test_read_only_denies_write_even_if_called_directly(self) -> None:
         policy = PermissionPolicy(PermissionMode.READ_ONLY)

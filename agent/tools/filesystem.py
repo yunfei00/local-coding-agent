@@ -22,6 +22,52 @@ def _is_probably_binary(path: Path) -> bool:
     return b"\x00" in sample
 
 
+class FileExistsTool(BaseTool):
+    name = "file_exists"
+    description = (
+        "Check whether a file or directory exists without reading its contents. "
+        "Useful for detecting project manifests, wrappers and optional configuration."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "File or directory path; workspace-relative is preferred.",
+            },
+        },
+        "required": ["path"],
+    }
+
+    def __init__(self, workspace: Workspace) -> None:
+        self.workspace = workspace
+
+    async def execute(self, arguments: dict[str, Any], *, on_output=None) -> ToolResult:
+        path = self.workspace.resolve(str(arguments["path"]), must_exist=False)
+        exists = path.exists()
+        kind = (
+            "directory"
+            if exists and path.is_dir()
+            else "file"
+            if exists and path.is_file()
+            else None
+        )
+        display = self.workspace.display(path)
+        return ToolResult(
+            ok=True,
+            summary=(
+                f"{display} exists ({kind})."
+                if exists
+                else f"{display} does not exist."
+            ),
+            data={
+                "path": display,
+                "exists": exists,
+                "type": kind,
+            },
+        )
+
+
 class ListDirectoryTool(BaseTool):
     name = "list_directory"
     description = (

@@ -18,6 +18,7 @@ class PermissionMode(StrEnum):
 
 
 READ_ONLY_TOOLS = {
+    "file_exists",
     "list_directory",
     "read_file",
     "search_files",
@@ -83,7 +84,7 @@ def command_risk(command: str) -> tuple[str, str] | None:
 
 
 def _path_argument(name: str, arguments: dict[str, Any]) -> str | None:
-    if name in {"list_directory", "read_file", "write_file", "apply_patch"}:
+    if name in {"file_exists", "list_directory", "read_file", "write_file", "apply_patch"}:
         value = arguments.get("path")
         return str(value) if value is not None else "."
     if name == "search_files":

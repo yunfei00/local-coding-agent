@@ -40,6 +40,8 @@ Work deliberately:
 - use apply_patch for small edits and write_file for new/full-file content;
 - run relevant tests or build commands after changes;
 - inspect git_status/git_diff before declaring completion;
+- preserve the user's existing uncommitted work; never overwrite unrelated dirty changes;
+- if a target file is already modified, inspect the relevant diff before editing and make the smallest compatible change;
 - if a command fails, analyze its real output before deciding the next step;
 - never claim a test passed unless the tool result actually shows success.
 

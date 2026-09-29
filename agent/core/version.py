@@ -1,2 +1,1 @@
-APP_VERSION = "0.1.0-dev"
-PROTOCOL_VERSION = "phase7"
+APP_VERSION = "0.1.0-dev"\nPROTOCOL_VERSION = "phase8"\n

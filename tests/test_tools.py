@@ -6,6 +6,7 @@ from pathlib import Path
 from agent.tools.base import ToolError
 from agent.tools.filesystem import (
     ApplyPatchTool,
+    FileExistsTool,
     ReadFileTool,
     SearchFilesTool,
     WriteFileTool,
@@ -31,6 +32,7 @@ class WorkspaceTests(unittest.TestCase):
                 names,
                 [
                     "apply_patch",
+                    "file_exists",
                     "git_diff",
                     "git_log",
                     "git_status",
@@ -53,6 +55,7 @@ class FileToolTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_write_read_patch_and_search(self) -> None:
         write = WriteFileTool(self.workspace)
+        exists = FileExistsTool(self.workspace)
         read = ReadFileTool(self.workspace)
         patch = ApplyPatchTool(self.workspace)
         search = SearchFilesTool(self.workspace)
@@ -62,6 +65,13 @@ class FileToolTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(result.ok)
         self.assertEqual(result.changed_paths, ["src/demo.py"])
+
+        exists_result = await exists.execute({"path": "src/demo.py"})
+        self.assertTrue(exists_result.data["exists"])
+        self.assertEqual(exists_result.data["type"], "file")
+
+        missing_result = await exists.execute({"path": "src/missing.py"})
+        self.assertFalse(missing_result.data["exists"])
 
         read_result = await read.execute({"path": "src/demo.py"})
         self.assertIn("VALUE = 1", read_result.data["content"])

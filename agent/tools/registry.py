@@ -6,6 +6,7 @@ from typing import Any
 from agent.tools.base import BaseTool, OutputCallback, ToolError, ToolResult
 from agent.tools.filesystem import (
     ApplyPatchTool,
+    FileExistsTool,
     ListDirectoryTool,
     ReadFileTool,
     SearchFilesTool,
@@ -19,6 +20,7 @@ from agent.tools.workspace import Workspace
 class ToolRegistry:
     def __init__(self, workspace: Workspace) -> None:
         tools: list[BaseTool] = [
+            FileExistsTool(workspace),
             ListDirectoryTool(workspace),
             ReadFileTool(workspace),
             SearchFilesTool(workspace),

@@ -1064,9 +1064,9 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <div className="topbar-title">
-            <strong>{workspace?.name ?? "Phase 7"}</strong>
+            <strong>{workspace?.name ?? "Phase 8"}</strong>
             <span>
-              {activeThread ? " · " + activeThread.title : " · Persistence & Resume"}
+              {activeThread ? " · " + activeThread.title : " · Real-world Validation"}
             </span>
           </div>
           <div className="topbar-actions">
@@ -1092,23 +1092,23 @@ function App() {
           >
           {items.length === 0 && approvals.length === 0 ? (
             <div className="welcome-card">
-              <div className="eyebrow">PHASE 7</div>
+              <div className="eyebrow">PHASE 8</div>
               <h1>
                 {workspace
-                  ? "Project ready. Session persistence is active."
+                  ? "Project ready. End-to-end validation is active."
                   : "Open a local project to begin."}
               </h1>
               <p>
                 {workspace
-                  ? "Projects, threads, messages, model choice and permission mode are stored in SQLite and restored after restart. The conversation follows live output unless you scroll up."
+                  ? "The full coding loop is under real-project validation: inspect, test, repair, retest, review Diff, respect permissions, stop safely and resume sessions."
                   : "Each opened project stays in the left sidebar for this app session. Switching projects changes the active workspace without discarding the others."}
               </p>
               <div className="milestones">
-                <span>SQLite ✓</span>
-                <span>Project resume ✓</span>
-                <span>Thread history ✓</span>
-                <span>Auto-follow ✓</span>
-                <span>Jump ↓ ✓</span>
+                <span>Python E2E ✓</span>
+                <span>Node E2E ✓</span>
+                <span>Android ready ✓</span>
+                <span>Failure recovery ✓</span>
+                <span>Final Diff ✓</span>
               </div>
               {!provider?.online ? (
                 <div className="provider-warning">
