@@ -6,6 +6,9 @@ contextBridge.exposeInMainWorld("localAgent", {
   platform: process.platform,
   notifyRendererReady: () => ipcRenderer.send("renderer:ready"),
   getAgentStatus: () => ipcRenderer.invoke("agent:get-status"),
+  checkForUpdates: () => ipcRenderer.invoke("agent:update-check"),
+  openReleasePage: (url: string) =>
+    ipcRenderer.invoke("agent:update-open-release", url),
   getDiagnostics: () => ipcRenderer.invoke("agent:diagnostics-get"),
   copyDiagnostics: (report: string) =>
     ipcRenderer.invoke("agent:diagnostics-copy", report),
