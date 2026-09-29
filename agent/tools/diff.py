@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +36,10 @@ def parse_unified_diff(
         if raw.startswith("diff --git "):
             if current:
                 files.append(current)
-            parts = raw.split(" ", 3)
+            try:
+                parts = shlex.split(raw)
+            except ValueError:
+                parts = raw.split(" ", 3)
             old_path = _clean_git_path(parts[2]) if len(parts) > 2 else ""
             new_path = _clean_git_path(parts[3]) if len(parts) > 3 else old_path
             current = {
@@ -48,6 +52,7 @@ def parse_unified_diff(
                 "deletions": 0,
                 "hunks": [],
                 "truncated": False,
+                "similarity": None,
                 "_stored_lines": 0,
             }
             current_hunk = None
@@ -61,6 +66,13 @@ def parse_unified_diff(
             continue
         if raw.startswith("deleted file mode "):
             current["status"] = "deleted"
+            continue
+        if raw.startswith("similarity index "):
+            value = raw[len("similarity index ") :].strip().rstrip("%")
+            try:
+                current["similarity"] = int(value)
+            except ValueError:
+                current["similarity"] = None
             continue
         if raw.startswith("rename from "):
             current["status"] = "renamed"
@@ -154,6 +166,11 @@ def parse_unified_diff(
             files[-1]["truncated"] = True
 
     for item in files:
+        item["hunk_count"] = len(item.get("hunks") or [])
+        item["preview_line_count"] = sum(
+            len(hunk.get("lines") or [])
+            for hunk in item.get("hunks") or []
+        )
         item.pop("_stored_lines", None)
 
     return files
@@ -176,6 +193,9 @@ def synthesize_untracked_file(
         "deletions": 0,
         "hunks": [],
         "truncated": False,
+        "similarity": None,
+        "hunk_count": 0,
+        "preview_line_count": 0,
     }
 
     try:
@@ -218,4 +238,6 @@ def synthesize_untracked_file(
             "lines": hunk_lines,
         }
     ]
+    result["hunk_count"] = 1
+    result["preview_line_count"] = len(hunk_lines)
     return result
