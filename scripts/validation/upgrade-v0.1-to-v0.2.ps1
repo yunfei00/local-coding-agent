@@ -22,13 +22,13 @@ $OldChecksumsUrl = "$OldBaseUrl/SHA256SUMS.txt"
 $TempBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
 $Root = Join-Path $TempBase "lca-v01-v02-upgrade"
 $InstallDir = Join-Path $Root "install"
-$DataDir = Join-Path $Root "data"
+$AppDataRoot = Join-Path $Root "appdata"
 $OldInstaller = Join-Path $Root "Local-Coding-Agent-0.1.0-x64-Setup.exe"
 $OldChecksums = Join-Path $Root "SHA256SUMS-v0.1.0.txt"
 
 Remove-Item $Root -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $Root -Force | Out-Null
-New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
+New-Item -ItemType Directory -Path $AppDataRoot -Force | Out-Null
 
 function Install-Lca {
     param(
@@ -57,10 +57,10 @@ function Invoke-VersionSmoke {
     Remove-Item $SmokeFile -Force -ErrorAction SilentlyContinue
 
     $OldSmoke = $env:LCA_PACKAGED_SMOKE_FILE
-    $OldData = $env:LCA_DATA_DIR
+    $OldAppData = $env:APPDATA
     $OldOllama = $env:LCA_OLLAMA_URL
     $env:LCA_PACKAGED_SMOKE_FILE = $SmokeFile
-    $env:LCA_DATA_DIR = $DataDir
+    $env:APPDATA = $AppDataRoot
     $env:LCA_OLLAMA_URL = "http://127.0.0.1:1"
 
     try {
@@ -94,7 +94,7 @@ function Invoke-VersionSmoke {
     }
     finally {
         if ($null -eq $OldSmoke) { Remove-Item Env:LCA_PACKAGED_SMOKE_FILE -ErrorAction SilentlyContinue } else { $env:LCA_PACKAGED_SMOKE_FILE = $OldSmoke }
-        if ($null -eq $OldData) { Remove-Item Env:LCA_DATA_DIR -ErrorAction SilentlyContinue } else { $env:LCA_DATA_DIR = $OldData }
+        if ($null -eq $OldAppData) { Remove-Item Env:APPDATA -ErrorAction SilentlyContinue } else { $env:APPDATA = $OldAppData }
         if ($null -eq $OldOllama) { Remove-Item Env:LCA_OLLAMA_URL -ErrorAction SilentlyContinue } else { $env:LCA_OLLAMA_URL = $OldOllama }
     }
 }
@@ -118,7 +118,7 @@ Write-Host "[upgrade 3/7] Install and launch official v0.1.0..."
 $OldExe = Install-Lca -Installer $OldInstaller -Target $InstallDir
 Invoke-VersionSmoke -Executable $OldExe -ExpectedVersion $OldVersion -Name "v010"
 
-$Database = Join-Path $DataDir "local-coding-agent.sqlite3"
+$Database = Join-Path $AppDataRoot "local-coding-agent-desktop\local-coding-agent.sqlite3"
 if (-not (Test-Path $Database)) {
     throw "v0.1.0 did not create its SQLite database."
 }
