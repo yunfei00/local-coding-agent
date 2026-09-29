@@ -48,6 +48,19 @@ Write-Host "[7/9] Build NSIS installer + portable executable..."
 Remove-Item "desktop\release" -Recurse -Force -ErrorAction SilentlyContinue
 npm --prefix desktop run package:win
 
+$RendererIndex = Join-Path $RepoRoot "desktop\dist\index.html"
+if (-not (Test-Path $RendererIndex)) {
+    throw "Renderer index was not created: $RendererIndex"
+}
+$RendererHtml = Get-Content $RendererIndex -Raw
+if ($RendererHtml -match '(src|href)="/assets/') {
+    throw "Renderer build contains absolute /assets paths and will black-screen under file://."
+}
+if ($RendererHtml -notmatch '(src|href)="\./assets/') {
+    throw "Renderer build does not contain expected relative ./assets paths."
+}
+Write-Host "Renderer asset paths: relative file:// compatible"
+
 $Installer = Join-Path $RepoRoot ("desktop\release\Local-Coding-Agent-" + $Version + "-x64-Setup.exe")
 $Portable = Join-Path $RepoRoot ("desktop\release\Local-Coding-Agent-" + $Version + "-x64-Portable.exe")
 $BundledAgent = Join-Path $RepoRoot "desktop\release\win-unpacked\resources\agent\lca-agent.exe"
@@ -82,7 +95,7 @@ try {
     }
 
     $Smoke = Get-Content $SmokeFile -Raw | ConvertFrom-Json
-    if (-not $Smoke.ok -or -not $Smoke.packaged -or $Smoke.protocol -ne "phase9") {
+    if (-not $Smoke.ok -or -not $Smoke.packaged -or -not $Smoke.renderer_ready -or $Smoke.protocol -ne "phase9") {
         throw "Packaged Desktop smoke result was invalid: $(Get-Content $SmokeFile -Raw)"
     }
 

@@ -42,7 +42,59 @@ let stdoutBuffer = "";
 let shuttingDown = false;
 let quitInProgress = false;
 let quitReady = false;
+let rendererReady = false;
+let packagedSmokeWritten = false;
+let lastAgentReady: {
+  host: string;
+  port: number;
+  version: string;
+  protocol: string;
+} | null = null;
 const pending = new Map<string, PendingRequest>();
+
+function maybeCompletePackagedSmoke(): void {
+  const smokeFile = process.env.LCA_PACKAGED_SMOKE_FILE;
+  if (
+    !smokeFile ||
+    packagedSmokeWritten ||
+    !rendererReady ||
+    !lastAgentReady
+  ) {
+    return;
+  }
+
+  try {
+    writeFileSync(
+      smokeFile,
+      JSON.stringify(
+        {
+          ok: true,
+          renderer_ready: true,
+          version: lastAgentReady.version,
+          protocol: lastAgentReady.protocol,
+          host: lastAgentReady.host,
+          port: lastAgentReady.port,
+          packaged: app.isPackaged
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+    packagedSmokeWritten = true;
+    appendRuntimeLog(
+      "desktop.log",
+      "Packaged smoke marker written after Renderer + Agent readiness: " +
+        smokeFile
+    );
+    setTimeout(() => app.quit(), 250);
+  } catch (error) {
+    appendRuntimeLog(
+      "desktop.log",
+      "Unable to write packaged smoke marker: " + String(error)
+    );
+  }
+}
 
 function repoRoot(): string {
   return path.resolve(__dirname, "..", "..");
@@ -156,34 +208,13 @@ function connectAgentWebSocket(ready: {
     };
     console.log("[desktop] Agent WebSocket connected");
 
-    const smokeFile = process.env.LCA_PACKAGED_SMOKE_FILE;
-    if (smokeFile) {
-      try {
-        writeFileSync(
-          smokeFile,
-          JSON.stringify(
-            {
-              ok: true,
-              version: ready.version,
-              protocol: ready.protocol,
-              host: ready.host,
-              port: ready.port,
-              packaged: app.isPackaged
-            },
-            null,
-            2
-          ),
-          "utf8"
-        );
-        appendRuntimeLog("desktop.log", "Packaged smoke marker written: " + smokeFile);
-        setTimeout(() => app.quit(), 250);
-      } catch (error) {
-        appendRuntimeLog(
-          "desktop.log",
-          "Unable to write packaged smoke marker: " + String(error)
-        );
-      }
-    }
+    lastAgentReady = {
+      host: ready.host,
+      port: ready.port,
+      version: ready.version,
+      protocol: ready.protocol
+    };
+    maybeCompletePackagedSmoke();
   });
 
   socket.on("message", handleAgentMessage);
@@ -483,6 +514,7 @@ async function stopAgent(): Promise<void> {
 }
 
 function createWindow(): void {
+  rendererReady = false;
   mainWindow = new BrowserWindow({
     width: 1180,
     height: 780,
@@ -496,13 +528,61 @@ function createWindow(): void {
     }
   });
 
+  mainWindow.webContents.on("did-finish-load", () => {
+    appendRuntimeLog(
+      "renderer.log",
+      "did-finish-load url=" + mainWindow?.webContents.getURL()
+    );
+  });
+
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedURL) => {
+      appendRuntimeLog(
+        "renderer.log",
+        "did-fail-load code=" +
+          errorCode +
+          " description=" +
+          errorDescription +
+          " url=" +
+          validatedURL
+      );
+    }
+  );
+
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    appendRuntimeLog(
+      "renderer.log",
+      "render-process-gone reason=" +
+        details.reason +
+        " exitCode=" +
+        details.exitCode
+    );
+  });
+
+  mainWindow.webContents.on("unresponsive", () => {
+    appendRuntimeLog("renderer.log", "renderer unresponsive");
+  });
+
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   if (devUrl) {
-    void mainWindow.loadURL(devUrl);
+    void mainWindow.loadURL(devUrl).catch((error) => {
+      appendRuntimeLog("renderer.log", "loadURL failed: " + String(error));
+    });
   } else {
-    void mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
+    const indexPath = path.join(__dirname, "..", "dist", "index.html");
+    appendRuntimeLog("renderer.log", "Loading packaged renderer: " + indexPath);
+    void mainWindow.loadFile(indexPath).catch((error) => {
+      appendRuntimeLog("renderer.log", "loadFile failed: " + String(error));
+    });
   }
 }
+
+ipcMain.on("renderer:ready", () => {
+  rendererReady = true;
+  appendRuntimeLog("renderer.log", "Renderer React root mounted successfully.");
+  maybeCompletePackagedSmoke();
+});
 
 ipcMain.handle("agent:get-status", () => agentStatus);
 ipcMain.handle("agent:permission-get", async () => {

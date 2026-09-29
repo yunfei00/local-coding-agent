@@ -25,6 +25,10 @@ class ReleaseMetadataTests(unittest.TestCase):
         self.assertEqual(pyproject["project"]["version"], APP_VERSION)
         self.assertEqual(PROTOCOL_VERSION, "phase9")
 
+    def test_vite_uses_relative_assets_for_packaged_file_protocol(self) -> None:
+        vite_config = (ROOT / "desktop" / "vite.config.ts").read_text(encoding="utf-8")
+        self.assertIn('base: "./"', vite_config)
+
 
 if __name__ == "__main__":
     unittest.main()

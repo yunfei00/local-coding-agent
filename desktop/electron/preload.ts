@@ -4,6 +4,7 @@ type AgentEventHandler = (event: unknown) => void;
 
 contextBridge.exposeInMainWorld("localAgent", {
   platform: process.platform,
+  notifyRendererReady: () => ipcRenderer.send("renderer:ready"),
   getAgentStatus: () => ipcRenderer.invoke("agent:get-status"),
   getPermission: () => ipcRenderer.invoke("agent:permission-get"),
   setPermission: (mode: string) =>

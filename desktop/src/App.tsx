@@ -267,6 +267,10 @@ function App() {
     });
   }, []);
 
+  useEffect(() => {
+    window.localAgent.notifyRendererReady();
+  }, []);
+
   useLayoutEffect(() => {
     if (!autoFollowRef.current) {
       return;

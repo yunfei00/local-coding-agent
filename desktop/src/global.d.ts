@@ -13,6 +13,7 @@ declare global {
   interface Window {
     localAgent: {
       platform: string;
+      notifyRendererReady: () => void;
       getAgentStatus: () => Promise<{
         state: "starting" | "ready" | "error" | "stopped";
         host?: string;
