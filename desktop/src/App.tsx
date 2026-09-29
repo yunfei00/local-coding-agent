@@ -8,6 +8,7 @@ import {
   useState
 } from "react";
 
+import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import {
   DiffFile,
@@ -207,6 +208,7 @@ function App() {
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const conversationRef = useRef<HTMLElement | null>(null);
   const autoFollowRef = useRef(true);
 
@@ -1195,8 +1197,24 @@ function App() {
             </button>
             <button
               type="button"
+              className={
+                "diagnostics-button" + (diagnosticsOpen ? " active" : "")
+              }
+              onClick={() => {
+                setDiagnosticsOpen((current) => !current);
+                setSettingsOpen(false);
+              }}
+              title="Diagnostics"
+            >
+              Diagnostics
+            </button>
+            <button
+              type="button"
               className={"settings-button" + (settingsOpen ? " active" : "")}
-              onClick={() => setSettingsOpen((current) => !current)}
+              onClick={() => {
+                setSettingsOpen((current) => !current);
+                setDiagnosticsOpen(false);
+              }}
               title="Settings"
             >
               Settings
@@ -1401,6 +1419,12 @@ function App() {
             )}
           </div>
         </form>
+
+        {diagnosticsOpen ? (
+          <DiagnosticsPanel
+            onClose={() => setDiagnosticsOpen(false)}
+          />
+        ) : null}
 
         {settingsOpen ? (
           <SettingsPanel
