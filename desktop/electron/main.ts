@@ -1,7 +1,20 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  safeStorage
+} from "electron";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync
+} from "node:fs";
 import path from "node:path";
 import WebSocket from "ws";
 
@@ -44,6 +57,7 @@ let quitInProgress = false;
 let quitReady = false;
 let rendererReady = false;
 let packagedSmokeWritten = false;
+let sessionOpenAIKey: string | null = null;
 let lastAgentReady: {
   host: string;
   port: number;
@@ -116,6 +130,169 @@ function packagedAgentPath(): string {
 
 function logDirectory(): string {
   return path.join(app.getPath("userData"), "logs");
+}
+
+type SecretStorageMode =
+  | "os_protected"
+  | "session_only"
+  | "environment"
+  | "none";
+
+function secretFilePath(): string {
+  return path.join(app.getPath("userData"), "provider-secrets.json");
+}
+
+function readStoredOpenAIKey(): string | null {
+  if (sessionOpenAIKey !== null) {
+    return sessionOpenAIKey;
+  }
+
+  const file = secretFilePath();
+  if (!existsSync(file) || !safeStorage.isEncryptionAvailable()) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(readFileSync(file, "utf8")) as {
+      openai_api_key?: string;
+    };
+    if (!payload.openai_api_key) {
+      return null;
+    }
+    const decrypted = safeStorage.decryptString(
+      Buffer.from(payload.openai_api_key, "base64")
+    );
+    sessionOpenAIKey = decrypted;
+    return decrypted;
+  } catch (error) {
+    appendRuntimeLog(
+      "desktop.log",
+      "Unable to read protected provider secret: " + String(error)
+    );
+    return null;
+  }
+}
+
+function currentOpenAIKey(): string | null {
+  const stored = readStoredOpenAIKey();
+  if (stored !== null) {
+    return stored;
+  }
+  return process.env.LCA_OPENAI_API_KEY ?? null;
+}
+
+function secretStorageStatus(): {
+  configured: boolean;
+  stored: boolean;
+  mode: SecretStorageMode;
+} {
+  const file = secretFilePath();
+  const stored = existsSync(file) && safeStorage.isEncryptionAvailable();
+  if (stored) {
+    return {
+      configured: Boolean(readStoredOpenAIKey()),
+      stored: true,
+      mode: "os_protected"
+    };
+  }
+  if (sessionOpenAIKey) {
+    return {
+      configured: true,
+      stored: false,
+      mode: "session_only"
+    };
+  }
+  if (process.env.LCA_OPENAI_API_KEY) {
+    return {
+      configured: true,
+      stored: false,
+      mode: "environment"
+    };
+  }
+  return {
+    configured: false,
+    stored: false,
+    mode: "none"
+  };
+}
+
+function saveOpenAIKey(value: string): {
+  configured: boolean;
+  stored: boolean;
+  mode: SecretStorageMode;
+} {
+  sessionOpenAIKey = value;
+  const file = secretFilePath();
+
+  if (!value) {
+    if (existsSync(file)) {
+      try {
+        unlinkSync(file);
+      } catch (error) {
+        appendRuntimeLog(
+          "desktop.log",
+          "Unable to remove protected provider secret: " + String(error)
+        );
+      }
+    }
+    sessionOpenAIKey = "";
+    return {
+      configured: false,
+      stored: false,
+      mode: "none"
+    };
+  }
+
+  if (!safeStorage.isEncryptionAvailable()) {
+    return {
+      configured: true,
+      stored: false,
+      mode: "session_only"
+    };
+  }
+
+  try {
+    const encrypted = safeStorage.encryptString(value).toString("base64");
+    writeFileSync(
+      file,
+      JSON.stringify({ openai_api_key: encrypted }),
+      { encoding: "utf8", mode: 0o600 }
+    );
+    return {
+      configured: true,
+      stored: true,
+      mode: "os_protected"
+    };
+  } catch (error) {
+    appendRuntimeLog(
+      "desktop.log",
+      "Unable to persist protected provider secret: " + String(error)
+    );
+    return {
+      configured: true,
+      stored: false,
+      mode: "session_only"
+    };
+  }
+}
+
+async function syncOpenAISecretToAgent(): Promise<void> {
+  const key = currentOpenAIKey();
+  if (key === null) {
+    return;
+  }
+  try {
+    await sendRequest(
+      "settings.secret",
+      "settings.secret.changed",
+      { openai_api_key: key }
+    );
+  } catch (error) {
+    appendRuntimeLog(
+      "desktop.log",
+      "Unable to sync provider secret to Agent: " + String(error)
+    );
+  }
 }
 
 function appendRuntimeLog(fileName: string, message: string): void {
@@ -215,6 +392,7 @@ function connectAgentWebSocket(ready: {
       protocol: ready.protocol
     };
     maybeCompletePackagedSmoke();
+    void syncOpenAISecretToAgent();
   });
 
   socket.on("message", handleAgentMessage);
@@ -585,6 +763,158 @@ ipcMain.on("renderer:ready", () => {
 });
 
 ipcMain.handle("agent:get-status", () => agentStatus);
+ipcMain.handle("agent:settings-get", async () => {
+  const event = await sendRequest("settings.get", "settings.loaded");
+  return {
+    event,
+    secret: secretStorageStatus()
+  };
+});
+ipcMain.handle(
+  "agent:settings-apply",
+  async (
+    _event,
+    settings: Record<string, unknown>,
+    secretUpdate?: {
+      action?: "keep" | "set" | "clear";
+      value?: string;
+    }
+  ) => {
+    const event = await sendRequest(
+      "settings.apply",
+      "settings.changed",
+      { settings }
+    );
+
+    const action = secretUpdate?.action ?? "keep";
+    let secret = secretStorageStatus();
+    if (action === "set") {
+      secret = saveOpenAIKey(String(secretUpdate?.value ?? ""));
+      await sendRequest(
+        "settings.secret",
+        "settings.secret.changed",
+        { openai_api_key: currentOpenAIKey() ?? "" }
+      );
+    } else if (action === "clear") {
+      secret = saveOpenAIKey("");
+      await sendRequest(
+        "settings.secret",
+        "settings.secret.changed",
+        { openai_api_key: "" }
+      );
+    } else {
+      const key = currentOpenAIKey();
+      if (key !== null) {
+        await sendRequest(
+          "settings.secret",
+          "settings.secret.changed",
+          { openai_api_key: key }
+        );
+      }
+    }
+
+    const provider = await sendRequest("model.list", "model.listed");
+    return { event, provider, secret };
+  }
+);
+ipcMain.handle("agent:settings-reset", async () => {
+  const event = await sendRequest(
+    "settings.reset",
+    "settings.changed"
+  );
+  const key = currentOpenAIKey();
+  if (key !== null) {
+    await sendRequest(
+      "settings.secret",
+      "settings.secret.changed",
+      { openai_api_key: key }
+    );
+  }
+  const provider = await sendRequest("model.list", "model.listed");
+  return {
+    event,
+    provider,
+    secret: secretStorageStatus()
+  };
+});
+ipcMain.handle(
+  "agent:prompt-rules-get",
+  async (_event, threadId?: string) => {
+    return sendRequest(
+      "prompt_rules.get",
+      "prompt_rules.loaded",
+      threadId ? { thread_id: threadId } : {},
+      threadId ? { threadId } : {}
+    );
+  }
+);
+ipcMain.handle(
+  "agent:prompt-rule-set",
+  async (
+    _event,
+    scope: string,
+    content: string,
+    enabled: boolean,
+    projectId?: string,
+    threadId?: string
+  ) => {
+    return sendRequest(
+      "prompt_rules.set",
+      "prompt_rules.changed",
+      {
+        scope,
+        content,
+        enabled,
+        ...(projectId ? { project_id: projectId } : {}),
+        ...(threadId ? { thread_id: threadId } : {})
+      },
+      threadId ? { threadId } : {}
+    );
+  }
+);
+ipcMain.handle(
+  "agent:prompt-rule-toggle",
+  async (
+    _event,
+    scope: string,
+    enabled: boolean,
+    projectId?: string,
+    threadId?: string
+  ) => {
+    return sendRequest(
+      "prompt_rules.toggle",
+      "prompt_rules.changed",
+      {
+        scope,
+        enabled,
+        ...(projectId ? { project_id: projectId } : {}),
+        ...(threadId ? { thread_id: threadId } : {})
+      },
+      threadId ? { threadId } : {}
+    );
+  }
+);
+ipcMain.handle(
+  "agent:prompt-rule-reset",
+  async (
+    _event,
+    scope: string,
+    projectId?: string,
+    threadId?: string
+  ) => {
+    return sendRequest(
+      "prompt_rules.reset",
+      "prompt_rules.changed",
+      {
+        scope,
+        ...(projectId ? { project_id: projectId } : {}),
+        ...(threadId ? { thread_id: threadId } : {})
+      },
+      threadId ? { threadId } : {}
+    );
+  }
+);
+
 ipcMain.handle("agent:permission-get", async () => {
   return sendRequest("permission.get", "permission.loaded");
 });
