@@ -13,8 +13,8 @@ from agent.core.agent_loop import (
     ToolLoopGuard,
     canonical_tool_fingerprint,
     compact_tool_payload,
-    trim_history,
 )
+from agent.core.context import ContextBudgetManager
 from agent.core.version import APP_VERSION, PROTOCOL_VERSION
 from agent.llm.base import ProviderError, ToolCall
 from agent.llm.factory import create_provider_from_env
@@ -871,19 +871,30 @@ class AgentServer:
         state = project.state
         guard = ToolLoopGuard()
 
-        history = trim_history(state.get_messages(thread_id))
-        messages: list[dict[str, Any]] = [
-            {
-                "role": "system",
-                "content": self._system_prompt(
-                    project_id=project.id,
-                    thread_id=thread_id,
-                    workspace_path=workspace.display_path,
-                ),
-            },
-            *history,
-            {"role": "user", "content": prompt},
-        ]
+        history = state.get_messages(thread_id)
+        context_manager = ContextBudgetManager(
+            context_window_tokens=self.provider.context_window,
+        )
+        initial_context = context_manager.prepare_initial(
+            system_prompt=self._system_prompt(
+                project_id=project.id,
+                thread_id=thread_id,
+                workspace_path=workspace.display_path,
+            ),
+            history=history,
+            user_prompt=prompt,
+        )
+        messages: list[dict[str, Any]] = initial_context.messages
+        context_usage = initial_context.usage
+
+        await ws.send_json(
+            envelope(
+                "context.updated",
+                context_usage.to_dict(),
+                thread_id=thread_id,
+                turn_id=turn_id,
+            )
+        )
 
         prompt_eval_count: int | None = None
         eval_count: int | None = None
@@ -899,6 +910,21 @@ class AgentServer:
 
                 for attempt in range(1, self.MODEL_RETRY_ATTEMPTS + 1):
                     try:
+                        fitted_context = context_manager.fit_runtime(
+                            messages,
+                            history_messages_total=len(history),
+                        )
+                        messages = fitted_context.messages
+                        context_usage = fitted_context.usage
+                        await ws.send_json(
+                            envelope(
+                                "context.updated",
+                                context_usage.to_dict(),
+                                thread_id=thread_id,
+                                turn_id=turn_id,
+                            )
+                        )
+
                         async for chunk in self.provider.stream_chat(
                             model=model,
                             messages=messages,
@@ -985,6 +1011,7 @@ class AgentServer:
                                 "context_window": self.provider.context_window,
                                 "prompt_eval_count": prompt_eval_count,
                                 "eval_count": eval_count,
+                                "context": context_usage.to_dict(),
                                 "model_steps": step,
                                 "tool_calls": total_tool_calls,
                                 "verification": verification,
