@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import WebSocket from "ws";
 
@@ -40,6 +40,8 @@ let agentToken: string | null = null;
 let agentStatus: AgentStatus = { state: "starting" };
 let stdoutBuffer = "";
 let shuttingDown = false;
+let quitInProgress = false;
+let quitReady = false;
 const pending = new Map<string, PendingRequest>();
 
 function repoRoot(): string {
@@ -153,6 +155,35 @@ function connectAgentWebSocket(ready: {
       protocol: ready.protocol
     };
     console.log("[desktop] Agent WebSocket connected");
+
+    const smokeFile = process.env.LCA_PACKAGED_SMOKE_FILE;
+    if (smokeFile) {
+      try {
+        writeFileSync(
+          smokeFile,
+          JSON.stringify(
+            {
+              ok: true,
+              version: ready.version,
+              protocol: ready.protocol,
+              host: ready.host,
+              port: ready.port,
+              packaged: app.isPackaged
+            },
+            null,
+            2
+          ),
+          "utf8"
+        );
+        appendRuntimeLog("desktop.log", "Packaged smoke marker written: " + smokeFile);
+        setTimeout(() => app.quit(), 250);
+      } catch (error) {
+        appendRuntimeLog(
+          "desktop.log",
+          "Unable to write packaged smoke marker: " + String(error)
+        );
+      }
+    }
   });
 
   socket.on("message", handleAgentMessage);
@@ -400,22 +431,25 @@ async function stopAgent(): Promise<void> {
   shuttingDown = true;
   rejectPending("Application is closing.");
 
+  const current = agentProcess;
+  const currentPort = agentStatus.port;
+  const currentToken = agentToken;
+
   if (agentSocket) {
     agentSocket.close();
     agentSocket = null;
   }
 
-  const current = agentProcess;
   if (!current) {
     return;
   }
 
-  if (agentStatus.port && agentToken) {
+  if (currentPort && currentToken) {
     try {
-      await fetch("http://127.0.0.1:" + agentStatus.port + "/shutdown", {
+      await fetch("http://127.0.0.1:" + currentPort + "/shutdown", {
         method: "POST",
         headers: {
-          Authorization: "Bearer " + agentToken
+          Authorization: "Bearer " + currentToken
         }
       });
     } catch {
@@ -423,11 +457,29 @@ async function stopAgent(): Promise<void> {
     }
   }
 
-  setTimeout(() => {
-    if (agentProcess === current) {
-      current.kill();
-    }
-  }, 700).unref();
+  if (current.exitCode === null) {
+    await Promise.race([
+      new Promise<void>((resolve) => {
+        current.once("exit", () => resolve());
+      }),
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, 1500);
+      })
+    ]);
+  }
+
+  if (current.exitCode === null) {
+    appendRuntimeLog("desktop.log", "Agent did not stop gracefully; forcing termination.");
+    current.kill();
+    await Promise.race([
+      new Promise<void>((resolve) => {
+        current.once("exit", () => resolve());
+      }),
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, 700);
+      })
+    ]);
+  }
 }
 
 function createWindow(): void {
@@ -571,8 +623,21 @@ app.whenReady().then(() => {
   });
 });
 
-app.on("before-quit", () => {
-  void stopAgent();
+app.on("before-quit", (event) => {
+  if (quitReady) {
+    return;
+  }
+
+  event.preventDefault();
+  if (quitInProgress) {
+    return;
+  }
+
+  quitInProgress = true;
+  void stopAgent().finally(() => {
+    quitReady = true;
+    app.quit();
+  });
 });
 
 app.on("window-all-closed", () => {
