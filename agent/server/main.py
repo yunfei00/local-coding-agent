@@ -828,6 +828,7 @@ class AgentServer:
         project_id: str,
         thread_id: str,
         workspace_path: str,
+        project_detection: str | None = None,
     ) -> str:
         parts = [SYSTEM_PROMPT]
         rule_block = self.prompt_rules.render_effective(
@@ -836,6 +837,8 @@ class AgentServer:
         )
         if rule_block:
             parts.append(rule_block)
+        if project_detection:
+            parts.append(project_detection)
         parts.append("Current workspace: " + workspace_path)
         parts.append(self._permission_prompt())
         return "\n\n".join(parts)
@@ -930,6 +933,7 @@ class AgentServer:
                 project_id=project.id,
                 thread_id=thread_id,
                 workspace_path=workspace.display_path,
+                project_detection=project.detection().prompt_text(),
             ),
             history=history,
             user_prompt=prompt,
