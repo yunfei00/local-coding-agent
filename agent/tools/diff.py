@@ -13,11 +13,40 @@ HUNK_RE = re.compile(
 
 def _clean_git_path(value: str) -> str:
     value = value.strip()
+    if value.startswith('"') and value.endswith('"'):
+        try:
+            parsed = shlex.split(value)
+            if len(parsed) == 1:
+                value = parsed[0]
+        except ValueError:
+            pass
     if value in {"/dev/null", "NUL"}:
         return value
     if value.startswith("a/") or value.startswith("b/"):
         return value[2:]
     return value
+
+
+def _diff_header_paths(raw: str) -> tuple[str, str]:
+    body = raw[len("diff --git ") :].strip()
+    if body.startswith('"'):
+        try:
+            parts = shlex.split(body)
+            if len(parts) >= 2:
+                return _clean_git_path(parts[0]), _clean_git_path(parts[1])
+        except ValueError:
+            pass
+
+    separator = body.find(" b/", 2)
+    if separator >= 0:
+        old_value = body[:separator]
+        new_value = body[separator + 1 :]
+        return _clean_git_path(old_value), _clean_git_path(new_value)
+
+    parts = body.split(" ", 1)
+    old_value = parts[0] if parts else ""
+    new_value = parts[1] if len(parts) > 1 else old_value
+    return _clean_git_path(old_value), _clean_git_path(new_value)
 
 
 def parse_unified_diff(
@@ -36,12 +65,7 @@ def parse_unified_diff(
         if raw.startswith("diff --git "):
             if current:
                 files.append(current)
-            try:
-                parts = shlex.split(raw)
-            except ValueError:
-                parts = raw.split(" ", 3)
-            old_path = _clean_git_path(parts[2]) if len(parts) > 2 else ""
-            new_path = _clean_git_path(parts[3]) if len(parts) > 3 else old_path
+            old_path, new_path = _diff_header_paths(raw)
             current = {
                 "path": new_path,
                 "old_path": old_path,
@@ -92,6 +116,8 @@ def parse_unified_diff(
             current["new_path"] = _clean_git_path(raw[4:].split("\t", 1)[0])
             if current["new_path"] != "/dev/null":
                 current["path"] = current["new_path"]
+            elif current.get("old_path"):
+                current["path"] = current["old_path"]
             continue
 
         match = HUNK_RE.match(raw)
