@@ -37,6 +37,17 @@ type ProviderStatus = {
   error?: { code?: string; message?: string } | null;
 };
 
+type PermissionMode = "read_only" | "workspace" | "full_access";
+
+type ApprovalRequest = {
+  id: string;
+  turnId: string;
+  tool: string;
+  arguments: Record<string, unknown>;
+  reason: string;
+  risk: string;
+};
+
 type ProjectInfo = {
   id: string;
   path: string;
@@ -92,6 +103,13 @@ function readProvider(event: AgentEnvelope): ProviderStatus | null {
   return payload as unknown as ProviderStatus;
 }
 
+function readPermission(event: AgentEnvelope): PermissionMode | null {
+  const mode = event.payload?.mode;
+  return mode === "read_only" || mode === "workspace" || mode === "full_access"
+    ? mode
+    : null;
+}
+
 function readProjectList(event: AgentEnvelope): ProjectInfo[] {
   const value = event.payload?.projects;
   return Array.isArray(value) ? (value as ProjectInfo[]) : [];
@@ -144,6 +162,9 @@ function stringifyArguments(value: unknown): string {
 function App() {
   const [status, setStatus] = useState<Status>(initialStatus);
   const [provider, setProvider] = useState<ProviderStatus | null>(null);
+  const [permissionMode, setPermissionMode] =
+    useState<PermissionMode>("workspace");
+  const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [workspace, setWorkspace] = useState<ProjectInfo | null>(null);
   const [selectedModel, setSelectedModel] = useState("");
@@ -238,6 +259,48 @@ function App() {
             )
           );
         }
+        return;
+      }
+
+      if (
+        event.type === "permission.loaded" ||
+        event.type === "permission.changed"
+      ) {
+        const mode = readPermission(event);
+        if (mode) {
+          setPermissionMode(mode);
+        }
+        return;
+      }
+
+      if (event.type === "approval.requested" && event.turn_id) {
+        const approvalId = String(event.payload?.approval_id ?? "");
+        if (!approvalId) {
+          return;
+        }
+        setApprovals((current) => [
+          ...current.filter((item) => item.id !== approvalId),
+          {
+            id: approvalId,
+            turnId: event.turn_id ?? "",
+            tool: String(event.payload?.tool ?? "tool"),
+            arguments:
+              event.payload?.arguments &&
+              typeof event.payload.arguments === "object"
+                ? (event.payload.arguments as Record<string, unknown>)
+                : {},
+            reason: String(event.payload?.reason ?? "Approval required."),
+            risk: String(event.payload?.risk ?? "sensitive")
+          }
+        ]);
+        return;
+      }
+
+      if (event.type === "approval.resolved") {
+        const approvalId = String(event.payload?.approval_id ?? "");
+        setApprovals((current) =>
+          current.filter((item) => item.id !== approvalId)
+        );
         return;
       }
 
@@ -362,6 +425,9 @@ function App() {
       }
 
       if (event.type === "turn.completed" && event.turn_id) {
+        setApprovals((current) =>
+          current.filter((item) => item.turnId !== event.turn_id)
+        );
         setRunningTurnId((current) =>
           current === event.turn_id ? null : current
         );
@@ -392,6 +458,9 @@ function App() {
       }
 
       if (event.type === "turn.cancelled" && event.turn_id) {
+        setApprovals((current) =>
+          current.filter((item) => item.turnId !== event.turn_id)
+        );
         setRunningTurnId((current) =>
           current === event.turn_id ? null : current
         );
@@ -407,6 +476,9 @@ function App() {
       }
 
       if (event.type === "turn.failed" && event.turn_id) {
+        setApprovals((current) =>
+          current.filter((item) => item.turnId !== event.turn_id)
+        );
         const message = String(event.payload?.message ?? "Agent turn failed.");
         setRunningTurnId((current) =>
           current === event.turn_id ? null : current
@@ -436,15 +508,20 @@ function App() {
 
     const load = async () => {
       try {
-        const [projectEvent, projectListEvent, modelEvent] =
+        const [projectEvent, projectListEvent, modelEvent, permissionEvent] =
           await Promise.all([
             window.localAgent.getProject(),
             window.localAgent.listProjects(),
-            window.localAgent.listModels()
+            window.localAgent.listModels(),
+            window.localAgent.getPermission()
           ]);
 
         setProjects(readProjectList(projectListEvent));
         applyProjectSession(projectEvent);
+        const loadedPermission = readPermission(permissionEvent);
+        if (loadedPermission) {
+          setPermissionMode(loadedPermission);
+        }
 
         const providerStatus = readProvider(modelEvent);
         if (providerStatus) {
@@ -575,6 +652,38 @@ function App() {
         loadedThread.active_model ?? provider?.default_model ?? ""
       );
       setItems(historyItems(workspace.id, loadedThread.id, messages));
+    } catch (error) {
+      setUiError(String(error));
+    }
+  };
+
+  const changePermission = async (mode: PermissionMode) => {
+    setUiError(null);
+    try {
+      const event = await window.localAgent.setPermission(mode);
+      const next = readPermission(event);
+      if (next) {
+        setPermissionMode(next);
+      }
+    } catch (error) {
+      setUiError(String(error));
+    }
+  };
+
+  const respondApproval = async (
+    approval: ApprovalRequest,
+    decision: "allow_once" | "allow_turn" | "deny"
+  ) => {
+    setUiError(null);
+    try {
+      await window.localAgent.respondApproval(
+        approval.id,
+        decision,
+        approval.turnId
+      );
+      setApprovals((current) =>
+        current.filter((item) => item.id !== approval.id)
+      );
     } catch (error) {
       setUiError(String(error));
     }
@@ -733,9 +842,9 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <div className="topbar-title">
-            <strong>{workspace?.name ?? "Phase 4"}</strong>
+            <strong>{workspace?.name ?? "Phase 5"}</strong>
             <span>
-              {activeThread ? " · " + activeThread.title : " · Full Agent Loop"}
+              {activeThread ? " · " + activeThread.title : " · Permissions & Approval"}
             </span>
           </div>
           <div className="topbar-actions">
@@ -754,25 +863,25 @@ function App() {
         </header>
 
         <section className="conversation">
-          {items.length === 0 ? (
+          {items.length === 0 && approvals.length === 0 ? (
             <div className="welcome-card">
-              <div className="eyebrow">PHASE 4</div>
+              <div className="eyebrow">PHASE 5</div>
               <h1>
                 {workspace
-                  ? "Project ready. Agent loop is active."
+                  ? "Project ready. Permission policy is active."
                   : "Open a local project to begin."}
               </h1>
               <p>
                 {workspace
-                  ? "Send a coding task and the Agent can inspect, execute, recover from failures, modify files and verify its work before finishing."
+                  ? "Choose a permission mode, then send a task. Sensitive operations pause and wait for your explicit approval before execution."
                   : "Each opened project stays in the left sidebar for this app session. Switching projects changes the active workspace without discarding the others."}
               </p>
               <div className="milestones">
-                <span>Loop guard ✓</span>
-                <span>Failure recovery ✓</span>
-                <span>Context control ✓</span>
-                <span>Verification ✓</span>
-                <span>Stop ✓</span>
+                <span>Read Only ✓</span>
+                <span>Workspace ✓</span>
+                <span>Full Access ✓</span>
+                <span>Approval ✓</span>
+                <span>Policy guard ✓</span>
               </div>
               {!provider?.online ? (
                 <div className="provider-warning">
@@ -787,6 +896,42 @@ function App() {
                 <div key={item.id} className={"message " + item.role}>
                   <div className="message-role">{item.role}</div>
                   <div>{item.text}</div>
+                </div>
+              ))}
+              {approvals.map((approval) => (
+                <div key={approval.id} className="approval-card">
+                  <div className="approval-header">
+                    <strong>Approval required</strong>
+                    <span>{approval.risk}</span>
+                  </div>
+                  <div className="approval-tool">{approval.tool}</div>
+                  <pre>{stringifyArguments(approval.arguments)}</pre>
+                  <p>{approval.reason}</p>
+                  <div className="approval-actions">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void respondApproval(approval, "allow_once")
+                      }
+                    >
+                      Allow once
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void respondApproval(approval, "allow_turn")
+                      }
+                    >
+                      Allow for this turn
+                    </button>
+                    <button
+                      type="button"
+                      className="deny-button"
+                      onClick={() => void respondApproval(approval, "deny")}
+                    >
+                      Deny
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -827,6 +972,23 @@ function App() {
           <div className="composer-row">
             <div className="model-controls">
               <select
+                className={
+                  "permission-select permission-" + permissionMode
+                }
+                value={permissionMode}
+                disabled={runningTurnId !== null}
+                onChange={(event) =>
+                  void changePermission(
+                    event.target.value as PermissionMode
+                  )
+                }
+                title="Permission mode"
+              >
+                <option value="read_only">Read Only</option>
+                <option value="workspace">Workspace</option>
+                <option value="full_access">Full Access</option>
+              </select>
+              <select
                 className="model-select"
                 value={selectedModel}
                 disabled={
@@ -848,7 +1010,7 @@ function App() {
               </select>
               <span>
                 {contextLabel ? "Context " + contextLabel + " · " : ""}
-                Permission: Workspace guarded · Enter send · Shift+Enter newline
+                Enter send · Shift+Enter newline
               </span>
             </div>
             {runningTurnId ? (

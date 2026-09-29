@@ -93,10 +93,10 @@ class FileToolTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ShellToolTests(unittest.IsolatedAsyncioTestCase):
-    def test_blocks_destructive_command(self) -> None:
+    def test_rejects_empty_command(self) -> None:
         with self.assertRaises(ToolError) as ctx:
-            validate_command("git reset --hard HEAD")
-        self.assertEqual(ctx.exception.code, "COMMAND_BLOCKED")
+            validate_command("   ")
+        self.assertEqual(ctx.exception.code, "EMPTY_COMMAND")
 
     async def test_runs_safe_command(self) -> None:
         with tempfile.TemporaryDirectory() as root:

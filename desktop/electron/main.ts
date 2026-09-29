@@ -356,6 +356,28 @@ function createWindow(): void {
 }
 
 ipcMain.handle("agent:get-status", () => agentStatus);
+ipcMain.handle("agent:permission-get", async () => {
+  return sendRequest("permission.get", "permission.loaded");
+});
+ipcMain.handle("agent:permission-set", async (_event, mode: string) => {
+  return sendRequest("permission.set", "permission.changed", { mode });
+});
+ipcMain.handle(
+  "agent:approval-respond",
+  async (
+    _event,
+    approvalId: string,
+    decision: "allow_once" | "allow_turn" | "deny",
+    turnId?: string
+  ) => {
+    return sendRequest(
+      "approval.respond",
+      "approval.resolved",
+      { approval_id: approvalId, decision },
+      turnId ? { turnId } : {}
+    );
+  }
+);
 ipcMain.handle("agent:project-open", async (_event, model?: string) => {
   const selection = await dialog.showOpenDialog({
     properties: ["openDirectory"],

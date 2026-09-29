@@ -598,3 +598,113 @@ body,
 .model-controls span {
   white-space: nowrap;
 }
+
+
+/* Phase 5 permission controls and approval cards. */
+.permission-select {
+  max-width: 150px;
+  padding: 5px 8px;
+  color: #d4d4d4;
+  background: #202020;
+  border: 1px solid #3a3a3a;
+  border-radius: 7px;
+  outline: none;
+}
+
+.permission-select:disabled {
+  color: #696969;
+}
+
+.permission-read_only {
+  border-color: #3b4d65;
+}
+
+.permission-workspace {
+  border-color: #3b5442;
+}
+
+.permission-full_access {
+  color: #e1bd8f;
+  border-color: #6b4c2e;
+}
+
+.approval-card {
+  align-self: stretch;
+  max-width: 100%;
+  padding: 14px;
+  background: #211914;
+  border: 1px solid #65452b;
+  border-radius: 12px;
+}
+
+.approval-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.approval-header strong {
+  color: #f0c79a;
+  font-size: 12px;
+}
+
+.approval-header span {
+  padding: 3px 7px;
+  color: #c99d71;
+  font-size: 9px;
+  text-transform: uppercase;
+  border: 1px solid #5a3d28;
+  border-radius: 999px;
+}
+
+.approval-tool {
+  margin-top: 9px;
+  color: #e5e5e5;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.approval-card pre {
+  max-height: 180px;
+  margin: 8px 0;
+  overflow: auto;
+  padding: 9px;
+  color: #aaa;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #17130f;
+  border-radius: 7px;
+}
+
+.approval-card p {
+  color: #c5aa91;
+  font-size: 12px;
+}
+
+.approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.approval-actions button {
+  padding: 7px 10px;
+  color: #ddd;
+  background: #2b241e;
+  border: 1px solid #5c4938;
+  border-radius: 7px;
+}
+
+.approval-actions button:hover {
+  background: #382d24;
+}
+
+.approval-actions .deny-button {
+  color: #e4abab;
+  border-color: #613a3a;
+}

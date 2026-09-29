@@ -25,15 +25,15 @@ def _is_probably_binary(path: Path) -> bool:
 class ListDirectoryTool(BaseTool):
     name = "list_directory"
     description = (
-        "List files and directories inside the current workspace. "
-        "Use a relative path. Hidden build/cache directories are not expanded unless directly requested."
+        "List files and directories. Use a workspace-relative path normally. "
+        "Absolute paths outside the workspace require Full Access and explicit approval."
     )
     parameters = {
         "type": "object",
         "properties": {
             "path": {
                 "type": "string",
-                "description": "Workspace-relative directory path. Use '.' for the workspace root.",
+                "description": "Directory path. Use '.' for the workspace root.",
             },
             "max_entries": {
                 "type": "integer",
@@ -78,13 +78,14 @@ class ListDirectoryTool(BaseTool):
 class ReadFileTool(BaseTool):
     name = "read_file"
     description = (
-        "Read a UTF-8 text file from the current workspace. "
+        "Read a UTF-8 text file. Use a workspace-relative path normally. "
+        "Absolute paths outside the workspace require Full Access and approval. "
         "Use start_line/end_line to avoid reading a very large file all at once."
     )
     parameters = {
         "type": "object",
         "properties": {
-            "path": {"type": "string", "description": "Workspace-relative file path."},
+            "path": {"type": "string", "description": "File path; workspace-relative is preferred."},
             "start_line": {"type": "integer", "minimum": 1},
             "end_line": {"type": "integer", "minimum": 1},
         },
@@ -133,7 +134,8 @@ class ReadFileTool(BaseTool):
 class WriteFileTool(BaseTool):
     name = "write_file"
     description = (
-        "Create or replace a UTF-8 text file inside the current workspace. "
+        "Create or replace a UTF-8 text file. Use a workspace-relative path normally. "
+        "Absolute paths outside the workspace require Full Access and approval. "
         "Prefer apply_patch for small edits to existing files."
     )
     parameters = {
@@ -169,7 +171,7 @@ class WriteFileTool(BaseTool):
 class ApplyPatchTool(BaseTool):
     name = "apply_patch"
     description = (
-        "Make a precise text edit inside one workspace file by replacing exact old_text with new_text. "
+        "Make a precise text edit by replacing exact old_text with new_text. "
         "The edit fails if old_text is missing or occurs multiple times unless replace_all is true."
     )
     parameters = {
@@ -228,7 +230,8 @@ class ApplyPatchTool(BaseTool):
 class SearchFilesTool(BaseTool):
     name = "search_files"
     description = (
-        "Search text files inside the workspace for a literal string. "
+        "Search text files for a literal string. Search the workspace normally; "
+        "an absolute path outside it requires Full Access and approval. "
         "Returns matching file paths, line numbers and short line excerpts."
     )
     parameters = {
@@ -282,7 +285,7 @@ class SearchFilesTool(BaseTool):
                 break
             if not path.is_file():
                 continue
-            relative_parts = path.relative_to(self.workspace.root).parts
+            relative_parts = path.relative_to(root).parts
             if any(part in DEFAULT_IGNORED_DIRS for part in relative_parts[:-1]):
                 continue
             if not fnmatch.fnmatch(path.name, filename_glob):

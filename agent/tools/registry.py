@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from agent.tools.base import BaseTool, OutputCallback, ToolError, ToolResult
@@ -34,8 +35,16 @@ class ToolRegistry:
     def names(self) -> list[str]:
         return sorted(self._tools)
 
-    def schemas(self) -> list[dict[str, Any]]:
-        return [self._tools[name].ollama_schema() for name in self.names]
+    def schemas(
+        self,
+        allowed_names: Iterable[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        if allowed_names is None:
+            names = self.names
+        else:
+            allowed = set(allowed_names)
+            names = [name for name in self.names if name in allowed]
+        return [self._tools[name].ollama_schema() for name in names]
 
     async def execute(
         self,

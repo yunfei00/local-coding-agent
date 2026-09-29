@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 import shutil
 import time
 from typing import Any
@@ -11,36 +10,12 @@ from agent.tools.base import BaseTool, ToolError, ToolResult
 from agent.tools.workspace import Workspace
 
 
-BLOCKED_PATTERNS = [
-    r"(?i)\bremove-item\b",
-    r"(?i)\bdel\b",
-    r"(?i)\berase\b",
-    r"(?i)\brmdir\b",
-    r"(?i)\brd\s+/s\b",
-    r"(?i)\brm\s+-",
-    r"(?i)git\s+reset\s+--hard",
-    r"(?i)git\s+clean\s+-",
-    r"(?i)git\s+push\b",
-    r"(?i)git\s+checkout\s+--\s+",
-    r"(?i)\bformat\b",
-    r"(?i)\bshutdown\b",
-    r"(?i)\brestart-computer\b",
-    r"(?i)\bstop-computer\b",
-    r"(?i)\breg\s+(add|delete)\b",
-]
-
 MAX_OUTPUT_CHARS = 200_000
 
 
 def validate_command(command: str) -> None:
     if not command.strip():
         raise ToolError("EMPTY_COMMAND", "Command cannot be empty.")
-    for pattern in BLOCKED_PATTERNS:
-        if re.search(pattern, command):
-            raise ToolError(
-                "COMMAND_BLOCKED",
-                "This command is blocked during Phase 3. Destructive commands require the approval system introduced in Phase 5.",
-            )
 
 
 def shell_command() -> tuple[str, list[str]]:
@@ -57,8 +32,9 @@ def shell_command() -> tuple[str, list[str]]:
 class RunCommandTool(BaseTool):
     name = "run_command"
     description = (
-        "Run a development command in the current workspace and return stdout, stderr and exit code. "
-        "Use for tests, builds, package scripts and diagnostics. Destructive commands are blocked in Phase 3."
+        "Run a development command and return stdout, stderr and exit code. "
+        "The permission policy may require explicit user approval for destructive, "
+        "publishing, system-level or out-of-workspace operations."
     )
     parameters = {
         "type": "object",
@@ -69,7 +45,10 @@ class RunCommandTool(BaseTool):
             },
             "cwd": {
                 "type": "string",
-                "description": "Optional workspace-relative working directory. Defaults to workspace root.",
+                "description": (
+                    "Working directory. Use a workspace-relative path normally. "
+                    "An absolute path outside the workspace requires Full Access and approval."
+                ),
             },
             "timeout_seconds": {
                 "type": "integer",
@@ -160,7 +139,7 @@ class RunCommandTool(BaseTool):
             duration_ms=duration_ms,
             data={
                 "command": command,
-                "cwd": self.workspace.relative(cwd),
+                "cwd": self.workspace.display(cwd),
             },
         )
 

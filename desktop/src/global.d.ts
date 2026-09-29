@@ -21,6 +21,13 @@ declare global {
         protocol?: string;
         error?: string;
       }>;
+      getPermission: () => Promise<AgentEnvelope>;
+      setPermission: (mode: string) => Promise<AgentEnvelope>;
+      respondApproval: (
+        approvalId: string,
+        decision: "allow_once" | "allow_turn" | "deny",
+        turnId?: string
+      ) => Promise<AgentEnvelope>;
       openProject: (model?: string) => Promise<{ canceled: boolean; event?: AgentEnvelope }>;
       getProject: () => Promise<AgentEnvelope>;
       listProjects: () => Promise<AgentEnvelope>;

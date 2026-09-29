@@ -18,6 +18,11 @@ from agent.core.agent_loop import (
 from agent.core.version import APP_VERSION, PROTOCOL_VERSION
 from agent.llm.base import ToolCall
 from agent.llm.ollama import OllamaProvider, OllamaProviderError
+from agent.permissions.approval import (
+    APPROVAL_DENY,
+    ApprovalManager,
+)
+from agent.permissions.policy import PermissionMode, PermissionPolicy
 from agent.server.projects import ProjectRegistry
 from agent.server.protocol import envelope, new_id, validate_client_message
 from agent.tools.base import ToolError
@@ -25,7 +30,8 @@ from agent.tools.base import ToolError
 
 SYSTEM_PROMPT = """You are Local Coding Agent, a local software-development agent.
 
-When a workspace is open, you have tools to inspect and modify only that workspace.
+When a workspace is open, the runtime exposes only the tools permitted by the current permission mode.
+Treat the runtime permission decision as authoritative.
 Work deliberately:
 - inspect the project before editing;
 - do not invent file contents or command results;
@@ -36,8 +42,8 @@ Work deliberately:
 - if a command fails, analyze its real output before deciding the next step;
 - never claim a test passed unless the tool result actually shows success.
 
-Phase 4 blocks destructive commands such as bulk deletion, git reset --hard, git clean and git push.
-Do not try to bypass those restrictions.
+The permission policy is enforced by the runtime. Never try to bypass it.
+When an operation requires approval, wait for the user's decision and continue based on the structured result.
 
 You are responsible for completing the task, not just suggesting steps:
 - after a real command failure, inspect the actual output and change approach when appropriate;
@@ -72,6 +78,8 @@ class AgentServer:
         self.active_turns: dict[str, asyncio.Task[None]] = {}
         self.available_models: set[str] = set()
         self.default_model: str | None = self.provider.preferred_model
+        self.permissions = PermissionPolicy(PermissionMode.WORKSPACE)
+        self.approvals = ApprovalManager()
 
     def authorized(self, request: web.Request) -> bool:
         return request.headers.get("Authorization") == f"Bearer {self.token}"
@@ -157,6 +165,10 @@ class AgentServer:
             "provider": self.provider.provider_name,
             "preferred_model": self.provider.preferred_model,
             "context_window": self.provider.context_window,
+            "permission": {
+                "mode": self.permissions.mode.value,
+                "available_modes": self.permissions.available_modes,
+            },
             "projects": self.projects.list_payload(),
             "active_project": (
                 self.projects.project_payload(self.projects.active)
@@ -178,6 +190,92 @@ class AgentServer:
         if message_type == "client.hello":
             await ws.send_json(
                 envelope("server.ready", self._server_ready_payload(), request_id=request_id)
+            )
+            return
+
+        if message_type == "permission.get":
+            await ws.send_json(
+                envelope(
+                    "permission.loaded",
+                    {
+                        "mode": self.permissions.mode.value,
+                        "available_modes": self.permissions.available_modes,
+                    },
+                    request_id=request_id,
+                )
+            )
+            return
+
+        if message_type == "permission.set":
+            if any(not task.done() for task in self.active_turns.values()):
+                await self.send_error(
+                    ws,
+                    "TURN_RUNNING",
+                    "Stop the active turn before changing permission mode.",
+                    request_id=request_id,
+                )
+                return
+            requested = str(payload.get("mode") or "")
+            try:
+                mode = self.permissions.set_mode(requested)
+            except ValueError as exc:
+                await self.send_error(
+                    ws,
+                    "INVALID_PERMISSION_MODE",
+                    str(exc),
+                    request_id=request_id,
+                )
+                return
+
+            self._sync_workspace_permissions()
+            await ws.send_json(
+                envelope(
+                    "permission.changed",
+                    {
+                        "mode": mode.value,
+                        "available_modes": self.permissions.available_modes,
+                    },
+                    request_id=request_id,
+                )
+            )
+            return
+
+        if message_type == "approval.respond":
+            approval_id = str(payload.get("approval_id") or "")
+            decision = str(payload.get("decision") or "")
+            try:
+                pending = self.approvals.respond(approval_id, decision)
+            except ValueError as exc:
+                await self.send_error(
+                    ws,
+                    "INVALID_APPROVAL_DECISION",
+                    str(exc),
+                    request_id=request_id,
+                    turn_id=data.get("turn_id"),
+                )
+                return
+
+            if not pending:
+                await self.send_error(
+                    ws,
+                    "APPROVAL_NOT_FOUND",
+                    "Approval request is no longer pending.",
+                    request_id=request_id,
+                    turn_id=data.get("turn_id"),
+                )
+                return
+
+            await ws.send_json(
+                envelope(
+                    "approval.resolved",
+                    {
+                        "approval_id": approval_id,
+                        "decision": decision,
+                    },
+                    request_id=request_id,
+                    thread_id=pending.thread_id,
+                    turn_id=pending.turn_id,
+                )
             )
             return
 
@@ -219,6 +317,9 @@ class AgentServer:
                 )
                 return
 
+            project.workspace.set_full_access(
+                self.permissions.mode == PermissionMode.FULL_ACCESS
+            )
             response_payload = self.projects.project_payload(project)
             response_payload["created"] = created
             await ws.send_json(
@@ -268,6 +369,9 @@ class AgentServer:
                 )
                 return
             project, thread = selected
+            project.workspace.set_full_access(
+                self.permissions.mode == PermissionMode.FULL_ACCESS
+            )
             await ws.send_json(
                 envelope(
                     "project.selected",
@@ -468,6 +572,7 @@ class AgentServer:
             if not task or task.done():
                 await self.send_error(ws, "TURN_NOT_RUNNING", "Turn is not running.", request_id=request_id, turn_id=turn_id or None)
                 return
+            self.approvals.cancel_turn(turn_id)
             task.cancel()
             return
 
@@ -476,6 +581,30 @@ class AgentServer:
             "UNKNOWN_MESSAGE_TYPE",
             f"Unsupported message type: {message_type}",
             request_id=request_id,
+        )
+
+    def _sync_workspace_permissions(self) -> None:
+        full_access = self.permissions.mode == PermissionMode.FULL_ACCESS
+        for project in self.projects.list_projects():
+            project.workspace.set_full_access(full_access)
+
+    def _permission_prompt(self) -> str:
+        mode = self.permissions.mode
+        if mode == PermissionMode.READ_ONLY:
+            return (
+                "Permission mode: Read Only. You can inspect files and Git state, "
+                "but you cannot modify files or run shell commands."
+            )
+        if mode == PermissionMode.FULL_ACCESS:
+            return (
+                "Permission mode: Full Access. Workspace operations are available. "
+                "Absolute paths outside the workspace may be used only when needed and "
+                "will require explicit user approval. Risky commands also require approval."
+            )
+        return (
+            "Permission mode: Workspace. You can read/write inside the active workspace "
+            "and run development commands there. Risky/destructive/publishing commands "
+            "require explicit user approval. Access outside the workspace is denied."
         )
 
     async def ensure_model_available(
@@ -528,6 +657,9 @@ class AgentServer:
             return
 
         workspace = project.workspace
+        workspace.set_full_access(
+            self.permissions.mode == PermissionMode.FULL_ACCESS
+        )
         tools = project.tools
         state = project.state
         guard = ToolLoopGuard()
@@ -538,7 +670,9 @@ class AgentServer:
                 "role": "system",
                 "content": SYSTEM_PROMPT
                 + "\n\nCurrent workspace: "
-                + workspace.display_path,
+                + workspace.display_path
+                + "\n"
+                + self._permission_prompt(),
             },
             *history,
             {"role": "user", "content": prompt},
@@ -561,7 +695,9 @@ class AgentServer:
                         async for chunk in self.provider.stream_chat(
                             model=model,
                             messages=messages,
-                            tools=tools.schemas(),
+                            tools=tools.schemas(
+                                self.permissions.visible_tools(tools.names)
+                            ),
                         ):
                             if chunk.content:
                                 observed_output = True
@@ -743,52 +879,58 @@ class AgentServer:
                             "changed_paths": [],
                         }
                     else:
-                        async def on_output(
-                            text: str,
-                            *,
-                            cid: str = call_id,
-                            name: str = call.name,
-                        ) -> None:
-                            await ws.send_json(
-                                envelope(
-                                    "tool.output",
-                                    {
-                                        "tool_call_id": cid,
-                                        "name": name,
-                                        "output": text,
+                        verdict = self.permissions.evaluate(
+                            tool_name=call.name,
+                            arguments=call.arguments,
+                            workspace=workspace,
+                        )
+
+                        if not verdict.allowed:
+                            payload = {
+                                "ok": False,
+                                "summary": verdict.reason,
+                                "error": {
+                                    "code": "PERMISSION_DENIED",
+                                    "message": verdict.reason,
+                                    "risk": verdict.risk,
+                                },
+                                "changed_paths": [],
+                            }
+                        else:
+                            approved = True
+                            if verdict.requires_approval:
+                                decision = await self.approvals.request(
+                                    ws,
+                                    turn_id=turn_id,
+                                    thread_id=thread_id,
+                                    approval_key=verdict.approval_key or call_id,
+                                    tool_name=call.name,
+                                    arguments=call.arguments,
+                                    reason=verdict.reason,
+                                    risk=verdict.risk,
+                                )
+                                approved = decision != APPROVAL_DENY
+
+                            if not approved:
+                                payload = {
+                                    "ok": False,
+                                    "summary": "User denied this operation.",
+                                    "error": {
+                                        "code": "APPROVAL_DENIED",
+                                        "message": "User denied this operation.",
+                                        "risk": verdict.risk,
                                     },
+                                    "changed_paths": [],
+                                }
+                            else:
+                                payload = await self._execute_tool_call(
+                                    ws,
+                                    tools=tools,
+                                    call=call,
+                                    call_id=call_id,
                                     thread_id=thread_id,
                                     turn_id=turn_id,
                                 )
-                            )
-
-                        try:
-                            result = await tools.execute(
-                                call.name,
-                                call.arguments,
-                                on_output=on_output,
-                            )
-                            payload = result.to_dict()
-                        except ToolError as exc:
-                            payload = {
-                                "ok": False,
-                                "summary": exc.message,
-                                "error": {
-                                    "code": exc.code,
-                                    "message": exc.message,
-                                },
-                                "changed_paths": [],
-                            }
-                        except Exception as exc:
-                            payload = {
-                                "ok": False,
-                                "summary": f"Tool failed: {exc}",
-                                "error": {
-                                    "code": "TOOL_INTERNAL_ERROR",
-                                    "message": str(exc),
-                                },
-                                "changed_paths": [],
-                            }
 
                     guard.record_result(call.name, payload)
 
@@ -924,6 +1066,60 @@ class AgentServer:
                 )
         except (ConnectionResetError, RuntimeError):
             return
+        finally:
+            self.approvals.finish_turn(turn_id)
+
+    async def _execute_tool_call(
+        self,
+        ws: web.WebSocketResponse,
+        *,
+        tools,
+        call: ToolCall,
+        call_id: str,
+        thread_id: str,
+        turn_id: str,
+    ) -> dict[str, Any]:
+        async def on_output(text: str) -> None:
+            await ws.send_json(
+                envelope(
+                    "tool.output",
+                    {
+                        "tool_call_id": call_id,
+                        "name": call.name,
+                        "output": text,
+                    },
+                    thread_id=thread_id,
+                    turn_id=turn_id,
+                )
+            )
+
+        try:
+            result = await tools.execute(
+                call.name,
+                call.arguments,
+                on_output=on_output,
+            )
+            return result.to_dict()
+        except ToolError as exc:
+            return {
+                "ok": False,
+                "summary": exc.message,
+                "error": {
+                    "code": exc.code,
+                    "message": exc.message,
+                },
+                "changed_paths": [],
+            }
+        except Exception as exc:
+            return {
+                "ok": False,
+                "summary": f"Tool failed: {exc}",
+                "error": {
+                    "code": "TOOL_INTERNAL_ERROR",
+                    "message": str(exc),
+                },
+                "changed_paths": [],
+            }
 
     async def send_error(
         self,
