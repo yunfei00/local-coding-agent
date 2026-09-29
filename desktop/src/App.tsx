@@ -1091,7 +1091,13 @@ function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand">Local Coding Agent</div>
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">LC</span>
+          <span className="brand-copy">
+            <strong>Local Coding Agent</strong>
+            <small>Local-first coding workspace</small>
+          </span>
+        </div>
 
         <div className="sidebar-actions">
           <button
@@ -1099,17 +1105,22 @@ function App() {
             disabled={status.state !== "ready" || Boolean(runningTurnId)}
             onClick={() => void openProject()}
           >
+            <span aria-hidden="true">＋</span>
             Open project
           </button>
 
           <button
             className="new-thread"
             disabled={
-              status.state !== "ready" || !providerReady || !workspace
+              status.state !== "ready" ||
+              !providerReady ||
+              !workspace ||
+              Boolean(runningTurnId)
             }
             onClick={() => void createThread()}
           >
-            + New thread
+            <span aria-hidden="true">＋</span>
+            New thread
           </button>
         </div>
 
@@ -1155,6 +1166,7 @@ function App() {
                     "thread-item " +
                     (activeThread?.id === thread.id ? "active" : "")
                   }
+                  disabled={Boolean(runningTurnId)}
                   onClick={() => void loadThread(thread)}
                 >
                   <span>{thread.title}</span>
@@ -1179,9 +1191,13 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <div className="topbar-title">
-            <strong>{workspace?.name ?? "Phase 9"}</strong>
+            <strong>{workspace?.name ?? "No project open"}</strong>
             <span>
-              {activeThread ? " · " + activeThread.title : " · Windows Packaging"}
+              {activeThread
+                ? activeThread.title
+                : workspace
+                  ? "Create or select a thread"
+                  : "Open a local workspace to begin"}
             </span>
           </div>
           <div className="topbar-actions">
@@ -1191,9 +1207,15 @@ function App() {
                 (provider?.online ? "provider-online" : "provider-offline")
               }
               onClick={() => void refreshModels()}
-              title="Refresh model provider status and models"
+              title="Refresh provider status and models"
             >
-              {provider?.provider ?? "Provider"} {provider?.online ? "Online" : "Offline"}
+              <span className="provider-status-dot" aria-hidden="true" />
+              <span className="provider-name">
+                {provider?.provider ?? "Provider"}
+              </span>
+              <span className="provider-model">
+                {selectedModel || (provider?.online ? "No model" : "Offline")}
+              </span>
             </button>
             <button
               type="button"
@@ -1231,28 +1253,58 @@ function App() {
           >
           {items.length === 0 && approvals.length === 0 ? (
             <div className="welcome-card">
-              <div className="eyebrow">PHASE 9</div>
+              <div className="eyebrow">
+                {workspace ? "WORKSPACE READY" : "LOCAL-FIRST CODING"}
+              </div>
               <h1>
                 {workspace
-                  ? "Project ready. End-to-end validation is active."
-                  : "Open a local project to begin."}
+                  ? "What would you like to build?"
+                  : "Open a project to start coding locally."}
               </h1>
               <p>
                 {workspace
-                  ? "The current runtime is ready with an embedded Agent executable, persistent data and the selected model provider."
-                  : "Each opened project stays in the left sidebar for this app session. Switching projects changes the active workspace without discarding the others."}
+                  ? "Ask the Agent to inspect, change, run, test or review this workspace. Tool execution stays inside the selected permission mode."
+                  : "Projects and threads stay local to this desktop. Open a workspace to inspect code, run tools and review changes with your selected model."}
               </p>
-              <div className="milestones">
-                <span>Python E2E ✓</span>
-                <span>Node E2E ✓</span>
-                <span>Android ready ✓</span>
-                <span>Failure recovery ✓</span>
-                <span>Final Diff ✓</span>
-              </div>
+
+              {workspace ? (
+                <div className="welcome-status-grid">
+                  <div>
+                    <span>Provider</span>
+                    <strong>{provider?.provider ?? "—"}</strong>
+                  </div>
+                  <div>
+                    <span>Model</span>
+                    <strong>{selectedModel || "—"}</strong>
+                  </div>
+                  <div>
+                    <span>Permission</span>
+                    <strong>{permissionMode.replace("_", " ")}</strong>
+                  </div>
+                  <div>
+                    <span>Context</span>
+                    <strong>{contextLabel || "Ready"}</strong>
+                  </div>
+                </div>
+              ) : (
+                <div className="welcome-actions">
+                  <button
+                    type="button"
+                    disabled={status.state !== "ready"}
+                    onClick={() => void openProject()}
+                  >
+                    Open project
+                  </button>
+                </div>
+              )}
+
               {!provider?.online ? (
                 <div className="provider-warning">
-                  {provider?.error?.message ??
-                    "The selected model provider is not available. Check its configuration and refresh."}
+                  <strong>Provider unavailable</strong>
+                  <span>
+                    {provider?.error?.message ??
+                      "Check the Provider section in Settings, then refresh the provider status."}
+                  </span>
                 </div>
               ) : null}
             </div>
@@ -1390,9 +1442,14 @@ function App() {
                   <option value="">No models</option>
                 )}
               </select>
-              <span>
-                {contextLabel ? "Context " + contextLabel + " · " : ""}
-                Enter send · Shift+Enter newline
+              <span className="composer-hints">
+                {contextLabel ? (
+                  <span className="context-chip">
+                    Context {contextLabel}
+                  </span>
+                ) : null}
+                <span>Enter to send</span>
+                <span>Shift+Enter newline</span>
               </span>
             </div>
             {runningTurnId ? (
@@ -1406,6 +1463,7 @@ function App() {
             ) : (
               <button
                 type="submit"
+                className="send-button"
                 disabled={
                   !workspace ||
                   !activeThread ||
