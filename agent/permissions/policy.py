@@ -46,8 +46,13 @@ RISKY_COMMAND_PATTERNS: list[tuple[str, str, str]] = [
         "Command may discard or overwrite working-tree changes.",
     ),
     (
+        "git_commit",
+        r"(?i)\bgit\b[^\r\n;&|]*\bcommit\b",
+        "Command creates a Git commit and requires explicit user approval.",
+    ),
+    (
         "git_publish",
-        r"(?i)\bgit\s+push\b",
+        r"(?i)\bgit\b[^\r\n;&|]*\bpush\b",
         "Command publishes local Git changes to a remote repository.",
     ),
     (
