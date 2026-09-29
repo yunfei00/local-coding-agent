@@ -14,6 +14,7 @@ import {
   ToolChunk,
   ToolView
 } from "./components/ToolCard";
+import { appendOrderedToolChunk } from "./lib/toolStream";
 import { shouldSubmitComposer } from "./lib/composer";
 import { AgentState, formatAgentStatus } from "./lib/status";
 
@@ -179,20 +180,6 @@ function stringifyArguments(value: unknown): string {
   } catch {
     return String(value);
   }
-}
-
-function appendToolChunk(
-  chunks: ToolChunk[],
-  nextChunk: ToolChunk,
-  maxChars = 24000
-): ToolChunk[] {
-  const next = [...chunks, nextChunk];
-  let total = next.reduce((sum, item) => sum + item.text.length, 0);
-  while (next.length > 1 && total > maxChars) {
-    const removed = next.shift();
-    total -= removed?.text.length ?? 0;
-  }
-  return next;
 }
 
 function resultObject(value: unknown): Record<string, unknown> {
@@ -513,20 +500,43 @@ function App() {
               return item;
             }
 
+            const sequenceValue = event.payload?.sequence;
+            const sequence =
+              typeof sequenceValue === "number"
+                ? sequenceValue
+                : (item.tool.lastSequence ?? 0) + 1;
+
             if (stream === "meta") {
               const pidValue = event.payload?.pid;
               const exitValue = event.payload?.exit_code;
               const durationValue = event.payload?.duration_ms;
+              const reason =
+                typeof event.payload?.reason === "string"
+                  ? event.payload.reason
+                  : undefined;
+              const method =
+                typeof event.payload?.method === "string"
+                  ? event.payload.method
+                  : undefined;
+
+              let nextStatus = item.tool.status;
+              if (eventName === "process_started") {
+                nextStatus = "running";
+              } else if (eventName === "process_terminating") {
+                nextStatus = "stopping";
+              } else if (eventName === "process_terminated") {
+                nextStatus =
+                  reason === "timeout" ? "timed_out" : "cancelled";
+              } else if (eventName === "process_exited") {
+                nextStatus =
+                  Number(exitValue ?? 0) === 0 ? "completed" : "failed";
+              }
+
               return {
                 ...item,
                 tool: {
                   ...item.tool,
-                  status:
-                    eventName === "process_exited"
-                      ? Number(exitValue ?? 0) === 0
-                        ? "completed"
-                        : "failed"
-                      : "running",
+                  status: nextStatus,
                   pid:
                     typeof pidValue === "number"
                       ? pidValue
@@ -546,7 +556,19 @@ function App() {
                   durationMs:
                     typeof durationValue === "number"
                       ? durationValue
-                      : item.tool.durationMs
+                      : item.tool.durationMs,
+                  streamTruncated:
+                    eventName === "stream_truncated"
+                      ? true
+                      : item.tool.streamTruncated,
+                  terminationReason:
+                    reason ?? item.tool.terminationReason,
+                  terminationMethod:
+                    method ?? item.tool.terminationMethod,
+                  lastSequence: Math.max(
+                    item.tool.lastSequence ?? 0,
+                    sequence
+                  )
                 }
               };
             }
@@ -556,14 +578,29 @@ function App() {
               return item;
             }
 
+            const merged = appendOrderedToolChunk(
+              item.tool.chunks,
+              {
+                stream,
+                text: output,
+                sequence
+              }
+            );
+
             return {
               ...item,
               tool: {
                 ...item.tool,
-                chunks: appendToolChunk(item.tool.chunks, {
-                  stream,
-                  text: output
-                })
+                chunks: merged.chunks,
+                droppedOutputChars:
+                  (item.tool.droppedOutputChars ?? 0) +
+                  merged.droppedChars,
+                streamTruncated:
+                  item.tool.streamTruncated || merged.droppedChars > 0,
+                lastSequence: Math.max(
+                  item.tool.lastSequence ?? 0,
+                  sequence
+                )
               }
             };
           })
@@ -591,24 +628,46 @@ function App() {
             }
 
             let chunks = item.tool.chunks;
-            if (chunks.length === 0 && stdout) {
-              chunks = appendToolChunk(chunks, {
-                stream: "stdout",
-                text: stdout
-              });
+            let droppedOutputChars = item.tool.droppedOutputChars ?? 0;
+            let lastSequence = item.tool.lastSequence ?? 0;
+
+            if (chunks.length === 0) {
+              if (stdout) {
+                lastSequence += 1;
+                const merged = appendOrderedToolChunk(chunks, {
+                  stream: "stdout",
+                  text: stdout,
+                  sequence: lastSequence
+                });
+                chunks = merged.chunks;
+                droppedOutputChars += merged.droppedChars;
+              }
+              if (stderr) {
+                lastSequence += 1;
+                const merged = appendOrderedToolChunk(chunks, {
+                  stream: "stderr",
+                  text: stderr,
+                  sequence: lastSequence
+                });
+                chunks = merged.chunks;
+                droppedOutputChars += merged.droppedChars;
+              }
             }
-            if (stderr) {
-              chunks = appendToolChunk(chunks, {
-                stream: "stderr",
-                text: stderr
-              });
-            }
+
+            const rawError = resultObject(rawResult.error);
+            const errorCode = String(rawError.code ?? "");
+            const streamData = resultObject(data.stream);
+            const timedOut = errorCode === "COMMAND_TIMEOUT";
 
             return {
               ...item,
               tool: {
                 ...item.tool,
-                status: ok ? "completed" : "failed",
+                status: timedOut
+                  ? "timed_out"
+                  : ok
+                    ? "completed"
+                    : "failed",
                 summary,
                 chunks,
                 exitCode:
@@ -639,7 +698,13 @@ function App() {
                 deletions:
                   typeof data.deletions === "number"
                     ? data.deletions
-                    : undefined
+                    : undefined,
+                droppedOutputChars,
+                streamTruncated:
+                  item.tool.streamTruncated ||
+                  droppedOutputChars > 0 ||
+                  streamData.truncated === true,
+                lastSequence
               }
             };
           })
