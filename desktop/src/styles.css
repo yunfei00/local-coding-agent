@@ -1018,3 +1018,30 @@ body,
   background: #2c2c2c;
   border-color: #555;
 }
+
+
+/* Phase 15 ordered terminal stream lifecycle. */
+.tool-stopping {
+  border-color: #5b5131;
+}
+
+.tool-cancelled,
+.tool-timed_out {
+  border-color: #5a4335;
+}
+
+.terminal-truncated {
+  padding: 7px 12px;
+  color: #bda66f;
+  font-size: 9px;
+  background: #211f15;
+  border-top: 1px solid #39331f;
+}
+
+.terminal-termination {
+  padding: 7px 12px;
+  color: #b99983;
+  font-size: 9px;
+  background: #1e1815;
+  border-top: 1px solid #352820;
+}
