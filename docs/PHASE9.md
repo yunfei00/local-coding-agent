@@ -42,6 +42,7 @@ The Windows x64 build produces:
 ```text
 Local-Coding-Agent-0.1.0-x64-Setup.exe
 Local-Coding-Agent-0.1.0-x64-Portable.exe
+SHA256SUMS.txt
 ```
 
 The installer is assisted rather than silent/one-click and allows changing the installation directory.
@@ -60,15 +61,15 @@ git pull --ff-only origin feature/v0.1-mvp
 .\scripts\build\package-windows.ps1
 ```
 
-The script prepares the Python packaging environment, builds `lca-agent.exe`, starts that packaged Agent and checks its real HTTP health endpoint, runs Desktop checks, creates NSIS + portable packages, and verifies the bundled Agent under `win-unpacked/resources/agent`.
+The script prepares the Python packaging environment, runs the full Python suite, builds `lca-agent.exe`, starts that packaged Agent and checks its real HTTP health endpoint, runs Desktop checks, creates NSIS + portable packages, then starts the actual packaged `LocalCodingAgent.exe`. The Desktop smoke test requires the bundled Agent to connect with `phase9`, closes the Desktop, and verifies that no new `lca-agent` process was left behind. It also writes `SHA256SUMS.txt` for the Setup and Portable executables.
 
 ## GitHub Actions
 
 `.github/workflows/package-windows.yml` builds the same artifacts on `windows-latest`.
 
-During Phase 9 it runs for pushes to `feature/v0.1-mvp` so packaging problems are caught before release.
+During Phase 9, `.github/workflows/package-windows.yml` is a **candidate-only** workflow. It runs for relevant pushes to `feature/v0.1-mvp`, has read-only repository contents permission, and uploads the Setup EXE, Portable EXE and checksum file as a temporary Actions artifact.
 
-For a tag such as `v0.1.0`, the workflow also creates or updates the GitHub Release and uploads both EXE artifacts.
+Formal publishing is isolated in `.github/workflows/release.yml`. It only runs for `v*` tags, requires the root and Desktop versions to match, and requires the tag to equal `v<desktop version>`. Only after the full packaging and packaged-Desktop smoke test passes does it create or update the GitHub Release.
 
 ## Fresh-machine acceptance
 
