@@ -9,6 +9,12 @@ from typing import Any
 
 from aiohttp import WSMsgType, web
 
+from agent.core.agent_loop import (
+    ToolLoopGuard,
+    canonical_tool_fingerprint,
+    compact_tool_payload,
+    trim_history,
+)
 from agent.core.version import APP_VERSION, PROTOCOL_VERSION
 from agent.llm.base import ToolCall
 from agent.llm.ollama import OllamaProvider, OllamaProviderError
@@ -30,8 +36,16 @@ Work deliberately:
 - if a command fails, analyze its real output before deciding the next step;
 - never claim a test passed unless the tool result actually shows success.
 
-Phase 3 blocks destructive commands such as bulk deletion, git reset --hard, git clean and git push.
+Phase 4 blocks destructive commands such as bulk deletion, git reset --hard, git clean and git push.
 Do not try to bypass those restrictions.
+
+You are responsible for completing the task, not just suggesting steps:
+- after a real command failure, inspect the actual output and change approach when appropriate;
+- do not repeatedly call the same tool with the same arguments without new information;
+- after modifying code, run a relevant existing validation command when it is safe and identifiable;
+- after any file modification, inspect the Git diff after the latest change;
+- if validation cannot be performed, state that clearly instead of claiming success.
+
 Keep user-facing explanations concise and focus on completing the requested development task."""
 
 
@@ -46,7 +60,10 @@ def build_health_payload(port: int) -> dict[str, Any]:
 
 
 class AgentServer:
-    MAX_TOOL_STEPS = 12
+    MAX_MODEL_STEPS = 16
+    MAX_TOOL_CALLS = 40
+    MAX_BLOCKED_REPEATS = 3
+    MODEL_RETRY_ATTEMPTS = 2
 
     def __init__(self, token: str) -> None:
         self.token = token
@@ -509,11 +526,13 @@ class AgentServer:
         project = self.projects.active
         if not project:
             return
+
         workspace = project.workspace
         tools = project.tools
         state = project.state
+        guard = ToolLoopGuard()
 
-        history = state.get_messages(thread_id)
+        history = trim_history(state.get_messages(thread_id))
         messages: list[dict[str, Any]] = [
             {
                 "role": "system",
@@ -524,47 +543,99 @@ class AgentServer:
             *history,
             {"role": "user", "content": prompt},
         ]
-        final_parts: list[str] = []
+
         prompt_eval_count: int | None = None
         eval_count: int | None = None
+        total_tool_calls = 0
 
         try:
-            for step in range(1, self.MAX_TOOL_STEPS + 1):
+            for step in range(1, self.MAX_MODEL_STEPS + 1):
                 assistant_parts: list[str] = []
                 tool_calls: list[ToolCall] = []
+                step_tool_keys: set[str] = set()
                 finish_reason: str | None = None
+                observed_output = False
 
-                async for chunk in self.provider.stream_chat(
-                    model=model,
-                    messages=messages,
-                    tools=tools.schemas(),
-                ):
-                    if chunk.content:
-                        assistant_parts.append(chunk.content)
-                        final_parts.append(chunk.content)
+                for attempt in range(1, self.MODEL_RETRY_ATTEMPTS + 1):
+                    try:
+                        async for chunk in self.provider.stream_chat(
+                            model=model,
+                            messages=messages,
+                            tools=tools.schemas(),
+                        ):
+                            if chunk.content:
+                                observed_output = True
+                                assistant_parts.append(chunk.content)
+                                await ws.send_json(
+                                    envelope(
+                                        "turn.delta",
+                                        {"delta": chunk.content},
+                                        thread_id=thread_id,
+                                        turn_id=turn_id,
+                                    )
+                                )
+
+                            if chunk.tool_calls:
+                                observed_output = True
+                                for call in chunk.tool_calls:
+                                    key = canonical_tool_fingerprint(
+                                        call.name,
+                                        call.arguments,
+                                    )
+                                    if key not in step_tool_keys:
+                                        step_tool_keys.add(key)
+                                        tool_calls.append(call)
+
+                            if chunk.done:
+                                finish_reason = chunk.finish_reason
+                                prompt_eval_count = chunk.prompt_eval_count
+                                eval_count = chunk.eval_count
+                        break
+                    except OllamaProviderError as exc:
+                        transient = exc.code in {
+                            "OLLAMA_STREAM_FAILED",
+                            "OLLAMA_UNAVAILABLE",
+                        }
+                        can_retry = (
+                            transient
+                            and not observed_output
+                            and attempt < self.MODEL_RETRY_ATTEMPTS
+                        )
+                        if not can_retry:
+                            raise
+
                         await ws.send_json(
                             envelope(
-                                "turn.delta",
-                                {"delta": chunk.content},
+                                "turn.status",
+                                {
+                                    "phase": "model_retry",
+                                    "message": (
+                                        "Local model connection failed before producing output; "
+                                        f"retrying ({attempt}/{self.MODEL_RETRY_ATTEMPTS - 1})."
+                                    ),
+                                },
                                 thread_id=thread_id,
                                 turn_id=turn_id,
                             )
                         )
-                    if chunk.tool_calls:
-                        tool_calls.extend(chunk.tool_calls)
-                    if chunk.done:
-                        finish_reason = chunk.finish_reason
-                        prompt_eval_count = chunk.prompt_eval_count
-                        eval_count = chunk.eval_count
+                        await asyncio.sleep(0.5 * attempt)
 
                 assistant_text = "".join(assistant_parts)
+
                 if not tool_calls:
-                    final_text = "".join(final_parts)
+                    gaps = guard.completion_gaps()
+                    verification = {
+                        "complete": not gaps,
+                        "missing": gaps,
+                        "changed_paths": sorted(guard.changed_paths),
+                    }
+
                     state.append_exchange(
                         thread_id,
                         user=prompt,
-                        assistant=final_text,
+                        assistant=assistant_text,
                     )
+
                     await ws.send_json(
                         envelope(
                             "turn.completed",
@@ -575,7 +646,9 @@ class AgentServer:
                                 "context_window": self.provider.context_window,
                                 "prompt_eval_count": prompt_eval_count,
                                 "eval_count": eval_count,
-                                "tool_steps": step - 1,
+                                "model_steps": step,
+                                "tool_calls": total_tool_calls,
+                                "verification": verification,
                             },
                             thread_id=thread_id,
                             turn_id=turn_id,
@@ -601,7 +674,33 @@ class AgentServer:
                 )
 
                 for call_index, call in enumerate(tool_calls, start=1):
+                    total_tool_calls += 1
+                    if total_tool_calls > self.MAX_TOOL_CALLS:
+                        await ws.send_json(
+                            envelope(
+                                "turn.failed",
+                                {
+                                    "code": "MAX_TOOL_CALLS",
+                                    "message": (
+                                        f"Agent exceeded {self.MAX_TOOL_CALLS} tool calls "
+                                        "without completing the task."
+                                    ),
+                                    "recoverable": True,
+                                    "provider": self.provider.provider_name,
+                                    "model": model,
+                                },
+                                thread_id=thread_id,
+                                turn_id=turn_id,
+                            )
+                        )
+                        return
+
                     call_id = f"{turn_id}:{step}:{call_index}"
+                    allowed, repeat_count, _ = guard.register_call(
+                        call.name,
+                        call.arguments,
+                    )
+
                     await ws.send_json(
                         envelope(
                             "tool.requested",
@@ -609,6 +708,7 @@ class AgentServer:
                                 "tool_call_id": call_id,
                                 "name": call.name,
                                 "arguments": call.arguments,
+                                "repeat_count": repeat_count,
                             },
                             thread_id=thread_id,
                             turn_id=turn_id,
@@ -617,51 +717,80 @@ class AgentServer:
                     await ws.send_json(
                         envelope(
                             "tool.started",
-                            {"tool_call_id": call_id, "name": call.name},
+                            {
+                                "tool_call_id": call_id,
+                                "name": call.name,
+                            },
                             thread_id=thread_id,
                             turn_id=turn_id,
                         )
                     )
 
-                    async def on_output(text: str, *, cid: str = call_id, name: str = call.name) -> None:
-                        await ws.send_json(
-                            envelope(
-                                "tool.output",
-                                {
-                                    "tool_call_id": cid,
-                                    "name": name,
-                                    "output": text,
-                                },
-                                thread_id=thread_id,
-                                turn_id=turn_id,
+                    if not allowed:
+                        payload: dict[str, Any] = {
+                            "ok": False,
+                            "summary": (
+                                "Identical tool call blocked because it was already "
+                                f"attempted {repeat_count - 1} times without new arguments."
+                            ),
+                            "error": {
+                                "code": "REPEATED_TOOL_CALL",
+                                "message": (
+                                    "Do not repeat the same tool with the same arguments. "
+                                    "Use the existing result or change approach."
+                                ),
+                            },
+                            "changed_paths": [],
+                        }
+                    else:
+                        async def on_output(
+                            text: str,
+                            *,
+                            cid: str = call_id,
+                            name: str = call.name,
+                        ) -> None:
+                            await ws.send_json(
+                                envelope(
+                                    "tool.output",
+                                    {
+                                        "tool_call_id": cid,
+                                        "name": name,
+                                        "output": text,
+                                    },
+                                    thread_id=thread_id,
+                                    turn_id=turn_id,
+                                )
                             )
-                        )
 
-                    try:
-                        result = await tools.execute(
-                            call.name,
-                            call.arguments,
-                            on_output=on_output,
-                        )
-                        payload = result.to_dict()
-                    except ToolError as exc:
-                        payload = {
-                            "ok": False,
-                            "summary": exc.message,
-                            "error": {
-                                "code": exc.code,
-                                "message": exc.message,
-                            },
-                        }
-                    except Exception as exc:
-                        payload = {
-                            "ok": False,
-                            "summary": f"Tool failed: {exc}",
-                            "error": {
-                                "code": "TOOL_INTERNAL_ERROR",
-                                "message": str(exc),
-                            },
-                        }
+                        try:
+                            result = await tools.execute(
+                                call.name,
+                                call.arguments,
+                                on_output=on_output,
+                            )
+                            payload = result.to_dict()
+                        except ToolError as exc:
+                            payload = {
+                                "ok": False,
+                                "summary": exc.message,
+                                "error": {
+                                    "code": exc.code,
+                                    "message": exc.message,
+                                },
+                                "changed_paths": [],
+                            }
+                        except Exception as exc:
+                            payload = {
+                                "ok": False,
+                                "summary": f"Tool failed: {exc}",
+                                "error": {
+                                    "code": "TOOL_INTERNAL_ERROR",
+                                    "message": str(exc),
+                                },
+                                "changed_paths": [],
+                            }
+
+                    guard.record_result(call.name, payload)
 
                     await ws.send_json(
                         envelope(
@@ -680,7 +809,10 @@ class AgentServer:
                         await ws.send_json(
                             envelope(
                                 "file.changed",
-                                {"path": changed_path, "tool_call_id": call_id},
+                                {
+                                    "path": changed_path,
+                                    "tool_call_id": call_id,
+                                },
                                 thread_id=thread_id,
                                 turn_id=turn_id,
                             )
@@ -690,16 +822,67 @@ class AgentServer:
                         {
                             "role": "tool",
                             "tool_name": call.name,
-                            "content": json.dumps(payload, ensure_ascii=False),
+                            "content": json.dumps(
+                                compact_tool_payload(payload),
+                                ensure_ascii=False,
+                            ),
                         }
+                    )
+
+                    if guard.blocked_repeats >= self.MAX_BLOCKED_REPEATS:
+                        await ws.send_json(
+                            envelope(
+                                "turn.failed",
+                                {
+                                    "code": "TOOL_LOOP_DETECTED",
+                                    "message": (
+                                        "Agent repeatedly requested identical tool calls. "
+                                        "The turn was stopped to prevent an unproductive loop."
+                                    ),
+                                    "recoverable": True,
+                                    "provider": self.provider.provider_name,
+                                    "model": model,
+                                },
+                                thread_id=thread_id,
+                                turn_id=turn_id,
+                            )
+                        )
+                        return
+
+                note = guard.completion_note()
+                if note and not guard.completion_reminder_sent:
+                    guard.completion_reminder_sent = True
+                    messages.append(
+                        {
+                            "role": "system",
+                            "content": note,
+                        }
+                    )
+                    await ws.send_json(
+                        envelope(
+                            "turn.status",
+                            {
+                                "phase": "verification",
+                                "message": (
+                                    "Changes detected. Agent is being asked to inspect the "
+                                    "latest diff and validate code changes before finishing."
+                                ),
+                                "missing": guard.completion_gaps(),
+                            },
+                            thread_id=thread_id,
+                            turn_id=turn_id,
+                        )
                     )
 
             await ws.send_json(
                 envelope(
                     "turn.failed",
                     {
-                        "code": "MAX_TOOL_STEPS",
-                        "message": f"Agent exceeded {self.MAX_TOOL_STEPS} tool steps.",
+                        "code": "MAX_MODEL_STEPS",
+                        "message": (
+                            f"Agent exceeded {self.MAX_MODEL_STEPS} model steps "
+                            "without completing the task."
+                        ),
                         "recoverable": True,
                         "provider": self.provider.provider_name,
                         "model": model,

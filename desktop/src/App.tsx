@@ -6,6 +6,7 @@ import {
   useState
 } from "react";
 
+import { shouldSubmitComposer } from "./lib/composer";
 import { AgentState, formatAgentStatus } from "./lib/status";
 
 type Status = {
@@ -345,23 +346,63 @@ function App() {
         return;
       }
 
-      if (
-        (event.type === "turn.completed" || event.type === "turn.cancelled") &&
-        event.turn_id
-      ) {
+      if (event.type === "turn.status" && event.turn_id) {
+        const message = String(event.payload?.message ?? "Agent is working…");
+        const id = "status:" + event.turn_id;
+        setItems((current) => {
+          const existing = current.find((item) => item.id === id);
+          if (existing) {
+            return current.map((item) =>
+              item.id === id ? { ...item, text: message } : item
+            );
+          }
+          return [...current, { id, role: "system", text: message }];
+        });
+        return;
+      }
+
+      if (event.type === "turn.completed" && event.turn_id) {
         setRunningTurnId((current) =>
           current === event.turn_id ? null : current
         );
-        if (event.type === "turn.cancelled") {
+
+        const verification = event.payload?.verification;
+        if (
+          verification &&
+          typeof verification === "object" &&
+          "complete" in verification &&
+          !(verification as { complete?: boolean }).complete
+        ) {
+          const missingValue = (verification as { missing?: unknown }).missing;
+          const missing = Array.isArray(missingValue)
+            ? missingValue.map(String)
+            : [];
           setItems((current) => [
             ...current,
             {
-              id: "system:" + event.turn_id,
+              id: "verification:" + event.turn_id,
               role: "system",
-              text: "Turn cancelled."
+              text:
+                "Verification incomplete: " +
+                (missing.length ? missing.join(", ") : "unknown checks")
             }
           ]);
         }
+        return;
+      }
+
+      if (event.type === "turn.cancelled" && event.turn_id) {
+        setRunningTurnId((current) =>
+          current === event.turn_id ? null : current
+        );
+        setItems((current) => [
+          ...current,
+          {
+            id: "system:" + event.turn_id,
+            role: "system",
+            text: "Turn cancelled."
+          }
+        ]);
         return;
       }
 
@@ -692,9 +733,9 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <div className="topbar-title">
-            <strong>{workspace?.name ?? "Phase 3"}</strong>
+            <strong>{workspace?.name ?? "Phase 4"}</strong>
             <span>
-              {activeThread ? " · " + activeThread.title : " · Tool System v1"}
+              {activeThread ? " · " + activeThread.title : " · Full Agent Loop"}
             </span>
           </div>
           <div className="topbar-actions">
@@ -715,23 +756,23 @@ function App() {
         <section className="conversation">
           {items.length === 0 ? (
             <div className="welcome-card">
-              <div className="eyebrow">PHASE 3</div>
+              <div className="eyebrow">PHASE 4</div>
               <h1>
                 {workspace
-                  ? "Project ready. Start coding."
+                  ? "Project ready. Agent loop is active."
                   : "Open a local project to begin."}
               </h1>
               <p>
                 {workspace
-                  ? "A default thread is selected automatically. You can send a task immediately, or create another thread when you want a separate conversation."
+                  ? "Send a coding task and the Agent can inspect, execute, recover from failures, modify files and verify its work before finishing."
                   : "Each opened project stays in the left sidebar for this app session. Switching projects changes the active workspace without discarding the others."}
               </p>
               <div className="milestones">
-                <span>Workspace guard ✓</span>
-                <span>Files ✓</span>
-                <span>Search ✓</span>
-                <span>Shell ✓</span>
-                <span>Git ✓</span>
+                <span>Loop guard ✓</span>
+                <span>Failure recovery ✓</span>
+                <span>Context control ✓</span>
+                <span>Verification ✓</span>
+                <span>Stop ✓</span>
               </div>
               {!provider?.online ? (
                 <div className="provider-warning">
@@ -757,6 +798,18 @@ function App() {
           <textarea
             value={input}
             onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (
+                shouldSubmitComposer({
+                  key: event.key,
+                  shiftKey: event.shiftKey,
+                  isComposing: event.nativeEvent.isComposing
+                })
+              ) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
             disabled={
               !workspace ||
               !activeThread ||
@@ -795,7 +848,7 @@ function App() {
               </select>
               <span>
                 {contextLabel ? "Context " + contextLabel + " · " : ""}
-                Permission: Workspace guarded
+                Permission: Workspace guarded · Enter send · Shift+Enter newline
               </span>
             </div>
             {runningTurnId ? (

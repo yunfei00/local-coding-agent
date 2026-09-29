@@ -592,3 +592,9 @@ body,
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
+
+
+/* Phase 4 composer keyboard hint. */
+.model-controls span {
+  white-space: nowrap;
+}
