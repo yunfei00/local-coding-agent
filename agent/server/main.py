@@ -7,6 +7,8 @@ import secrets
 from contextlib import suppress
 from typing import Any
 
+import os
+
 from aiohttp import WSMsgType, web
 
 from agent.core.agent_loop import (
@@ -69,10 +71,28 @@ def build_health_payload(port: int) -> dict[str, Any]:
     }
 
 
+def _bounded_env_int(
+    name: str,
+    default: int,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return min(max(value, minimum), maximum)
+
+
 class AgentServer:
     MAX_MODEL_STEPS = 16
     MAX_TOOL_CALLS = 40
     MAX_BLOCKED_REPEATS = 3
+    MAX_CONSECUTIVE_TOOL_FAILURES = 4
     MODEL_RETRY_ATTEMPTS = 2
 
     def __init__(self, token: str) -> None:
@@ -81,6 +101,36 @@ class AgentServer:
         self.projects = ProjectRegistry(self.store)
         self.prompt_rules = PromptRuleManager(self.store)
         self.provider = create_provider_from_env()
+        self.max_model_steps = _bounded_env_int(
+            "LCA_MAX_MODEL_STEPS",
+            self.MAX_MODEL_STEPS,
+            minimum=1,
+            maximum=128,
+        )
+        self.max_tool_calls = _bounded_env_int(
+            "LCA_MAX_TOOL_CALLS",
+            self.MAX_TOOL_CALLS,
+            minimum=1,
+            maximum=512,
+        )
+        self.max_blocked_repeats = _bounded_env_int(
+            "LCA_MAX_BLOCKED_REPEATS",
+            self.MAX_BLOCKED_REPEATS,
+            minimum=1,
+            maximum=20,
+        )
+        self.max_consecutive_tool_failures = _bounded_env_int(
+            "LCA_MAX_CONSECUTIVE_TOOL_FAILURES",
+            self.MAX_CONSECUTIVE_TOOL_FAILURES,
+            minimum=1,
+            maximum=50,
+        )
+        self.model_retry_attempts = _bounded_env_int(
+            "LCA_MODEL_RETRY_ATTEMPTS",
+            self.MODEL_RETRY_ATTEMPTS,
+            minimum=1,
+            maximum=5,
+        )
         self.active_turns: dict[str, asyncio.Task[None]] = {}
         self.available_models: set[str] = set()
         self.default_model: str | None = self.provider.preferred_model
@@ -901,14 +951,14 @@ class AgentServer:
         total_tool_calls = 0
 
         try:
-            for step in range(1, self.MAX_MODEL_STEPS + 1):
+            for step in range(1, self.max_model_steps + 1):
                 assistant_parts: list[str] = []
                 tool_calls: list[ToolCall] = []
                 step_tool_keys: set[str] = set()
                 finish_reason: str | None = None
                 observed_output = False
 
-                for attempt in range(1, self.MODEL_RETRY_ATTEMPTS + 1):
+                for attempt in range(1, self.model_retry_attempts + 1):
                     try:
                         fitted_context = context_manager.fit_runtime(
                             messages,
@@ -964,7 +1014,7 @@ class AgentServer:
                         can_retry = (
                             exc.transient
                             and not observed_output
-                            and attempt < self.MODEL_RETRY_ATTEMPTS
+                            and attempt < self.model_retry_attempts
                         )
                         if not can_retry:
                             raise
@@ -976,7 +1026,7 @@ class AgentServer:
                                     "phase": "model_retry",
                                     "message": (
                                         "Model provider connection failed before producing output; "
-                                        f"retrying ({attempt}/{self.MODEL_RETRY_ATTEMPTS - 1})."
+                                        f"retrying ({attempt}/{self.model_retry_attempts - 1})."
                                     ),
                                 },
                                 thread_id=thread_id,
@@ -1042,19 +1092,20 @@ class AgentServer:
 
                 for call_index, call in enumerate(tool_calls, start=1):
                     total_tool_calls += 1
-                    if total_tool_calls > self.MAX_TOOL_CALLS:
+                    if total_tool_calls > self.max_tool_calls:
                         await ws.send_json(
                             envelope(
                                 "turn.failed",
                                 {
                                     "code": "MAX_TOOL_CALLS",
                                     "message": (
-                                        f"Agent exceeded {self.MAX_TOOL_CALLS} tool calls "
+                                        f"Agent exceeded {self.max_tool_calls} tool calls "
                                         "without completing the task."
                                     ),
                                     "recoverable": True,
                                     "provider": self.provider.provider_name,
                                     "model": model,
+                                    "tool_calls": total_tool_calls,
                                 },
                                 thread_id=thread_id,
                                 turn_id=turn_id,
@@ -1095,21 +1146,42 @@ class AgentServer:
                     )
 
                     if not allowed:
-                        payload: dict[str, Any] = {
-                            "ok": False,
-                            "summary": (
-                                "Identical tool call blocked because it was already "
-                                f"attempted {repeat_count - 1} times without new arguments."
-                            ),
-                            "error": {
-                                "code": "REPEATED_TOOL_CALL",
-                                "message": (
-                                    "Do not repeat the same tool with the same arguments. "
-                                    "Use the existing result or change approach."
+                        if guard.last_block_reason and guard.last_block_reason.startswith(
+                            "cycle:"
+                        ):
+                            cycle_length = guard.last_block_reason.split(":", 1)[1]
+                            payload = {
+                                "ok": False,
+                                "summary": (
+                                    "Short tool-call cycle blocked before execution "
+                                    f"(cycle length {cycle_length})."
                                 ),
-                            },
-                            "changed_paths": [],
-                        }
+                                "error": {
+                                    "code": "REPEATED_TOOL_CYCLE",
+                                    "message": (
+                                        "The Agent is alternating between the same tool calls "
+                                        "without making progress. Change approach instead of "
+                                        "continuing the cycle."
+                                    ),
+                                },
+                                "changed_paths": [],
+                            }
+                        else:
+                            payload = {
+                                "ok": False,
+                                "summary": (
+                                    "Identical tool call blocked because it was already "
+                                    f"attempted {repeat_count - 1} times without new arguments."
+                                ),
+                                "error": {
+                                    "code": "REPEATED_TOOL_CALL",
+                                    "message": (
+                                        "Do not repeat the same tool with the same arguments. "
+                                        "Use the existing result or change approach."
+                                    ),
+                                },
+                                "changed_paths": [],
+                            }
                     else:
                         verdict = self.permissions.evaluate(
                             tool_name=call.name,
@@ -1166,6 +1238,13 @@ class AgentServer:
 
                     guard.record_result(call.name, payload)
 
+                    failure_limit_reached = guard.failure_limit_reached(
+                        max_consecutive_failures=self.max_consecutive_tool_failures
+                    )
+                    loop_abort_reason = guard.loop_abort_reason(
+                        max_blocked_repeats=self.max_blocked_repeats
+                    )
+
                     await ws.send_json(
                         envelope(
                             "tool.completed",
@@ -1205,19 +1284,50 @@ class AgentServer:
                         }
                     )
 
-                    if guard.blocked_repeats >= self.MAX_BLOCKED_REPEATS:
+                    if failure_limit_reached:
+                        await ws.send_json(
+                            envelope(
+                                "turn.failed",
+                                {
+                                    "code": "TOOL_FAILURE_LIMIT",
+                                    "message": (
+                                        "Agent hit the consecutive tool failure limit "
+                                        f"({self.max_consecutive_tool_failures}). "
+                                        "The turn was stopped instead of continuing to fail."
+                                    ),
+                                    "recoverable": True,
+                                    "provider": self.provider.provider_name,
+                                    "model": model,
+                                    "tool_calls": total_tool_calls,
+                                    "consecutive_failures": guard.consecutive_failures,
+                                    "last_failure_code": guard.last_failure_code,
+                                },
+                                thread_id=thread_id,
+                                turn_id=turn_id,
+                            )
+                        )
+                        return
+
+                    if loop_abort_reason:
+                        detail = (
+                            "Agent entered a repeating short tool-call cycle."
+                            if loop_abort_reason == "short_cycle"
+                            else "Agent repeatedly requested identical tool calls."
+                        )
                         await ws.send_json(
                             envelope(
                                 "turn.failed",
                                 {
                                     "code": "TOOL_LOOP_DETECTED",
                                     "message": (
-                                        "Agent repeatedly requested identical tool calls. "
-                                        "The turn was stopped to prevent an unproductive loop."
+                                        detail
+                                        + " The turn was stopped to prevent an unproductive loop."
                                     ),
                                     "recoverable": True,
                                     "provider": self.provider.provider_name,
                                     "model": model,
+                                    "tool_calls": total_tool_calls,
+                                    "loop_reason": loop_abort_reason,
                                 },
                                 thread_id=thread_id,
                                 turn_id=turn_id,
@@ -1256,7 +1366,7 @@ class AgentServer:
                     {
                         "code": "MAX_MODEL_STEPS",
                         "message": (
-                            f"Agent exceeded {self.MAX_MODEL_STEPS} model steps "
+                            f"Agent exceeded {self.max_model_steps} model steps "
                             "without completing the task."
                         ),
                         "recoverable": True,
