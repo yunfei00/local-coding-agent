@@ -1,0 +1,56 @@
+name: v0.2 RC Windows Package
+
+on:
+  push:
+    branches:
+      - "feature/v0.2"
+    paths:
+      - ".github/workflows/v0.2-rc.yml"
+      - "agent/**"
+      - "desktop/**"
+      - "scripts/build/**"
+      - "scripts/validation/**"
+      - "tests/**"
+      - "package.json"
+      - "pyproject.toml"
+
+permissions:
+  contents: read
+
+jobs:
+  rc-windows:
+    name: Build and validate v0.2 Windows RC
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build and validate Setup + Portable
+        shell: pwsh
+        run: .\scripts\build\package-windows.ps1
+
+      - name: Validate upgrade from official v0.1.0
+        shell: pwsh
+        run: .\scripts\validation\upgrade-v0.1-to-v0.2.ps1
+
+      - name: Upload RC artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Local-Coding-Agent-v0.2.0-RC-Windows
+          path: |
+            desktop/release/Local-Coding-Agent-0.2.0-x64-Setup.exe
+            desktop/release/Local-Coding-Agent-0.2.0-x64-Portable.exe
+            desktop/release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
