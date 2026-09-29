@@ -6,7 +6,7 @@ from typing import Any
 
 from agent.tools.base import BaseTool, ToolError, ToolResult
 from agent.tools.diff import parse_unified_diff, synthesize_untracked_file
-from agent.tools.workspace import Workspace
+from agent.tools.workspace import DEFAULT_IGNORED_DIRS, Workspace
 
 
 async def _git(
@@ -123,6 +123,12 @@ class GitDiffTool(BaseTool):
                 for relative in u_stdout.splitlines():
                     relative = relative.strip()
                     if not relative or relative in known:
+                        continue
+                    relative_parts = Path(relative).parts
+                    if any(
+                        part in DEFAULT_IGNORED_DIRS
+                        for part in relative_parts[:-1]
+                    ):
                         continue
                     path = self.workspace.resolve(relative, must_exist=True)
                     if path.is_file():

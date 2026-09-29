@@ -69,6 +69,9 @@ class GitDiffToolTests(unittest.IsolatedAsyncioTestCase):
                 "first\nsecond\n",
                 encoding="utf-8",
             )
+            cache_dir = repo / "__pycache__"
+            cache_dir.mkdir()
+            (cache_dir / "noise.pyc").write_bytes(b"noise")
 
             result = await GitDiffTool(Workspace(repo)).execute({})
             self.assertTrue(result.ok)
@@ -78,6 +81,7 @@ class GitDiffToolTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertIn("tracked.txt", by_path)
             self.assertIn("new.txt", by_path)
+            self.assertNotIn("__pycache__/noise.pyc", by_path)
             self.assertEqual(by_path["new.txt"]["status"], "untracked")
             self.assertEqual(by_path["new.txt"]["additions"], 2)
 
