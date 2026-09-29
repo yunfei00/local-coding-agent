@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fnmatch
+import re
 from pathlib import Path
 from typing import Any
 
@@ -276,25 +277,55 @@ class ApplyPatchTool(BaseTool):
 class SearchFilesTool(BaseTool):
     name = "search_files"
     description = (
-        "Search text files for a literal string. Search the workspace normally; "
-        "an absolute path outside it requires Full Access and approval. "
-        "Returns matching file paths, line numbers and short line excerpts."
+        "Search workspace text files using literal text or a regular expression. "
+        "Supports path/file globs, custom excludes, context lines and bounded results. "
+        "An absolute search path outside the workspace requires Full Access and approval."
     )
     parameters = {
         "type": "object",
         "properties": {
-            "query": {"type": "string", "description": "Literal text to search for."},
+            "query": {
+                "type": "string",
+                "description": "Literal text or regular expression to search for.",
+            },
             "path": {
                 "type": "string",
                 "description": "Workspace-relative directory to search. Defaults to '.'.",
             },
             "glob": {
                 "type": "string",
-                "description": "Optional filename glob such as '*.py' or '*.ts'.",
+                "description": (
+                    "Optional file/path glob such as '*.py', 'src/**/*.ts' or "
+                    "'**/CMakeLists.txt'."
+                ),
+            },
+            "regex": {
+                "type": "boolean",
+                "description": "Interpret query as a regular expression. Defaults to false.",
+            },
+            "exclude": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Optional glob patterns to exclude, for example "
+                    "['generated/**', '*.min.js']."
+                ),
             },
             "case_sensitive": {
                 "type": "boolean",
                 "description": "Defaults to false.",
+            },
+            "context_before": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 20,
+                "description": "Lines of context before each match. Defaults to 0.",
+            },
+            "context_after": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 20,
+                "description": "Lines of context after each match. Defaults to 0.",
             },
             "max_results": {
                 "type": "integer",
@@ -308,55 +339,178 @@ class SearchFilesTool(BaseTool):
     def __init__(self, workspace: Workspace) -> None:
         self.workspace = workspace
 
+    @staticmethod
+    def _matches_pattern(relative: str, name: str, pattern: str) -> bool:
+        normalized = pattern.replace("\\", "/")
+        return fnmatch.fnmatch(relative, normalized) or fnmatch.fnmatch(
+            name,
+            normalized,
+        )
+
     async def execute(self, arguments: dict[str, Any], *, on_output=None) -> ToolResult:
         query = str(arguments["query"])
         if not query:
             raise ToolError("EMPTY_QUERY", "Search query cannot be empty.")
 
-        root = self.workspace.resolve(str(arguments.get("path") or "."), must_exist=True)
+        root = self.workspace.resolve(
+            str(arguments.get("path") or "."),
+            must_exist=True,
+        )
         if not root.is_dir():
             raise ToolError("NOT_DIRECTORY", "Search path must be a directory.")
 
-        filename_glob = str(arguments.get("glob") or "*")
+        filename_glob = str(arguments.get("glob") or "*").strip() or "*"
+        use_regex = bool(arguments.get("regex", False))
         case_sensitive = bool(arguments.get("case_sensitive", False))
+        context_before = min(
+            max(int(arguments.get("context_before") or 0), 0),
+            20,
+        )
+        context_after = min(
+            max(int(arguments.get("context_after") or 0), 0),
+            20,
+        )
         max_results = min(
             max(int(arguments.get("max_results") or 50), 1),
             MAX_SEARCH_RESULTS,
         )
-        needle = query if case_sensitive else query.lower()
-        results = []
 
-        for path in root.rglob("*"):
-            if len(results) >= max_results:
-                break
+        raw_excludes = arguments.get("exclude") or []
+        if not isinstance(raw_excludes, list):
+            raise ToolError("INVALID_EXCLUDE", "exclude must be an array of glob patterns.")
+        excludes = [
+            str(item).strip()
+            for item in raw_excludes
+            if str(item).strip()
+        ]
+
+        flags = 0 if case_sensitive else re.IGNORECASE
+        if use_regex:
+            try:
+                matcher = re.compile(query, flags)
+            except re.error as exc:
+                raise ToolError(
+                    "INVALID_REGEX",
+                    f"Invalid regular expression: {exc}",
+                ) from exc
+        else:
+            needle = query if case_sensitive else query.lower()
+            matcher = None
+
+        results: list[dict[str, Any]] = []
+        scanned_files = 0
+        skipped_files = 0
+        truncated = False
+
+        candidates = sorted(
+            root.rglob("*"),
+            key=lambda item: item.relative_to(root).as_posix().lower(),
+        )
+
+        for path in candidates:
             if not path.is_file():
                 continue
-            relative_parts = path.relative_to(root).parts
-            if any(part in DEFAULT_IGNORED_DIRS for part in relative_parts[:-1]):
+
+            relative_from_root = path.relative_to(root).as_posix()
+            parts = path.relative_to(root).parts
+            if any(part in DEFAULT_IGNORED_DIRS for part in parts[:-1]):
+                skipped_files += 1
                 continue
-            if not fnmatch.fnmatch(path.name, filename_glob):
+            if not self._matches_pattern(
+                relative_from_root,
+                path.name,
+                filename_glob,
+            ):
                 continue
-            try:
-                if path.stat().st_size > MAX_SEARCH_FILE_BYTES or _is_probably_binary(path):
-                    continue
-                with path.open("r", encoding="utf-8", errors="replace") as handle:
-                    for line_no, line in enumerate(handle, start=1):
-                        haystack = line if case_sensitive else line.lower()
-                        if needle in haystack:
-                            results.append(
-                                {
-                                    "path": self.workspace.relative(path),
-                                    "line": line_no,
-                                    "text": line.rstrip()[:500],
-                                }
-                            )
-                            if len(results) >= max_results:
-                                break
-            except OSError:
+            if any(
+                self._matches_pattern(relative_from_root, path.name, pattern)
+                for pattern in excludes
+            ):
+                skipped_files += 1
                 continue
 
+            try:
+                if (
+                    path.stat().st_size > MAX_SEARCH_FILE_BYTES
+                    or _is_probably_binary(path)
+                ):
+                    skipped_files += 1
+                    continue
+                text_value = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                skipped_files += 1
+                continue
+
+            scanned_files += 1
+            lines = text_value.splitlines()
+
+            for index, line in enumerate(lines):
+                matched = (
+                    bool(matcher.search(line))
+                    if matcher is not None
+                    else (
+                        needle in (
+                            line
+                            if case_sensitive
+                            else line.lower()
+                        )
+                    )
+                )
+                if not matched:
+                    continue
+
+                line_no = index + 1
+                before_start = max(index - context_before, 0)
+                after_end = min(index + context_after + 1, len(lines))
+                before = [
+                    {
+                        "line": context_index + 1,
+                        "text": lines[context_index][:500],
+                    }
+                    for context_index in range(before_start, index)
+                ]
+                after = [
+                    {
+                        "line": context_index + 1,
+                        "text": lines[context_index][:500],
+                    }
+                    for context_index in range(index + 1, after_end)
+                ]
+
+                results.append(
+                    {
+                        "path": self.workspace.relative(path),
+                        "line": line_no,
+                        "text": line[:500],
+                        "before": before,
+                        "after": after,
+                    }
+                )
+                if len(results) >= max_results:
+                    truncated = True
+                    break
+
+            if truncated:
+                break
+
+        mode = "regex" if use_regex else "literal"
         return ToolResult(
             ok=True,
-            summary=f"Found {len(results)} match(es) for {query!r}.",
-            data={"query": query, "results": results, "truncated": len(results) >= max_results},
+            summary=(
+                f"Found {len(results)} {mode} match(es) for {query!r} "
+                f"across {scanned_files} text file(s)."
+            ),
+            data={
+                "query": query,
+                "mode": mode,
+                "glob": filename_glob,
+                "exclude": excludes,
+                "case_sensitive": case_sensitive,
+                "context_before": context_before,
+                "context_after": context_after,
+                "results": results,
+                "scanned_files": scanned_files,
+                "skipped_files": skipped_files,
+                "truncated": truncated,
+            },
         )
