@@ -10,6 +10,7 @@ from contextlib import suppress
 from typing import Any
 
 from agent.tools.base import BaseTool, ToolError, ToolResult
+from agent.tools.stream import ToolStreamState
 from agent.tools.workspace import Workspace
 
 
@@ -35,11 +36,12 @@ def shell_command() -> tuple[str, list[str]]:
 
 async def terminate_process_tree(
     process: asyncio.subprocess.Process,
-) -> None:
+) -> str:
     if process.returncode is not None:
-        return
+        return "already_exited"
 
     if os.name == "nt":
+        method = "taskkill"
         try:
             killer = await asyncio.create_subprocess_exec(
                 "taskkill",
@@ -53,24 +55,25 @@ async def terminate_process_tree(
             with suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(killer.wait(), timeout=5)
         except (FileNotFoundError, ProcessLookupError, PermissionError):
+            method = "kill"
             with suppress(ProcessLookupError):
                 process.kill()
 
         with suppress(asyncio.TimeoutError, ProcessLookupError):
             await asyncio.wait_for(process.wait(), timeout=3)
-        return
+        return method
 
     try:
         group_id = os.getpgid(process.pid)
     except ProcessLookupError:
-        return
+        return "already_exited"
 
     with suppress(ProcessLookupError):
         os.killpg(group_id, signal.SIGTERM)
 
     try:
         await asyncio.wait_for(process.wait(), timeout=GRACEFUL_KILL_SECONDS)
-        return
+        return "sigterm"
     except asyncio.TimeoutError:
         pass
 
@@ -78,6 +81,7 @@ async def terminate_process_tree(
         os.killpg(group_id, signal.SIGKILL)
     with suppress(asyncio.TimeoutError, ProcessLookupError):
         await asyncio.wait_for(process.wait(), timeout=3)
+    return "sigkill"
 
 
 class RunCommandTool(BaseTool):
@@ -129,6 +133,7 @@ class RunCommandTool(BaseTool):
         timeout = min(max(int(arguments.get("timeout_seconds") or 120), 1), 600)
         executable, prefix = shell_command()
         started = time.perf_counter()
+        stream_state = ToolStreamState()
 
         spawn_kwargs: dict[str, Any] = {
             "cwd": str(cwd),
@@ -150,13 +155,13 @@ class RunCommandTool(BaseTool):
 
         if on_output:
             await on_output(
-                {
-                    "stream": "meta",
-                    "event": "process_started",
-                    "pid": process.pid,
-                    "command": command,
-                    "cwd": self.workspace.display(cwd),
-                }
+                stream_state.meta(
+                    "process_started",
+                    pid=process.pid,
+                    command=command,
+                    cwd=self.workspace.display(cwd),
+                    timeout_seconds=timeout,
+                )
             )
 
         stdout_parts: list[str] = []
@@ -170,12 +175,8 @@ class RunCommandTool(BaseTool):
                 text = chunk.decode("utf-8", errors="replace")
                 target.append(text)
                 if on_output:
-                    await on_output(
-                        {
-                            "stream": label,
-                            "text": text,
-                        }
-                    )
+                    for event in stream_state.output(label, text):
+                        await on_output(event)
 
         stdout_task = asyncio.create_task(
             consume(process.stdout, stdout_parts, "stdout")
@@ -188,18 +189,45 @@ class RunCommandTool(BaseTool):
             await asyncio.wait_for(process.wait(), timeout=timeout)
             await asyncio.gather(stdout_task, stderr_task)
         except asyncio.TimeoutError as exc:
-            await terminate_process_tree(process)
+            if on_output:
+                await on_output(
+                    stream_state.meta(
+                        "process_terminating",
+                        pid=process.pid,
+                        reason="timeout",
+                    )
+                )
+            method = await terminate_process_tree(process)
             await asyncio.gather(
                 stdout_task,
                 stderr_task,
                 return_exceptions=True,
             )
+            if on_output:
+                await on_output(
+                    stream_state.meta(
+                        "process_terminated",
+                        pid=process.pid,
+                        reason="timeout",
+                        method=method,
+                        duration_ms=int((time.perf_counter() - started) * 1000),
+                    )
+                )
             raise ToolError(
                 "COMMAND_TIMEOUT",
                 f"Command exceeded timeout of {timeout} seconds and its process tree was terminated.",
             ) from exc
         except asyncio.CancelledError:
-            await terminate_process_tree(process)
+            if on_output:
+                with suppress(Exception):
+                    await on_output(
+                        stream_state.meta(
+                            "process_terminating",
+                            pid=process.pid,
+                            reason="user_cancelled",
+                        )
+                    )
+            method = await terminate_process_tree(process)
             stdout_task.cancel()
             stderr_task.cancel()
             await asyncio.gather(
@@ -207,6 +235,17 @@ class RunCommandTool(BaseTool):
                 stderr_task,
                 return_exceptions=True,
             )
+            if on_output:
+                with suppress(Exception):
+                    await on_output(
+                        stream_state.meta(
+                            "process_terminated",
+                            pid=process.pid,
+                            reason="user_cancelled",
+                            method=method,
+                            duration_ms=int((time.perf_counter() - started) * 1000),
+                        )
+                    )
             raise
 
         stdout = "".join(stdout_parts)
@@ -221,13 +260,13 @@ class RunCommandTool(BaseTool):
 
         if on_output:
             await on_output(
-                {
-                    "stream": "meta",
-                    "event": "process_exited",
-                    "pid": process.pid,
-                    "exit_code": code,
-                    "duration_ms": duration_ms,
-                }
+                stream_state.meta(
+                    "process_exited",
+                    pid=process.pid,
+                    exit_code=code,
+                    duration_ms=duration_ms,
+                    **stream_state.snapshot(),
+                )
             )
 
         return ToolResult(
@@ -241,5 +280,6 @@ class RunCommandTool(BaseTool):
                 "command": command,
                 "cwd": self.workspace.display(cwd),
                 "pid": process.pid,
+                "stream": stream_state.snapshot(),
             },
         )
