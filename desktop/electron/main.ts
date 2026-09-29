@@ -4,7 +4,8 @@ import {
   clipboard,
   dialog,
   ipcMain,
-  safeStorage
+  safeStorage,
+  shell
 } from "electron";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -18,6 +19,8 @@ import {
 } from "node:fs";
 import path from "node:path";
 import WebSocket from "ws";
+
+import { checkForUpdates } from "./updateCheck";
 
 const APP_ID = "com.yunfei.localcodingagent";
 app.setAppUserModelId(APP_ID);
@@ -764,6 +767,23 @@ ipcMain.on("renderer:ready", () => {
 });
 
 ipcMain.handle("agent:get-status", () => agentStatus);
+ipcMain.handle("agent:update-check", async () => {
+  return checkForUpdates(app.getVersion(), {
+    url: process.env.LCA_UPDATE_CHECK_URL
+  });
+});
+ipcMain.handle(
+  "agent:update-open-release",
+  async (_event, url: string) => {
+    const value = String(url ?? "");
+    if (!value.startsWith("https://github.com/yunfei00/local-coding-agent/")) {
+      throw new Error("Unsupported release URL.");
+    }
+    await shell.openExternal(value);
+    return { ok: true };
+  }
+);
+
 ipcMain.handle("agent:diagnostics-get", async () => {
   const event = await sendRequest(
     "diagnostics.get",
