@@ -165,6 +165,11 @@ class ToolLoopGuard:
     last_diff_sequence: int = -1
     last_validation_sequence: int = -1
     blocked_repeats: int = 0
+    blocked_cycles: int = 0
+    consecutive_failures: int = 0
+    max_observed_consecutive_failures: int = 0
+    last_block_reason: str | None = None
+    last_failure_code: str | None = None
     completion_reminder_sent: bool = False
 
     def register_call(
@@ -177,15 +182,59 @@ class ToolLoopGuard:
         self.call_counts[fingerprint] = count
         self.recent_fingerprints.append(fingerprint)
         self.recent_fingerprints = self.recent_fingerprints[-12:]
+        self.last_block_reason = None
 
-        allowed = count <= self.max_identical_calls
-        if not allowed:
+        if count > self.max_identical_calls:
             self.blocked_repeats += 1
-        return allowed, count, fingerprint
+            self.last_block_reason = "identical"
+            return False, count, fingerprint
+
+        cycle_length = self._short_cycle_length()
+        if cycle_length is not None:
+            self.blocked_cycles += 1
+            self.last_block_reason = f"cycle:{cycle_length}"
+            return False, count, fingerprint
+
+        return True, count, fingerprint
+
+    def _short_cycle_length(self) -> int | None:
+        recent = self.recent_fingerprints
+        for width in (2, 3):
+            if len(recent) < width * 2:
+                continue
+            first = recent[-(width * 2):-width]
+            second = recent[-width:]
+            if first == second and len(set(second)) > 1:
+                return width
+        return None
+
+    def loop_abort_reason(self, *, max_blocked_repeats: int) -> str | None:
+        if self.blocked_cycles > 0:
+            return "short_cycle"
+        if self.blocked_repeats >= max(max_blocked_repeats, 1):
+            return "repeated_call"
+        return None
 
     def record_result(self, name: str, payload: dict[str, Any]) -> None:
         self.result_sequence += 1
         sequence = self.result_sequence
+        ok = bool(payload.get("ok"))
+
+        if ok:
+            self.consecutive_failures = 0
+            self.last_failure_code = None
+        else:
+            self.consecutive_failures += 1
+            self.max_observed_consecutive_failures = max(
+                self.max_observed_consecutive_failures,
+                self.consecutive_failures,
+            )
+            error = payload.get("error")
+            self.last_failure_code = (
+                str(error.get("code"))
+                if isinstance(error, dict) and error.get("code")
+                else None
+            )
 
         paths = payload.get("changed_paths") or []
         if isinstance(paths, list) and paths:
@@ -194,15 +243,25 @@ class ToolLoopGuard:
             self.last_change_sequence = sequence
             self.completion_reminder_sent = False
 
-        if name == "git_diff" and bool(payload.get("ok")):
+            if ok:
+                self.call_counts.clear()
+                self.recent_fingerprints.clear()
+                self.blocked_repeats = 0
+                self.blocked_cycles = 0
+                self.last_block_reason = None
+
+        if name == "git_diff" and ok:
             self.last_diff_sequence = sequence
 
         if (
             name == "run_command"
-            and bool(payload.get("ok"))
+            and ok
             and payload.get("exit_code") in (0, None)
         ):
             self.last_validation_sequence = sequence
+
+    def failure_limit_reached(self, *, max_consecutive_failures: int) -> bool:
+        return self.consecutive_failures >= max(max_consecutive_failures, 1)
 
     def changed_code(self) -> bool:
         return any(
