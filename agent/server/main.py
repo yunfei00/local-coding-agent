@@ -12,11 +12,9 @@ from aiohttp import WSMsgType, web
 from agent.core.version import APP_VERSION, PROTOCOL_VERSION
 from agent.llm.base import ToolCall
 from agent.llm.ollama import OllamaProvider, OllamaProviderError
+from agent.server.projects import ProjectRegistry
 from agent.server.protocol import envelope, new_id, validate_client_message
-from agent.server.state import InMemoryState
 from agent.tools.base import ToolError
-from agent.tools.registry import ToolRegistry
-from agent.tools.workspace import Workspace
 
 
 SYSTEM_PROMPT = """You are Local Coding Agent, a local software-development agent.
@@ -52,13 +50,11 @@ class AgentServer:
 
     def __init__(self, token: str) -> None:
         self.token = token
-        self.state = InMemoryState()
+        self.projects = ProjectRegistry()
         self.provider = OllamaProvider()
         self.active_turns: dict[str, asyncio.Task[None]] = {}
         self.available_models: set[str] = set()
         self.default_model: str | None = self.provider.preferred_model
-        self.workspace: Workspace | None = None
-        self.tools: ToolRegistry | None = None
 
     def authorized(self, request: web.Request) -> bool:
         return request.headers.get("Authorization") == f"Bearer {self.token}"
@@ -144,8 +140,12 @@ class AgentServer:
             "provider": self.provider.provider_name,
             "preferred_model": self.provider.preferred_model,
             "context_window": self.provider.context_window,
-            "workspace": self.workspace.display_path if self.workspace else None,
-            "tools": self.tools.names if self.tools else [],
+            "projects": self.projects.list_payload(),
+            "active_project": (
+                self.projects.project_payload(self.projects.active)
+                if self.projects.active
+                else None
+            ),
         }
 
     async def handle_message(
@@ -166,6 +166,7 @@ class AgentServer:
 
         if message_type == "project.open":
             raw_path = str(payload.get("path") or "").strip()
+            requested_model = str(payload.get("model") or "").strip() or None
             if not raw_path:
                 await self.send_error(
                     ws,
@@ -183,7 +184,14 @@ class AgentServer:
                 )
                 return
             try:
-                workspace = Workspace(raw_path)
+                project, thread, created = self.projects.open(
+                    raw_path,
+                    active_model=(
+                        requested_model
+                        or self.default_model
+                        or self.provider.preferred_model
+                    ),
+                )
             except (ToolError, OSError) as exc:
                 message = exc.message if isinstance(exc, ToolError) else str(exc)
                 await self.send_error(
@@ -194,31 +202,80 @@ class AgentServer:
                 )
                 return
 
-            self.workspace = workspace
-            self.tools = ToolRegistry(workspace)
-            self.state = InMemoryState()
+            response_payload = self.projects.project_payload(project)
+            response_payload["created"] = created
             await ws.send_json(
                 envelope(
                     "project.opened",
-                    {
-                        "path": workspace.display_path,
-                        "name": workspace.root.name,
-                        "tools": self.tools.names,
-                    },
+                    response_payload,
+                    request_id=request_id,
+                    thread_id=thread.id,
+                )
+            )
+            return
+
+        if message_type == "project.list":
+            await ws.send_json(
+                envelope(
+                    "project.listed",
+                    {"projects": self.projects.list_payload()},
                     request_id=request_id,
                 )
             )
             return
 
+        if message_type == "project.select":
+            if any(not task.done() for task in self.active_turns.values()):
+                await self.send_error(
+                    ws,
+                    "TURN_RUNNING",
+                    "Stop the active turn before switching projects.",
+                    request_id=request_id,
+                )
+                return
+            project_id = str(payload.get("project_id") or "").strip()
+            selected = self.projects.select(
+                project_id,
+                active_model=(
+                    str(payload.get("model") or "").strip()
+                    or self.default_model
+                    or self.provider.preferred_model
+                ),
+            )
+            if not selected:
+                await self.send_error(
+                    ws,
+                    "PROJECT_NOT_FOUND",
+                    "Project is not open in this session.",
+                    request_id=request_id,
+                )
+                return
+            project, thread = selected
+            await ws.send_json(
+                envelope(
+                    "project.selected",
+                    self.projects.project_payload(project),
+                    request_id=request_id,
+                    thread_id=thread.id,
+                )
+            )
+            return
+
         if message_type == "project.get":
+            project = self.projects.active
             await ws.send_json(
                 envelope(
                     "project.loaded",
-                    {
-                        "path": self.workspace.display_path if self.workspace else None,
-                        "name": self.workspace.root.name if self.workspace else None,
-                        "tools": self.tools.names if self.tools else [],
-                    },
+                    (
+                        self.projects.project_payload(project)
+                        if project
+                        else {
+                            "project": None,
+                            "threads": [],
+                            "active_thread": None,
+                            "messages": [],
+                        }
+                    ),
                     request_id=request_id,
                 )
             )
@@ -239,7 +296,8 @@ class AgentServer:
         if message_type == "model.select":
             thread_id = str(data.get("thread_id") or payload.get("thread_id") or "")
             model = str(payload.get("model") or "").strip()
-            thread = self.state.get_thread(thread_id)
+            project = self.projects.active
+            thread = project.state.get_thread(thread_id) if project else None
             if not thread:
                 await self.send_error(ws, "THREAD_NOT_FOUND", "Thread does not exist.", request_id=request_id, thread_id=thread_id or None)
                 return
@@ -248,7 +306,7 @@ class AgentServer:
                 return
             if not await self.ensure_model_available(ws, model, request_id=request_id, thread_id=thread_id):
                 return
-            updated = self.state.set_thread_model(thread_id, model)
+            updated = project.state.set_thread_model(thread_id, model) if project else None
             await ws.send_json(
                 envelope(
                     "model.selected",
@@ -260,7 +318,8 @@ class AgentServer:
             return
 
         if message_type == "thread.create":
-            if not self.workspace:
+            project = self.projects.active
+            if not project:
                 await self.send_error(
                     ws,
                     "WORKSPACE_REQUIRED",
@@ -269,14 +328,23 @@ class AgentServer:
                 )
                 return
             requested_model = str(payload.get("model") or "").strip() or None
-            thread = self.state.create_thread(
+            thread = project.state.create_thread(
                 payload.get("title"),
-                active_model=requested_model or self.default_model,
+                active_model=(
+                    requested_model
+                    or self.default_model
+                    or self.provider.preferred_model
+                ),
             )
+            project.active_thread_id = thread.id
+            project.touch()
             await ws.send_json(
                 envelope(
                     "thread.created",
-                    {"thread": thread.to_dict()},
+                    {
+                        "thread": thread.to_dict(),
+                        "project_id": project.id,
+                    },
                     request_id=request_id,
                     thread_id=thread.id,
                 )
@@ -284,10 +352,18 @@ class AgentServer:
             return
 
         if message_type == "thread.list":
+            project = self.projects.active
             await ws.send_json(
                 envelope(
                     "thread.listed",
-                    {"threads": [item.to_dict() for item in self.state.list_threads()]},
+                    {
+                        "project_id": project.id if project else None,
+                        "threads": (
+                            [item.to_dict() for item in project.state.list_threads()]
+                            if project
+                            else []
+                        ),
+                    },
                     request_id=request_id,
                 )
             )
@@ -295,16 +371,19 @@ class AgentServer:
 
         if message_type == "thread.get":
             thread_id = str(payload.get("thread_id") or data.get("thread_id") or "")
-            thread = self.state.get_thread(thread_id)
+            project = self.projects.active
+            thread = project.state.get_thread(thread_id) if project else None
             if not thread:
                 await self.send_error(ws, "THREAD_NOT_FOUND", "Thread does not exist.", request_id=request_id, thread_id=thread_id or None)
                 return
+            self.projects.mark_active_thread(thread.id)
             await ws.send_json(
                 envelope(
                     "thread.loaded",
                     {
                         "thread": thread.to_dict(),
-                        "messages": self.state.get_messages(thread.id),
+                        "messages": project.state.get_messages(thread.id),
+                        "project_id": project.id,
                     },
                     request_id=request_id,
                     thread_id=thread.id,
@@ -315,9 +394,10 @@ class AgentServer:
         if message_type == "turn.start":
             thread_id = str(data.get("thread_id") or payload.get("thread_id") or "")
             prompt = str(payload.get("prompt") or "").strip()
-            thread = self.state.get_thread(thread_id)
+            project = self.projects.active
+            thread = project.state.get_thread(thread_id) if project else None
 
-            if not self.workspace or not self.tools:
+            if not project:
                 await self.send_error(ws, "WORKSPACE_REQUIRED", "Open a project before starting a coding turn.", request_id=request_id, thread_id=thread_id or None)
                 return
             if not thread:
@@ -332,7 +412,8 @@ class AgentServer:
                 return
 
             turn_id = new_id("turn")
-            self.state.touch_thread(thread_id)
+            project.state.touch_thread(thread_id)
+            self.projects.mark_active_thread(thread_id)
             await ws.send_json(
                 envelope(
                     "turn.started",
@@ -340,7 +421,8 @@ class AgentServer:
                         "prompt": prompt,
                         "model": model,
                         "provider": self.provider.provider_name,
-                        "workspace": self.workspace.display_path,
+                        "workspace": project.workspace.display_path,
+                        "project_id": project.id,
                     },
                     request_id=request_id,
                     thread_id=thread_id,
@@ -424,16 +506,20 @@ class AgentServer:
         prompt: str,
         model: str,
     ) -> None:
-        assert self.workspace is not None
-        assert self.tools is not None
+        project = self.projects.active
+        if not project:
+            return
+        workspace = project.workspace
+        tools = project.tools
+        state = project.state
 
-        history = self.state.get_messages(thread_id)
+        history = state.get_messages(thread_id)
         messages: list[dict[str, Any]] = [
             {
                 "role": "system",
                 "content": SYSTEM_PROMPT
                 + "\n\nCurrent workspace: "
-                + self.workspace.display_path,
+                + workspace.display_path,
             },
             *history,
             {"role": "user", "content": prompt},
@@ -451,7 +537,7 @@ class AgentServer:
                 async for chunk in self.provider.stream_chat(
                     model=model,
                     messages=messages,
-                    tools=self.tools.schemas(),
+                    tools=tools.schemas(),
                 ):
                     if chunk.content:
                         assistant_parts.append(chunk.content)
@@ -474,7 +560,7 @@ class AgentServer:
                 assistant_text = "".join(assistant_parts)
                 if not tool_calls:
                     final_text = "".join(final_parts)
-                    self.state.append_exchange(
+                    state.append_exchange(
                         thread_id,
                         user=prompt,
                         assistant=final_text,
@@ -552,7 +638,7 @@ class AgentServer:
                         )
 
                     try:
-                        result = await self.tools.execute(
+                        result = await tools.execute(
                             call.name,
                             call.arguments,
                             on_output=on_output,

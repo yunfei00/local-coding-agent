@@ -1,4 +1,10 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState
+} from "react";
 
 import { AgentState, formatAgentStatus } from "./lib/status";
 
@@ -30,10 +36,15 @@ type ProviderStatus = {
   error?: { code?: string; message?: string } | null;
 };
 
-type WorkspaceInfo = {
+type ProjectInfo = {
+  id: string;
   path: string;
   name: string;
   tools: string[];
+  thread_count: number;
+  created_at?: string;
+  updated_at?: string;
+  active?: boolean;
 };
 
 type ThreadRecord = {
@@ -55,6 +66,13 @@ type StoredMessage = {
   content: string;
 };
 
+type ProjectSessionPayload = {
+  project: ProjectInfo;
+  threads: ThreadRecord[];
+  activeThread: ThreadRecord | null;
+  messages: StoredMessage[];
+};
+
 const initialStatus: Status = { state: "starting" };
 
 function readThread(event: AgentEnvelope): ThreadRecord | null {
@@ -73,16 +91,44 @@ function readProvider(event: AgentEnvelope): ProviderStatus | null {
   return payload as unknown as ProviderStatus;
 }
 
-function readWorkspace(event: AgentEnvelope): WorkspaceInfo | null {
-  const payload = event.payload;
-  if (!payload || typeof payload.path !== "string" || !payload.path) {
+function readProjectList(event: AgentEnvelope): ProjectInfo[] {
+  const value = event.payload?.projects;
+  return Array.isArray(value) ? (value as ProjectInfo[]) : [];
+}
+
+function readProjectSession(event: AgentEnvelope): ProjectSessionPayload | null {
+  const project = event.payload?.project;
+  if (!project || typeof project !== "object") {
     return null;
   }
+
+  const rawThreads = event.payload?.threads;
+  const activeThread = event.payload?.active_thread;
+  const rawMessages = event.payload?.messages;
+
   return {
-    path: payload.path,
-    name: typeof payload.name === "string" ? payload.name : payload.path,
-    tools: Array.isArray(payload.tools) ? payload.tools.map(String) : []
+    project: project as ProjectInfo,
+    threads: Array.isArray(rawThreads) ? (rawThreads as ThreadRecord[]) : [],
+    activeThread:
+      activeThread && typeof activeThread === "object"
+        ? (activeThread as ThreadRecord)
+        : null,
+    messages: Array.isArray(rawMessages)
+      ? (rawMessages as StoredMessage[])
+      : []
   };
+}
+
+function historyItems(
+  projectId: string,
+  threadId: string,
+  messages: StoredMessage[]
+): ChatItem[] {
+  return messages.map((message, index) => ({
+    id: "history:" + projectId + ":" + threadId + ":" + index,
+    role: message.role === "assistant" ? "agent" : "user",
+    text: message.content
+  }));
 }
 
 function stringifyArguments(value: unknown): string {
@@ -97,7 +143,8 @@ function stringifyArguments(value: unknown): string {
 function App() {
   const [status, setStatus] = useState<Status>(initialStatus);
   const [provider, setProvider] = useState<ProviderStatus | null>(null);
-  const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
+  const [projects, setProjects] = useState<ProjectInfo[]>([]);
+  const [workspace, setWorkspace] = useState<ProjectInfo | null>(null);
   const [selectedModel, setSelectedModel] = useState("");
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
   const [activeThread, setActiveThread] = useState<ThreadRecord | null>(null);
@@ -105,6 +152,38 @@ function App() {
   const [input, setInput] = useState("");
   const [runningTurnId, setRunningTurnId] = useState<string | null>(null);
   const [uiError, setUiError] = useState<string | null>(null);
+
+  const applyProjectSession = useCallback((event: AgentEnvelope) => {
+    const session = readProjectSession(event);
+    if (!session) {
+      return;
+    }
+
+    const activeProject = { ...session.project, active: true };
+    setWorkspace(activeProject);
+    setThreads(session.threads);
+    setActiveThread(session.activeThread);
+    setItems(
+      session.activeThread
+        ? historyItems(
+            activeProject.id,
+            session.activeThread.id,
+            session.messages
+          )
+        : []
+    );
+
+    if (session.activeThread?.active_model) {
+      setSelectedModel(session.activeThread.active_model);
+    }
+
+    setProjects((current) => {
+      const next = current
+        .filter((project) => project.id !== activeProject.id)
+        .map((project) => ({ ...project, active: false }));
+      return [activeProject, ...next];
+    });
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -132,14 +211,11 @@ function App() {
 
   useEffect(() => {
     return window.localAgent.onAgentEvent((event) => {
-      if (event.type === "project.opened") {
-        const nextWorkspace = readWorkspace(event);
-        if (nextWorkspace) {
-          setWorkspace(nextWorkspace);
-          setThreads([]);
-          setActiveThread(null);
-          setItems([]);
-        }
+      if (
+        event.type === "project.opened" ||
+        event.type === "project.selected"
+      ) {
+        applyProjectSession(event);
         return;
       }
 
@@ -153,6 +229,13 @@ function App() {
           setActiveThread(thread);
           setSelectedModel(thread.active_model ?? "");
           setItems([]);
+          setProjects((current) =>
+            current.map((project) =>
+              project.active
+                ? { ...project, thread_count: project.thread_count + 1 }
+                : project
+            )
+          );
         }
         return;
       }
@@ -215,7 +298,10 @@ function App() {
               return item;
             }
             const next = item.text + "\n" + output;
-            return { ...item, text: next.length > 12000 ? next.slice(-12000) : next };
+            return {
+              ...item,
+              text: next.length > 12000 ? next.slice(-12000) : next
+            };
           })
         );
         return;
@@ -280,9 +366,7 @@ function App() {
       }
 
       if (event.type === "turn.failed" && event.turn_id) {
-        const message = String(
-          event.payload?.message ?? "Agent turn failed."
-        );
+        const message = String(event.payload?.message ?? "Agent turn failed.");
         setRunningTurnId((current) =>
           current === event.turn_id ? null : current
         );
@@ -302,7 +386,7 @@ function App() {
         setUiError(String(event.payload?.message ?? "Agent error"));
       }
     });
-  }, []);
+  }, [applyProjectSession]);
 
   useEffect(() => {
     if (status.state !== "ready") {
@@ -311,25 +395,15 @@ function App() {
 
     const load = async () => {
       try {
-        const [projectEvent, threadEvent, modelEvent] = await Promise.all([
-          window.localAgent.getProject(),
-          window.localAgent.listThreads(),
-          window.localAgent.listModels()
-        ]);
+        const [projectEvent, projectListEvent, modelEvent] =
+          await Promise.all([
+            window.localAgent.getProject(),
+            window.localAgent.listProjects(),
+            window.localAgent.listModels()
+          ]);
 
-        const loadedWorkspace = readWorkspace(projectEvent);
-        if (loadedWorkspace) {
-          setWorkspace(loadedWorkspace);
-        }
-
-        const threadValue = threadEvent.payload?.threads;
-        if (Array.isArray(threadValue)) {
-          const loaded = threadValue as ThreadRecord[];
-          setThreads(loaded);
-          if (loaded[0]) {
-            setActiveThread((current) => current ?? loaded[0]);
-          }
-        }
+        setProjects(readProjectList(projectListEvent));
+        applyProjectSession(projectEvent);
 
         const providerStatus = readProvider(modelEvent);
         if (providerStatus) {
@@ -348,7 +422,7 @@ function App() {
     };
 
     void load();
-  }, [status.state]);
+  }, [status.state, applyProjectSession]);
 
   const detail = useMemo(() => {
     if (status.state === "ready") {
@@ -376,17 +450,36 @@ function App() {
     }
     setUiError(null);
     try {
-      const result = await window.localAgent.openProject();
+      const result = await window.localAgent.openProject(
+        selectedModel || undefined
+      );
       if (result.canceled || !result.event) {
         return;
       }
-      const next = readWorkspace(result.event);
-      if (next) {
-        setWorkspace(next);
-        setThreads([]);
-        setActiveThread(null);
-        setItems([]);
-      }
+      applyProjectSession(result.event);
+
+      const listEvent = await window.localAgent.listProjects();
+      setProjects(readProjectList(listEvent));
+    } catch (error) {
+      setUiError(String(error));
+    }
+  };
+
+  const selectProject = async (project: ProjectInfo) => {
+    if (runningTurnId || project.id === workspace?.id) {
+      return;
+    }
+
+    setUiError(null);
+    try {
+      const event = await window.localAgent.selectProject(
+        project.id,
+        selectedModel || undefined
+      );
+      applyProjectSession(event);
+
+      const listEvent = await window.localAgent.listProjects();
+      setProjects(readProjectList(listEvent));
     } catch (error) {
       setUiError(String(error));
     }
@@ -423,7 +516,7 @@ function App() {
   };
 
   const loadThread = async (thread: ThreadRecord) => {
-    if (runningTurnId) {
+    if (runningTurnId || !workspace) {
       return;
     }
 
@@ -440,13 +533,7 @@ function App() {
       setSelectedModel(
         loadedThread.active_model ?? provider?.default_model ?? ""
       );
-      setItems(
-        messages.map((message, index) => ({
-          id: "history:" + loadedThread.id + ":" + index,
-          role: message.role === "assistant" ? "agent" : "user",
-          text: message.content
-        }))
-      );
+      setItems(historyItems(workspace.id, loadedThread.id, messages));
     } catch (error) {
       setUiError(String(error));
     }
@@ -519,52 +606,76 @@ function App() {
       <aside className="sidebar">
         <div className="brand">Local Coding Agent</div>
 
-        <button
-          className="open-project"
-          disabled={status.state !== "ready" || Boolean(runningTurnId)}
-          onClick={() => void openProject()}
-        >
-          Open project
-        </button>
+        <div className="sidebar-actions">
+          <button
+            className="open-project"
+            disabled={status.state !== "ready" || Boolean(runningTurnId)}
+            onClick={() => void openProject()}
+          >
+            Open project
+          </button>
 
-        <button
-          className="new-thread"
-          disabled={status.state !== "ready" || !providerReady || !workspace}
-          onClick={() => void createThread()}
-        >
-          + New thread
-        </button>
+          <button
+            className="new-thread"
+            disabled={
+              status.state !== "ready" || !providerReady || !workspace
+            }
+            onClick={() => void createThread()}
+          >
+            + New thread
+          </button>
+        </div>
 
-        <div className="section-label">PROJECT</div>
-        {workspace ? (
-          <div className="workspace-card" title={workspace.path}>
-            <strong>{workspace.name}</strong>
-            <span>{workspace.path}</span>
-            <small>{workspace.tools.length} local tools</small>
+        <div className="sidebar-scroll">
+          <div className="section-label">PROJECTS</div>
+          <div className="project-list">
+            {projects.length === 0 ? (
+              <div className="empty-list">No projects opened</div>
+            ) : (
+              projects.map((project) => (
+                <button
+                  key={project.id}
+                  className={
+                    "project-item " +
+                    (workspace?.id === project.id ? "active" : "")
+                  }
+                  disabled={Boolean(runningTurnId)}
+                  title={project.path}
+                  onClick={() => void selectProject(project)}
+                >
+                  <strong>{project.name}</strong>
+                  <span>{project.path}</span>
+                  <small>
+                    {project.thread_count} thread
+                    {project.thread_count === 1 ? "" : "s"}
+                  </small>
+                </button>
+              ))
+            )}
           </div>
-        ) : (
-          <div className="empty-list">No project opened</div>
-        )}
 
-        <div className="section-label">THREADS</div>
-        <div className="thread-list">
-          {threads.length === 0 ? (
-            <div className="empty-list">No threads yet</div>
-          ) : (
-            threads.map((thread) => (
-              <button
-                key={thread.id}
-                className={
-                  "thread-item " +
-                  (activeThread?.id === thread.id ? "active" : "")
-                }
-                onClick={() => void loadThread(thread)}
-              >
-                <span>{thread.title}</span>
-                <small>{thread.active_model ?? "no model"}</small>
-              </button>
-            ))
-          )}
+          <div className="section-label">THREADS</div>
+          <div className="thread-list">
+            {threads.length === 0 ? (
+              <div className="empty-list">
+                {workspace ? "No threads yet" : "Select a project"}
+              </div>
+            ) : (
+              threads.map((thread) => (
+                <button
+                  key={thread.id}
+                  className={
+                    "thread-item " +
+                    (activeThread?.id === thread.id ? "active" : "")
+                  }
+                  onClick={() => void loadThread(thread)}
+                >
+                  <span>{thread.title}</span>
+                  <small>{thread.active_model ?? "no model"}</small>
+                </button>
+              ))
+            )}
+          </div>
         </div>
 
         <div className="sidebar-footer">
@@ -580,9 +691,11 @@ function App() {
 
       <main className="workspace">
         <header className="topbar">
-          <div>
-            <strong>{activeThread?.title ?? "Phase 3"}</strong>
-            <span> · Tool System v1</span>
+          <div className="topbar-title">
+            <strong>{workspace?.name ?? "Phase 3"}</strong>
+            <span>
+              {activeThread ? " · " + activeThread.title : " · Tool System v1"}
+            </span>
           </div>
           <div className="topbar-actions">
             <button
@@ -603,11 +716,15 @@ function App() {
           {items.length === 0 ? (
             <div className="welcome-card">
               <div className="eyebrow">PHASE 3</div>
-              <h1>Local project tools are live.</h1>
+              <h1>
+                {workspace
+                  ? "Project ready. Start coding."
+                  : "Open a local project to begin."}
+              </h1>
               <p>
-                Open a project, create a thread, then ask the Agent to inspect,
-                test or modify the code. File access is confined to the selected
-                workspace and destructive shell commands remain blocked.
+                {workspace
+                  ? "A default thread is selected automatically. You can send a task immediately, or create another thread when you want a separate conversation."
+                  : "Each opened project stays in the left sidebar for this app session. Switching projects changes the active workspace without discarding the others."}
               </p>
               <div className="milestones">
                 <span>Workspace guard ✓</span>
@@ -651,9 +768,7 @@ function App() {
                 ? "Open a project first."
                 : !provider?.online
                   ? "Ollama is offline."
-                  : activeThread
-                    ? "Ask the Agent to inspect, test or modify this project…"
-                    : "Create a thread to start working on the project."
+                  : "Ask the Agent to inspect, test or modify this project…"
             }
           />
           <div className="composer-row">

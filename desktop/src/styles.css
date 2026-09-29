@@ -473,3 +473,122 @@ p {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+
+
+/* Phase 3 UX fixes: independent panes and multi-project navigation. */
+html,
+body,
+#root {
+  overflow: hidden;
+}
+
+.app-shell {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.sidebar-footer {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+
+.project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 4px;
+}
+
+.project-item {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 9px;
+  color: #aaa;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+}
+
+.project-item:hover:not(:disabled),
+.project-item.active {
+  color: #eee;
+  background: #232323;
+}
+
+.project-item:disabled {
+  cursor: default;
+}
+
+.project-item strong,
+.project-item span,
+.project-item small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-item strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.project-item span {
+  color: #6f6f6f;
+  font-size: 9px;
+}
+
+.project-item small {
+  color: #6d8f76;
+  font-size: 9px;
+}
+
+.workspace {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.topbar {
+  min-width: 0;
+}
+
+.topbar-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}

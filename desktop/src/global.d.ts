@@ -21,8 +21,10 @@ declare global {
         protocol?: string;
         error?: string;
       }>;
-      openProject: () => Promise<{ canceled: boolean; event?: AgentEnvelope }>;
+      openProject: (model?: string) => Promise<{ canceled: boolean; event?: AgentEnvelope }>;
       getProject: () => Promise<AgentEnvelope>;
+      listProjects: () => Promise<AgentEnvelope>;
+      selectProject: (projectId: string, model?: string) => Promise<AgentEnvelope>;
       listModels: () => Promise<AgentEnvelope>;
       selectModel: (threadId: string, model: string) => Promise<AgentEnvelope>;
       createThread: (model?: string) => Promise<AgentEnvelope>;

@@ -5,8 +5,11 @@ type AgentEventHandler = (event: unknown) => void;
 contextBridge.exposeInMainWorld("localAgent", {
   platform: process.platform,
   getAgentStatus: () => ipcRenderer.invoke("agent:get-status"),
-  openProject: () => ipcRenderer.invoke("agent:project-open"),
+  openProject: (model?: string) => ipcRenderer.invoke("agent:project-open", model),
   getProject: () => ipcRenderer.invoke("agent:project-get"),
+  listProjects: () => ipcRenderer.invoke("agent:project-list"),
+  selectProject: (projectId: string, model?: string) =>
+    ipcRenderer.invoke("agent:project-select", projectId, model),
   listModels: () => ipcRenderer.invoke("agent:model-list"),
   selectModel: (threadId: string, model: string) =>
     ipcRenderer.invoke("agent:model-select", threadId, model),

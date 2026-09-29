@@ -231,3 +231,19 @@ Phase 3 is accepted when:
 - No access outside the selected workspace occurs.
 
 After acceptance proceed to **Phase 4: Full Agent Loop**.
+
+
+## Phase 3 UX corrections
+
+The Phase 3 desktop behavior was adjusted after local Windows acceptance feedback:
+
+- Opening a project automatically creates/selects a default Thread.
+- The prompt is immediately usable after opening a project; creating a Thread manually is optional.
+- Multiple opened projects remain available during the current app session.
+- Each project owns its own Workspace, Tool Registry, Threads and messages.
+- Switching projects changes the active Workspace without discarding the others.
+- Reopening the same project path reuses its existing in-memory project session.
+- Sidebar scrolling and conversation scrolling are independent.
+- The app window itself does not use page-level scrolling.
+
+Cross-restart project/thread persistence is intentionally still Phase 7 and will use SQLite.

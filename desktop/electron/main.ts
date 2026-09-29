@@ -356,7 +356,7 @@ function createWindow(): void {
 }
 
 ipcMain.handle("agent:get-status", () => agentStatus);
-ipcMain.handle("agent:project-open", async () => {
+ipcMain.handle("agent:project-open", async (_event, model?: string) => {
   const selection = await dialog.showOpenDialog({
     properties: ["openDirectory"],
     title: "Open coding workspace"
@@ -367,13 +367,28 @@ ipcMain.handle("agent:project-open", async () => {
   const event = await sendRequest(
     "project.open",
     "project.opened",
-    { path: selection.filePaths[0] }
+    model
+      ? { path: selection.filePaths[0], model }
+      : { path: selection.filePaths[0] }
   );
   return { canceled: false, event };
 });
 ipcMain.handle("agent:project-get", async () => {
   return sendRequest("project.get", "project.loaded");
 });
+ipcMain.handle("agent:project-list", async () => {
+  return sendRequest("project.list", "project.listed");
+});
+ipcMain.handle(
+  "agent:project-select",
+  async (_event, projectId: string, model?: string) => {
+    return sendRequest(
+      "project.select",
+      "project.selected",
+      model ? { project_id: projectId, model } : { project_id: projectId }
+    );
+  }
+);
 ipcMain.handle("agent:model-list", async () => {
   return sendRequest("model.list", "model.listed");
 });
