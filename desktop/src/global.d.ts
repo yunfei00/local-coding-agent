@@ -22,6 +22,19 @@ declare global {
         protocol?: string;
         error?: string;
       }>;
+      checkForUpdates: () => Promise<{
+        ok: boolean;
+        checked_at: string;
+        current_version: string;
+        latest_version?: string;
+        update_available: boolean;
+        release_url?: string;
+        error?: string;
+        automatic: false;
+        can_auto_download: false;
+        can_auto_install: false;
+      }>;
+      openReleasePage: (url: string) => Promise<{ ok: boolean }>;
       getDiagnostics: () => Promise<{
         event: AgentEnvelope;
         desktop: {
