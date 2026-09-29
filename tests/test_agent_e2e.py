@@ -209,8 +209,8 @@ class AgentE2ETests(unittest.IsolatedAsyncioTestCase):
 
                     # Confirm real tool failures/results were fed back into later model calls.
                     serialized = str(provider.seen_messages)
-                    self.assertIn("'exit_code': 1", serialized)
-                    self.assertIn("'exit_code': 0", serialized)
+                    self.assertIn('"exit_code": 1', serialized)
+                    self.assertIn('"exit_code": 0', serialized)
                 finally:
                     server.close()
 
