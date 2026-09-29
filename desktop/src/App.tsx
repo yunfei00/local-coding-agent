@@ -2,7 +2,9 @@ import {
   FormEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState
 } from "react";
 
@@ -201,6 +203,37 @@ function App() {
   const [input, setInput] = useState("");
   const [runningTurnId, setRunningTurnId] = useState<string | null>(null);
   const [uiError, setUiError] = useState<string | null>(null);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const conversationRef = useRef<HTMLElement | null>(null);
+  const autoFollowRef = useRef(true);
+
+  const scrollConversationToBottom = useCallback(
+    (smooth = false) => {
+      const element = conversationRef.current;
+      autoFollowRef.current = true;
+      setShowJumpToBottom(false);
+      if (!element) {
+        return;
+      }
+      element.scrollTo({
+        top: element.scrollHeight,
+        behavior: smooth ? "smooth" : "auto"
+      });
+    },
+    []
+  );
+
+  const handleConversationScroll = useCallback(() => {
+    const element = conversationRef.current;
+    if (!element) {
+      return;
+    }
+    const distance =
+      element.scrollHeight - element.scrollTop - element.clientHeight;
+    const nearBottom = distance <= 72;
+    autoFollowRef.current = nearBottom;
+    setShowJumpToBottom(!nearBottom);
+  }, []);
 
   const applyProjectSession = useCallback((event: AgentEnvelope) => {
     const session = readProjectSession(event);
@@ -233,6 +266,26 @@ function App() {
       return [activeProject, ...next];
     });
   }, []);
+
+  useLayoutEffect(() => {
+    if (!autoFollowRef.current) {
+      return;
+    }
+    const element = conversationRef.current;
+    if (!element) {
+      return;
+    }
+    element.scrollTop = element.scrollHeight;
+    setShowJumpToBottom(false);
+  }, [items, approvals]);
+
+  useEffect(() => {
+    autoFollowRef.current = true;
+    const frame = window.requestAnimationFrame(() => {
+      scrollConversationToBottom(false);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [workspace?.id, activeThread?.id, scrollConversationToBottom]);
 
   useEffect(() => {
     let active = true;
@@ -884,6 +937,8 @@ function App() {
 
     setUiError(null);
     setInput("");
+    autoFollowRef.current = true;
+    setShowJumpToBottom(false);
     setItems((current) => [
       ...current,
       {
@@ -1009,9 +1064,9 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <div className="topbar-title">
-            <strong>{workspace?.name ?? "Phase 6"}</strong>
+            <strong>{workspace?.name ?? "Phase 7"}</strong>
             <span>
-              {activeThread ? " · " + activeThread.title : " · Terminal & Diff Review"}
+              {activeThread ? " · " + activeThread.title : " · Persistence & Resume"}
             </span>
           </div>
           <div className="topbar-actions">
@@ -1029,26 +1084,31 @@ function App() {
           </div>
         </header>
 
-        <section className="conversation">
+        <div className="conversation-shell">
+          <section
+            ref={conversationRef}
+            className="conversation"
+            onScroll={handleConversationScroll}
+          >
           {items.length === 0 && approvals.length === 0 ? (
             <div className="welcome-card">
-              <div className="eyebrow">PHASE 6</div>
+              <div className="eyebrow">PHASE 7</div>
               <h1>
                 {workspace
-                  ? "Project ready. Terminal and Diff review are active."
+                  ? "Project ready. Session persistence is active."
                   : "Open a local project to begin."}
               </h1>
               <p>
                 {workspace
-                  ? "Commands stream into terminal-style cards, Stop terminates the command tree, and Git changes are shown as file-level reviewable diffs."
+                  ? "Projects, threads, messages, model choice and permission mode are stored in SQLite and restored after restart. The conversation follows live output unless you scroll up."
                   : "Each opened project stays in the left sidebar for this app session. Switching projects changes the active workspace without discarding the others."}
               </p>
               <div className="milestones">
-                <span>Live terminal ✓</span>
-                <span>Process-tree Stop ✓</span>
-                <span>Exit status ✓</span>
-                <span>File Diff ✓</span>
-                <span>Untracked files ✓</span>
+                <span>SQLite ✓</span>
+                <span>Project resume ✓</span>
+                <span>Thread history ✓</span>
+                <span>Auto-follow ✓</span>
+                <span>Jump ↓ ✓</span>
               </div>
               {!provider?.online ? (
                 <div className="provider-warning">
@@ -1107,7 +1167,19 @@ function App() {
               ))}
             </div>
           )}
-        </section>
+          </section>
+          {showJumpToBottom ? (
+            <button
+              type="button"
+              className="jump-to-bottom"
+              aria-label="Jump to latest"
+              title="Jump to latest"
+              onClick={() => scrollConversationToBottom(true)}
+            >
+              ↓
+            </button>
+          ) : null}
+        </div>
 
         <form className="composer" onSubmit={submit}>
           {uiError ? <div className="error-banner">{uiError}</div> : null}

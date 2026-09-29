@@ -22,6 +22,7 @@ from agent.permissions.approval import (
     APPROVAL_DENY,
     ApprovalManager,
 )
+from agent.persistence.store import SQLiteStore
 from agent.permissions.policy import PermissionMode, PermissionPolicy
 from agent.server.projects import ProjectRegistry
 from agent.server.protocol import envelope, new_id, validate_client_message
@@ -73,13 +74,21 @@ class AgentServer:
 
     def __init__(self, token: str) -> None:
         self.token = token
-        self.projects = ProjectRegistry()
+        self.store = SQLiteStore()
+        self.projects = ProjectRegistry(self.store)
         self.provider = OllamaProvider()
         self.active_turns: dict[str, asyncio.Task[None]] = {}
         self.available_models: set[str] = set()
         self.default_model: str | None = self.provider.preferred_model
         self.permissions = PermissionPolicy(PermissionMode.WORKSPACE)
+        saved_permission = self.store.get_setting("permission_mode")
+        if saved_permission:
+            try:
+                self.permissions.set_mode(saved_permission)
+            except ValueError:
+                pass
         self.approvals = ApprovalManager()
+        self._sync_workspace_permissions()
 
     def authorized(self, request: web.Request) -> bool:
         return request.headers.get("Authorization") == f"Bearer {self.token}"
@@ -169,6 +178,9 @@ class AgentServer:
                 "mode": self.permissions.mode.value,
                 "available_modes": self.permissions.available_modes,
             },
+            "persistence": {
+                "database": str(self.store.path),
+            },
             "projects": self.projects.list_payload(),
             "active_project": (
                 self.projects.project_payload(self.projects.active)
@@ -228,6 +240,7 @@ class AgentServer:
                 return
 
             self._sync_workspace_permissions()
+            self.store.set_setting("permission_mode", mode.value)
             await ws.send_json(
                 envelope(
                     "permission.changed",
@@ -1122,6 +1135,9 @@ class AgentServer:
                 "changed_paths": [],
             }
 
+    def close(self) -> None:
+        self.store.close()
+
     async def send_error(
         self,
         ws: web.WebSocketResponse,
@@ -1179,9 +1195,13 @@ async def run(host: str, port: int) -> None:
     try:
         await stop_event.wait()
     finally:
-        for task in list(server.active_turns.values()):
+        tasks = list(server.active_turns.values())
+        for task in tasks:
             task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         await runner.cleanup()
+        server.close()
         print("LCA_AGENT_STOPPED", flush=True)
 
 

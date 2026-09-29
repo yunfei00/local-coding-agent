@@ -205,7 +205,8 @@ function launchAgent(command: string): ChildProcessWithoutNullStreams {
       env: {
         ...process.env,
         PYTHONUNBUFFERED: "1",
-        VIRTUAL_ENV: path.join(repoRoot(), ".venv")
+        VIRTUAL_ENV: path.join(repoRoot(), ".venv"),
+        LCA_DATA_DIR: app.getPath("userData")
       },
       windowsHide: true
     }

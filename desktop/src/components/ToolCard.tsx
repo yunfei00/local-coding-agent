@@ -1,3 +1,5 @@
+import { useLayoutEffect, useRef } from "react";
+
 export type ToolChunk = {
   stream: "stdout" | "stderr";
   text: string;
@@ -70,6 +72,15 @@ function statusLabel(tool: ToolView): string {
 }
 
 function TerminalCard({ tool }: { tool: ToolView }) {
+  const outputRef = useRef<HTMLPreElement | null>(null);
+
+  useLayoutEffect(() => {
+    const element = outputRef.current;
+    if (element) {
+      element.scrollTop = element.scrollHeight;
+    }
+  }, [tool.chunks]);
+
   return (
     <div className={"tool-card terminal-card tool-" + tool.status}>
       <div className="tool-card-header">
@@ -93,7 +104,7 @@ function TerminalCard({ tool }: { tool: ToolView }) {
       {tool.cwd ? <div className="terminal-cwd">{tool.cwd}</div> : null}
 
       {tool.chunks.length ? (
-        <pre className="terminal-output">
+        <pre ref={outputRef} className="terminal-output">
           {tool.chunks.map((chunk, index) => (
             <span
               key={index}

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from agent.persistence.store import SQLiteStore
 from agent.server.protocol import new_id
 from agent.server.state import InMemoryState, ThreadRecord
 from agent.tools.registry import ToolRegistry
@@ -25,6 +26,7 @@ class ProjectSession:
     created_at: str
     updated_at: str
     active_thread_id: str | None = None
+    store: SQLiteStore | None = None
 
     @property
     def name(self) -> str:
@@ -34,8 +36,20 @@ class ProjectSession:
     def path(self) -> str:
         return self.workspace.display_path
 
+    def persist(self) -> None:
+        if not self.store:
+            return
+        self.store.save_project(
+            project_id=self.id,
+            path=self.path,
+            created_at=self.created_at,
+            updated_at=self.updated_at,
+            active_thread_id=self.active_thread_id,
+        )
+
     def touch(self) -> None:
         self.updated_at = now_iso()
+        self.persist()
 
     def active_thread(self) -> ThreadRecord | None:
         if not self.active_thread_id:
@@ -50,6 +64,7 @@ class ProjectSession:
         existing = self.state.list_threads()
         if existing:
             self.active_thread_id = existing[0].id
+            self.persist()
             return existing[0]
 
         thread = self.state.create_thread(active_model=active_model)
@@ -71,10 +86,57 @@ class ProjectSession:
 
 
 class ProjectRegistry:
-    def __init__(self) -> None:
+    def __init__(self, store: SQLiteStore | None = None) -> None:
+        self.store = store
         self._projects: dict[str, ProjectSession] = {}
         self._path_index: dict[str, str] = {}
         self.active_project_id: str | None = None
+        self._hydrate()
+
+    def _hydrate(self) -> None:
+        if not self.store:
+            return
+
+        for row in self.store.list_projects():
+            try:
+                workspace = Workspace(str(row["path"]))
+            except (OSError, Exception):
+                continue
+
+            project_id = str(row["id"])
+            state = InMemoryState(
+                store=self.store,
+                project_id=project_id,
+            )
+            state.load_from_store()
+
+            project = ProjectSession(
+                id=project_id,
+                workspace=workspace,
+                tools=ToolRegistry(workspace),
+                state=state,
+                created_at=str(row["created_at"]),
+                updated_at=str(row["updated_at"]),
+                active_thread_id=(
+                    str(row["active_thread_id"])
+                    if row.get("active_thread_id") is not None
+                    else None
+                ),
+                store=self.store,
+            )
+            self._projects[project.id] = project
+            self._path_index[os.path.normcase(project.path)] = project.id
+
+        saved_active = self.store.get_setting("active_project_id")
+        if saved_active and saved_active in self._projects:
+            self.active_project_id = saved_active
+        elif self._projects:
+            self.active_project_id = self.list_projects()[0].id
+
+    def _set_active(self, project_id: str) -> None:
+        self.active_project_id = project_id
+        if self.store:
+            self.store.set_setting("active_project_id", project_id)
 
     @property
     def active(self) -> ProjectSession | None:
@@ -98,19 +160,26 @@ class ProjectRegistry:
             project.touch()
         else:
             timestamp = now_iso()
+            project_id = new_id("project")
+            state = InMemoryState(
+                store=self.store,
+                project_id=project_id,
+            )
             project = ProjectSession(
-                id=new_id("project"),
+                id=project_id,
                 workspace=workspace,
                 tools=ToolRegistry(workspace),
-                state=InMemoryState(),
+                state=state,
                 created_at=timestamp,
                 updated_at=timestamp,
+                store=self.store,
             )
+            project.persist()
             self._projects[project.id] = project
             self._path_index[key] = project.id
             created = True
 
-        self.active_project_id = project.id
+        self._set_active(project.id)
         thread = project.ensure_thread(active_model=active_model)
         return project, thread, created
 
@@ -123,7 +192,7 @@ class ProjectRegistry:
         project = self._projects.get(project_id)
         if not project:
             return None
-        self.active_project_id = project.id
+        self._set_active(project.id)
         project.touch()
         thread = project.ensure_thread(active_model=active_model)
         return project, thread
