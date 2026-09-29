@@ -38,12 +38,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view v0.1.0 *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $uri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/v0.1.0"
+          $response = Invoke-WebRequest -Uri $uri -Headers $headers -SkipHttpErrorCheck
+
+          if ($response.StatusCode -eq 200) {
             "exists=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
             Write-Host "v0.1.0 release already exists; finalizer will not republish."
-          } else {
+          } elseif ($response.StatusCode -eq 404) {
             "exists=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            Write-Host "v0.1.0 release does not exist yet; continuing."
+          } else {
+            throw "Unable to check release status. HTTP $($response.StatusCode)"
           }
 
       - name: Setup uv
