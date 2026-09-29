@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   safeStorage
@@ -763,6 +764,33 @@ ipcMain.on("renderer:ready", () => {
 });
 
 ipcMain.handle("agent:get-status", () => agentStatus);
+ipcMain.handle("agent:diagnostics-get", async () => {
+  const event = await sendRequest(
+    "diagnostics.get",
+    "diagnostics.loaded"
+  );
+  return {
+    event,
+    desktop: {
+      app_version: app.getVersion(),
+      packaged: app.isPackaged,
+      platform: process.platform,
+      architecture: process.arch,
+      electron: process.versions.electron,
+      chrome: process.versions.chrome,
+      node: process.versions.node,
+      secret_storage: secretStorageStatus().mode
+    }
+  };
+});
+ipcMain.handle(
+  "agent:diagnostics-copy",
+  async (_event, report: string) => {
+    clipboard.writeText(String(report ?? ""));
+    return { ok: true };
+  }
+);
+
 ipcMain.handle("agent:settings-get", async () => {
   const event = await sendRequest("settings.get", "settings.loaded");
   return {
