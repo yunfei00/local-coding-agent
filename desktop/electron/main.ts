@@ -483,7 +483,7 @@ function launchAgent(
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
     PYTHONUNBUFFERED: "1",
-    LCA_DATA_DIR: app.getPath("userData")
+    LCA_DATA_DIR: process.env.LCA_DATA_DIR || app.getPath("userData")
   };
   if (virtualEnv) {
     environment.VIRTUAL_ENV = virtualEnv;
