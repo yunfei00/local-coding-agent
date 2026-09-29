@@ -104,6 +104,71 @@ class AgentLoopTests(unittest.TestCase):
             9_000,
         )
 
+    def test_short_two_call_cycle_is_blocked(self) -> None:
+        guard = ToolLoopGuard(max_identical_calls=3)
+
+        self.assertTrue(guard.register_call("read_file", {"path": "a.py"})[0])
+        self.assertTrue(guard.register_call("git_status", {})[0])
+        self.assertTrue(guard.register_call("read_file", {"path": "a.py"})[0])
+
+        allowed, _, _ = guard.register_call("git_status", {})
+
+        self.assertFalse(allowed)
+        self.assertEqual(guard.last_block_reason, "cycle:2")
+        self.assertEqual(
+            guard.loop_abort_reason(max_blocked_repeats=3),
+            "short_cycle",
+        )
+
+    def test_successful_file_change_resets_repeat_window(self) -> None:
+        guard = ToolLoopGuard(max_identical_calls=2)
+
+        self.assertTrue(guard.register_call("run_command", {"command": "pytest"})[0])
+        self.assertTrue(guard.register_call("run_command", {"command": "pytest"})[0])
+
+        guard.record_result(
+            "apply_patch",
+            {
+                "ok": True,
+                "changed_paths": ["src/app.py"],
+            },
+        )
+
+        allowed, count, _ = guard.register_call(
+            "run_command",
+            {"command": "pytest"},
+        )
+        self.assertTrue(allowed)
+        self.assertEqual(count, 1)
+
+    def test_consecutive_failures_trip_limit_and_success_resets_it(self) -> None:
+        guard = ToolLoopGuard()
+
+        for index in range(3):
+            guard.record_result(
+                "read_file",
+                {
+                    "ok": False,
+                    "error": {"code": f"FAIL_{index}"},
+                    "changed_paths": [],
+                },
+            )
+
+        self.assertTrue(
+            guard.failure_limit_reached(max_consecutive_failures=3)
+        )
+        self.assertEqual(guard.consecutive_failures, 3)
+        self.assertEqual(guard.last_failure_code, "FAIL_2")
+
+        guard.record_result(
+            "git_status",
+            {"ok": True, "changed_paths": []},
+        )
+        self.assertEqual(guard.consecutive_failures, 0)
+        self.assertFalse(
+            guard.failure_limit_reached(max_consecutive_failures=3)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
