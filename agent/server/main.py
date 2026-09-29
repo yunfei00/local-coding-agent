@@ -5,6 +5,7 @@ import asyncio
 import json
 import secrets
 from contextlib import suppress
+from dataclasses import asdict
 from typing import Any
 
 import os
@@ -17,9 +18,9 @@ from agent.core.agent_loop import (
     compact_tool_payload,
 )
 from agent.core.context import ContextBudgetManager
+from agent.core.settings import RuntimeSettings
 from agent.core.version import APP_VERSION, PROTOCOL_VERSION
 from agent.llm.base import ProviderError, ToolCall
-from agent.llm.factory import create_provider_from_env
 from agent.permissions.approval import (
     APPROVAL_DENY,
     ApprovalManager,
@@ -100,36 +101,20 @@ class AgentServer:
         self.store = SQLiteStore()
         self.projects = ProjectRegistry(self.store)
         self.prompt_rules = PromptRuleManager(self.store)
-        self.provider = create_provider_from_env()
-        self.max_model_steps = _bounded_env_int(
-            "LCA_MAX_MODEL_STEPS",
-            self.MAX_MODEL_STEPS,
-            minimum=1,
-            maximum=128,
+        self.settings = RuntimeSettings.load(self.store)
+        self.openai_api_key: str | None = os.getenv("LCA_OPENAI_API_KEY")
+        self.provider = self.settings.create_provider(
+            openai_api_key=self.openai_api_key,
         )
-        self.max_tool_calls = _bounded_env_int(
-            "LCA_MAX_TOOL_CALLS",
-            self.MAX_TOOL_CALLS,
-            minimum=1,
-            maximum=512,
+        self.max_model_steps = self.settings.max_model_steps
+        self.max_tool_calls = self.settings.max_tool_calls
+        self.max_blocked_repeats = self.settings.max_blocked_repeats
+        self.max_consecutive_tool_failures = (
+            self.settings.max_consecutive_tool_failures
         )
-        self.max_blocked_repeats = _bounded_env_int(
-            "LCA_MAX_BLOCKED_REPEATS",
-            self.MAX_BLOCKED_REPEATS,
-            minimum=1,
-            maximum=20,
-        )
-        self.max_consecutive_tool_failures = _bounded_env_int(
-            "LCA_MAX_CONSECUTIVE_TOOL_FAILURES",
-            self.MAX_CONSECUTIVE_TOOL_FAILURES,
-            minimum=1,
-            maximum=50,
-        )
-        self.model_retry_attempts = _bounded_env_int(
-            "LCA_MODEL_RETRY_ATTEMPTS",
-            self.MODEL_RETRY_ATTEMPTS,
-            minimum=1,
-            maximum=5,
+        self.model_retry_attempts = self.settings.model_retry_attempts
+        self.context_reserved_output_tokens = (
+            self.settings.context_reserved_output_tokens
         )
         self.active_turns: dict[str, asyncio.Task[None]] = {}
         self.available_models: set[str] = set()
@@ -228,6 +213,7 @@ class AgentServer:
             "provider": self.provider.provider_name,
             "preferred_model": self.provider.preferred_model,
             "context_window": self.provider.context_window,
+            "settings": self._settings_payload(),
             "permission": {
                 "mode": self.permissions.mode.value,
                 "available_modes": self.permissions.available_modes,
@@ -307,6 +293,98 @@ class AgentServer:
             )
             return
 
+        if message_type == "settings.get":
+            await ws.send_json(
+                envelope(
+                    "settings.loaded",
+                    self._settings_payload(),
+                    request_id=request_id,
+                )
+            )
+            return
+
+        if message_type in {"settings.apply", "settings.reset"}:
+            if any(not task.done() for task in self.active_turns.values()):
+                await self.send_error(
+                    ws,
+                    "TURN_RUNNING",
+                    "Stop the active turn before changing runtime settings.",
+                    request_id=request_id,
+                )
+                return
+
+            try:
+                if message_type == "settings.reset":
+                    next_settings = RuntimeSettings.defaults()
+                else:
+                    raw_settings = payload.get("settings")
+                    if not isinstance(raw_settings, dict):
+                        raise ValueError("settings must be an object.")
+                    next_settings = RuntimeSettings.validate(
+                        {
+                            **asdict(self.settings),
+                            **raw_settings,
+                        }
+                    )
+            except ValueError as exc:
+                await self.send_error(
+                    ws,
+                    "INVALID_SETTINGS",
+                    str(exc),
+                    request_id=request_id,
+                )
+                return
+
+            next_settings.save(self.store)
+            self._apply_runtime_settings(next_settings)
+            status = await self.provider.get_status()
+            await ws.send_json(
+                envelope(
+                    "settings.changed",
+                    {
+                        **self._settings_payload(),
+                        "provider_status": status,
+                    },
+                    request_id=request_id,
+                )
+            )
+            return
+
+        if message_type == "settings.secret":
+            if any(not task.done() for task in self.active_turns.values()):
+                await self.send_error(
+                    ws,
+                    "TURN_RUNNING",
+                    "Stop the active turn before changing provider credentials.",
+                    request_id=request_id,
+                )
+                return
+            api_key = payload.get("openai_api_key")
+            if not isinstance(api_key, str):
+                await self.send_error(
+                    ws,
+                    "INVALID_SETTINGS_SECRET",
+                    "openai_api_key must be a string.",
+                    request_id=request_id,
+                )
+                return
+            self.openai_api_key = api_key
+            if self.settings.provider == "openai_compatible":
+                self.provider = self.settings.create_provider(
+                    openai_api_key=self.openai_api_key,
+                )
+                self.available_models.clear()
+                self.default_model = self.provider.preferred_model or None
+            await ws.send_json(
+                envelope(
+                    "settings.secret.changed",
+                    {
+                        "api_key_configured": bool(api_key),
+                    },
+                    request_id=request_id,
+                )
+            )
+            return
 
         if message_type == "prompt_rules.get":
             scope = str(payload.get("scope") or "").strip().lower()
@@ -843,6 +921,35 @@ class AgentServer:
         parts.append(self._permission_prompt())
         return "\n\n".join(parts)
 
+    def _settings_payload(self) -> dict[str, Any]:
+        configured_key = self.openai_api_key
+        if configured_key is None:
+            configured_key = os.getenv("LCA_OPENAI_API_KEY", "")
+        return self.settings.to_public_dict(
+            api_key_configured=bool(configured_key),
+        )
+
+    def _apply_runtime_settings(
+        self,
+        settings: RuntimeSettings,
+    ) -> None:
+        self.settings = settings
+        self.provider = settings.create_provider(
+            openai_api_key=self.openai_api_key,
+        )
+        self.max_model_steps = settings.max_model_steps
+        self.max_tool_calls = settings.max_tool_calls
+        self.max_blocked_repeats = settings.max_blocked_repeats
+        self.max_consecutive_tool_failures = (
+            settings.max_consecutive_tool_failures
+        )
+        self.model_retry_attempts = settings.model_retry_attempts
+        self.context_reserved_output_tokens = (
+            settings.context_reserved_output_tokens
+        )
+        self.available_models.clear()
+        self.default_model = self.provider.preferred_model or None
+
     def _sync_workspace_permissions(self) -> None:
         full_access = self.permissions.mode == PermissionMode.FULL_ACCESS
         for project in self.projects.list_projects():
@@ -927,6 +1034,7 @@ class AgentServer:
         history = state.get_messages(thread_id)
         context_manager = ContextBudgetManager(
             context_window_tokens=self.provider.context_window,
+            reserved_output_tokens=self.context_reserved_output_tokens,
         )
         initial_context = context_manager.prepare_initial(
             system_prompt=self._system_prompt(
