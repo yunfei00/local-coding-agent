@@ -1,0 +1,54 @@
+name: Windows Package Candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "feature/v0.1-mvp"
+    paths:
+      - "agent/**"
+      - "desktop/**"
+      - "scripts/build/**"
+      - "scripts/validation/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "package.json"
+      - ".github/workflows/package-windows.yml"
+      - ".github/workflows/release.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Windows x64 package candidate
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build and validate Windows package
+        shell: pwsh
+        run: .\scripts\build\package-windows.ps1
+
+      - name: Upload package candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: Local-Coding-Agent-Windows-x64
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            desktop/release/Local-Coding-Agent-*-x64-Setup.exe
+            desktop/release/Local-Coding-Agent-*-x64-Portable.exe
+            desktop/release/SHA256SUMS.txt

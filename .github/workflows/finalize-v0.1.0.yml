@@ -1,0 +1,94 @@
+name: Finalize v0.1.0
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    name: Finalize v0.1.0 Windows release
+    runs-on: windows-latest
+    if: github.repository == 'yunfei00/local-coding-agent'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release version
+        shell: pwsh
+        run: |
+          $desktop = Get-Content .\desktop\package.json -Raw | ConvertFrom-Json
+          $root = Get-Content .\package.json -Raw | ConvertFrom-Json
+          if ($desktop.version -ne "0.1.0") {
+            throw "Expected Desktop version 0.1.0, got $($desktop.version)."
+          }
+          if ($root.version -ne $desktop.version) {
+            throw "Root version $($root.version) does not match Desktop version $($desktop.version)."
+          }
+
+      - name: Check existing release
+        id: existing
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view v0.1.0 *> $null
+          if ($LASTEXITCODE -eq 0) {
+            "exists=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            Write-Host "v0.1.0 release already exists; finalizer will not republish."
+          } else {
+            "exists=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+
+      - name: Setup uv
+        if: steps.existing.outputs.exists != 'true'
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node
+        if: steps.existing.outputs.exists != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build and validate Windows package
+        if: steps.existing.outputs.exists != 'true'
+        shell: pwsh
+        run: .\scripts\build\package-windows.ps1
+
+      - name: Create v0.1.0 tag
+        if: steps.existing.outputs.exists != 'true'
+        shell: pwsh
+        run: |
+          git fetch --tags --force
+          git rev-parse "refs/tags/v0.1.0" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Tag v0.1.0 already exists."
+          } else {
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a v0.1.0 -m "Local Coding Agent v0.1.0" $env:GITHUB_SHA
+            git push origin v0.1.0
+          }
+
+      - name: Publish GitHub Release
+        if: steps.existing.outputs.exists != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $setup = (Get-ChildItem ".\desktop\release\Local-Coding-Agent-0.1.0-x64-Setup.exe").FullName
+          $portable = (Get-ChildItem ".\desktop\release\Local-Coding-Agent-0.1.0-x64-Portable.exe").FullName
+          $checksums = (Get-Item ".\desktop\release\SHA256SUMS.txt").FullName
+          gh release create v0.1.0 $setup $portable $checksums --title "Local Coding Agent v0.1.0" --generate-notes
+
+      - name: Final release summary
+        shell: pwsh
+        run: Write-Host "Local Coding Agent v0.1.0 finalizer completed."

@@ -1,0 +1,32 @@
+# Node
+node_modules/
+desktop/node_modules/
+desktop/dist/
+desktop/dist-electron/
+desktop/release/
+build/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local runtime
+data/
+logs/
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
