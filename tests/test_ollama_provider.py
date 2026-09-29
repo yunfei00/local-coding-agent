@@ -8,6 +8,7 @@ from agent.llm.ollama import (
     OllamaProvider,
     choose_default_model,
     parse_model_list,
+    _parse_tool_calls,
 )
 
 
@@ -33,6 +34,23 @@ class OllamaParsingTests(unittest.TestCase):
         self.assertEqual(len(models), 1)
         self.assertEqual(models[0].name, "qwen3-coder:30b")
         self.assertEqual(models[0].family, "qwen3moe")
+
+    def test_parse_tool_calls(self) -> None:
+        calls = _parse_tool_calls(
+            {
+                "tool_calls": [
+                    {
+                        "function": {
+                            "name": "read_file",
+                            "arguments": {"path": "README.md"},
+                        }
+                    }
+                ]
+            }
+        )
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].name, "read_file")
+        self.assertEqual(calls[0].arguments["path"], "README.md")
 
     def test_choose_default_prefers_exact_model(self) -> None:
         models = [

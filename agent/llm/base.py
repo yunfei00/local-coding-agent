@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 
@@ -19,8 +19,15 @@ class ModelInfo:
 
 
 @dataclass(frozen=True)
+class ToolCall:
+    name: str
+    arguments: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class ProviderChunk:
     content: str = ""
+    tool_calls: tuple[ToolCall, ...] = ()
     done: bool = False
     finish_reason: str | None = None
     prompt_eval_count: int | None = None

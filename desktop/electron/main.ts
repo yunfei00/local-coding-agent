@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -356,6 +356,24 @@ function createWindow(): void {
 }
 
 ipcMain.handle("agent:get-status", () => agentStatus);
+ipcMain.handle("agent:project-open", async () => {
+  const selection = await dialog.showOpenDialog({
+    properties: ["openDirectory"],
+    title: "Open coding workspace"
+  });
+  if (selection.canceled || !selection.filePaths[0]) {
+    return { canceled: true };
+  }
+  const event = await sendRequest(
+    "project.open",
+    "project.opened",
+    { path: selection.filePaths[0] }
+  );
+  return { canceled: false, event };
+});
+ipcMain.handle("agent:project-get", async () => {
+  return sendRequest("project.get", "project.loaded");
+});
 ipcMain.handle("agent:model-list", async () => {
   return sendRequest("model.list", "model.listed");
 });

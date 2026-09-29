@@ -8,7 +8,7 @@ from typing import Any
 
 import aiohttp
 
-from agent.llm.base import ModelInfo, ProviderChunk
+from agent.llm.base import ModelInfo, ProviderChunk, ToolCall
 
 
 class OllamaProviderError(RuntimeError):
@@ -74,6 +74,34 @@ def choose_default_model(models: list[ModelInfo], preferred: str) -> str | None:
 
 def _optional_string(value: Any) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _parse_tool_calls(message: dict[str, Any]) -> tuple[ToolCall, ...]:
+    raw_calls = message.get("tool_calls")
+    if not isinstance(raw_calls, list):
+        return ()
+
+    calls: list[ToolCall] = []
+    for raw in raw_calls:
+        if not isinstance(raw, dict):
+            continue
+        function = raw.get("function")
+        if not isinstance(function, dict):
+            continue
+        name = function.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        arguments = function.get("arguments")
+        if isinstance(arguments, str):
+            try:
+                parsed = json.loads(arguments)
+            except json.JSONDecodeError:
+                parsed = {}
+            arguments = parsed
+        if not isinstance(arguments, dict):
+            arguments = {}
+        calls.append(ToolCall(name=name, arguments=arguments))
+    return tuple(calls)
 
 
 class OllamaProvider:
@@ -151,14 +179,15 @@ class OllamaProvider:
         self,
         *,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[ProviderChunk]:
         timeout = aiohttp.ClientTimeout(
             total=None,
             connect=5,
             sock_read=600,
         )
-        request_body = {
+        request_body: dict[str, Any] = {
             "model": model,
             "messages": messages,
             "stream": True,
@@ -168,6 +197,8 @@ class OllamaProvider:
                 "temperature": self.temperature,
             },
         }
+        if tools:
+            request_body["tools"] = tools
 
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -206,14 +237,17 @@ class OllamaProvider:
 
                         message = payload.get("message")
                         content = ""
+                        tool_calls: tuple[ToolCall, ...] = ()
                         if isinstance(message, dict):
                             raw_content = message.get("content")
                             if isinstance(raw_content, str):
                                 content = raw_content
+                            tool_calls = _parse_tool_calls(message)
 
                         done = bool(payload.get("done"))
                         yield ProviderChunk(
                             content=content,
+                            tool_calls=tool_calls,
                             done=done,
                             finish_reason=_optional_string(
                                 payload.get("done_reason")

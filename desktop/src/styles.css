@@ -405,3 +405,71 @@ p {
 .model-select:disabled {
   color: #696969;
 }
+
+
+.open-project {
+  width: 100%;
+  padding: 9px 12px;
+  color: #e8e8e8;
+  text-align: left;
+  background: #252525;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+}
+
+.open-project:hover:not(:disabled) {
+  background: #2d2d2d;
+}
+
+.open-project:disabled {
+  color: #666;
+}
+
+.workspace-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+  background: #1b1b1b;
+  border: 1px solid #292929;
+  border-radius: 8px;
+}
+
+.workspace-card strong {
+  overflow: hidden;
+  color: #d8d8d8;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-card span {
+  overflow: hidden;
+  color: #737373;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-card small {
+  color: #6d8f76;
+  font-size: 9px;
+}
+
+.message.tool {
+  align-self: stretch;
+  max-width: 100%;
+  overflow: hidden;
+  color: #a9b3ad;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  background: #111713;
+  border: 1px solid #27332b;
+}
+
+.message.tool > div:last-child {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

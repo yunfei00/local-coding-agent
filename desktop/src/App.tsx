@@ -27,10 +27,13 @@ type ProviderStatus = {
   default_model?: string | null;
   preferred_model?: string | null;
   context_window: number;
-  error?: {
-    code?: string;
-    message?: string;
-  } | null;
+  error?: { code?: string; message?: string } | null;
+};
+
+type WorkspaceInfo = {
+  path: string;
+  name: string;
+  tools: string[];
 };
 
 type ThreadRecord = {
@@ -43,7 +46,7 @@ type ThreadRecord = {
 
 type ChatItem = {
   id: string;
-  role: "user" | "agent" | "system";
+  role: "user" | "agent" | "system" | "tool";
   text: string;
 };
 
@@ -70,9 +73,31 @@ function readProvider(event: AgentEnvelope): ProviderStatus | null {
   return payload as unknown as ProviderStatus;
 }
 
+function readWorkspace(event: AgentEnvelope): WorkspaceInfo | null {
+  const payload = event.payload;
+  if (!payload || typeof payload.path !== "string" || !payload.path) {
+    return null;
+  }
+  return {
+    path: payload.path,
+    name: typeof payload.name === "string" ? payload.name : payload.path,
+    tools: Array.isArray(payload.tools) ? payload.tools.map(String) : []
+  };
+}
+
+function stringifyArguments(value: unknown): string {
+  try {
+    const text = JSON.stringify(value ?? {}, null, 0);
+    return text.length > 500 ? text.slice(0, 500) + "…" : text;
+  } catch {
+    return String(value);
+  }
+}
+
 function App() {
   const [status, setStatus] = useState<Status>(initialStatus);
   const [provider, setProvider] = useState<ProviderStatus | null>(null);
+  const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
   const [selectedModel, setSelectedModel] = useState("");
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
   const [activeThread, setActiveThread] = useState<ThreadRecord | null>(null);
@@ -99,7 +124,6 @@ function App() {
 
     void refresh();
     const timer = window.setInterval(() => void refresh(), 1000);
-
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -108,6 +132,17 @@ function App() {
 
   useEffect(() => {
     return window.localAgent.onAgentEvent((event) => {
+      if (event.type === "project.opened") {
+        const nextWorkspace = readWorkspace(event);
+        if (nextWorkspace) {
+          setWorkspace(nextWorkspace);
+          setThreads([]);
+          setActiveThread(null);
+          setItems([]);
+        }
+        return;
+      }
+
       if (event.type === "thread.created") {
         const thread = readThread(event);
         if (thread) {
@@ -156,6 +191,74 @@ function App() {
         return;
       }
 
+      if (event.type === "tool.requested" && event.turn_id) {
+        const callId = String(event.payload?.tool_call_id ?? "");
+        const name = String(event.payload?.name ?? "tool");
+        const args = stringifyArguments(event.payload?.arguments);
+        setItems((current) => [
+          ...current,
+          {
+            id: "tool:" + callId,
+            role: "tool",
+            text: "▶ " + name + "\n" + args
+          }
+        ]);
+        return;
+      }
+
+      if (event.type === "tool.output") {
+        const callId = String(event.payload?.tool_call_id ?? "");
+        const output = String(event.payload?.output ?? "");
+        setItems((current) =>
+          current.map((item) => {
+            if (item.id !== "tool:" + callId) {
+              return item;
+            }
+            const next = item.text + "\n" + output;
+            return { ...item, text: next.length > 12000 ? next.slice(-12000) : next };
+          })
+        );
+        return;
+      }
+
+      if (event.type === "tool.completed") {
+        const callId = String(event.payload?.tool_call_id ?? "");
+        const result = event.payload?.result;
+        const summary =
+          result && typeof result === "object" && "summary" in result
+            ? String((result as { summary?: unknown }).summary ?? "")
+            : "";
+        const ok =
+          result && typeof result === "object" && "ok" in result
+            ? Boolean((result as { ok?: unknown }).ok)
+            : false;
+
+        setItems((current) =>
+          current.map((item) =>
+            item.id === "tool:" + callId
+              ? {
+                  ...item,
+                  text: item.text + "\n" + (ok ? "✓ " : "✗ ") + summary
+                }
+              : item
+          )
+        );
+        return;
+      }
+
+      if (event.type === "file.changed" && event.turn_id) {
+        const path = String(event.payload?.path ?? "");
+        setItems((current) => [
+          ...current,
+          {
+            id: "changed:" + event.turn_id + ":" + path + ":" + Date.now(),
+            role: "system",
+            text: "Changed file: " + path
+          }
+        ]);
+        return;
+      }
+
       if (
         (event.type === "turn.completed" || event.type === "turn.cancelled") &&
         event.turn_id
@@ -178,7 +281,7 @@ function App() {
 
       if (event.type === "turn.failed" && event.turn_id) {
         const message = String(
-          event.payload?.message ?? "Ollama generation failed."
+          event.payload?.message ?? "Agent turn failed."
         );
         setRunningTurnId((current) =>
           current === event.turn_id ? null : current
@@ -208,10 +311,16 @@ function App() {
 
     const load = async () => {
       try {
-        const [threadEvent, modelEvent] = await Promise.all([
+        const [projectEvent, threadEvent, modelEvent] = await Promise.all([
+          window.localAgent.getProject(),
           window.localAgent.listThreads(),
           window.localAgent.listModels()
         ]);
+
+        const loadedWorkspace = readWorkspace(projectEvent);
+        if (loadedWorkspace) {
+          setWorkspace(loadedWorkspace);
+        }
 
         const threadValue = threadEvent.payload?.threads;
         if (Array.isArray(threadValue)) {
@@ -258,6 +367,30 @@ function App() {
     }
     return Math.round(provider.context_window / 1024) + "K";
   }, [provider]);
+
+  const providerReady = Boolean(provider?.online && selectedModel);
+
+  const openProject = async () => {
+    if (runningTurnId) {
+      return;
+    }
+    setUiError(null);
+    try {
+      const result = await window.localAgent.openProject();
+      if (result.canceled || !result.event) {
+        return;
+      }
+      const next = readWorkspace(result.event);
+      if (next) {
+        setWorkspace(next);
+        setThreads([]);
+        setActiveThread(null);
+        setItems([]);
+      }
+    } catch (error) {
+      setUiError(String(error));
+    }
+  };
 
   const refreshModels = async () => {
     setUiError(null);
@@ -322,11 +455,9 @@ function App() {
   const changeModel = async (model: string) => {
     setSelectedModel(model);
     setUiError(null);
-
     if (!activeThread) {
       return;
     }
-
     try {
       await window.localAgent.selectModel(activeThread.id, model);
     } catch (error) {
@@ -338,11 +469,11 @@ function App() {
     event.preventDefault();
     const prompt = input.trim();
     if (
+      !workspace ||
       !activeThread ||
       !prompt ||
       runningTurnId ||
-      !provider?.online ||
-      !selectedModel
+      !providerReady
     ) {
       return;
     }
@@ -383,22 +514,37 @@ function App() {
     }
   };
 
-  const providerReady = Boolean(provider?.online && selectedModel);
-
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">Local Coding Agent</div>
+
+        <button
+          className="open-project"
+          disabled={status.state !== "ready" || Boolean(runningTurnId)}
+          onClick={() => void openProject()}
+        >
+          Open project
+        </button>
+
         <button
           className="new-thread"
-          disabled={status.state !== "ready" || !providerReady}
+          disabled={status.state !== "ready" || !providerReady || !workspace}
           onClick={() => void createThread()}
         >
           + New thread
         </button>
 
-        <div className="section-label">PROJECTS</div>
-        <div className="empty-list">Workspace arrives in Phase 3</div>
+        <div className="section-label">PROJECT</div>
+        {workspace ? (
+          <div className="workspace-card" title={workspace.path}>
+            <strong>{workspace.name}</strong>
+            <span>{workspace.path}</span>
+            <small>{workspace.tools.length} local tools</small>
+          </div>
+        ) : (
+          <div className="empty-list">No project opened</div>
+        )}
 
         <div className="section-label">THREADS</div>
         <div className="thread-list">
@@ -435,8 +581,8 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <div>
-            <strong>{activeThread?.title ?? "Phase 2"}</strong>
-            <span> · Ollama Provider</span>
+            <strong>{activeThread?.title ?? "Phase 3"}</strong>
+            <span> · Tool System v1</span>
           </div>
           <div className="topbar-actions">
             <button
@@ -456,20 +602,19 @@ function App() {
         <section className="conversation">
           {items.length === 0 ? (
             <div className="welcome-card">
-              <div className="eyebrow">PHASE 2</div>
-              <h1>Local model inference is live.</h1>
+              <div className="eyebrow">PHASE 3</div>
+              <h1>Local project tools are live.</h1>
               <p>
-                Messages now stream from your local Ollama model. Thread
-                history stays in memory for the current Agent process. File,
-                shell and Git tools are intentionally still disabled until
-                Phase 3.
+                Open a project, create a thread, then ask the Agent to inspect,
+                test or modify the code. File access is confined to the selected
+                workspace and destructive shell commands remain blocked.
               </p>
               <div className="milestones">
-                <span>Ollama ✓</span>
-                <span>Local models ✓</span>
-                <span>Streaming ✓</span>
-                <span>Context ✓</span>
-                <span>Cancel ✓</span>
+                <span>Workspace guard ✓</span>
+                <span>Files ✓</span>
+                <span>Search ✓</span>
+                <span>Shell ✓</span>
+                <span>Git ✓</span>
               </div>
               {!provider?.online ? (
                 <div className="provider-warning">
@@ -496,16 +641,19 @@ function App() {
             value={input}
             onChange={(event) => setInput(event.target.value)}
             disabled={
+              !workspace ||
               !activeThread ||
               status.state !== "ready" ||
               !providerReady
             }
             placeholder={
-              !provider?.online
-                ? "Ollama is offline. Start Ollama and click the status above to refresh."
-                : activeThread
-                  ? "Ask your local model a coding question…"
-                  : "Create a thread to start chatting with the local model."
+              !workspace
+                ? "Open a project first."
+                : !provider?.online
+                  ? "Ollama is offline."
+                  : activeThread
+                    ? "Ask the Agent to inspect, test or modify this project…"
+                    : "Create a thread to start working on the project."
             }
           />
           <div className="composer-row">
@@ -531,9 +679,8 @@ function App() {
                 )}
               </select>
               <span>
-                {contextLabel ? "Context " + contextLabel : ""}
-                {contextLabel ? " · " : ""}
-                Permission: chat only
+                {contextLabel ? "Context " + contextLabel + " · " : ""}
+                Permission: Workspace guarded
               </span>
             </div>
             {runningTurnId ? (
@@ -548,6 +695,7 @@ function App() {
               <button
                 type="submit"
                 disabled={
+                  !workspace ||
                   !activeThread ||
                   !input.trim() ||
                   status.state !== "ready" ||
