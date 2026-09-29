@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from agent.core.project_detection import ProjectDetection, detect_project
 from agent.persistence.store import SQLiteStore
 from agent.server.protocol import new_id
 from agent.server.state import InMemoryState, ThreadRecord
@@ -35,6 +36,9 @@ class ProjectSession:
     @property
     def path(self) -> str:
         return self.workspace.display_path
+
+    def detection(self) -> ProjectDetection:
+        return detect_project(self.workspace.root)
 
     def persist(self) -> None:
         if not self.store:
@@ -78,6 +82,7 @@ class ProjectSession:
             "name": self.name,
             "path": self.path,
             "tools": self.tools.names,
+            "detection": self.detection().to_dict(),
             "thread_count": len(self.state.list_threads()),
             "created_at": self.created_at,
             "updated_at": self.updated_at,
