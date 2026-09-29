@@ -870,11 +870,11 @@ function App() {
 
   const detail = useMemo(() => {
     if (status.state === "ready") {
-      return [
-        status.host + ":" + status.port,
-        status.version,
-        status.protocol
-      ].join(" · ");
+      const endpoint =
+        status.host && status.port
+          ? status.host + ":" + status.port
+          : "local process";
+      return "Local runtime · " + endpoint;
     }
     return status.error ?? "Waiting for the local Agent process…";
   }, [status]);
