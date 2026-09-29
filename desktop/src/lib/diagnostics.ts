@@ -47,7 +47,8 @@ export function sanitizeDiagnostics(value: unknown): DiagnosticValue {
       if (SENSITIVE_KEY.test(key)) {
         if (
           key === "prompt_rules" ||
-          key === "redaction"
+          key === "redaction" ||
+          (key === "messages" && typeof item === "number")
         ) {
           result[key] = sanitizeDiagnostics(item);
         } else {
