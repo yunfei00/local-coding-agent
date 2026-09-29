@@ -43,9 +43,9 @@ class RunCommandStreamTests(unittest.IsolatedAsyncioTestCase):
             result = await RunCommandTool(Workspace(root)).execute(
                 {
                     "command": (
-                        'python -c "import sys; '
+                        "python -c \"import sys; "
                         "print('stdout-line', flush=True); "
-                        "print('stderr-line', file=sys.stderr, flush=True)""
+                        "print('stderr-line', file=sys.stderr, flush=True)\""
                     ),
                     "timeout_seconds": 30,
                 },
