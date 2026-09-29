@@ -308,11 +308,12 @@ function startAgent(): void {
   } else if (app.isPackaged) {
     const bundledAgent = packagedAgentPath();
     if (!existsSync(bundledAgent)) {
+      const message = "Bundled Agent executable is missing: " + bundledAgent;
       agentStatus = {
         state: "error",
-        error: "Bundled Agent executable is missing: " + bundledAgent
+        error: message
       };
-      appendRuntimeLog("desktop.log", agentStatus.error);
+      appendRuntimeLog("desktop.log", message);
       return;
     }
     agentProcess = launchAgent(
