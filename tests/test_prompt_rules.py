@@ -212,5 +212,100 @@ class PromptRuleAgentTests(unittest.IsolatedAsyncioTestCase):
                     server.close()
 
 
+class PromptRuleProtocolTests(unittest.IsolatedAsyncioTestCase):
+    async def test_prompt_rule_crud_protocol(self) -> None:
+        with tempfile.TemporaryDirectory() as data_root, tempfile.TemporaryDirectory() as repo_root:
+            with patch.dict(os.environ, {"LCA_DATA_DIR": data_root}):
+                server = AgentServer("test-token")
+                project, thread, _ = server.projects.open(
+                    repo_root,
+                    active_model="fake-model",
+                )
+                ws = FakeWebSocket()
+                owned_turns: set[str] = set()
+
+                try:
+                    await server.handle_message(
+                        ws,
+                        {
+                            "type": "prompt_rules.set",
+                            "request_id": "req_set",
+                            "payload": {
+                                "scope": "thread",
+                                "thread_id": thread.id,
+                                "content": "THREAD-PROTOCOL-RULE",
+                                "enabled": True,
+                            },
+                        },
+                        owned_turns,
+                    )
+                    changed = ws.messages[-1]
+                    self.assertEqual(changed["type"], "prompt_rules.changed")
+                    self.assertEqual(
+                        changed["payload"]["rule"]["content"],
+                        "THREAD-PROTOCOL-RULE",
+                    )
+
+                    await server.handle_message(
+                        ws,
+                        {
+                            "type": "prompt_rules.get",
+                            "request_id": "req_get",
+                            "thread_id": thread.id,
+                            "payload": {},
+                        },
+                        owned_turns,
+                    )
+                    loaded = ws.messages[-1]
+                    self.assertEqual(loaded["type"], "prompt_rules.loaded")
+                    self.assertEqual(
+                        loaded["payload"]["thread"]["content"],
+                        "THREAD-PROTOCOL-RULE",
+                    )
+                    self.assertEqual(
+                        [item["scope"] for item in loaded["payload"]["effective"]],
+                        ["thread"],
+                    )
+
+                    await server.handle_message(
+                        ws,
+                        {
+                            "type": "prompt_rules.toggle",
+                            "request_id": "req_toggle",
+                            "payload": {
+                                "scope": "thread",
+                                "thread_id": thread.id,
+                                "enabled": False,
+                            },
+                        },
+                        owned_turns,
+                    )
+                    toggled = ws.messages[-1]
+                    self.assertFalse(toggled["payload"]["rule"]["enabled"])
+
+                    await server.handle_message(
+                        ws,
+                        {
+                            "type": "prompt_rules.reset",
+                            "request_id": "req_reset",
+                            "payload": {
+                                "scope": "thread",
+                                "thread_id": thread.id,
+                            },
+                        },
+                        owned_turns,
+                    )
+                    reset = ws.messages[-1]
+                    self.assertTrue(reset["payload"]["reset"])
+                    self.assertIsNone(reset["payload"]["rule"])
+                    self.assertIsNone(
+                        server.prompt_rules.get("thread", thread.id)
+                    )
+
+                    self.assertEqual(server.projects.active.id, project.id)
+                finally:
+                    server.close()
+
+
 if __name__ == "__main__":
     unittest.main()
