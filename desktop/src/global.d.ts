@@ -22,6 +22,57 @@ declare global {
         protocol?: string;
         error?: string;
       }>;
+      getSettings: () => Promise<{
+        event: AgentEnvelope;
+        secret: {
+          configured: boolean;
+          stored: boolean;
+          mode: "os_protected" | "session_only" | "environment" | "none";
+        };
+      }>;
+      applySettings: (
+        settings: Record<string, unknown>,
+        secretUpdate?: {
+          action?: "keep" | "set" | "clear";
+          value?: string;
+        }
+      ) => Promise<{
+        event: AgentEnvelope;
+        provider: AgentEnvelope;
+        secret: {
+          configured: boolean;
+          stored: boolean;
+          mode: "os_protected" | "session_only" | "environment" | "none";
+        };
+      }>;
+      resetSettings: () => Promise<{
+        event: AgentEnvelope;
+        provider: AgentEnvelope;
+        secret: {
+          configured: boolean;
+          stored: boolean;
+          mode: "os_protected" | "session_only" | "environment" | "none";
+        };
+      }>;
+      getPromptRules: (threadId?: string) => Promise<AgentEnvelope>;
+      setPromptRule: (
+        scope: string,
+        content: string,
+        enabled: boolean,
+        projectId?: string,
+        threadId?: string
+      ) => Promise<AgentEnvelope>;
+      togglePromptRule: (
+        scope: string,
+        enabled: boolean,
+        projectId?: string,
+        threadId?: string
+      ) => Promise<AgentEnvelope>;
+      resetPromptRule: (
+        scope: string,
+        projectId?: string,
+        threadId?: string
+      ) => Promise<AgentEnvelope>;
       getPermission: () => Promise<AgentEnvelope>;
       setPermission: (mode: string) => Promise<AgentEnvelope>;
       respondApproval: (
