@@ -8,6 +8,7 @@ import {
   useState
 } from "react";
 
+import { SettingsPanel } from "./components/SettingsPanel";
 import {
   DiffFile,
   DiffReviewMeta,
@@ -205,6 +206,7 @@ function App() {
   const [uiError, setUiError] = useState<string | null>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const conversationRef = useRef<HTMLElement | null>(null);
   const autoFollowRef = useRef(true);
 
@@ -1191,6 +1193,14 @@ function App() {
             >
               {provider?.provider ?? "Provider"} {provider?.online ? "Online" : "Offline"}
             </button>
+            <button
+              type="button"
+              className={"settings-button" + (settingsOpen ? " active" : "")}
+              onClick={() => setSettingsOpen((current) => !current)}
+              title="Settings"
+            >
+              Settings
+            </button>
             <span className="platform">{window.localAgent.platform}</span>
           </div>
         </header>
@@ -1391,6 +1401,31 @@ function App() {
             )}
           </div>
         </form>
+
+        {settingsOpen ? (
+          <SettingsPanel
+            projectId={workspace?.id}
+            threadId={activeThread?.id}
+            permissionMode={permissionMode}
+            running={runningTurnId !== null}
+            onClose={() => setSettingsOpen(false)}
+            onPermissionChanged={(mode) => setPermissionMode(mode)}
+            onProviderChanged={(event) => {
+              const next = readProvider(event);
+              if (!next) {
+                return;
+              }
+              setProvider(next);
+              const names = next.models.map((item) => item.name);
+              setSelectedModel((current) => {
+                if (current && names.includes(current)) {
+                  return current;
+                }
+                return next.default_model ?? names[0] ?? "";
+              });
+            }}
+          />
+        ) : null}
       </main>
     </div>
   );
