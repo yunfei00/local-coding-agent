@@ -47,6 +47,19 @@ type ProviderStatus = {
 
 type PermissionMode = "read_only" | "workspace" | "full_access";
 
+type ContextUsage = {
+  context_window_tokens: number;
+  reserved_output_tokens: number;
+  input_budget_tokens: number;
+  estimated_input_tokens: number;
+  history_messages_total: number;
+  history_messages_included: number;
+  omitted_history_messages: number;
+  runtime_messages_omitted: number;
+  truncated_messages: number;
+  utilization: number;
+};
+
 type ApprovalRequest = {
   id: string;
   turnId: string;
@@ -204,6 +217,7 @@ function App() {
   const [runningTurnId, setRunningTurnId] = useState<string | null>(null);
   const [uiError, setUiError] = useState<string | null>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
   const conversationRef = useRef<HTMLElement | null>(null);
   const autoFollowRef = useRef(true);
 
@@ -404,6 +418,19 @@ function App() {
 
       if (event.type === "turn.started" && event.turn_id) {
         setRunningTurnId(event.turn_id);
+        setContextUsage(null);
+        return;
+      }
+
+      if (event.type === "context.updated") {
+        const payload = event.payload;
+        if (
+          payload &&
+          typeof payload.estimated_input_tokens === "number" &&
+          typeof payload.input_budget_tokens === "number"
+        ) {
+          setContextUsage(payload as unknown as ContextUsage);
+        }
         return;
       }
 
@@ -781,8 +808,17 @@ function App() {
     if (!provider?.context_window) {
       return "";
     }
-    return Math.round(provider.context_window / 1024) + "K";
-  }, [provider]);
+    const windowLabel = Math.round(provider.context_window / 1024) + "K";
+    if (!contextUsage) {
+      return windowLabel;
+    }
+    const used = Math.max(contextUsage.estimated_input_tokens, 0);
+    const usedLabel =
+      used >= 1024
+        ? (used / 1024).toFixed(1) + "K"
+        : String(used);
+    return usedLabel + " / " + windowLabel;
+  }, [provider, contextUsage]);
 
   const providerReady = Boolean(provider?.online && selectedModel);
 
@@ -1212,7 +1248,7 @@ function App() {
               !workspace
                 ? "Open a project first."
                 : !provider?.online
-                  ? "Ollama is offline."
+                  ? "Provider is offline."
                   : "Ask the Agent to inspect, test or modify this project…"
             }
           />
