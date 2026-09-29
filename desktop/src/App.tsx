@@ -1080,9 +1080,9 @@ function App() {
                 (provider?.online ? "provider-online" : "provider-offline")
               }
               onClick={() => void refreshModels()}
-              title="Refresh Ollama status and local models"
+              title="Refresh model provider status and models"
             >
-              Ollama {provider?.online ? "Online" : "Offline"}
+              {provider?.provider ?? "Provider"} {provider?.online ? "Online" : "Offline"}
             </button>
             <span className="platform">{window.localAgent.platform}</span>
           </div>
@@ -1104,7 +1104,7 @@ function App() {
               </h1>
               <p>
                 {workspace
-                  ? "The v0.1.0 runtime is ready for packaged Windows validation with an embedded Agent executable, persistent data and local Ollama."
+                  ? "The current runtime is ready with an embedded Agent executable, persistent data and the selected model provider."
                   : "Each opened project stays in the left sidebar for this app session. Switching projects changes the active workspace without discarding the others."}
               </p>
               <div className="milestones">
@@ -1117,7 +1117,7 @@ function App() {
               {!provider?.online ? (
                 <div className="provider-warning">
                   {provider?.error?.message ??
-                    "Ollama is not available. Start Ollama and refresh."}
+                    "The selected model provider is not available. Check its configuration and refresh."}
                 </div>
               ) : null}
             </div>
@@ -1252,7 +1252,7 @@ function App() {
                     </option>
                   ))
                 ) : (
-                  <option value="">No local models</option>
+                  <option value="">No models</option>
                 )}
               </select>
               <span>

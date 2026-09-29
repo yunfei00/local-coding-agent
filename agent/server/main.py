@@ -16,8 +16,8 @@ from agent.core.agent_loop import (
     trim_history,
 )
 from agent.core.version import APP_VERSION, PROTOCOL_VERSION
-from agent.llm.base import ToolCall
-from agent.llm.ollama import OllamaProvider, OllamaProviderError
+from agent.llm.base import ProviderError, ToolCall
+from agent.llm.factory import create_provider_from_env
 from agent.permissions.approval import (
     APPROVAL_DENY,
     ApprovalManager,
@@ -78,7 +78,7 @@ class AgentServer:
         self.token = token
         self.store = SQLiteStore()
         self.projects = ProjectRegistry(self.store)
-        self.provider = OllamaProvider()
+        self.provider = create_provider_from_env()
         self.active_turns: dict[str, asyncio.Task[None]] = {}
         self.available_models: set[str] = set()
         self.default_model: str | None = self.provider.preferred_model
@@ -636,8 +636,8 @@ class AgentServer:
                 error = status.get("error") or {}
                 await self.send_error(
                     ws,
-                    str(error.get("code") or "OLLAMA_UNAVAILABLE"),
-                    str(error.get("message") or "Ollama is unavailable."),
+                    str(error.get("code") or "PROVIDER_UNAVAILABLE"),
+                    str(error.get("message") or "The selected model provider is unavailable."),
                     request_id=request_id,
                     thread_id=thread_id,
                 )
@@ -651,7 +651,7 @@ class AgentServer:
             await self.send_error(
                 ws,
                 "MODEL_NOT_FOUND",
-                f"Model is not installed in Ollama: {model}",
+                f"Model is not available from {self.provider.provider_name}: {model}",
                 request_id=request_id,
                 thread_id=thread_id,
             )
@@ -742,13 +742,9 @@ class AgentServer:
                                 prompt_eval_count = chunk.prompt_eval_count
                                 eval_count = chunk.eval_count
                         break
-                    except OllamaProviderError as exc:
-                        transient = exc.code in {
-                            "OLLAMA_STREAM_FAILED",
-                            "OLLAMA_UNAVAILABLE",
-                        }
+                    except ProviderError as exc:
                         can_retry = (
-                            transient
+                            exc.transient
                             and not observed_output
                             and attempt < self.MODEL_RETRY_ATTEMPTS
                         )
@@ -761,7 +757,7 @@ class AgentServer:
                                 {
                                     "phase": "model_retry",
                                     "message": (
-                                        "Local model connection failed before producing output; "
+                                        "Model provider connection failed before producing output; "
                                         f"retrying ({attempt}/{self.MODEL_RETRY_ATTEMPTS - 1})."
                                     ),
                                 },
@@ -813,6 +809,7 @@ class AgentServer:
                         "content": assistant_text,
                         "tool_calls": [
                             {
+                                **({"id": call.id} if call.id else {}),
                                 "type": "function",
                                 "function": {
                                     "name": call.name,
@@ -979,6 +976,8 @@ class AgentServer:
                     messages.append(
                         {
                             "role": "tool",
+                            **({"tool_call_id": call.id} if call.id else {}),
+                            "name": call.name,
                             "tool_name": call.name,
                             "content": json.dumps(
                                 compact_tool_payload(payload),
@@ -1064,7 +1063,7 @@ class AgentServer:
                     )
                 )
             raise
-        except OllamaProviderError as exc:
+        except ProviderError as exc:
             with suppress(ConnectionResetError, RuntimeError):
                 await ws.send_json(
                     envelope(

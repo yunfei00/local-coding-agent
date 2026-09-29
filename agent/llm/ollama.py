@@ -8,10 +8,15 @@ from typing import Any
 
 import aiohttp
 
-from agent.llm.base import ModelInfo, ProviderChunk, ToolCall
+from agent.llm.base import ModelInfo, ProviderChunk, ProviderError, ToolCall
 
 
-class OllamaProviderError(RuntimeError):
+class OllamaProviderError(ProviderError):
+    _TRANSIENT_CODES = {
+        "OLLAMA_UNAVAILABLE",
+        "OLLAMA_STREAM_FAILED",
+    }
+
     def __init__(
         self,
         code: str,
@@ -19,10 +24,12 @@ class OllamaProviderError(RuntimeError):
         *,
         recoverable: bool = True,
     ) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.recoverable = recoverable
+        super().__init__(
+            code,
+            message,
+            recoverable=recoverable,
+            transient=code in self._TRANSIENT_CODES,
+        )
 
 
 def parse_model_list(payload: dict[str, Any]) -> list[ModelInfo]:
@@ -100,7 +107,7 @@ def _parse_tool_calls(message: dict[str, Any]) -> tuple[ToolCall, ...]:
             arguments = parsed
         if not isinstance(arguments, dict):
             arguments = {}
-        calls.append(ToolCall(name=name, arguments=arguments))
+        calls.append(\n            ToolCall(\n                name=name,\n                arguments=arguments,\n                id=_optional_string(raw.get("id")),\n            )\n        )
     return tuple(calls)
 
 
