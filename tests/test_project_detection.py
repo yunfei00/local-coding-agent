@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from agent.core.project_detection import detect_project
+from agent.server.projects import ProjectRegistry
 
 
 class ProjectDetectionTests(unittest.TestCase):
@@ -113,6 +114,42 @@ class ProjectDetectionTests(unittest.TestCase):
             (path / "build.gradle").write_text("", encoding="utf-8")
             detection = detect_project(path)
             self.assertNotIn("android", detection.detected)
+
+    def test_project_session_payload_exposes_detection(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root)
+            (path / "pyproject.toml").write_text(
+                "[tool.pytest.ini_options]\naddopts='-q'\n",
+                encoding="utf-8",
+            )
+            registry = ProjectRegistry()
+            project, _, _ = registry.open(
+                path,
+                active_model="fake-model",
+            )
+
+            payload = registry.project_payload(project)
+            detection = payload["project"]["detection"]
+
+            self.assertEqual(detection["primary"], "python")
+            self.assertIn("python", detection["detected"])
+            commands = [
+                item["command"]
+                for item in detection["suggestions"]
+            ]
+            self.assertIn("python -m pytest", commands)
+
+    def test_prompt_text_marks_detected_commands_as_hints_only(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root)
+            (path / "package.json").write_text(
+                '{"scripts":{"test":"node --test"}}',
+                encoding="utf-8",
+            )
+            prompt = detect_project(path).prompt_text()
+
+            self.assertIn("not permission to run commands automatically", prompt)
+            self.assertIn("Do not run publishing", prompt)
 
 
 if __name__ == "__main__":
