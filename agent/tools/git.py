@@ -93,7 +93,15 @@ class GitDiffTool(BaseTool):
         self.workspace = workspace
 
     async def execute(self, arguments: dict[str, Any], *, on_output=None) -> ToolResult:
-        args = ["diff", "--no-ext-diff", "--no-color", "--unified=3"]
+        args = [
+            "-c",
+            "core.quotePath=false",
+            "diff",
+            "--no-ext-diff",
+            "--no-color",
+            "--find-renames",
+            "--unified=3",
+        ]
         staged = bool(arguments.get("staged"))
         if staged:
             args.append("--cached")
@@ -142,6 +150,43 @@ class GitDiffTool(BaseTool):
         additions = sum(int(item.get("additions") or 0) for item in files)
         deletions = sum(int(item.get("deletions") or 0) for item in files)
 
+        status_counts: dict[str, int] = {}
+        truncated_files: list[str] = []
+        binary_files: list[str] = []
+        renamed_files: list[dict[str, Any]] = []
+        for item in files:
+            status = str(item.get("status") or "modified")
+            status_counts[status] = status_counts.get(status, 0) + 1
+            path_value = str(item.get("path") or "")
+            if bool(item.get("truncated")):
+                truncated_files.append(path_value)
+            if bool(item.get("binary")):
+                binary_files.append(path_value)
+            if status == "renamed":
+                renamed_files.append(
+                    {
+                        "old_path": str(item.get("old_path") or ""),
+                        "new_path": str(item.get("new_path") or path_value),
+                        "similarity": item.get("similarity"),
+                    }
+                )
+
+        raw_file_count = stdout.count("diff --git ")
+        preview_files_truncated = raw_file_count > len(
+            [item for item in files if item.get("status") != "untracked"]
+        )
+        review = {
+            "read_only": True,
+            "mode": "staged" if staged else "working_tree",
+            "complete_preview": not truncated_files and not preview_files_truncated,
+            "status_counts": status_counts,
+            "truncated_files": truncated_files,
+            "binary_files": binary_files,
+            "renamed_files": renamed_files,
+            "preview_files_truncated": preview_files_truncated,
+            "path_filter": relative_filter,
+        }
+
         return ToolResult(
             ok=code == 0,
             summary=(
@@ -159,6 +204,7 @@ class GitDiffTool(BaseTool):
                 "additions": additions,
                 "deletions": deletions,
                 "staged": staged,
+                "review": review,
             },
         )
 
