@@ -3,6 +3,8 @@ node_modules/
 desktop/node_modules/
 desktop/dist/
 desktop/dist-electron/
+desktop/release/
+build/
 
 # Python
 __pycache__/

@@ -1,9 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import WebSocket from "ws";
+
+const APP_ID = "com.yunfei.localcodingagent";
+app.setAppUserModelId(APP_ID);
 
 type AgentStatus = {
   state: "starting" | "ready" | "error" | "stopped";
@@ -47,6 +50,32 @@ function projectPythonPath(): string {
   return process.platform === "win32"
     ? path.join(repoRoot(), ".venv", "Scripts", "python.exe")
     : path.join(repoRoot(), ".venv", "bin", "python");
+}
+
+function packagedAgentPath(): string {
+  return path.join(
+    process.resourcesPath,
+    "agent",
+    process.platform === "win32" ? "lca-agent.exe" : "lca-agent"
+  );
+}
+
+function logDirectory(): string {
+  return path.join(app.getPath("userData"), "logs");
+}
+
+function appendRuntimeLog(fileName: string, message: string): void {
+  try {
+    const directory = logDirectory();
+    mkdirSync(directory, { recursive: true });
+    appendFileSync(
+      path.join(directory, fileName),
+      new Date().toISOString() + " " + message + "\n",
+      "utf8"
+    );
+  } catch (error) {
+    console.error("[desktop] Unable to write runtime log", error);
+  }
 }
 
 function broadcastAgentEvent(event: AgentEnvelope): void {
@@ -166,6 +195,7 @@ function updateFromAgentStdout(chunk: Buffer): void {
     if (!line.startsWith("LCA_AGENT_READY ")) {
       if (line.trim()) {
         console.log("[agent]", line);
+        appendRuntimeLog("agent.log", "[stdout] " + line);
       }
       continue;
     }
@@ -186,6 +216,10 @@ function updateFromAgentStdout(chunk: Buffer): void {
         version: ready.version,
         protocol: ready.protocol
       };
+      appendRuntimeLog(
+        "desktop.log",
+        "Agent ready on " + ready.host + ":" + ready.port + " protocol=" + ready.protocol
+      );
       connectAgentWebSocket(ready);
     } catch (error) {
       agentStatus = {
@@ -196,31 +230,53 @@ function updateFromAgentStdout(chunk: Buffer): void {
   }
 }
 
-function launchAgent(command: string): ChildProcessWithoutNullStreams {
+function launchAgent(
+  command: string,
+  args: string[],
+  cwd: string,
+  virtualEnv?: string
+): ChildProcessWithoutNullStreams {
+  const environment: NodeJS.ProcessEnv = {
+    ...process.env,
+    PYTHONUNBUFFERED: "1",
+    LCA_DATA_DIR: app.getPath("userData")
+  };
+  if (virtualEnv) {
+    environment.VIRTUAL_ENV = virtualEnv;
+  }
+
+  appendRuntimeLog(
+    "desktop.log",
+    "Launching Agent command=" + command + " cwd=" + cwd
+  );
+
   const child = spawn(
     command,
-    ["-m", "agent.server.main", "--port", "0"],
+    args,
     {
-      cwd: repoRoot(),
-      env: {
-        ...process.env,
-        PYTHONUNBUFFERED: "1",
-        VIRTUAL_ENV: path.join(repoRoot(), ".venv"),
-        LCA_DATA_DIR: app.getPath("userData")
-      },
+      cwd,
+      env: environment,
       windowsHide: true
     }
   );
 
   child.stdout.on("data", updateFromAgentStdout);
   child.stderr.on("data", (chunk: Buffer) => {
-    console.error("[agent:stderr]", chunk.toString("utf8").trimEnd());
+    const message = chunk.toString("utf8").trimEnd();
+    console.error("[agent:stderr]", message);
+    if (message) {
+      appendRuntimeLog("agent.log", "[stderr] " + message);
+    }
   });
   child.on("exit", (code, signal) => {
     agentProcess = null;
     agentToken = null;
     agentSocket = null;
     rejectPending("Agent process exited.");
+    appendRuntimeLog(
+      "desktop.log",
+      "Agent exited code=" + code + " signal=" + signal
+    );
     if (!shuttingDown) {
       agentStatus = {
         state: code === 0 ? "stopped" : "error",
@@ -235,23 +291,62 @@ function launchAgent(command: string): ChildProcessWithoutNullStreams {
 function startAgent(): void {
   agentStatus = { state: "starting" };
 
-  const configuredPython = process.env.LCA_PYTHON;
-  const python = configuredPython || projectPythonPath();
+  const configuredAgent = process.env.LCA_AGENT_EXECUTABLE;
+  if (configuredAgent) {
+    if (!existsSync(configuredAgent)) {
+      agentStatus = {
+        state: "error",
+        error: "Configured Agent executable was not found: " + configuredAgent
+      };
+      return;
+    }
+    agentProcess = launchAgent(
+      configuredAgent,
+      ["--port", "0"],
+      path.dirname(configuredAgent)
+    );
+  } else if (app.isPackaged) {
+    const bundledAgent = packagedAgentPath();
+    if (!existsSync(bundledAgent)) {
+      agentStatus = {
+        state: "error",
+        error: "Bundled Agent executable is missing: " + bundledAgent
+      };
+      appendRuntimeLog("desktop.log", agentStatus.error);
+      return;
+    }
+    agentProcess = launchAgent(
+      bundledAgent,
+      ["--port", "0"],
+      path.dirname(bundledAgent)
+    );
+  } else {
+    const configuredPython = process.env.LCA_PYTHON;
+    const python = configuredPython || projectPythonPath();
 
-  if (!configuredPython && !existsSync(python)) {
-    agentStatus = {
-      state: "error",
-      error: "Project .venv is missing. Run .\\scripts\\dev\\bootstrap.ps1 first."
-    };
-    return;
+    if (!configuredPython && !existsSync(python)) {
+      agentStatus = {
+        state: "error",
+        error: "Project .venv is missing. Run .\\scripts\\dev\\bootstrap.ps1 first."
+      };
+      return;
+    }
+
+    console.log("[desktop] Agent Python: " + python);
+    agentProcess = launchAgent(
+      python,
+      ["-m", "agent.server.main", "--port", "0"],
+      repoRoot(),
+      path.join(repoRoot(), ".venv")
+    );
   }
 
-  console.log("[desktop] Agent Python: " + python);
-  agentProcess = launchAgent(python);
   agentProcess.once("error", (error) => {
+    const message = "Unable to start Agent process: " + String(error);
+    appendRuntimeLog("desktop.log", message);
     agentStatus = {
       state: "error",
-      error: "Unable to start project Agent Python: " + String(error)
+      error: message
     };
   });
 }
@@ -461,6 +556,10 @@ ipcMain.handle("agent:turn-cancel", async (_event, turnId: string) => {
 });
 
 app.whenReady().then(() => {
+  appendRuntimeLog(
+    "desktop.log",
+    "Application ready version=" + app.getVersion() + " packaged=" + app.isPackaged
+  );
   startAgent();
   createWindow();
 

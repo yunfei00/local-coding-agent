@@ -1064,9 +1064,9 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <div className="topbar-title">
-            <strong>{workspace?.name ?? "Phase 8"}</strong>
+            <strong>{workspace?.name ?? "Phase 9"}</strong>
             <span>
-              {activeThread ? " · " + activeThread.title : " · Real-world Validation"}
+              {activeThread ? " · " + activeThread.title : " · Windows Packaging"}
             </span>
           </div>
           <div className="topbar-actions">
@@ -1092,7 +1092,7 @@ function App() {
           >
           {items.length === 0 && approvals.length === 0 ? (
             <div className="welcome-card">
-              <div className="eyebrow">PHASE 8</div>
+              <div className="eyebrow">PHASE 9</div>
               <h1>
                 {workspace
                   ? "Project ready. End-to-end validation is active."
@@ -1100,7 +1100,7 @@ function App() {
               </h1>
               <p>
                 {workspace
-                  ? "The full coding loop is under real-project validation: inspect, test, repair, retest, review Diff, respect permissions, stop safely and resume sessions."
+                  ? "The v0.1.0 runtime is ready for packaged Windows validation with an embedded Agent executable, persistent data and local Ollama."
                   : "Each opened project stays in the left sidebar for this app session. Switching projects changes the active workspace without discarding the others."}
               </p>
               <div className="milestones">

@@ -1,10 +1,15 @@
 [project]
 name = "local-coding-agent"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Local-first coding agent core"
 requires-python = ">=3.11"
 dependencies = [
     "aiohttp>=3.10,<4"
+]
+
+[project.optional-dependencies]
+packaging = [
+    "pyinstaller==6.22.3"
 ]
 
 [tool.setuptools.packages.find]
