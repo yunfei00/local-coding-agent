@@ -1,9 +1,8 @@
 import { useLayoutEffect, useRef } from "react";
 
-export type ToolChunk = {
-  stream: "stdout" | "stderr";
-  text: string;
-};
+import { OrderedToolChunk } from "../lib/toolStream";
+
+export type ToolChunk = OrderedToolChunk;
 
 export type DiffLine = {
   type: "add" | "delete" | "context" | "meta";
@@ -33,7 +32,14 @@ export type ToolView = {
   id: string;
   name: string;
   arguments: Record<string, unknown>;
-  status: "requested" | "running" | "completed" | "failed";
+  status:
+    | "requested"
+    | "running"
+    | "stopping"
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "timed_out";
   summary?: string;
   chunks: ToolChunk[];
   pid?: number;
@@ -44,6 +50,11 @@ export type ToolView = {
   diffFiles?: DiffFile[];
   additions?: number;
   deletions?: number;
+  streamTruncated?: boolean;
+  droppedOutputChars?: number;
+  terminationReason?: string;
+  terminationMethod?: string;
+  lastSequence?: number;
 };
 
 function formatDuration(durationMs?: number): string {
@@ -59,6 +70,15 @@ function formatDuration(durationMs?: number): string {
 function statusLabel(tool: ToolView): string {
   if (tool.status === "running") {
     return "Running";
+  }
+  if (tool.status === "stopping") {
+    return "Stopping…";
+  }
+  if (tool.status === "cancelled") {
+    return "Stopped";
+  }
+  if (tool.status === "timed_out") {
+    return "Timed out";
   }
   if (tool.status === "failed") {
     return "Failed";
@@ -90,6 +110,7 @@ function TerminalCard({ tool }: { tool: ToolView }) {
         </div>
         <div className="tool-meta">
           {tool.pid ? <span>PID {tool.pid}</span> : null}
+          {tool.streamTruncated ? <span>Output limited</span> : null}
           {tool.durationMs !== undefined ? (
             <span>{formatDuration(tool.durationMs)}</span>
           ) : null}
@@ -105,9 +126,9 @@ function TerminalCard({ tool }: { tool: ToolView }) {
 
       {tool.chunks.length ? (
         <pre ref={outputRef} className="terminal-output">
-          {tool.chunks.map((chunk, index) => (
+          {tool.chunks.map((chunk) => (
             <span
-              key={index}
+              key={chunk.sequence}
               className={
                 chunk.stream === "stderr"
                   ? "terminal-stderr"
@@ -120,6 +141,23 @@ function TerminalCard({ tool }: { tool: ToolView }) {
         </pre>
       ) : tool.status === "running" ? (
         <div className="terminal-empty">Waiting for output…</div>
+      ) : null}
+
+      {tool.streamTruncated || (tool.droppedOutputChars ?? 0) > 0 ? (
+        <div className="terminal-truncated">
+          Live output was limited to keep the desktop responsive.
+          {(tool.droppedOutputChars ?? 0) > 0
+            ? " Older rendered output was dropped."
+            : ""}
+        </div>
+      ) : null}
+
+      {tool.terminationReason ? (
+        <div className="terminal-termination">
+          Process tree {tool.status === "stopping" ? "is stopping" : "stopped"}
+          {" · " + tool.terminationReason}
+          {tool.terminationMethod ? " · " + tool.terminationMethod : ""}
+        </div>
       ) : null}
 
       {tool.summary ? (
