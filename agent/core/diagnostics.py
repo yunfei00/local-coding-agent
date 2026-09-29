@@ -48,8 +48,8 @@ def redact_url(value: str | None) -> str | None:
             parsed.scheme,
             netloc,
             parsed.path,
-            parsed.query,
-            parsed.fragment,
+            "",
+            "",
         )
     )
 
@@ -64,7 +64,14 @@ def redact_text(
     for secret in exact_secrets:
         if secret:
             text = text.replace(secret, "<REDACTED>")
-    text = str(redact_path(text) or "")
+    home = str(Path.home())
+    if home:
+        text = re.sub(
+            re.escape(home),
+            "<HOME>",
+            text,
+            flags=re.IGNORECASE,
+        )
     for pattern in _SECRET_PATTERNS:
         text = pattern.sub(
             lambda match: (
