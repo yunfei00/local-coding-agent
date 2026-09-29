@@ -1357,6 +1357,11 @@ class AgentServer:
                 for call_index, call in enumerate(tool_calls, start=1):
                     total_tool_calls += 1
                     if total_tool_calls > self.max_tool_calls:
+                        self._record_diagnostic_error(
+                            "MAX_TOOL_CALLS",
+                            f"Agent exceeded {self.max_tool_calls} tool calls without completing the task.",
+                            source="agent_loop",
+                        )
                         await ws.send_json(
                             envelope(
                                 "turn.failed",
@@ -1549,6 +1554,14 @@ class AgentServer:
                     )
 
                     if failure_limit_reached:
+                        self._record_diagnostic_error(
+                            "TOOL_FAILURE_LIMIT",
+                            (
+                                "Agent hit the consecutive tool failure limit "
+                                f"({self.max_consecutive_tool_failures})."
+                            ),
+                            source="agent_loop",
+                        )
                         await ws.send_json(
                             envelope(
                                 "turn.failed",
@@ -1577,6 +1590,11 @@ class AgentServer:
                             "Agent entered a repeating short tool-call cycle."
                             if loop_abort_reason == "short_cycle"
                             else "Agent repeatedly requested identical tool calls."
+                        )
+                        self._record_diagnostic_error(
+                            "TOOL_LOOP_DETECTED",
+                            detail,
+                            source="agent_loop",
                         )
                         await ws.send_json(
                             envelope(
@@ -1624,6 +1642,11 @@ class AgentServer:
                         )
                     )
 
+            self._record_diagnostic_error(
+                "MAX_MODEL_STEPS",
+                f"Agent exceeded {self.max_model_steps} model steps without completing the task.",
+                source="agent_loop",
+            )
             await ws.send_json(
                 envelope(
                     "turn.failed",
