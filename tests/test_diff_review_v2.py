@@ -91,15 +91,8 @@ class GitDiffReviewIntegrationTests(unittest.IsolatedAsyncioTestCase):
             by_path = {item["path"]: item for item in result.data["files"]}
 
             self.assertEqual(by_path["normal.txt"]["status"], "modified")
-            self.assertEqual(by_path["renamed file.txt"]["status"], "renamed")
-            self.assertEqual(
-                by_path["renamed file.txt"]["old_path"],
-                "rename me.txt",
-            )
-            self.assertEqual(
-                by_path["renamed file.txt"]["similarity"],
-                100,
-            )
+            self.assertEqual(by_path["rename me.txt"]["status"], "deleted")
+            self.assertEqual(by_path["renamed file.txt"]["status"], "untracked")
             self.assertTrue(by_path["blob.bin"]["binary"])
             self.assertTrue(by_path["large.txt"]["truncated"])
 
@@ -109,13 +102,42 @@ class GitDiffReviewIntegrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(review["complete_preview"])
             self.assertIn("blob.bin", review["binary_files"])
             self.assertIn("large.txt", review["truncated_files"])
+            self.assertEqual(review["renamed_files"], [])
+            self.assertGreaterEqual(review["status_counts"]["modified"], 2)
+            self.assertEqual(review["status_counts"]["deleted"], 1)
+            self.assertEqual(review["status_counts"]["untracked"], 2)
+
+            subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+            staged = await GitDiffTool(Workspace(repo)).execute(
+                {"staged": True}
+            )
+            staged_by_path = {
+                item["path"]: item
+                for item in staged.data["files"]
+            }
+
             self.assertEqual(
-                review["renamed_files"][0]["old_path"],
+                staged_by_path["renamed file.txt"]["status"],
+                "renamed",
+            )
+            self.assertEqual(
+                staged_by_path["renamed file.txt"]["old_path"],
                 "rename me.txt",
             )
-            self.assertGreaterEqual(review["status_counts"]["modified"], 2)
-            self.assertEqual(review["status_counts"]["renamed"], 1)
-            self.assertEqual(review["status_counts"]["untracked"], 1)
+            self.assertEqual(
+                staged_by_path["renamed file.txt"]["similarity"],
+                100,
+            )
+            staged_review = staged.data["review"]
+            self.assertEqual(staged_review["mode"], "staged")
+            self.assertEqual(
+                staged_review["renamed_files"][0]["old_path"],
+                "rename me.txt",
+            )
+            self.assertEqual(
+                staged_review["status_counts"]["renamed"],
+                1,
+            )
 
     async def test_empty_diff_has_complete_read_only_review(self) -> None:
         with tempfile.TemporaryDirectory() as root:
