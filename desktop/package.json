@@ -2,7 +2,7 @@
   "name": "local-coding-agent-desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Local-first desktop coding agent powered by Ollama",
+  "description": "Local-first desktop coding agent with Ollama and OpenAI-compatible providers",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k -n VITE,ELECTRON \"vite --host 127.0.0.1\" \"wait-on tcp:127.0.0.1:5173 && npm run electron:dev\"",
