@@ -10,6 +10,7 @@ import {
 
 import {
   DiffFile,
+  DiffReviewMeta,
   ToolCard,
   ToolView
 } from "./components/ToolCard";
@@ -619,6 +620,11 @@ function App() {
         const diffFiles = Array.isArray(rawFiles)
           ? (rawFiles as DiffFile[])
           : undefined;
+        const rawReview = data.review;
+        const diffReview =
+          rawReview && typeof rawReview === "object"
+            ? (rawReview as DiffReviewMeta)
+            : undefined;
 
         setItems((current) =>
           current.map((item) => {
@@ -690,6 +696,7 @@ function App() {
                     ? data.pid
                     : item.tool.pid,
                 diffFiles,
+                diffReview,
                 additions:
                   typeof data.additions === "number"
                     ? data.additions
