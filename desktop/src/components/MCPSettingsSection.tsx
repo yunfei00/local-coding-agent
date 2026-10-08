@@ -404,7 +404,7 @@ export function MCPSettingsSection({ running }: { running: boolean }) {
                 <input
                   value={draft.command}
                   disabled={busy || running}
-                  placeholder="npx / python / uvx / executable"
+                  placeholder=".venv\\Scripts\\python.exe / npx / uvx / executable"
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
