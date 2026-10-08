@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
+import sys
 import tempfile
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
@@ -94,6 +96,7 @@ class MCPServerStatus:
     name: str
     transport: MCPTransport
     connected: bool
+    effective_command: str | None = None
     protocol_version: str | None = None
     server_name: str | None = None
     server_version: str | None = None
@@ -230,12 +233,79 @@ class MCPClientManager:
             except Exception:
                 pass
 
+    def _resolve_stdio_command(
+        self,
+        config: MCPServerConfig,
+        cwd: str,
+    ) -> str:
+        raw = str(config.command or "").strip()
+        if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {'"', "'"}:
+            raw = raw[1:-1].strip()
+
+        expanded = os.path.expandvars(os.path.expanduser(raw))
+        alias = Path(expanded).name.lower()
+        python_aliases = {
+            "python",
+            "python.exe",
+            "python3",
+            "python3.exe",
+        }
+
+        if alias in python_aliases and Path(expanded).parent == Path("."):
+            virtual_env = os.getenv("VIRTUAL_ENV")
+            if virtual_env:
+                candidate = (
+                    Path(virtual_env) / "Scripts" / "python.exe"
+                    if os.name == "nt"
+                    else Path(virtual_env) / "bin" / "python"
+                )
+                if candidate.exists():
+                    return str(candidate.resolve())
+
+            current = Path(sys.executable)
+            if current.name.lower() in python_aliases and current.exists():
+                return str(current.resolve())
+
+        path_value = Path(expanded)
+        if path_value.is_absolute():
+            return str(path_value)
+
+        if any(separator in expanded for separator in ("/", "\\")):
+            return str((Path(cwd) / path_value).resolve())
+
+        located = shutil.which(expanded)
+        return located or expanded
+
+    def _resolved_stdio_args(
+        self,
+        command: str,
+        args: tuple[str, ...],
+        cwd: str,
+    ) -> list[str]:
+        values = list(args)
+        executable = Path(command).name.lower()
+        if (
+            executable.startswith("python")
+            and values
+            and not values[0].startswith("-")
+            and values[0].lower().endswith(".py")
+        ):
+            script = Path(
+                os.path.expandvars(
+                    os.path.expanduser(values[0])
+                )
+            )
+            if not script.is_absolute():
+                script = (Path(cwd) / script).resolve()
+            values[0] = str(script)
+        return values
+
     def _validate_stdio_target(
         self,
         config: MCPServerConfig,
         cwd: str,
     ) -> None:
-        command = str(config.command or "")
+        command = self._resolve_stdio_command(config, cwd)
         command_path = Path(command)
         if command_path.is_absolute() and not command_path.exists():
             raise MCPClientError(
@@ -243,7 +313,11 @@ class MCPClientManager:
                 f"MCP command does not exist: {command}",
             )
 
-        args = list(config.args)
+        args = self._resolved_stdio_args(
+            command,
+            config.args,
+            cwd,
+        )
         executable = command_path.name.lower()
         if (
             executable.startswith("python")
@@ -281,6 +355,12 @@ class MCPClientManager:
     def _build_client(self, config: MCPServerConfig) -> Client:
         if config.transport == "stdio":
             cwd = os.getcwd()
+            command = self._resolve_stdio_command(config, cwd)
+            args = self._resolved_stdio_args(
+                command,
+                config.args,
+                cwd,
+            )
             self._validate_stdio_target(config, cwd)
             stderr = tempfile.TemporaryFile(
                 mode="w+",
@@ -289,8 +369,8 @@ class MCPClientManager:
             )
             self._stderr_logs[config.name] = stderr
             parameters = StdioServerParameters(
-                command=str(config.command),
-                args=list(config.args),
+                command=command,
+                args=args,
                 env=dict(config.env or {}),
                 cwd=cwd,
                 encoding="utf-8",
@@ -322,6 +402,11 @@ class MCPClientManager:
                 name=name,
                 transport=config.transport,
                 connected=True,
+                effective_command=(
+                    self._resolve_stdio_command(config, os.getcwd())
+                    if config.transport == "stdio"
+                    else None
+                ),
                 protocol_version=str(client.protocol_version or "") or None,
                 server_name=(
                     str(getattr(info, "name", "") or "") or None
@@ -359,6 +444,11 @@ class MCPClientManager:
                 name=name,
                 transport=config.transport,
                 connected=False,
+                effective_command=(
+                    self._resolve_stdio_command(config, os.getcwd())
+                    if config.transport == "stdio"
+                    else None
+                ),
                 error=detail,
             )
             self._statuses[name] = status
