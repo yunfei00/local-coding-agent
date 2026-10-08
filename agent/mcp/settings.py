@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from urllib.parse import parse_qsl, urlsplit
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -13,6 +14,9 @@ from agent.persistence.store import SQLiteStore
 
 
 _ENV_REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+_SENSITIVE_KEY = re.compile(
+    r"(?i)(?:authorization|api[_-]?key|token|secret|password|credential)"
+)
 
 
 def _now_iso() -> str:
@@ -185,8 +189,29 @@ class MCPSettingsManager:
             )
         if set(env).intersection(secret_env_keys):
             raise ValueError(
-                "An MCP environment key cannot be both non-secret and secret."
+                "An MCP configuration key cannot be both non-secret and secret."
             )
+
+        for key, value in env.items():
+            if _SENSITIVE_KEY.search(key):
+                placeholders = _ENV_REF.findall(value)
+                if not placeholders or _ENV_REF.fullmatch(value) is None:
+                    raise ValueError(
+                        f"Sensitive MCP key '{key}' cannot store a literal value. "
+                        "Use protected secrets or a single ${ENV_VAR} reference."
+                    )
+
+        if transport == "streamable_http" and url:
+            parsed = urlsplit(url)
+            if parsed.username or parsed.password:
+                raise ValueError(
+                    "MCP HTTP URL cannot contain username/password credentials."
+                )
+            for key, _value in parse_qsl(parsed.query, keep_blank_values=True):
+                if _SENSITIVE_KEY.search(key):
+                    raise ValueError(
+                        "MCP HTTP URL cannot contain credential query parameters."
+                    )
 
         probe = MCPServerConfig(
             name=name,
