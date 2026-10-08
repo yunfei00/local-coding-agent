@@ -3,18 +3,29 @@ from __future__ import annotations
 import argparse
 
 from mcp.server import MCPServer
+from mcp.types import ToolAnnotations
 
 
 mcp = MCPServer("LCA MCP Test Server")
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True,
+        openWorldHint=False,
+    )
+)
 def echo(message: str) -> dict[str, str]:
     """Echo a message."""
     return {"message": message}
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True,
+        openWorldHint=False,
+    )
+)
 def large_text(size: int = 10000) -> str:
     """Return deterministic large text for truncation tests."""
     size = max(0, min(int(size), 200000))
