@@ -126,7 +126,7 @@ $AgentExe = Join-Path $RepoRoot "build\agent-dist\lca-agent\lca-agent.exe"
 if (-not (Test-Path $AgentExe)) { throw "Packaged Agent executable was not created: $AgentExe" }
 
 Write-Host "[4/11] Smoke test packaged Agent..."
-uv run --no-project python scripts\validation\phase9_agent_smoke.py $AgentExe
+uv run --no-project python scripts\validation\packaged_agent_smoke.py $AgentExe
 
 Write-Host "[5/11] Install Desktop dependencies..."
 npm --prefix desktop install --no-audit --no-fund
