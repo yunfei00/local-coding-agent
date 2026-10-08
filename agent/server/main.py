@@ -31,6 +31,8 @@ from agent.core.diagnostics import (
 from agent.core.settings import RuntimeSettings
 from agent.core.version import APP_VERSION, PROTOCOL_VERSION
 from agent.llm.base import ProviderError, ToolCall
+from agent.mcp.runtime import MCPRuntime
+from agent.mcp.settings import MCPSettingsManager
 from agent.permissions.approval import (
     APPROVAL_DENY,
     ApprovalManager,
@@ -111,6 +113,8 @@ class AgentServer:
         self.token = token
         self.store = SQLiteStore()
         self.projects = ProjectRegistry(self.store)
+        self.mcp_settings = MCPSettingsManager(self.store)
+        self.mcp_runtime = MCPRuntime(self.mcp_settings, self.projects)
         self.prompt_rules = PromptRuleManager(self.store)
         self.settings = RuntimeSettings.load(self.store)
         self.openai_api_key: str | None = os.getenv("LCA_OPENAI_API_KEY")
@@ -546,6 +550,95 @@ class AgentServer:
             )
             return
 
+        if message_type == "mcp.list":
+            await ws.send_json(
+                envelope(
+                    "mcp.listed",
+                    self.mcp_runtime.public_payload(),
+                    request_id=request_id,
+                )
+            )
+            return
+
+        if message_type in {
+            "mcp.upsert",
+            "mcp.delete",
+            "mcp.refresh",
+            "mcp.secrets",
+        }:
+            if any(not task.done() for task in self.active_turns.values()):
+                await self.send_error(
+                    ws,
+                    "TURN_RUNNING",
+                    "Stop the active turn before changing MCP configuration.",
+                    request_id=request_id,
+                )
+                return
+
+            try:
+                if message_type == "mcp.upsert":
+                    raw_config = payload.get("server")
+                    if not isinstance(raw_config, dict):
+                        raise ValueError("server must be an object.")
+                    server_config = self.mcp_settings.upsert(raw_config)
+                    await self.mcp_runtime.refresh()
+                    result_payload = {
+                        "server": server_config.to_public_dict(),
+                        **self.mcp_runtime.public_payload(),
+                    }
+                    response_type = "mcp.changed"
+                elif message_type == "mcp.delete":
+                    server_id = str(payload.get("server_id") or "").strip()
+                    if not server_id:
+                        raise ValueError("server_id is required.")
+                    self.mcp_settings.delete(server_id)
+                    self.mcp_runtime.secret_env.pop(server_id, None)
+                    await self.mcp_runtime.refresh()
+                    result_payload = self.mcp_runtime.public_payload()
+                    response_type = "mcp.changed"
+                elif message_type == "mcp.secrets":
+                    raw_secrets = payload.get("secrets")
+                    if not isinstance(raw_secrets, dict):
+                        raise ValueError("secrets must be an object.")
+                    self.mcp_runtime.set_secrets(raw_secrets)
+                    await self.mcp_runtime.refresh()
+                    result_payload = self.mcp_runtime.public_payload()
+                    response_type = "mcp.changed"
+                else:
+                    await self.mcp_runtime.refresh()
+                    result_payload = self.mcp_runtime.public_payload()
+                    response_type = "mcp.refreshed"
+            except ValueError as exc:
+                await self.send_error(
+                    ws,
+                    "MCP_CONFIG_INVALID",
+                    str(exc),
+                    request_id=request_id,
+                )
+                return
+            except Exception as exc:
+                self._record_diagnostic_error(
+                    "MCP_RUNTIME_ERROR",
+                    str(exc),
+                    source="mcp",
+                )
+                await self.send_error(
+                    ws,
+                    "MCP_RUNTIME_ERROR",
+                    str(exc),
+                    request_id=request_id,
+                )
+                return
+
+            await ws.send_json(
+                envelope(
+                    response_type,
+                    result_payload,
+                    request_id=request_id,
+                )
+            )
+            return
+
         if message_type == "approval.respond":
             approval_id = str(payload.get("approval_id") or "")
             decision = str(payload.get("decision") or "")
@@ -626,6 +719,7 @@ class AgentServer:
             project.workspace.set_full_access(
                 self.permissions.mode == PermissionMode.FULL_ACCESS
             )
+            self.mcp_runtime.apply_to_project(project)
             response_payload = self.projects.project_payload(project)
             response_payload["created"] = created
             await ws.send_json(
@@ -678,6 +772,7 @@ class AgentServer:
             project.workspace.set_full_access(
                 self.permissions.mode == PermissionMode.FULL_ACCESS
             )
+            self.mcp_runtime.apply_to_project(project)
             await ws.send_json(
                 envelope(
                     "project.selected",
@@ -944,6 +1039,16 @@ class AgentServer:
         parts.append(self._permission_prompt())
         return "\n\n".join(parts)
 
+    def _exact_secrets(self) -> tuple[str, ...]:
+        return tuple(
+            secret
+            for secret in (
+                self.openai_api_key,
+                *self.mcp_runtime.exact_secrets(),
+            )
+            if secret
+        )
+
     def _record_diagnostic_error(
         self,
         code: str,
@@ -951,11 +1056,7 @@ class AgentServer:
         *,
         source: str,
     ) -> None:
-        exact_secrets = tuple(
-            secret
-            for secret in (self.openai_api_key,)
-            if secret
-        )
+        exact_secrets = self._exact_secrets()
         self.recent_errors.append(
             {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -970,11 +1071,7 @@ class AgentServer:
         )
 
     async def _diagnostics_payload(self) -> dict[str, Any]:
-        exact_secrets = tuple(
-            secret
-            for secret in (self.openai_api_key,)
-            if secret
-        )
+        exact_secrets = self._exact_secrets()
         try:
             provider_status = await self.provider.get_status()
         except Exception as exc:
@@ -1053,6 +1150,7 @@ class AgentServer:
             },
             "workspace": project_payload,
             "prompt_rules": prompt_rules,
+            "mcp": self.mcp_runtime.diagnostic_payload(),
             "database": database_summary(self.store),
             "agent_limits": {
                 "max_model_steps": self.max_model_steps,
@@ -1066,6 +1164,7 @@ class AgentServer:
             "recent_errors": list(self.recent_errors),
             "redaction": {
                 "api_keys": True,
+                "mcp_credentials": True,
                 "prompt_rule_content": True,
                 "chat_history": True,
                 "home_path": True,
@@ -1244,7 +1343,10 @@ class AgentServer:
                             model=model,
                             messages=messages,
                             tools=tools.schemas(
-                                self.permissions.visible_tools(tools.names)
+                                self.permissions.visible_tools(
+                                    tools.names,
+                                    tools.permission_metadata_map(),
+                                )
                             ),
                         ):
                             if chunk.content:
@@ -1457,6 +1559,9 @@ class AgentServer:
                             tool_name=call.name,
                             arguments=call.arguments,
                             workspace=workspace,
+                            tool_metadata=tools.permission_metadata(
+                                call.name
+                            ),
                         )
 
                         if not verdict.allowed:
@@ -1768,6 +1873,9 @@ class AgentServer:
                 "changed_paths": [],
             }
 
+    async def close_async(self) -> None:
+        await self.mcp_runtime.close()
+
     def close(self) -> None:
         self.store.close()
 
@@ -1839,6 +1947,7 @@ async def run(host: str, port: int) -> None:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         await runner.cleanup()
+        await server.close_async()
         server.close()
         print("LCA_AGENT_STOPPED", flush=True)
 
