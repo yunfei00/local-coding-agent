@@ -155,6 +155,27 @@ class MCPSettingsTests(unittest.TestCase):
                 )
             store.close()
 
+    def test_rejects_duplicate_server_name_case_insensitively(self) -> None:
+        with tempfile.TemporaryDirectory() as data_root:
+            store = SQLiteStore(data_root)
+            manager = MCPSettingsManager(store)
+            manager.upsert(
+                {
+                    "name": "Docs",
+                    "transport": "stdio",
+                    "command": "python",
+                }
+            )
+            with self.assertRaisesRegex(ValueError, "already exists"):
+                manager.upsert(
+                    {
+                        "name": "docs",
+                        "transport": "stdio",
+                        "command": "python",
+                    }
+                )
+            store.close()
+
     def test_rejects_same_key_as_secret_and_non_secret(self) -> None:
         with tempfile.TemporaryDirectory() as data_root:
             store = SQLiteStore(data_root)
