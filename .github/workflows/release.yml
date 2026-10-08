@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "v*"
+    branches:
+      - "main"
 
 permissions:
   contents: write
@@ -11,23 +13,46 @@ permissions:
 jobs:
   release:
     name: Build and publish Windows release
+    if: github.ref_type == 'tag' || startsWith(github.event.head_commit.message, 'release: v')
     runs-on: windows-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Validate tag and version
+      - name: Validate release ref and version
         shell: pwsh
+        env:
+          RELEASE_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           $desktop = Get-Content .\desktop\package.json -Raw | ConvertFrom-Json
           $root = Get-Content .\package.json -Raw | ConvertFrom-Json
           $expectedTag = "v$($desktop.version)"
+
           if ($root.version -ne $desktop.version) {
             throw "Root version $($root.version) does not match Desktop version $($desktop.version)."
           }
-          if ($env:GITHUB_REF_NAME -ne $expectedTag) {
-            throw "Tag $env:GITHUB_REF_NAME does not match expected $expectedTag."
+
+          if ($env:GITHUB_REF_TYPE -eq "tag") {
+            if ($env:GITHUB_REF_NAME -ne $expectedTag) {
+              throw "Tag $env:GITHUB_REF_NAME does not match expected $expectedTag."
+            }
+          }
+          elseif ($env:GITHUB_REF_NAME -eq "main") {
+            $expectedCommitMessage = "release: $expectedTag"
+            if ($env:RELEASE_COMMIT_MESSAGE -ne $expectedCommitMessage) {
+              throw "Main release commit must be exactly '$expectedCommitMessage'."
+            }
+
+            $existingTag = git ls-remote --tags origin "refs/tags/$expectedTag"
+            if ($existingTag) {
+              throw "Tag $expectedTag already exists."
+            }
+          }
+          else {
+            throw "Unsupported release ref: $env:GITHUB_REF"
           }
 
       - name: Setup uv
@@ -49,6 +74,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $desktop = Get-Content .\desktop\package.json -Raw | ConvertFrom-Json
+          $releaseTag = "v$($desktop.version)"
           $assets = @(
             (Get-ChildItem ".\desktop\release\Local-Coding-Agent-*-x64-Setup.exe").FullName
             (Get-ChildItem ".\desktop\release\Local-Coding-Agent-*-x64-Portable.exe").FullName
@@ -58,9 +85,13 @@ jobs:
             throw "Expected Setup, Portable and SHA256SUMS release assets."
           }
 
-          gh release view $env:GITHUB_REF_NAME *> $null
+          gh release view $releaseTag *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $env:GITHUB_REF_NAME @assets --clobber
-          } else {
-            gh release create $env:GITHUB_REF_NAME @assets --title "Local Coding Agent $env:GITHUB_REF_NAME" --generate-notes
+            gh release upload $releaseTag @assets --clobber
+          }
+          elseif ($env:GITHUB_REF_TYPE -eq "tag") {
+            gh release create $releaseTag @assets --title "Local Coding Agent $releaseTag" --generate-notes
+          }
+          else {
+            gh release create $releaseTag @assets --target $env:GITHUB_SHA --title "Local Coding Agent $releaseTag" --generate-notes
           }
