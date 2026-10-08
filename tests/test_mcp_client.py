@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import socket
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from agent.mcp.client import (
     MCPClientError,
@@ -92,6 +94,39 @@ class MCPConfigTests(unittest.TestCase):
 
 
 class MCPClientManagerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_python_alias_resolves_to_agent_virtualenv(self) -> None:
+        virtual_env = str(Path(sys.executable).resolve().parent.parent)
+        manager = MCPClientManager(
+            [
+                MCPServerConfig(
+                    name="python-alias",
+                    transport="stdio",
+                    command="python",
+                    args=("tests/fixtures/mcp_test_server.py",),
+                    timeout_seconds=15,
+                )
+            ]
+        )
+        try:
+            with patch.dict(
+                os.environ,
+                {"VIRTUAL_ENV": virtual_env},
+                clear=False,
+            ):
+                status = await manager.connect("python-alias")
+                self.assertTrue(status.connected)
+                self.assertEqual(
+                    Path(status.effective_command or "").resolve(),
+                    Path(sys.executable).resolve(),
+                )
+                tools = await manager.list_tools("python-alias")
+                self.assertEqual(
+                    [item.name for item in tools],
+                    ["echo", "large_text"],
+                )
+        finally:
+            await manager.disconnect_all()
+
     async def test_stdio_discovery_resource_call_reconnect_and_registry(self) -> None:
         manager = MCPClientManager(
             [
