@@ -20,6 +20,7 @@ import {
 import path from "node:path";
 import WebSocket from "ws";
 
+import { checkProtocolCompatibility } from "./protocol";
 import { checkForUpdates } from "./updateCheck";
 
 const APP_ID = "com.yunfei.localcodingagent";
@@ -452,6 +453,23 @@ function updateFromAgentStdout(chunk: Buffer): void {
         version: string;
         protocol: string;
       };
+      const compatibility = checkProtocolCompatibility(ready.protocol);
+      if (!compatibility.compatible) {
+        const message =
+          compatibility.reason ??
+          "Agent protocol is not supported by this Desktop build.";
+        agentStatus = {
+          state: "error",
+          host: ready.host,
+          port: ready.port,
+          version: ready.version,
+          protocol: ready.protocol,
+          error: message
+        };
+        appendRuntimeLog("desktop.log", message);
+        agentProcess?.kill();
+        return;
+      }
       agentToken = ready.token;
       agentStatus = {
         state: "starting",
