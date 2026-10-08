@@ -15,3 +15,12 @@ __all__ = [
     "MCPServerStatus",
     "MCPToolDescriptor",
 ]
+
+from agent.mcp.runtime import MCPRuntime
+from agent.mcp.settings import MCPSettingsManager, MCPStoredServer
+
+__all__ += [
+    "MCPRuntime",
+    "MCPSettingsManager",
+    "MCPStoredServer",
+]
