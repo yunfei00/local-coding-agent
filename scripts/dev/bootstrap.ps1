@@ -29,7 +29,7 @@ if (-not (Test-Path $venvPython)) {
 }
 
 Write-Host "Verifying Agent runtime dependencies..." -ForegroundColor Cyan
-& $venvPython -c "import aiohttp, httpx2, mcp; print('Agent Python dependencies: OK')"
+& $venvPython -c "import sys, aiohttp, httpx2, mcp; print('Agent Python:', sys.executable); print('Agent Python dependencies: OK')"
 if ($LASTEXITCODE -ne 0) {
     throw "Agent Python dependency check failed after bootstrap."
 }
