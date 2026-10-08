@@ -39,6 +39,30 @@ jobs:
       - name: Python compile check
         run: uv run --no-project python -m compileall agent
 
+      - name: PowerShell script syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $files = @(
+            ".\scripts\dev\start.ps1",
+            ".\scripts\dev\bootstrap.ps1",
+            ".\scripts\build\package-windows.ps1",
+            ".\scripts\validation\upgrade-v0.1-to-v0.2.ps1"
+          )
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file),
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error ("{0}: {1}" -f $file, $_.Message) }
+              throw "PowerShell syntax validation failed: $file"
+            }
+          }
+
       - name: Python tests
         run: uv run --no-project python -m unittest discover -s tests -v
 
