@@ -79,6 +79,10 @@ export function DiagnosticsPanel({ onClose }: Props) {
   const database = objectValue(bundle?.agent.database);
   const counts = objectValue(database.counts);
   const promptRules = objectValue(bundle?.agent.prompt_rules);
+  const mcp = objectValue(bundle?.agent.mcp);
+  const mcpServers = Array.isArray(mcp.servers)
+    ? (mcp.servers as unknown[])
+    : [];
   const redaction = objectValue(bundle?.agent.redaction);
   const recentErrors = Array.isArray(bundle?.agent.recent_errors)
     ? (bundle?.agent.recent_errors as unknown[])
@@ -279,6 +283,51 @@ export function DiagnosticsPanel({ onClose }: Props) {
               </section>
 
               <section className="diagnostics-card">
+                <h2>MCP</h2>
+                <dl>
+                  <div>
+                    <dt>Servers</dt>
+                    <dd>{stringValue(mcp.server_count, "0")}</dd>
+                  </div>
+                  <div>
+                    <dt>Enabled</dt>
+                    <dd>{stringValue(mcp.enabled_count, "0")}</dd>
+                  </div>
+                  <div>
+                    <dt>Connected</dt>
+                    <dd>{stringValue(mcp.connected_count, "0")}</dd>
+                  </div>
+                  <div>
+                    <dt>Tools</dt>
+                    <dd>{stringValue(mcp.tool_count, "0")}</dd>
+                  </div>
+                </dl>
+                {mcpServers.length > 0 ? (
+                  <div className="diagnostics-mcp-list">
+                    {mcpServers.map((raw, index) => {
+                      const item = objectValue(raw);
+                      return (
+                        <div key={stringValue(item.name, String(index))}>
+                          <span
+                            className={
+                              "mcp-status-dot " +
+                              (item.connected ? "online" : "offline")
+                            }
+                          />
+                          <strong>{stringValue(item.name)}</strong>
+                          <span>
+                            {item.connected ? "connected" : "offline"}
+                            {" · "}
+                            {stringValue(item.tool_count, "0")} tools
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </section>
+
+              <section className="diagnostics-card">
                 <h2>Database</h2>
                 <dl>
                   <div>
@@ -364,7 +413,8 @@ export function DiagnosticsPanel({ onClose }: Props) {
             <section className="diagnostics-redaction">
               <strong>Redaction active</strong>
               <span>
-                API keys {booleanLabel(redaction.api_keys)} · Prompt Rule
+                API keys {booleanLabel(redaction.api_keys)} · MCP credentials{" "}
+                {booleanLabel(redaction.mcp_credentials)} · Prompt Rule
                 content {booleanLabel(redaction.prompt_rule_content)} · Chat
                 history {booleanLabel(redaction.chat_history)} · Home path{" "}
                 {booleanLabel(redaction.home_path)}
