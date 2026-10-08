@@ -1124,7 +1124,6 @@ ipcMain.handle(
 );
 
 ipcMain.handle("agent:mcp-list", async () => {
-  await syncMcpSecretsToAgent();
   const event = await sendRequest("mcp.list", "mcp.listed");
   return {
     event,
