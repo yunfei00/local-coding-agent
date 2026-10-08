@@ -570,7 +570,9 @@ export function MCPSettingsSection({ running }: { running: boolean }) {
               {selectedSecret?.configured
                 ? "Configured via " +
                   selectedSecret.mode.replace("_", " ")
-                : "No protected MCP secret configured."}
+                : selected?.secret_configured
+                  ? "Configured via process environment."
+                  : "No protected MCP secret configured."}
             </small>
           </label>
 
