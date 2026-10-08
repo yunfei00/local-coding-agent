@@ -72,7 +72,7 @@ class MCPRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertEqual(metadata["source"], "mcp")
                 self.assertTrue(metadata["trusted"])
-                self.assertFalse(metadata["read_only"])
+                self.assertTrue(metadata["read_only"])
             finally:
                 await runtime.close()
                 store.close()
