@@ -18,7 +18,12 @@ from agent.tools.workspace import Workspace
 
 
 class ToolRegistry:
-    def __init__(self, workspace: Workspace) -> None:
+    def __init__(
+        self,
+        workspace: Workspace,
+        *,
+        extra_tools: Iterable[BaseTool] = (),
+    ) -> None:
         tools: list[BaseTool] = [
             FileExistsTool(workspace),
             ListDirectoryTool(workspace),
@@ -31,7 +36,25 @@ class ToolRegistry:
             GitDiffTool(workspace),
             GitLogTool(workspace),
         ]
-        self._tools = {tool.name: tool for tool in tools}
+        self._tools: dict[str, BaseTool] = {}
+        for tool in [*tools, *list(extra_tools)]:
+            self.register(tool)
+
+    def register(
+        self,
+        tool: BaseTool,
+        *,
+        replace: bool = False,
+    ) -> None:
+        if tool.name in self._tools and not replace:
+            raise ToolError(
+                "TOOL_NAME_COLLISION",
+                f"Tool already registered: {tool.name}",
+            )
+        self._tools[tool.name] = tool
+
+    def unregister(self, name: str) -> None:
+        self._tools.pop(name, None)
 
     @property
     def names(self) -> list[str]:
