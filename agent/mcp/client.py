@@ -314,6 +314,97 @@ class MCPClientManager:
             values[0] = str(script)
         return values
 
+    def _agent_python_candidates(self) -> set[Path]:
+        candidates: set[Path] = set()
+
+        explicit = os.getenv("LCA_AGENT_PYTHON")
+        if explicit:
+            path = Path(explicit)
+            if path.exists():
+                candidates.add(path.resolve())
+
+        prefix_candidate = (
+            Path(sys.prefix) / "Scripts" / "python.exe"
+            if os.name == "nt"
+            else Path(sys.prefix) / "bin" / "python"
+        )
+        if prefix_candidate.exists():
+            candidates.add(prefix_candidate.resolve())
+
+        current = Path(sys.executable)
+        if current.exists():
+            candidates.add(current.resolve())
+
+        virtual_env = os.getenv("VIRTUAL_ENV")
+        if virtual_env:
+            path = (
+                Path(virtual_env) / "Scripts" / "python.exe"
+                if os.name == "nt"
+                else Path(virtual_env) / "bin" / "python"
+            )
+            if path.exists():
+                candidates.add(path.resolve())
+
+        return candidates
+
+    def _uses_agent_python(
+        self,
+        config: MCPServerConfig,
+        command: str,
+    ) -> bool:
+        raw = str(config.command or "").strip()
+        if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {'"', "'"}:
+            raw = raw[1:-1].strip()
+        alias = Path(raw).name.lower()
+        if (
+            alias in {"python", "python.exe", "python3", "python3.exe"}
+            and Path(raw).parent == Path(".")
+        ):
+            return True
+
+        try:
+            resolved = Path(command).resolve()
+        except OSError:
+            return False
+        return resolved in self._agent_python_candidates()
+
+    def _stdio_environment(
+        self,
+        config: MCPServerConfig,
+        command: str,
+    ) -> dict[str, str]:
+        env = dict(config.env or {})
+        if not self._uses_agent_python(config, command):
+            return env
+
+        import_paths = []
+        for item in sys.path:
+            value = str(item or "").strip()
+            if not value:
+                continue
+            try:
+                normalized = str(Path(value).resolve())
+            except OSError:
+                normalized = value
+            if normalized not in import_paths:
+                import_paths.append(normalized)
+
+        existing = env.get("PYTHONPATH", "").strip()
+        if existing:
+            for item in existing.split(os.pathsep):
+                item = item.strip()
+                if item and item not in import_paths:
+                    import_paths.append(item)
+
+        if import_paths:
+            env["PYTHONPATH"] = os.pathsep.join(import_paths)
+
+        virtual_env = os.getenv("VIRTUAL_ENV")
+        if virtual_env:
+            env.setdefault("VIRTUAL_ENV", virtual_env)
+
+        return env
+
     def _validate_stdio_target(
         self,
         config: MCPServerConfig,
@@ -385,7 +476,7 @@ class MCPClientManager:
             parameters = StdioServerParameters(
                 command=command,
                 args=args,
-                env=dict(config.env or {}),
+                env=self._stdio_environment(config, command),
                 cwd=cwd,
                 encoding="utf-8",
                 encoding_error_handler="replace",
