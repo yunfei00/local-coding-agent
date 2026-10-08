@@ -103,7 +103,7 @@ class SQLitePersistenceTests(unittest.TestCase):
             )
             self.assertEqual(
                 reopened_store.connection.execute("PRAGMA user_version").fetchone()[0],
-                2,
+                3,
             )
             reopened_store.close()
 
