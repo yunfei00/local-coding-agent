@@ -13,6 +13,14 @@ from agent.tools.base import BaseTool, OutputCallback, ToolError, ToolResult
 
 
 _TOOL_NAME_MAX = 64
+_MUTATING_NAME = re.compile(
+    r"(?i)(?:^|[_-])(?:write|create|update|edit|delete|remove|move|rename|"
+    r"execute|run|shell|command|commit|push|publish|deploy|send|post|put|patch)"
+)
+_GIT_COMMIT_NAME = re.compile(r"(?i)(?:^|[_-])commit(?:$|[_-])")
+_GIT_PUBLISH_NAME = re.compile(
+    r"(?i)(?:^|[_-])(?:push|publish)(?:$|[_-])"
+)
 
 
 def _safe_component(value: str) -> str:
@@ -65,6 +73,8 @@ class MCPToolAdapter(BaseTool):
         self,
         manager: MCPClientManager,
         descriptor: MCPToolDescriptor,
+        *,
+        trusted: bool = False,
     ) -> None:
         self.manager = manager
         self.server_name = descriptor.server_name
@@ -81,6 +91,28 @@ class MCPToolAdapter(BaseTool):
             )
         )
         self.parameters = descriptor.input_schema
+        self.trusted = trusted
+        self.read_only = bool(
+            trusted
+            and descriptor.read_only_hint
+            and not descriptor.destructive_hint
+            and not _MUTATING_NAME.search(descriptor.name)
+        )
+
+    def permission_metadata(self) -> dict:
+        risk = "mcp_read_only" if self.read_only else "mcp_mutating"
+        if _GIT_COMMIT_NAME.search(self.remote_name):
+            risk = "git_commit"
+        elif _GIT_PUBLISH_NAME.search(self.remote_name):
+            risk = "git_publish"
+        return {
+            "source": "mcp",
+            "server": self.server_name,
+            "remote_tool": self.remote_name,
+            "trusted": self.trusted,
+            "read_only": self.read_only,
+            "risk": risk,
+        }
 
     async def execute(
         self,
@@ -113,9 +145,11 @@ class MCPToolAdapter(BaseTool):
 def mcp_tool_adapters(
     manager: MCPClientManager,
     descriptors: Iterable[MCPToolDescriptor],
+    *,
+    trusted: bool = False,
 ) -> list[MCPToolAdapter]:
     adapters = [
-        MCPToolAdapter(manager, descriptor)
+        MCPToolAdapter(manager, descriptor, trusted=trusted)
         for descriptor in descriptors
     ]
     names = [tool.name for tool in adapters]
