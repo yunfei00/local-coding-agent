@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import tempfile
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, AsyncIterator, Literal
+from typing import Any, AsyncIterator, Literal, TextIO
 
 import httpx2
 from mcp import Client, StdioServerParameters
@@ -16,23 +17,6 @@ from mcp.client.streamable_http import streamable_http_client
 
 MCPTransport = Literal["stdio", "streamable_http"]
 MAX_LIST_PAGES = 100
-
-
-class _BoundedStderr:
-    def __init__(self, max_chars: int = 8_000) -> None:
-        self.max_chars = max_chars
-        self._value = ""
-
-    def write(self, value: str) -> int:
-        text = str(value)
-        self._value = (self._value + text)[-self.max_chars :]
-        return len(text)
-
-    def flush(self) -> None:
-        return None
-
-    def text(self) -> str:
-        return self._value.strip()
 
 
 class MCPClientError(RuntimeError):
@@ -178,7 +162,7 @@ class MCPClientManager:
         self._configs: dict[str, MCPServerConfig] = {}
         self._connections: dict[str, _Connection] = {}
         self._statuses: dict[str, MCPServerStatus] = {}
-        self._stderr_logs: dict[str, _BoundedStderr] = {}
+        self._stderr_logs: dict[str, TextIO] = {}
 
         for config in configs:
             self.add_config(config)
@@ -224,13 +208,27 @@ class MCPClientManager:
         config: MCPServerConfig,
     ) -> str:
         log = self._stderr_logs.get(config.name)
-        text = log.text() if log else ""
-        if not text:
+        if log is None:
             return ""
+        try:
+            log.flush()
+            log.seek(0)
+            text = log.read()[-8_000:].strip()
+            log.seek(0, os.SEEK_END)
+        except Exception:
+            text = ""
         for value in (config.env or {}).values():
             if value and len(value) >= 4:
                 text = text.replace(value, "<REDACTED>")
         return text
+
+    def _close_stdio_log(self, name: str) -> None:
+        log = self._stderr_logs.pop(name, None)
+        if log is not None:
+            try:
+                log.close()
+            except Exception:
+                pass
 
     def _validate_stdio_target(
         self,
@@ -284,7 +282,11 @@ class MCPClientManager:
         if config.transport == "stdio":
             cwd = os.getcwd()
             self._validate_stdio_target(config, cwd)
-            stderr = _BoundedStderr()
+            stderr = tempfile.TemporaryFile(
+                mode="w+",
+                encoding="utf-8",
+                errors="replace",
+            )
             self._stderr_logs[config.name] = stderr
             parameters = StdioServerParameters(
                 command=str(config.command),
@@ -360,6 +362,7 @@ class MCPClientManager:
                 error=detail,
             )
             self._statuses[name] = status
+            self._close_stdio_log(name)
             raise MCPClientError(
                 "MCP_CONNECT_FAILED",
                 f"Unable to connect MCP server {name}: {detail}",
@@ -372,6 +375,7 @@ class MCPClientManager:
             try:
                 await connection.client.__aexit__(None, None, None)
             finally:
+                self._close_stdio_log(name)
                 self._statuses[name] = MCPServerStatus(
                     name=name,
                     transport=config.transport,
