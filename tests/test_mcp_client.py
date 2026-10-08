@@ -20,6 +20,9 @@ from agent.tools.workspace import Workspace
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "mcp_test_server.py"
+FAILING_FIXTURE = (
+    ROOT / "tests" / "fixtures" / "mcp_failing_server.py"
+)
 
 
 def free_port() -> int:
@@ -243,6 +246,63 @@ class MCPClientManagerTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertFalse(result["is_error"])
             self.assertTrue(manager.status("good").connected)
+        finally:
+            await manager.disconnect_all()
+
+    async def test_stdio_failure_surfaces_server_stderr(self) -> None:
+        manager = MCPClientManager(
+            [
+                MCPServerConfig(
+                    name="failing",
+                    transport="stdio",
+                    command=sys.executable,
+                    args=(str(FAILING_FIXTURE),),
+                    timeout_seconds=5,
+                )
+            ]
+        )
+        try:
+            with self.assertRaises(MCPClientError) as ctx:
+                await manager.connect("failing")
+            self.assertEqual(ctx.exception.code, "MCP_CONNECT_FAILED")
+            self.assertIn(
+                "PHASE23_STDIO_FIXTURE_FAILURE",
+                ctx.exception.message,
+            )
+            status = manager.status("failing")
+            self.assertFalse(status.connected)
+            self.assertIn(
+                "PHASE23_STDIO_FIXTURE_FAILURE",
+                status.error or "",
+            )
+        finally:
+            await manager.disconnect_all()
+
+    async def test_missing_python_script_reports_resolved_path(self) -> None:
+        manager = MCPClientManager(
+            [
+                MCPServerConfig(
+                    name="missing-script",
+                    transport="stdio",
+                    command=sys.executable,
+                    args=("tests/fixtures/does_not_exist.py",),
+                    timeout_seconds=5,
+                )
+            ]
+        )
+        try:
+            with self.assertRaises(MCPClientError) as ctx:
+                await manager.connect("missing-script")
+            self.assertIn(
+                "MCP Python script does not exist",
+                ctx.exception.message,
+            )
+            status = manager.status("missing-script")
+            self.assertFalse(status.connected)
+            self.assertIn(
+                "does_not_exist.py",
+                status.error or "",
+            )
         finally:
             await manager.disconnect_all()
 
