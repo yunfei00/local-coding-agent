@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
-from typing import Any, Literal
+from typing import Any, AsyncIterator, Literal
 
+import httpx2
 from mcp import Client, StdioServerParameters
+from mcp.client.streamable_http import streamable_http_client
 
 
 MCPTransport = Literal["stdio", "streamable_http"]
@@ -195,6 +198,24 @@ class MCPClientManager:
             )
         return config
 
+    def _http_transport(self, config: MCPServerConfig):
+        @asynccontextmanager
+        async def transport() -> AsyncIterator[Any]:
+            timeout = httpx2.Timeout(
+                config.timeout_seconds,
+                read=max(config.timeout_seconds, 300.0),
+            )
+            async with httpx2.AsyncClient(
+                headers=dict(config.env or {}),
+                timeout=timeout,
+            ) as http_client:
+                async with streamable_http_client(
+                    str(config.url),
+                    http_client=http_client,
+                ) as streams:
+                    yield streams
+        return transport()
+
     def _build_client(self, config: MCPServerConfig) -> Client:
         if config.transport == "stdio":
             target = StdioServerParameters(
@@ -203,7 +224,7 @@ class MCPClientManager:
                 env=dict(config.env or {}),
             )
         else:
-            target = str(config.url)
+            target = self._http_transport(config)
         return Client(
             target,
             read_timeout_seconds=config.timeout_seconds,
