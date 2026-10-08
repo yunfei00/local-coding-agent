@@ -647,6 +647,11 @@ function launchAgent(
   if (virtualEnv) {
     environment.VIRTUAL_ENV = virtualEnv;
   }
+  if (
+    /(?:^|[\\/])python(?:3)?(?:\.exe)?$/i.test(command)
+  ) {
+    environment.LCA_AGENT_PYTHON = command;
+  }
 
   appendRuntimeLog(
     "desktop.log",
