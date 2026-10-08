@@ -27,6 +27,7 @@ type McpServer = {
     protocol_version?: string | null;
     server_name?: string | null;
     server_version?: string | null;
+    effective_command?: string | null;
     error?: string | null;
   };
   tools?: McpTool[];
@@ -610,6 +611,13 @@ export function MCPSettingsSection({ running }: { running: boolean }) {
               without approval. Unknown or mutating tools remain gated.
             </p>
           </div>
+
+          {selected?.status?.effective_command ? (
+            <div className="mcp-runtime-detail">
+              <strong>Effective command</strong>
+              <code>{selected.status.effective_command}</code>
+            </div>
+          ) : null}
 
           {selected?.status?.error ? (
             <div className="settings-warning">
