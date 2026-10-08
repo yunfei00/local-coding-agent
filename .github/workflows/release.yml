@@ -6,6 +6,8 @@ on:
       - "v*"
     branches:
       - "main"
+    paths:
+      - ".github/release-trigger"
 
 permissions:
   contents: write
@@ -13,7 +15,6 @@ permissions:
 jobs:
   release:
     name: Build and publish Windows release
-    if: github.ref_type == 'tag' || startsWith(github.event.head_commit.message, 'release: v')
     runs-on: windows-latest
 
     steps:
@@ -44,6 +45,11 @@ jobs:
             $expectedCommitMessage = "release: $expectedTag"
             if ($env:RELEASE_COMMIT_MESSAGE -ne $expectedCommitMessage) {
               throw "Main release commit must be exactly '$expectedCommitMessage'."
+            }
+
+            $trigger = (Get-Content ".github\release-trigger" -Raw).Trim()
+            if ($trigger -ne $expectedTag) {
+              throw "Release trigger $trigger does not match expected $expectedTag."
             }
 
             $existingTag = git ls-remote --tags origin "refs/tags/$expectedTag"
