@@ -30,7 +30,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Verifying Agent runtime dependencies..." -ForegroundColor Cyan
-& $venvPython -c "import sys; from importlib.metadata import version; import aiohttp, httpx2, mcp; from mcp.server import MCPServer; from mcp.types import ToolAnnotations; print('Agent Python:', sys.executable); print('mcp:', version('mcp')); print('httpx2:', version('httpx2')); print('Agent Python dependencies: OK')"if ($LASTEXITCODE -ne 0) {
+& $venvPython -c "import sys; from importlib.metadata import version; import aiohttp, httpx2, mcp; from mcp.server import MCPServer; from mcp.types import ToolAnnotations; print('Agent Python:', sys.executable); print('mcp:', version('mcp')); print('httpx2:', version('httpx2')); print('Agent Python dependencies: OK')"
+if ($LASTEXITCODE -ne 0) {
     throw "Agent Python dependency check failed after bootstrap."
 }
 
