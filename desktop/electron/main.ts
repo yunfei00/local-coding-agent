@@ -759,7 +759,8 @@ function sendRequest(
   type: string,
   expectedType: string,
   payload: Record<string, unknown> = {},
-  ids: { threadId?: string; turnId?: string } = {}
+  ids: { threadId?: string; turnId?: string } = {},
+  timeoutMs = 15000
 ): Promise<AgentEnvelope> {
   const socket = agentSocket;
   if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -780,7 +781,7 @@ function sendRequest(
     const timer = setTimeout(() => {
       pending.delete(requestId);
       reject(new Error("Agent request timed out: " + type));
-    }, 15000);
+    }, timeoutMs);
 
     pending.set(requestId, {
       expectedType,
