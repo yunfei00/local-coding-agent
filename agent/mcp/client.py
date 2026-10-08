@@ -2,17 +2,37 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any, AsyncIterator, Literal
 
 import httpx2
 from mcp import Client, StdioServerParameters
+from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 
 
 MCPTransport = Literal["stdio", "streamable_http"]
 MAX_LIST_PAGES = 100
+
+
+class _BoundedStderr:
+    def __init__(self, max_chars: int = 8_000) -> None:
+        self.max_chars = max_chars
+        self._value = ""
+
+    def write(self, value: str) -> int:
+        text = str(value)
+        self._value = (self._value + text)[-self.max_chars :]
+        return len(text)
+
+    def flush(self) -> None:
+        return None
+
+    def text(self) -> str:
+        return self._value.strip()
 
 
 class MCPClientError(RuntimeError):
@@ -158,6 +178,7 @@ class MCPClientManager:
         self._configs: dict[str, MCPServerConfig] = {}
         self._connections: dict[str, _Connection] = {}
         self._statuses: dict[str, MCPServerStatus] = {}
+        self._stderr_logs: dict[str, _BoundedStderr] = {}
 
         for config in configs:
             self.add_config(config)
@@ -198,6 +219,49 @@ class MCPClientManager:
             )
         return config
 
+    def _stdio_error_text(
+        self,
+        config: MCPServerConfig,
+    ) -> str:
+        log = self._stderr_logs.get(config.name)
+        text = log.text() if log else ""
+        if not text:
+            return ""
+        for value in (config.env or {}).values():
+            if value and len(value) >= 4:
+                text = text.replace(value, "<REDACTED>")
+        return text
+
+    def _validate_stdio_target(
+        self,
+        config: MCPServerConfig,
+        cwd: str,
+    ) -> None:
+        command = str(config.command or "")
+        command_path = Path(command)
+        if command_path.is_absolute() and not command_path.exists():
+            raise MCPClientError(
+                "MCP_COMMAND_NOT_FOUND",
+                f"MCP command does not exist: {command}",
+            )
+
+        args = list(config.args)
+        executable = command_path.name.lower()
+        if (
+            executable.startswith("python")
+            and args
+            and not args[0].startswith("-")
+            and args[0].lower().endswith(".py")
+        ):
+            script = Path(args[0])
+            resolved = script if script.is_absolute() else Path(cwd) / script
+            if not resolved.exists():
+                raise MCPClientError(
+                    "MCP_SCRIPT_NOT_FOUND",
+                    "MCP Python script does not exist: "
+                    + str(resolved.resolve()),
+                )
+
     def _http_transport(self, config: MCPServerConfig):
         @asynccontextmanager
         async def transport() -> AsyncIterator[Any]:
@@ -218,10 +282,21 @@ class MCPClientManager:
 
     def _build_client(self, config: MCPServerConfig) -> Client:
         if config.transport == "stdio":
-            target = StdioServerParameters(
+            cwd = os.getcwd()
+            self._validate_stdio_target(config, cwd)
+            stderr = _BoundedStderr()
+            self._stderr_logs[config.name] = stderr
+            parameters = StdioServerParameters(
                 command=str(config.command),
                 args=list(config.args),
                 env=dict(config.env or {}),
+                cwd=cwd,
+                encoding="utf-8",
+                encoding_error_handler="replace",
+            )
+            target = stdio_client(
+                parameters,
+                errlog=stderr,
             )
         else:
             target = self._http_transport(config)
@@ -268,16 +343,24 @@ class MCPClientManager:
                 await client.__aexit__(None, None, None)
             except Exception:
                 pass
+            stderr = (
+                self._stdio_error_text(config)
+                if config.transport == "stdio"
+                else ""
+            )
+            detail = str(exc).strip() or exc.__class__.__name__
+            if stderr:
+                detail += "\nMCP server stderr:\n" + stderr
             status = MCPServerStatus(
                 name=name,
                 transport=config.transport,
                 connected=False,
-                error=str(exc),
+                error=detail,
             )
             self._statuses[name] = status
             raise MCPClientError(
                 "MCP_CONNECT_FAILED",
-                f"Unable to connect MCP server {name}: {exc}",
+                f"Unable to connect MCP server {name}: {detail}",
             ) from exc
 
     async def disconnect(self, name: str) -> None:
