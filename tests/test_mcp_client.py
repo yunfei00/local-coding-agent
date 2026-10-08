@@ -95,7 +95,12 @@ class MCPConfigTests(unittest.TestCase):
 
 class MCPClientManagerTests(unittest.IsolatedAsyncioTestCase):
     async def test_python_alias_resolves_to_agent_virtualenv(self) -> None:
-        virtual_env = str(Path(sys.executable).resolve().parent.parent)
+        environment_python = (
+            Path(sys.prefix) / "Scripts" / "python.exe"
+            if os.name == "nt"
+            else Path(sys.prefix) / "bin" / "python"
+        ).resolve()
+        self.assertTrue(environment_python.exists())
         manager = MCPClientManager(
             [
                 MCPServerConfig(
@@ -110,14 +115,17 @@ class MCPClientManagerTests(unittest.IsolatedAsyncioTestCase):
         try:
             with patch.dict(
                 os.environ,
-                {"VIRTUAL_ENV": virtual_env},
+                {
+                    "LCA_AGENT_PYTHON": str(environment_python),
+                    "VIRTUAL_ENV": str(environment_python.parent.parent),
+                },
                 clear=False,
             ):
                 status = await manager.connect("python-alias")
                 self.assertTrue(status.connected)
                 self.assertEqual(
                     Path(status.effective_command or "").resolve(),
-                    Path(sys.executable).resolve(),
+                    environment_python,
                 )
                 tools = await manager.list_tools("python-alias")
                 self.assertEqual(
