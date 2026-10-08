@@ -252,6 +252,20 @@ class MCPClientManager:
         }
 
         if alias in python_aliases and Path(expanded).parent == Path("."):
+            explicit_agent_python = os.getenv("LCA_AGENT_PYTHON")
+            if explicit_agent_python:
+                candidate = Path(explicit_agent_python)
+                if candidate.exists():
+                    return str(candidate.resolve())
+
+            prefix_candidate = (
+                Path(sys.prefix) / "Scripts" / "python.exe"
+                if os.name == "nt"
+                else Path(sys.prefix) / "bin" / "python"
+            )
+            if prefix_candidate.exists():
+                return str(prefix_candidate.resolve())
+
             current = Path(sys.executable)
             if current.name.lower() in python_aliases and current.exists():
                 return str(current.resolve())
