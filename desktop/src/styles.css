@@ -2562,3 +2562,243 @@ summary:focus-visible {
     display: none;
   }
 }
+
+
+/* Phase 23 MCP settings and diagnostics. */
+.mcp-settings-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.mcp-settings-heading h2 {
+  margin-bottom: 6px;
+}
+
+.mcp-settings-heading p {
+  max-width: 640px;
+  color: #7c7d82;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.mcp-layout {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  min-height: 520px;
+  overflow: hidden;
+  border: 1px solid #2b2c2f;
+  border-radius: 10px;
+}
+
+.mcp-server-list {
+  padding: 8px;
+  overflow-y: auto;
+  background: #131314;
+  border-right: 1px solid #292a2d;
+}
+
+.mcp-server-item {
+  display: flex;
+  width: 100%;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 9px;
+  margin-bottom: 4px;
+  color: #aaa;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+
+.mcp-server-item:hover,
+.mcp-server-item.active {
+  background: #1c1c1e;
+  border-color: #2f3034;
+}
+
+.mcp-status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #64656a;
+}
+
+.mcp-status-dot.online {
+  background: #71a982;
+}
+
+.mcp-status-dot.offline {
+  background: #8b6060;
+}
+
+.mcp-server-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mcp-server-copy strong,
+.mcp-server-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-server-copy strong {
+  color: #d2d2d4;
+  font-size: 10px;
+}
+
+.mcp-server-copy small {
+  color: #6f7075;
+  font-size: 8px;
+}
+
+.mcp-empty {
+  padding: 14px 10px;
+  color: #66676b;
+  font-size: 9px;
+}
+
+.mcp-editor {
+  min-width: 0;
+  padding: 16px;
+}
+
+.mcp-editor .settings-field textarea,
+.mcp-textarea {
+  width: 100%;
+  min-height: 86px;
+  padding: 8px 9px;
+  color: #ddd;
+  resize: vertical;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 9px;
+  line-height: 1.5;
+  background: #191919;
+  border: 1px solid #343434;
+  border-radius: 7px;
+  outline: none;
+}
+
+.mcp-editor .settings-field textarea:focus,
+.mcp-textarea:focus {
+  border-color: #555;
+}
+
+.mcp-switches {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  min-height: 54px;
+  padding: 0 3px;
+}
+
+.mcp-trust-note,
+.mcp-tool-preview {
+  margin-top: 12px;
+  padding: 11px 12px;
+  background: #151516;
+  border: 1px solid #2c2d30;
+  border-radius: 8px;
+}
+
+.mcp-trust-note strong,
+.mcp-tool-preview > strong {
+  color: #c5c5c8;
+  font-size: 10px;
+}
+
+.mcp-trust-note p {
+  margin-top: 4px;
+  color: #74757a;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.mcp-tool-preview {
+  display: grid;
+  gap: 6px;
+}
+
+.mcp-tool-preview > div {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  padding-top: 6px;
+  border-top: 1px solid #26272a;
+}
+
+.mcp-tool-preview code {
+  min-width: 0;
+  overflow: hidden;
+  color: #aaa;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-tool-preview span {
+  flex: 0 0 auto;
+  color: #74757a;
+  font-size: 8px;
+}
+
+.diagnostics-mcp-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid #292a2d;
+}
+
+.diagnostics-mcp-list > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+}
+
+.diagnostics-mcp-list strong {
+  overflow: hidden;
+  color: #aaa;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostics-mcp-list > div > span:last-child {
+  color: #66676b;
+  font-size: 8px;
+}
+
+@media (max-width: 940px) {
+  .mcp-layout {
+    grid-template-columns: 170px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .mcp-settings-heading {
+    flex-direction: column;
+  }
+
+  .mcp-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .mcp-server-list {
+    max-height: 180px;
+    border-right: 0;
+    border-bottom: 1px solid #292a2d;
+  }
+}
