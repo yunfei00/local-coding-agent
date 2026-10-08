@@ -181,6 +181,19 @@ class MCPSettingsManager:
 
         if not name:
             raise ValueError("MCP server name cannot be empty.")
+        duplicate = next(
+            (
+                item
+                for item in self.list()
+                if item.id != server_id
+                and item.name.casefold() == name.casefold()
+            ),
+            None,
+        )
+        if duplicate is not None:
+            raise ValueError(
+                f"MCP server name already exists: {duplicate.name}"
+            )
         if len(name) > 80:
             raise ValueError("MCP server name is too long.")
         if timeout_seconds <= 0 or timeout_seconds > 300:
