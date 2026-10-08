@@ -212,10 +212,8 @@ class MCPClientManager:
         config = self._config(name)
         client = self._build_client(config)
         try:
-            await asyncio.wait_for(
-                client.__aenter__(),
-                timeout=config.timeout_seconds,
-            )
+            async with asyncio.timeout(config.timeout_seconds):
+                await client.__aenter__()
             info = client.server_info
             status = MCPServerStatus(
                 name=name,
@@ -310,11 +308,9 @@ class MCPClientManager:
     ) -> Any:
         connection = self._connection(name)
         try:
-            return await asyncio.wait_for(
-                callback(connection.client),
-                timeout=connection.config.timeout_seconds,
-            )
-        except asyncio.TimeoutError as exc:
+            async with asyncio.timeout(connection.config.timeout_seconds):
+                return await callback(connection.client)
+        except TimeoutError as exc:
             raise MCPClientError(
                 "MCP_TIMEOUT",
                 f"MCP {operation} timed out for server {name}.",
@@ -322,12 +318,14 @@ class MCPClientManager:
         except MCPClientError:
             raise
         except Exception as exc:
-            self._statuses[name] = MCPServerStatus(
+            failed_status = MCPServerStatus(
                 name=name,
                 transport=connection.config.transport,
                 connected=False,
                 error=str(exc),
             )
+            connection.status = failed_status
+            self._statuses[name] = failed_status
             raise MCPClientError(
                 "MCP_REQUEST_FAILED",
                 f"MCP {operation} failed for server {name}: {exc}",
