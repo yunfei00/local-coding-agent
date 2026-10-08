@@ -40,6 +40,17 @@ class MCPSettingsTests(unittest.TestCase):
             self.assertIn("TOKEN", serialized)
             self.assertEqual(item.name, "filesystem")
             self.assertTrue(item.trusted)
+            store.close()
+
+            reopened_store = SQLiteStore(data_root)
+            reopened_manager = MCPSettingsManager(reopened_store)
+            restored = reopened_manager.get(item.id)
+            self.assertIsNotNone(restored)
+            assert restored is not None
+            self.assertEqual(restored.name, "filesystem")
+            self.assertEqual(restored.args, ("server.py",))
+            self.assertTrue(restored.enabled)
+            self.assertTrue(restored.trusted)
 
             with patch.dict(
                 os.environ,
@@ -49,7 +60,7 @@ class MCPSettingsTests(unittest.TestCase):
                 },
                 clear=False,
             ):
-                config = item.to_client_config()
+                config = restored.to_client_config()
             self.assertEqual(config.env["MODE"], "safe")
             self.assertEqual(
                 config.env["FROM_ENV"],
@@ -59,7 +70,7 @@ class MCPSettingsTests(unittest.TestCase):
                 config.env["TOKEN"],
                 "super-secret",
             )
-            store.close()
+            reopened_store.close()
 
     def test_runtime_secret_overrides_environment_without_persistence(self) -> None:
         with tempfile.TemporaryDirectory() as data_root:
@@ -85,6 +96,63 @@ class MCPSettingsTests(unittest.TestCase):
                 ensure_ascii=False,
             )
             self.assertNotIn("session-secret", serialized)
+            store.close()
+
+    def test_rejects_plaintext_sensitive_config_values(self) -> None:
+        with tempfile.TemporaryDirectory() as data_root:
+            store = SQLiteStore(data_root)
+            manager = MCPSettingsManager(store)
+            with self.assertRaisesRegex(
+                ValueError,
+                "cannot store a literal value",
+            ):
+                manager.upsert(
+                    {
+                        "name": "bad-secret",
+                        "transport": "stdio",
+                        "command": "python",
+                        "env": {"API_KEY": "literal-secret"},
+                    }
+                )
+
+            safe = manager.upsert(
+                {
+                    "name": "env-reference",
+                    "transport": "stdio",
+                    "command": "python",
+                    "env": {"API_KEY": "${MCP_TEST_API_KEY}"},
+                }
+            )
+            self.assertEqual(
+                safe.env["API_KEY"],
+                "${MCP_TEST_API_KEY}",
+            )
+            store.close()
+
+    def test_rejects_http_credentials_in_url(self) -> None:
+        with tempfile.TemporaryDirectory() as data_root:
+            store = SQLiteStore(data_root)
+            manager = MCPSettingsManager(store)
+
+            with self.assertRaisesRegex(ValueError, "username/password"):
+                manager.upsert(
+                    {
+                        "name": "userinfo",
+                        "transport": "streamable_http",
+                        "url": "https://user:pass@example.test/mcp",
+                    }
+                )
+            with self.assertRaisesRegex(
+                ValueError,
+                "credential query parameters",
+            ):
+                manager.upsert(
+                    {
+                        "name": "query-token",
+                        "transport": "streamable_http",
+                        "url": "https://example.test/mcp?api_key=secret",
+                    }
+                )
             store.close()
 
     def test_rejects_same_key_as_secret_and_non_secret(self) -> None:
