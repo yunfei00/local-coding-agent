@@ -497,7 +497,11 @@ export function MCPSettingsSection({ running }: { running: boolean }) {
           </div>
 
           <label className="settings-field">
-            <span>Non-secret environment · JSON</span>
+            <span>
+              {draft.transport === "stdio"
+                ? "Non-secret environment · JSON"
+                : "Non-secret HTTP headers · JSON"}
+            </span>
             <textarea
               className="mcp-textarea"
               value={draft.envText}
@@ -510,13 +514,19 @@ export function MCPSettingsSection({ running }: { running: boolean }) {
               }
             />
             <small>
-              Environment references such as {"${HOME}"} may be stored;
-              credentials should use Secret environment below.
+              {draft.transport === "stdio"
+                ? "Environment references such as ${HOME} may be stored."
+                : "Headers are sent with the Streamable HTTP client."}
+              {" "}Credentials should use the protected secret section below.
             </small>
           </label>
 
           <label className="settings-field">
-            <span>Secret environment keys</span>
+            <span>
+              {draft.transport === "stdio"
+                ? "Secret environment keys"
+                : "Secret HTTP header keys"}
+            </span>
             <input
               value={draft.secretKeysText}
               disabled={busy || running}
@@ -535,7 +545,11 @@ export function MCPSettingsSection({ running }: { running: boolean }) {
           </label>
 
           <label className="settings-field">
-            <span>Secret environment values · JSON</span>
+            <span>
+              {draft.transport === "stdio"
+                ? "Secret environment values · JSON"
+                : "Secret HTTP header values · JSON"}
+            </span>
             <input
               type="password"
               value={secretInput}
