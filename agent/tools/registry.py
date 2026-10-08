@@ -60,6 +60,26 @@ class ToolRegistry:
     def names(self) -> list[str]:
         return sorted(self._tools)
 
+    def permission_metadata(
+        self,
+        name: str,
+    ) -> dict[str, Any]:
+        tool = self._tools.get(name)
+        if not tool:
+            return {}
+        return tool.permission_metadata()
+
+    def permission_metadata_map(self) -> dict[str, dict[str, Any]]:
+        return {
+            name: tool.permission_metadata()
+            for name, tool in self._tools.items()
+        }
+
+    def unregister_prefix(self, prefix: str) -> None:
+        for name in list(self._tools):
+            if name.startswith(prefix):
+                self._tools.pop(name, None)
+
     def schemas(
         self,
         allowed_names: Iterable[str] | None = None,
