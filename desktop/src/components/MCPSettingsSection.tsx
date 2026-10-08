@@ -412,6 +412,11 @@ export function MCPSettingsSection({ running }: { running: boolean }) {
                     }))
                   }
                 />
+                <small>
+                  Python-based MCP servers run with exactly this interpreter.
+                  Use an absolute virtual-environment Python path when the
+                  server dependencies are installed in that environment.
+                </small>
               </label>
               <label className="settings-field">
                 <span>Arguments · one per line</span>
