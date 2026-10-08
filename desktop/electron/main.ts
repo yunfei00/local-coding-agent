@@ -63,6 +63,7 @@ let quitReady = false;
 let rendererReady = false;
 let packagedSmokeWritten = false;
 let sessionOpenAIKey: string | null = null;
+let sessionMcpSecrets: Record<string, Record<string, string>> = {};
 let lastAgentReady: {
   host: string;
   port: number;
@@ -146,6 +147,145 @@ type SecretStorageMode =
 function secretFilePath(): string {
   return path.join(app.getPath("userData"), "provider-secrets.json");
 }
+
+function mcpSecretFilePath(): string {
+  return path.join(app.getPath("userData"), "mcp-secrets.json");
+}
+
+function readMcpSecrets(): Record<string, Record<string, string>> {
+  if (Object.keys(sessionMcpSecrets).length > 0) {
+    return sessionMcpSecrets;
+  }
+  const file = mcpSecretFilePath();
+  if (!existsSync(file) || !safeStorage.isEncryptionAvailable()) {
+    return sessionMcpSecrets;
+  }
+
+  try {
+    const payload = JSON.parse(readFileSync(file, "utf8")) as {
+      encrypted?: string;
+    };
+    if (!payload.encrypted) {
+      return sessionMcpSecrets;
+    }
+    const decrypted = safeStorage.decryptString(
+      Buffer.from(payload.encrypted, "base64")
+    );
+    const parsed = JSON.parse(decrypted) as Record<
+      string,
+      Record<string, string>
+    >;
+    sessionMcpSecrets = parsed;
+  } catch (error) {
+    appendRuntimeLog(
+      "desktop.log",
+      "Unable to read protected MCP secrets: " + String(error)
+    );
+  }
+  return sessionMcpSecrets;
+}
+
+function persistMcpSecrets(): void {
+  const file = mcpSecretFilePath();
+  if (!safeStorage.isEncryptionAvailable()) {
+    return;
+  }
+  try {
+    if (Object.keys(sessionMcpSecrets).length === 0) {
+      if (existsSync(file)) {
+        unlinkSync(file);
+      }
+      return;
+    }
+    const encrypted = safeStorage
+      .encryptString(JSON.stringify(sessionMcpSecrets))
+      .toString("base64");
+    writeFileSync(
+      file,
+      JSON.stringify({ encrypted }),
+      { encoding: "utf8", mode: 0o600 }
+    );
+  } catch (error) {
+    appendRuntimeLog(
+      "desktop.log",
+      "Unable to persist protected MCP secrets: " + String(error)
+    );
+  }
+}
+
+function updateMcpSecrets(
+  serverId: string,
+  action: "keep" | "set" | "clear",
+  values?: Record<string, string>
+): void {
+  readMcpSecrets();
+  if (action === "keep") {
+    return;
+  }
+  if (action === "clear") {
+    delete sessionMcpSecrets[serverId];
+  } else {
+    const next: Record<string, string> = {};
+    for (const [key, value] of Object.entries(values ?? {})) {
+      const name = String(key).trim();
+      if (name && String(value)) {
+        next[name] = String(value);
+      }
+    }
+    if (Object.keys(next).length > 0) {
+      sessionMcpSecrets[serverId] = next;
+    } else {
+      delete sessionMcpSecrets[serverId];
+    }
+  }
+  persistMcpSecrets();
+}
+
+function mcpSecretStatuses(): Record<
+  string,
+  {
+    configured: boolean;
+    keys: string[];
+    stored: boolean;
+    mode: SecretStorageMode;
+  }
+> {
+  const values = readMcpSecrets();
+  const mode: SecretStorageMode = safeStorage.isEncryptionAvailable()
+    ? "os_protected"
+    : Object.keys(values).length > 0
+      ? "session_only"
+      : "none";
+  return Object.fromEntries(
+    Object.entries(values).map(([serverId, secrets]) => [
+      serverId,
+      {
+        configured: Object.keys(secrets).length > 0,
+        keys: Object.keys(secrets).sort(),
+        stored: mode === "os_protected",
+        mode
+      }
+    ])
+  );
+}
+
+async function syncMcpSecretsToAgent(): Promise<void> {
+  try {
+    await sendRequest(
+      "mcp.secrets",
+      "mcp.changed",
+      { secrets: readMcpSecrets() },
+      {},
+      45_000
+    );
+  } catch (error) {
+    appendRuntimeLog(
+      "desktop.log",
+      "Unable to sync MCP secrets to Agent: " + String(error)
+    );
+  }
+}
+
 
 function readStoredOpenAIKey(): string | null {
   if (sessionOpenAIKey !== null) {
@@ -398,6 +538,7 @@ function connectAgentWebSocket(ready: {
     };
     maybeCompletePackagedSmoke();
     void syncOpenAISecretToAgent();
+    void syncMcpSecretsToAgent();
   });
 
   socket.on("message", handleAgentMessage);
@@ -980,6 +1121,84 @@ ipcMain.handle(
     );
   }
 );
+
+ipcMain.handle("agent:mcp-list", async () => {
+  await syncMcpSecretsToAgent();
+  const event = await sendRequest("mcp.list", "mcp.listed");
+  return {
+    event,
+    secrets: mcpSecretStatuses()
+  };
+});
+ipcMain.handle(
+  "agent:mcp-upsert",
+  async (
+    _event,
+    server: Record<string, unknown>,
+    secretUpdate?: {
+      action?: "keep" | "set" | "clear";
+      values?: Record<string, string>;
+    }
+  ) => {
+    const event = await sendRequest(
+      "mcp.upsert",
+      "mcp.changed",
+      { server },
+      {},
+      45_000
+    );
+    const serverPayload = event.payload?.server;
+    const serverId =
+      serverPayload && typeof serverPayload === "object"
+        ? String((serverPayload as Record<string, unknown>).id ?? "")
+        : "";
+    if (serverId) {
+      updateMcpSecrets(
+        serverId,
+        secretUpdate?.action ?? "keep",
+        secretUpdate?.values
+      );
+      await syncMcpSecretsToAgent();
+    }
+    const listed = await sendRequest("mcp.list", "mcp.listed");
+    return {
+      event: listed,
+      secrets: mcpSecretStatuses()
+    };
+  }
+);
+ipcMain.handle(
+  "agent:mcp-delete",
+  async (_event, serverId: string) => {
+    const id = String(serverId ?? "");
+    const event = await sendRequest(
+      "mcp.delete",
+      "mcp.changed",
+      { server_id: id },
+      {},
+      45_000
+    );
+    updateMcpSecrets(id, "clear");
+    return {
+      event,
+      secrets: mcpSecretStatuses()
+    };
+  }
+);
+ipcMain.handle("agent:mcp-refresh", async () => {
+  await syncMcpSecretsToAgent();
+  const event = await sendRequest(
+    "mcp.refresh",
+    "mcp.refreshed",
+    {},
+    {},
+    45_000
+  );
+  return {
+    event,
+    secrets: mcpSecretStatuses()
+  };
+});
 
 ipcMain.handle("agent:permission-get", async () => {
   return sendRequest("permission.get", "permission.loaded");
