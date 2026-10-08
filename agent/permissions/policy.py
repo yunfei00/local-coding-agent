@@ -153,13 +153,31 @@ class PermissionPolicy:
         self.mode = parse_permission_mode(mode)
         return self.mode
 
-    def visible_tools(self, all_tools: list[str]) -> list[str]:
-        allowed = (
-            READ_ONLY_TOOLS
-            if self.mode == PermissionMode.READ_ONLY
-            else WORKSPACE_TOOLS
-        )
-        return sorted(name for name in all_tools if name in allowed)
+    def visible_tools(
+        self,
+        all_tools: list[str],
+        tool_metadata: dict[str, dict[str, Any]] | None = None,
+    ) -> list[str]:
+        metadata = tool_metadata or {}
+        visible: list[str] = []
+        for name in all_tools:
+            item = metadata.get(name) or {}
+            if item.get("source") == "mcp":
+                if self.mode == PermissionMode.READ_ONLY:
+                    if item.get("trusted") and item.get("read_only"):
+                        visible.append(name)
+                else:
+                    visible.append(name)
+                continue
+
+            allowed = (
+                READ_ONLY_TOOLS
+                if self.mode == PermissionMode.READ_ONLY
+                else WORKSPACE_TOOLS
+            )
+            if name in allowed:
+                visible.append(name)
+        return sorted(visible)
 
     def evaluate(
         self,
@@ -167,7 +185,53 @@ class PermissionPolicy:
         tool_name: str,
         arguments: dict[str, Any],
         workspace: Workspace,
+        tool_metadata: dict[str, Any] | None = None,
     ) -> PermissionVerdict:
+        metadata = tool_metadata or {}
+        if metadata.get("source") == "mcp":
+            trusted = bool(metadata.get("trusted"))
+            read_only = bool(metadata.get("read_only"))
+            risk = str(metadata.get("risk") or "mcp_mutating")
+            server = str(metadata.get("server") or "unknown")
+
+            if self.mode == PermissionMode.READ_ONLY:
+                if trusted and read_only:
+                    return PermissionVerdict(allowed=True)
+                return PermissionVerdict(
+                    allowed=False,
+                    reason=(
+                        "MCP tool is not available in Read Only mode unless "
+                        "its server is trusted and the tool is locally classified "
+                        "as read-only."
+                    ),
+                    risk="read_only",
+                )
+
+            if trusted and read_only:
+                return PermissionVerdict(allowed=True)
+
+            fingerprint = json.dumps(
+                {
+                    "tool": tool_name,
+                    "server": server,
+                    "arguments": arguments,
+                    "risk": risk,
+                },
+                sort_keys=True,
+                ensure_ascii=False,
+                default=str,
+            )
+            return PermissionVerdict(
+                allowed=True,
+                requires_approval=True,
+                reason=(
+                    f"MCP tool from server '{server}' is not classified as "
+                    "trusted read-only and requires explicit approval."
+                ),
+                approval_key="mcp:" + fingerprint,
+                risk=risk,
+            )
+
         if tool_name not in WORKSPACE_TOOLS:
             return PermissionVerdict(
                 allowed=False,
