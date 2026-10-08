@@ -4,6 +4,7 @@ import asyncio
 import os
 from typing import Any
 
+from agent.core.diagnostics import redact_text
 from agent.mcp.client import MCPClientError, MCPClientManager
 from agent.mcp.settings import MCPSettingsManager, MCPStoredServer
 from agent.server.projects import ProjectRegistry, ProjectSession
@@ -22,6 +23,7 @@ class MCPRuntime:
         self.secret_env: dict[str, dict[str, str]] = {}
         self.adapters: list[MCPToolAdapter] = []
         self.last_errors: dict[str, str] = {}
+        self._refresh_lock = asyncio.Lock()
 
     def set_secrets(
         self,
@@ -76,39 +78,40 @@ class MCPRuntime:
             return []
 
     async def refresh(self) -> None:
-        try:
-            await self.client.disconnect_all()
-        except Exception:
-            pass
+        async with self._refresh_lock:
+            try:
+                await self.client.disconnect_all()
+            except Exception:
+                pass
 
-        self._clear_project_tools()
-        self.adapters = []
-        self.last_errors = {}
+            self._clear_project_tools()
+            self.adapters = []
+            self.last_errors = {}
 
-        enabled = self._enabled()
-        configs = [
-            item.to_client_config(
-                secret_env=self.secret_env.get(item.id),
-            )
-            for item in enabled
-        ]
-        self.client = MCPClientManager(configs)
-
-        if enabled:
-            results = await asyncio.gather(
-                *(
-                    self._connect_server(item)
-                    for item in enabled
+            enabled = self._enabled()
+            configs = [
+                item.to_client_config(
+                    secret_env=self.secret_env.get(item.id),
                 )
-            )
-            self.adapters = [
-                adapter
-                for group in results
-                for adapter in group
+                for item in enabled
             ]
+            self.client = MCPClientManager(configs)
 
-        for project in self.projects.list_projects():
-            self.apply_to_project(project)
+            if enabled:
+                results = await asyncio.gather(
+                    *(
+                        self._connect_server(item)
+                        for item in enabled
+                    )
+                )
+                self.adapters = [
+                    adapter
+                    for group in results
+                    for adapter in group
+                ]
+
+            for project in self.projects.list_projects():
+                self.apply_to_project(project)
 
     async def close(self) -> None:
         await self.client.disconnect_all()
@@ -208,9 +211,14 @@ class MCPRuntime:
                         item.get("status") or {}
                     ).get("protocol_version"),
                     "tool_count": len(item.get("tools") or []),
-                    "error": (
-                        item.get("status") or {}
-                    ).get("error"),
+                    "error": redact_text(
+                        str(
+                            (item.get("status") or {}).get("error")
+                            or ""
+                        ),
+                        exact_secrets=self.exact_secrets(),
+                        max_chars=300,
+                    ) or None,
                 }
                 for item in public["servers"]
             ],
