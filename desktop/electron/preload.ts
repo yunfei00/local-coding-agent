@@ -26,6 +26,23 @@ contextBridge.exposeInMainWorld("localAgent", {
       secretUpdate
     ),
   resetSettings: () => ipcRenderer.invoke("agent:settings-reset"),
+  listMcpServers: () => ipcRenderer.invoke("agent:mcp-list"),
+  upsertMcpServer: (
+    server: Record<string, unknown>,
+    secretUpdate?: {
+      action?: "keep" | "set" | "clear";
+      values?: Record<string, string>;
+    }
+  ) =>
+    ipcRenderer.invoke(
+      "agent:mcp-upsert",
+      server,
+      secretUpdate
+    ),
+  deleteMcpServer: (serverId: string) =>
+    ipcRenderer.invoke("agent:mcp-delete", serverId),
+  refreshMcpServers: () =>
+    ipcRenderer.invoke("agent:mcp-refresh"),
   getPromptRules: (threadId?: string) =>
     ipcRenderer.invoke("agent:prompt-rules-get", threadId),
   setPromptRule: (
