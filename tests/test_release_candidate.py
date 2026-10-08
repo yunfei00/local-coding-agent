@@ -56,7 +56,7 @@ class ReleaseCandidateVersionTests(unittest.TestCase):
 
 
 class V01DatabaseUpgradeTests(unittest.TestCase):
-    def test_v01_schema_migrates_to_v02_without_data_loss(self) -> None:
+    def test_v01_schema_migrates_to_current_without_data_loss(self) -> None:
         with tempfile.TemporaryDirectory() as data_root:
             database = Path(data_root) / "local-coding-agent.sqlite3"
             connection = sqlite3.connect(database)
@@ -158,11 +158,18 @@ class V01DatabaseUpgradeTests(unittest.TestCase):
                 ).fetchone()
 
                 self.assertEqual(version, SCHEMA_VERSION)
-                self.assertEqual(version, 2)
+                self.assertEqual(version, 3)
                 self.assertEqual(integrity, "ok")
                 self.assertEqual(message, "preserve me")
                 self.assertEqual(permission, "read_only")
                 self.assertIsNotNone(prompt_rules_table)
+                mcp_table = store.connection.execute(
+                    """
+                    SELECT name FROM sqlite_master
+                    WHERE type='table' AND name='mcp_servers'
+                    """
+                ).fetchone()
+                self.assertIsNotNone(mcp_table)
             finally:
                 store.close()
 
