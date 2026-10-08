@@ -23,6 +23,8 @@ class MCPClientError(RuntimeError):
 class MCPServerConfig:
     name: str
     transport: MCPTransport
+    server_id: str | None = None
+    trusted: bool = False
     command: str | None = None
     args: tuple[str, ...] = ()
     url: str | None = None
@@ -61,6 +63,8 @@ class MCPToolDescriptor:
     name: str
     description: str
     input_schema: dict[str, Any]
+    read_only_hint: bool = False
+    destructive_hint: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -344,12 +348,23 @@ class MCPClientManager:
                 ),
             )
             for tool in page.tools:
+                annotations = getattr(tool, "annotations", None)
+                read_only_hint = bool(
+                    getattr(annotations, "read_only_hint", False)
+                    or getattr(annotations, "readOnlyHint", False)
+                )
+                destructive_hint = bool(
+                    getattr(annotations, "destructive_hint", False)
+                    or getattr(annotations, "destructiveHint", False)
+                )
                 tools.append(
                     MCPToolDescriptor(
                         server_name=name,
                         name=str(tool.name),
                         description=str(tool.description or ""),
                         input_schema=_tool_input_schema(tool),
+                        read_only_hint=read_only_hint,
+                        destructive_hint=destructive_hint,
                     )
                 )
             cursor = page.next_cursor
