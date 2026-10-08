@@ -35,7 +35,7 @@ Local Coding Agent 采用 **Desktop UI 与 Agent Core 分离** 的架构。
         │ LLM Provider│  │     Tool System      │
         │             │  │                     │
         │ Ollama      │  │ Files / Search      │
-        │ Future APIs │  │ Shell / Git         │
+        │ OpenAI-comp.│  │ Shell / Git         │
         └─────────────┘  └──────────┬──────────┘
                                     │
                           ┌─────────▼──────────┐
@@ -109,22 +109,15 @@ class BaseProvider:
     async def cancel(self, request_id): ...
 ```
 
-第一版：
-
-```text
-BaseProvider
-└─ OllamaProvider
-```
-
-未来：
+当前：
 
 ```text
 BaseProvider
 ├─ OllamaProvider
-├─ OpenAICompatibleProvider
-├─ OpenAIProvider
-└─ OtherProvider
+└─ OpenAICompatibleProvider
 ```
+
+后续 Provider 继续通过同一抽象扩展，Agent Core 不依赖具体供应商。
 
 Agent Core 不允许判断：
 
@@ -136,6 +129,32 @@ if model == "某个具体模型":
 模型差异通过 Provider Capability 处理。
 
 ---
+
+
+---
+
+## 2.4 Desktop / Agent 协议兼容
+
+产品版本和通信协议版本独立演进。
+
+当前协议版本：
+
+```text
+1.0.0
+```
+
+Desktop 在读取 Agent 的 ready payload 后、建立 WebSocket 前检查协议版本。
+
+当前兼容策略：
+
+```text
+Desktop protocol major = 1
+Agent 1.x.x            -> compatible
+Agent 2.x.x            -> reject clearly
+legacy/malformed label -> reject clearly
+```
+
+协议不兼容时必须进入明确 Error 状态，不能继续建立一个行为未定义的连接。
 
 ## 3. Thread / Turn 模型
 
