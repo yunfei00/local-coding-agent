@@ -310,8 +310,9 @@ class MCPClientManager:
             return self._connections[name].status
 
         config = self._config(name)
-        client = self._build_client(config)
+        client: Client | None = None
         try:
+            client = self._build_client(config)
             async with asyncio.timeout(config.timeout_seconds):
                 await client.__aenter__()
             info = client.server_info
@@ -339,10 +340,11 @@ class MCPClientManager:
             self._statuses[name] = status
             return status
         except Exception as exc:
-            try:
-                await client.__aexit__(None, None, None)
-            except Exception:
-                pass
+            if client is not None:
+                try:
+                    await client.__aexit__(None, None, None)
+                except Exception:
+                    pass
             stderr = (
                 self._stdio_error_text(config)
                 if config.transport == "stdio"
