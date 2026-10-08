@@ -98,17 +98,10 @@ class MCPRuntime:
             self.client = MCPClientManager(configs)
 
             if enabled:
-                results = await asyncio.gather(
-                    *(
-                        self._connect_server(item)
-                        for item in enabled
+                for item in enabled:
+                    self.adapters.extend(
+                        await self._connect_server(item)
                     )
-                )
-                self.adapters = [
-                    adapter
-                    for group in results
-                    for adapter in group
-                ]
 
             for project in self.projects.list_projects():
                 self.apply_to_project(project)
