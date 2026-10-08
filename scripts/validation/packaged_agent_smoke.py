@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import queue
+import re
 import subprocess
 import threading
 import time
@@ -83,6 +84,23 @@ def main() -> int:
             payload = json.loads(response.read().decode("utf-8"))
         if not payload.get("ok"):
             raise RuntimeError(f"Packaged Agent health failed: {payload}")
+
+        ready_protocol = str(ready.get("protocol") or "")
+        health_protocol = str(payload.get("protocol") or "")
+        if ready_protocol != health_protocol:
+            raise RuntimeError(
+                "Packaged Agent protocol mismatch between ready and health: "
+                f"{ready_protocol!r} != {health_protocol!r}"
+            )
+        if not re.fullmatch(r"\d+\.\d+\.\d+", ready_protocol):
+            raise RuntimeError(
+                "Packaged Agent protocol is not semantic: "
+                f"{ready_protocol!r}"
+            )
+        if ready.get("version") != payload.get("version"):
+            raise RuntimeError(
+                "Packaged Agent version mismatch between ready and health."
+            )
 
         shutdown = urllib.request.Request(
             f"http://127.0.0.1:{ready['port']}/shutdown",
