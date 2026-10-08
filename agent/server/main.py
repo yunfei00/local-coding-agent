@@ -220,6 +220,8 @@ class AgentServer:
                 task = self.active_turns.get(turn_id)
                 if task and not task.done():
                     task.cancel()
+            with suppress(Exception):
+                await self.mcp_runtime.close()
 
         return ws
 
