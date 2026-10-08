@@ -113,11 +113,27 @@ declare global {
       }>;
       deleteMcpServer: (serverId: string) => Promise<{
         event: AgentEnvelope;
-        secrets: Record<string, unknown>;
+        secrets: Record<
+          string,
+          {
+            configured: boolean;
+            keys: string[];
+            stored: boolean;
+            mode: "os_protected" | "session_only" | "environment" | "none";
+          }
+        >;
       }>;
       refreshMcpServers: () => Promise<{
         event: AgentEnvelope;
-        secrets: Record<string, unknown>;
+        secrets: Record<
+          string,
+          {
+            configured: boolean;
+            keys: string[];
+            stored: boolean;
+            mode: "os_protected" | "session_only" | "environment" | "none";
+          }
+        >;
       }>;
       getPromptRules: (threadId?: string) => Promise<AgentEnvelope>;
       setPromptRule: (
