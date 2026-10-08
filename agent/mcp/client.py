@@ -252,6 +252,10 @@ class MCPClientManager:
         }
 
         if alias in python_aliases and Path(expanded).parent == Path("."):
+            current = Path(sys.executable)
+            if current.name.lower() in python_aliases and current.exists():
+                return str(current.resolve())
+
             virtual_env = os.getenv("VIRTUAL_ENV")
             if virtual_env:
                 candidate = (
@@ -261,10 +265,6 @@ class MCPClientManager:
                 )
                 if candidate.exists():
                     return str(candidate.resolve())
-
-            current = Path(sys.executable)
-            if current.name.lower() in python_aliases and current.exists():
-                return str(current.resolve())
 
         path_value = Path(expanded)
         if path_value.is_absolute():
