@@ -2802,3 +2802,9 @@ summary:focus-visible {
     border-bottom: 1px solid #292a2d;
   }
 }
+
+
+.mcp-editor .settings-warning {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
