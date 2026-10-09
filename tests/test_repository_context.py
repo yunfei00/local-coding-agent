@@ -13,6 +13,55 @@ from agent.core.explicit_context import (
 from agent.core.repository_map import RepositoryMap
 
 
+class Phase24ManualFixtureTests(unittest.TestCase):
+    def test_manual_fixture_matches_documented_repository_map_baseline(self) -> None:
+        root = (
+            Path(__file__).resolve().parents[1]
+            / "manual-fixtures"
+            / "phase24-context-demo"
+        )
+        repo_map = RepositoryMap(root)
+        repo_map.build()
+
+        self.assertEqual(len(repo_map.files), 10)
+        self.assertEqual(
+            repo_map.payload()["languages"],
+            {
+                "python": 3,
+                "typescript": 1,
+                "cpp": 1,
+                "java": 1,
+                "kotlin": 1,
+            },
+        )
+
+        indexed = set(repo_map.file_paths(limit=100))
+        self.assertEqual(
+            indexed,
+            {
+                "README.md",
+                "pyproject.toml",
+                "package.json",
+                "src/app.py",
+                "src/version_info.py",
+                "src/service.ts",
+                "native/engine.cpp",
+                "java/Main.java",
+                "kotlin/App.kt",
+                "tests/test_app.py",
+            },
+        )
+
+        for ignored in (
+            "node_modules/ignored.js",
+            "build/ignored.cpp",
+            ".venv/ignored.py",
+            "target/ignored.java",
+            ".gradle/ignored.kt",
+        ):
+            self.assertNotIn(ignored, indexed)
+
+
 class RepositoryMapTests(unittest.TestCase):
     def test_indexes_supported_languages_and_ignores_build_trees(self) -> None:
         with tempfile.TemporaryDirectory() as root:
