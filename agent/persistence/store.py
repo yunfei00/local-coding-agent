@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def default_data_dir() -> Path:
@@ -125,6 +125,17 @@ class SQLiteStore:
 
             CREATE INDEX IF NOT EXISTS idx_mcp_servers_name
             ON mcp_servers(name);
+
+            CREATE TABLE IF NOT EXISTS pinned_context (
+                thread_id TEXT NOT NULL,
+                path TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(thread_id, path),
+                FOREIGN KEY(thread_id) REFERENCES threads(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_pinned_context_thread
+            ON pinned_context(thread_id, created_at);
             """
         )
         self.connection.execute(
@@ -226,6 +237,42 @@ class SQLiteStore:
             (server_id,),
         )
         self.connection.commit()
+
+    def pin_context(
+        self,
+        *,
+        thread_id: str,
+        path: str,
+        created_at: str,
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO pinned_context(thread_id, path, created_at)
+            VALUES(?, ?, ?)
+            ON CONFLICT(thread_id, path) DO NOTHING
+            """,
+            (thread_id, path, created_at),
+        )
+        self.connection.commit()
+
+    def unpin_context(self, *, thread_id: str, path: str) -> None:
+        self.connection.execute(
+            "DELETE FROM pinned_context WHERE thread_id = ? AND path = ?",
+            (thread_id, path),
+        )
+        self.connection.commit()
+
+    def list_pinned_context(self, thread_id: str) -> list[dict[str, Any]]:
+        rows = self.connection.execute(
+            """
+            SELECT thread_id, path, created_at
+            FROM pinned_context
+            WHERE thread_id = ?
+            ORDER BY created_at ASC, path COLLATE NOCASE ASC
+            """,
+            (thread_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def save_project(
         self,
