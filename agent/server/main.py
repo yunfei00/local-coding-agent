@@ -21,6 +21,12 @@ from agent.core.agent_loop import (
     compact_tool_payload,
 )
 from agent.core.context import ContextBudgetManager
+from agent.core.explicit_context import (
+    context_blocks_for_files,
+    extract_file_mentions,
+    load_context_file,
+    normalize_context_path,
+)
 from agent.core.diagnostics import (
     database_summary,
     prompt_rules_summary,
@@ -270,6 +276,124 @@ class AgentServer:
                     "diagnostics.loaded",
                     await self._diagnostics_payload(),
                     request_id=request_id,
+                )
+            )
+            return
+
+        if message_type in {
+            "context.get",
+            "context.pin",
+            "context.unpin",
+            "context.refresh",
+        }:
+            project = self.projects.active
+            if not project:
+                await self.send_error(
+                    ws,
+                    "WORKSPACE_REQUIRED",
+                    "Open a workspace before managing context.",
+                    request_id=request_id,
+                    thread_id=data.get("thread_id"),
+                )
+                return
+
+            thread_id = str(
+                payload.get("thread_id")
+                or data.get("thread_id")
+                or project.active_thread_id
+                or ""
+            ).strip()
+            if not thread_id or not project.state.get_thread(thread_id):
+                await self.send_error(
+                    ws,
+                    "THREAD_NOT_FOUND",
+                    "A valid thread is required for pinned context.",
+                    request_id=request_id,
+                    thread_id=thread_id or None,
+                )
+                return
+
+            if message_type != "context.get" and any(
+                not task.done() for task in self.active_turns.values()
+            ):
+                await self.send_error(
+                    ws,
+                    "TURN_RUNNING",
+                    "Stop the active turn before changing pinned or repository context.",
+                    request_id=request_id,
+                    thread_id=thread_id,
+                )
+                return
+
+            try:
+                if message_type == "context.pin":
+                    relative = normalize_context_path(
+                        project.workspace,
+                        str(payload.get("path") or ""),
+                    )
+                    loaded = load_context_file(
+                        project.workspace,
+                        relative,
+                        source="pinned_file",
+                    )
+                    if loaded.status != "ready":
+                        raise ValueError(
+                            f"Cannot pin {relative}: {loaded.status}."
+                        )
+                    self.store.pin_context(
+                        thread_id=thread_id,
+                        path=relative,
+                        created_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                elif message_type == "context.unpin":
+                    relative = normalize_context_path(
+                        project.workspace,
+                        str(payload.get("path") or ""),
+                    )
+                    self.store.unpin_context(
+                        thread_id=thread_id,
+                        path=relative,
+                    )
+                elif message_type == "context.refresh":
+                    project.ensure_repository_map().build()
+
+                pinned = [
+                    load_context_file(
+                        project.workspace,
+                        str(row["path"]),
+                        source="pinned_file",
+                    ).to_dict()
+                    for row in self.store.list_pinned_context(thread_id)
+                ]
+                repo_map = project.ensure_repository_map()
+                result_payload = {
+                    "thread_id": thread_id,
+                    "repository_map": {
+                        **repo_map.payload(),
+                        "files": repo_map.file_paths(limit=500),
+                    },
+                    "pinned": pinned,
+                }
+            except ValueError as exc:
+                await self.send_error(
+                    ws,
+                    "CONTEXT_INVALID",
+                    str(exc),
+                    request_id=request_id,
+                    thread_id=thread_id,
+                )
+                return
+
+            await ws.send_json(
+                envelope(
+                    (
+                        "context.loaded"
+                        if message_type == "context.get"
+                        else "context.changed"
+                    ),
+                    result_payload,
+                    request_id=request_id,
+                    thread_id=thread_id,
                 )
             )
             return
@@ -1288,6 +1412,55 @@ class AgentServer:
             context_window_tokens=self.provider.context_window,
             reserved_output_tokens=self.context_reserved_output_tokens,
         )
+        pinned_rows = self.store.list_pinned_context(thread_id)
+        pinned_paths = [str(row["path"]) for row in pinned_rows]
+        mention_paths = extract_file_mentions(prompt)
+        pinned_set = set(pinned_paths)
+        mentioned_files = [
+            load_context_file(
+                workspace,
+                path,
+                source="mentioned_file",
+            )
+            for path in mention_paths
+            if path not in pinned_set
+        ]
+        pinned_files = [
+            load_context_file(
+                workspace,
+                path,
+                source="pinned_file",
+            )
+            for path in pinned_paths
+        ]
+        context_blocks = [
+            *context_blocks_for_files(mentioned_files),
+            *context_blocks_for_files(pinned_files),
+            {
+                "source": "repo_map",
+                "content": project.ensure_repository_map().render(),
+            },
+        ]
+        unavailable = [
+            item
+            for item in [*mentioned_files, *pinned_files]
+            if item.status != "ready"
+        ]
+        if unavailable:
+            context_blocks.insert(
+                0,
+                {
+                    "source": "explicit_context_status",
+                    "content": (
+                        "Some explicitly selected workspace files are unavailable:\n"
+                        + "\n".join(
+                            f"- {item.path}: {item.status}"
+                            for item in unavailable
+                        )
+                    ),
+                },
+            )
+
         initial_context = context_manager.prepare_initial(
             system_prompt=self._system_prompt(
                 project_id=project.id,
@@ -1297,9 +1470,11 @@ class AgentServer:
             ),
             history=history,
             user_prompt=prompt,
+            context_blocks=context_blocks,
         )
         messages: list[dict[str, Any]] = initial_context.messages
         context_usage = initial_context.usage
+        context_source_tokens = dict(context_usage.context_sources)
         self.last_context_usage = context_usage.to_dict()
 
         await ws.send_json(
@@ -1328,6 +1503,7 @@ class AgentServer:
                         fitted_context = context_manager.fit_runtime(
                             messages,
                             history_messages_total=len(history),
+                            context_sources=context_source_tokens,
                         )
                         messages = fitted_context.messages
                         context_usage = fitted_context.usage
@@ -1635,7 +1811,14 @@ class AgentServer:
                         )
                     )
 
-                    for changed_path in payload.get("changed_paths") or []:
+                    changed_paths = [
+                        str(path)
+                        for path in (payload.get("changed_paths") or [])
+                    ]
+                    if changed_paths:
+                        project.refresh_repository_paths(changed_paths)
+
+                    for changed_path in changed_paths:
                         await ws.send_json(
                             envelope(
                                 "file.changed",
