@@ -8,6 +8,7 @@ import {
   useState
 } from "react";
 
+import { ContextPanel } from "./components/ContextPanel";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import {
@@ -60,6 +61,7 @@ type ContextUsage = {
   omitted_history_messages: number;
   runtime_messages_omitted: number;
   truncated_messages: number;
+  context_sources?: Record<string, number>;
   utilization: number;
 };
 
@@ -209,6 +211,7 @@ function App() {
   const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
   const conversationRef = useRef<HTMLElement | null>(null);
   const autoFollowRef = useRef(true);
 
@@ -1219,12 +1222,26 @@ function App() {
             </button>
             <button
               type="button"
+              className={"context-button" + (contextOpen ? " active" : "")}
+              disabled={!activeThread}
+              onClick={() => {
+                setContextOpen((current) => !current);
+                setDiagnosticsOpen(false);
+                setSettingsOpen(false);
+              }}
+              title="Repository and pinned context"
+            >
+              Context
+            </button>
+            <button
+              type="button"
               className={
                 "diagnostics-button" + (diagnosticsOpen ? " active" : "")
               }
               onClick={() => {
                 setDiagnosticsOpen((current) => !current);
                 setSettingsOpen(false);
+                setContextOpen(false);
               }}
               title="Diagnostics"
             >
@@ -1236,6 +1253,7 @@ function App() {
               onClick={() => {
                 setSettingsOpen((current) => !current);
                 setDiagnosticsOpen(false);
+                setContextOpen(false);
               }}
               title="Settings"
             >
@@ -1448,6 +1466,7 @@ function App() {
                     Context {contextLabel}
                   </span>
                 ) : null}
+                <span>@file adds one-turn context</span>
                 <span>Enter to send</span>
                 <span>Shift+Enter newline</span>
               </span>
@@ -1477,6 +1496,15 @@ function App() {
             )}
           </div>
         </form>
+
+        {contextOpen && activeThread ? (
+          <ContextPanel
+            threadId={activeThread.id}
+            projectName={workspace?.name}
+            running={runningTurnId !== null}
+            onClose={() => setContextOpen(false)}
+          />
+        ) : null}
 
         {diagnosticsOpen ? (
           <DiagnosticsPanel
