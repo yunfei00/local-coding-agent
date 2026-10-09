@@ -193,6 +193,26 @@ class TaskPlanStore:
         return {"id": row[0], "created_at": row[1],
                 "reason": row[2], "snapshot": json.loads(row[3])}
 
+    def prepare_resume(self, plan_id: str) -> dict[str, Any]:
+        """Explicit, non-executing resume: identify the first unfinished step.
+
+        Completed and skipped steps are never reset or replayed. A previously
+        in-progress step is left intact until the user verifies the workspace.
+        """
+        plan = self.get(plan_id)
+        checkpoint = self.latest_checkpoint(plan_id)
+        next_step = next(
+            (step for step in plan["steps"] if step["state"] not in ("completed", "skipped")),
+            None,
+        )
+        return {
+            "plan": plan,
+            "checkpoint": checkpoint,
+            "next_step": next_step,
+            "requires_workspace_verification": next_step is not None,
+            "automatic_replay": False,
+        }
+
     def resumable(self, plan_id: str) -> dict[str, Any]:
         """Return persisted state; never automatically replay mutating tools."""
         return {"plan": self.get(plan_id), "checkpoint": self.latest_checkpoint(plan_id)}

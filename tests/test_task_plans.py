@@ -48,6 +48,26 @@ class TaskPlanStoreTests(unittest.TestCase):
         store.interrupt(plan)
         self.assertEqual(store.resumable(plan)["checkpoint"]["reason"], "interrupted")
 
+    def test_safe_resume_never_replays_completed_steps(self):
+        store = TaskPlanStore(sqlite3.connect(":memory:"))
+        plan = store.create("t", "repair", [
+            {"description": "inspect"}, {"description": "fix"}, {"description": "verify"}])
+        steps = store.get(plan)["steps"]
+        store.update_step(plan, steps[0]["id"], "completed",
+                          [{"tool": "read_file", "ok": True}])
+        store.update_step(plan, steps[1]["id"], "in_progress")
+        store.checkpoint(plan, "turn_cancelled",
+                         files_changed=["src/calculator.py"],
+                         commands_run=[{"tool": "write_file", "ok": True}])
+        resume = store.prepare_resume(plan)
+        self.assertEqual(resume["next_step"]["id"], steps[1]["id"])
+        self.assertEqual(resume["plan"]["steps"][0]["state"], "completed")
+        self.assertEqual(resume["checkpoint"]["snapshot"]["files_changed"],
+                         ["src/calculator.py"])
+        self.assertTrue(resume["requires_workspace_verification"])
+        self.assertFalse(resume["automatic_replay"])
+        self.assertEqual(store.get(plan)["steps"][1]["state"], "in_progress")
+
     def test_thread_isolation_and_invalid_state(self):
         store = TaskPlanStore(sqlite3.connect(":memory:"))
         a = store.create("a", "Goal A", [{"description": "step"}])

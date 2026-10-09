@@ -1209,7 +1209,7 @@ class AgentServer:
                     if plan["thread_id"] != thread_id:
                         raise ValueError("Plan belongs to another thread")
                     await ws.send_json(envelope(
-                        "plan.resumable", plans.resumable(plan_id),
+                        "plan.resumable", plans.prepare_resume(plan_id),
                         request_id=request_id, thread_id=thread_id))
                     return
                 elif message_type != "plan.list":

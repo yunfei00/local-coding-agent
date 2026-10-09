@@ -14,9 +14,9 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
     try {
       const event = await window.localAgent.planRequest(threadId, operation, payload);
       if (operation === "plan.resume") {
-        const checkpoint = event.payload?.checkpoint as { reason?: string } | null;
+        const checkpoint = event.payload?.checkpoint as { reason?: string } | null;\n        const nextStep = event.payload?.next_step as { description?: string } | null;
         setCheckpoint(checkpoint ? (checkpoint as Record<string, unknown>) : null);
-        setError(checkpoint ? "" : "No checkpoint yet.");
+        setError(nextStep ? "Resume from: " + nextStep.description + ". Verify workspace before continuing; no tools replayed." : (checkpoint ? "Plan has no unfinished steps." : "No checkpoint yet."));
       } else {
         setPlans((event.payload?.plans as Plan[]) ?? []);
       }
