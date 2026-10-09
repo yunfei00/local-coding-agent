@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import os
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -284,20 +285,30 @@ class RepositoryMap:
         self.scanned_files = 0
         self.skipped_files = 0
         self.truncated = False
-        for path in sorted(
-            self.root.rglob("*"),
-            key=lambda item: item.as_posix().lower(),
-        ):
-            if not path.is_file():
-                continue
-            if self._ignored(path):
-                self.skipped_files += 1
-                continue
-            if not self._candidate(path):
-                continue
-            if len(self.files) >= MAX_INDEX_FILES:
-                self.truncated = True
+
+        candidates: list[Path] = []
+        ignored = self.ignored_dirs
+        for current_root, dirs, files in os.walk(self.root, topdown=True):
+            dirs[:] = sorted(
+                [
+                    name
+                    for name in dirs
+                    if name not in ignored
+                ],
+                key=str.lower,
+            )
+            base = Path(current_root)
+            for name in sorted(files, key=str.lower):
+                path = base / name
+                if self._candidate(path):
+                    candidates.append(path)
+                    if len(candidates) >= MAX_INDEX_FILES:
+                        self.truncated = True
+                        break
+            if self.truncated:
                 break
+
+        for path in candidates:
             indexed = self._index_file(path)
             if indexed is None:
                 self.skipped_files += 1
