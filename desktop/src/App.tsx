@@ -10,6 +10,7 @@ import {
 
 import { ContextPanel } from "./components/ContextPanel";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
+import { GitPanel } from "./components/GitPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import {
   DiffFile,
@@ -212,6 +213,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
+  const [gitOpen, setGitOpen] = useState(false);
   const conversationRef = useRef<HTMLElement | null>(null);
   const autoFollowRef = useRef(true);
 
@@ -1222,10 +1224,25 @@ function App() {
             </button>
             <button
               type="button"
+              className={"git-button" + (gitOpen ? " active" : "")}
+              disabled={!workspace}
+              onClick={() => {
+                setGitOpen((current) => !current);
+                setContextOpen(false);
+                setDiagnosticsOpen(false);
+                setSettingsOpen(false);
+              }}
+              title="Git workflow and worktrees"
+            >
+              Git
+            </button>
+            <button
+              type="button"
               className={"context-button" + (contextOpen ? " active" : "")}
               disabled={!activeThread}
               onClick={() => {
                 setContextOpen((current) => !current);
+                setGitOpen(false);
                 setDiagnosticsOpen(false);
                 setSettingsOpen(false);
               }}
@@ -1240,6 +1257,7 @@ function App() {
               }
               onClick={() => {
                 setDiagnosticsOpen((current) => !current);
+                setGitOpen(false);
                 setSettingsOpen(false);
                 setContextOpen(false);
               }}
@@ -1252,6 +1270,7 @@ function App() {
               className={"settings-button" + (settingsOpen ? " active" : "")}
               onClick={() => {
                 setSettingsOpen((current) => !current);
+                setGitOpen(false);
                 setDiagnosticsOpen(false);
                 setContextOpen(false);
               }}
@@ -1496,6 +1515,21 @@ function App() {
             )}
           </div>
         </form>
+
+        {gitOpen && workspace ? (
+          <GitPanel
+            projectName={workspace.name}
+            selectedModel={selectedModel}
+            running={runningTurnId !== null}
+            onProjectOpened={(event) => {
+              applyProjectSession(event);
+              void window.localAgent.listProjects().then((listed) => {
+                setProjects(readProjectList(listed));
+              });
+            }}
+            onClose={() => setGitOpen(false)}
+          />
+        ) : null}
 
         {contextOpen && activeThread ? (
           <ContextPanel
