@@ -1843,8 +1843,14 @@ class AgentServer:
                         requires_check = bool(current_step and
                                               current_step["id"] == active_step_id and
                                               current_step["verification"].strip())
+                        # Evidence must belong to the current step and be
+                        # collected after its activation, not an earlier step.
                         passed_checks = any(
-                            command.get("ok") is True for command in plan_commands_run
+                            item.get("step_id") == active_step_id
+                            and item.get("ok") is True
+                            and item.get("tool") in (
+                                "shell", "shell_exec", "run_command", "run_shell")
+                            for item in evidence
                         )
                         self.store.task_plans.advance_verified(
                             active_plan["id"], active_step_id, evidence,
