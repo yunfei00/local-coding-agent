@@ -18,6 +18,15 @@ class Phase26IntegrationTests(unittest.TestCase):
         self.assertIn('active_step_id = None', source)
         self.assertNotIn('next_step = next((item for item in current["steps"]', source)
 
+    def test_auto_continue_after_verified_step(self):
+        source = (ROOT / "agent/server/main.py").read_text(encoding="utf-8")
+        self.assertIn('"plan.step.completed"', source)
+        self.assertIn('"step_completed"', source)
+        self.assertIn('finished["state"] == "completed"', source)
+        self.assertIn('next_step["state"] == "pending"', source)
+        self.assertIn('plan_tool_evidence.clear()', source)
+        self.assertIn('plan_commands_run.clear()', source)
+
     def test_runtime_evidence_in_checkpoint(self):
         source = (ROOT / "agent/server/main.py").read_text(encoding="utf-8")
         self.assertIn('"step_id": active_step_id', source)
