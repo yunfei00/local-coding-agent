@@ -194,8 +194,7 @@ export function ContextPanel({
             <input
               value={pathValue}
               disabled={busy || running}
-              placeholder="src/app.ts"
-              list="repository-context-files"
+              placeholder="Type a workspace file path, e.g. src/app.ts"
               onChange={(event) => setPathValue(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
@@ -206,26 +205,25 @@ export function ContextPanel({
             />
             <button
               type="button"
+              className="context-pin-button"
               disabled={busy || running || !pathValue.trim()}
               onClick={() => void pin(pathValue)}
             >
-              Pin
+              Pin file
             </button>
           </div>
-          <datalist id="repository-context-files">
-            {files.slice(0, 500).map((path) => (
-              <option key={path} value={path} />
-            ))}
-          </datalist>
+          <p className="context-pin-help">
+            Or choose a file from the Repository Map below and click its Pin button.
+          </p>
 
           {pinned.length ? (
             <div className="context-pinned-list">
               {pinned.map((item) => (
                 <div key={item.path} className="context-pinned-item">
-                  <div>
+                  <div className="context-pinned-copy">
                     <strong>{item.path}</strong>
                     <span className={"context-file-status status-" + item.status}>
-                      {item.status}
+                      {item.status === "ready" ? "Ready" : item.status}
                       {item.truncated ? " · truncated" : ""}
                     </span>
                   </div>
@@ -264,18 +262,23 @@ export function ContextPanel({
             onChange={(event) => setFilter(event.target.value)}
           />
           <div className="context-file-list">
-            {filteredFiles.map((path) => (
-              <button
-                key={path}
-                type="button"
-                disabled={busy || running}
-                onClick={() => void pin(path)}
-                title={"Pin " + path}
-              >
-                <code>{path}</code>
-                <span>＋ Pin</span>
-              </button>
-            ))}
+            {filteredFiles.map((path) => {
+              const alreadyPinned = pinned.some((item) => item.path === path);
+              return (
+                <div key={path} className="context-file-row">
+                  <code title={path}>{path}</code>
+                  <button
+                    type="button"
+                    className="context-row-pin"
+                    disabled={busy || running || alreadyPinned}
+                    onClick={() => void pin(path)}
+                    title={alreadyPinned ? "Already pinned" : "Pin " + path}
+                  >
+                    {alreadyPinned ? "Pinned" : "Pin"}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </section>
       </div>
