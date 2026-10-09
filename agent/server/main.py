@@ -1843,8 +1843,18 @@ class AgentServer:
                     if active_plan and active_step_id:
                         evidence = [item for item in plan_tool_evidence
                                     if item.get("step_id") == active_step_id]
+                        # A step declaring verification cannot be completed
+                        # solely by reading a file or reporting tool success.
+                        current_step = self.store.task_plans.active_step(active_plan["id"])
+                        requires_check = bool(current_step and
+                                              current_step["id"] == active_step_id and
+                                              current_step["verification"].strip())
+                        passed_checks = any(
+                            command.get("ok") is True for command in plan_commands_run
+                        )
                         self.store.task_plans.advance_verified(
-                            active_plan["id"], active_step_id, evidence, not gaps)
+                            active_plan["id"], active_step_id, evidence,
+                            not gaps and (not requires_check or passed_checks))
                     self._checkpoint_thread_plans(thread_id, "turn_completed", sorted(plan_files_changed), plan_commands_run)
                     await ws.send_json(
                         envelope(
