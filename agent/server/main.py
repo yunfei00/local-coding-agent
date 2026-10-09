@@ -11,6 +11,7 @@ from collections import deque
 from contextlib import suppress
 from dataclasses import asdict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from aiohttp import WSMsgType, web
