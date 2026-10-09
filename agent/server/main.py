@@ -1591,13 +1591,15 @@ class AgentServer:
             return False
         return True
 
-    def _checkpoint_thread_plans(self, thread_id: str, reason: str) -> None:
+    def _checkpoint_thread_plans(self, thread_id: str, reason: str,
+                                 files_changed: list[str] | None = None,
+                                 commands_run: list[dict] | None = None) -> None:
         """Persist active plans on turn boundaries without replaying tools."""
         plans = self.store.task_plans
         for plan in plans.list_for_thread(thread_id):
             if any(step["state"] in ("pending", "in_progress", "blocked")
                    for step in plan["steps"]):
-                plans.checkpoint(plan["id"], reason)
+                plans.checkpoint(plan["id"], reason, files_changed=files_changed, commands_run=commands_run)
 
     async def run_tool_turn(
         self,
@@ -1619,6 +1621,9 @@ class AgentServer:
         tools = project.tools
         state = project.state
         guard = ToolLoopGuard()
+        plan_files_changed: set[str] = set()
+        plan_commands_run: list[dict] = []
+
 
         history = state.get_messages(thread_id)
         context_manager = ContextBudgetManager(
@@ -1809,7 +1814,7 @@ class AgentServer:
                         assistant=assistant_text,
                     )
 
-                    self._checkpoint_thread_plans(thread_id, "turn_completed")
+                    self._checkpoint_thread_plans(thread_id, "turn_completed", sorted(plan_files_changed), plan_commands_run)
                     await ws.send_json(
                         envelope(
                             "turn.completed",
@@ -2004,6 +2009,13 @@ class AgentServer:
                                     turn_id=turn_id,
                                 )
 
+                    if call.name in ("shell", "shell_exec", "run_command", "run_shell"):
+                        plan_commands_run.append({
+                            "tool": call.name, "arguments": call.arguments,
+                            "ok": bool(payload.get("ok")),
+                            "summary": str(payload.get("summary", ""))[:500],
+                        })
+                    plan_files_changed.update(str(p) for p in (payload.get("changed_paths") or []))
                     guard.record_result(call.name, payload)
 
                     failure_limit_reached = guard.failure_limit_reached(
@@ -2171,7 +2183,7 @@ class AgentServer:
                 )
             )
         except asyncio.CancelledError:
-            self._checkpoint_thread_plans(thread_id, "turn_cancelled")
+            self._checkpoint_thread_plans(thread_id, "turn_cancelled", sorted(plan_files_changed), plan_commands_run)
             with suppress(ConnectionResetError, RuntimeError):
                 await ws.send_json(
                     envelope(
