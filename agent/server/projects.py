@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from agent.core.project_detection import ProjectDetection, detect_project
+from agent.core.repository_map import RepositoryMap
 from agent.persistence.store import SQLiteStore
 from agent.server.protocol import new_id
 from agent.server.state import InMemoryState, ThreadRecord
@@ -28,6 +29,7 @@ class ProjectSession:
     updated_at: str
     active_thread_id: str | None = None
     store: SQLiteStore | None = None
+    repository_map: RepositoryMap | None = None
 
     @property
     def name(self) -> str:
@@ -39,6 +41,15 @@ class ProjectSession:
 
     def detection(self) -> ProjectDetection:
         return detect_project(self.workspace.root)
+
+    def ensure_repository_map(self) -> RepositoryMap:
+        if self.repository_map is None:
+            self.repository_map = RepositoryMap(self.workspace.root)
+            self.repository_map.build()
+        return self.repository_map
+
+    def refresh_repository_paths(self, paths: list[str] | tuple[str, ...]) -> None:
+        self.ensure_repository_map().refresh_paths(paths)
 
     def persist(self) -> None:
         if not self.store:
@@ -83,6 +94,7 @@ class ProjectSession:
             "path": self.path,
             "tools": self.tools.names,
             "detection": self.detection().to_dict(),
+            "repository_map": self.ensure_repository_map().payload(),
             "thread_count": len(self.state.list_threads()),
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -128,7 +140,9 @@ class ProjectRegistry:
                     else None
                 ),
                 store=self.store,
+                repository_map=RepositoryMap(workspace.root),
             )
+            project.repository_map.build()
             self._projects[project.id] = project
             self._path_index[os.path.normcase(project.path)] = project.id
 
@@ -178,7 +192,9 @@ class ProjectRegistry:
                 created_at=timestamp,
                 updated_at=timestamp,
                 store=self.store,
+                repository_map=RepositoryMap(workspace.root),
             )
+            project.repository_map.build()
             project.persist()
             self._projects[project.id] = project
             self._path_index[key] = project.id
