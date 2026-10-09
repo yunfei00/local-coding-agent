@@ -1625,6 +1625,19 @@ class AgentServer:
         plan_commands_run: list[dict] = []
 
 
+        active_plans = [
+            plan for plan in self.store.task_plans.list_for_thread(thread_id)
+            if any(item["state"] in ("pending", "in_progress", "blocked") for item in plan["steps"])
+        ]
+        # Existing plans are explicit user intent. Do not create plans for simple turns.
+        active_plan = active_plans[0] if active_plans else None
+        active_step_id: str | None = None
+        if active_plan:
+            for item in active_plan["steps"]:
+                if item["state"] == "in_progress":
+                    active_step_id = item["id"]
+                    break
+
         history = state.get_messages(thread_id)
         context_manager = ContextBudgetManager(
             context_window_tokens=self.provider.context_window,
@@ -1652,6 +1665,19 @@ class AgentServer:
             for path in pinned_paths
         ]
         context_blocks = [
+            *([{
+                "source": "task_plan",
+                "content": (
+                    "Persistent task plan (user-authored; follow these steps in order). "
+                    "Do not claim completion without real tool evidence. "
+                    "Never repeat mutating tools merely because a checkpoint exists.\n"
+                    + "\n".join(
+                        f'{index + 1}. [{item["state"]}] {item["description"]} '
+                        f'(verify: {item["verification"]})'
+                        for index, item in enumerate(active_plan["steps"])
+                    )
+                ),
+            }] if active_plan else []),
             *context_blocks_for_files(mentioned_files),
             *context_blocks_for_files(pinned_files),
             {
@@ -2009,6 +2035,20 @@ class AgentServer:
                                     turn_id=turn_id,
                                 )
 
+                    if active_plan and payload.get("ok"):
+                        current = self.store.task_plans.get(active_plan["id"])
+                        if active_step_id is None:
+                            next_step = next((item for item in current["steps"]
+                                              if item["state"] == "pending"), None)
+                            if next_step:
+                                active_step_id = next_step["id"]
+                                self.store.task_plans.update_step(
+                                    active_plan["id"], active_step_id, "in_progress")
+                        if active_step_id:
+                            plan_commands_run.append({
+                                "step_id": active_step_id, "tool": call.name,
+                                "ok": True, "summary": str(payload.get("summary", ""))[:500],
+                            })
                     if call.name in ("shell", "shell_exec", "run_command", "run_shell"):
                         plan_commands_run.append({
                             "tool": call.name, "arguments": call.arguments,
