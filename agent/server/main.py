@@ -1897,6 +1897,19 @@ class AgentServer:
                         assistant=assistant_text,
                     )
                     self._checkpoint_thread_plans(thread_id, "turn_completed", sorted(plan_files_changed), plan_commands_run)
+                    # A fully completed plan is no longer considered active by
+                    # _checkpoint_thread_plans. Persist its terminal state too.
+                    if active_plan:
+                        terminal_plan = self.store.task_plans.get(active_plan["id"])
+                        if all(item["state"] in ("completed", "skipped")
+                               for item in terminal_plan["steps"]):
+                            self.store.task_plans.checkpoint(
+                                active_plan["id"], "plan_completed",
+                                files_changed=sorted(plan_files_changed),
+                                commands_run=plan_commands_run)
+                            await ws.send_json(envelope(
+                                "plan.completed", {"plan_id": active_plan["id"]},
+                                thread_id=thread_id, turn_id=turn_id))
                     await ws.send_json(
                         envelope(
                             "turn.completed",
