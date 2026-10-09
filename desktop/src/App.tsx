@@ -1407,6 +1407,30 @@ function App() {
               ↓
             </button>
           ) : null}
+
+          {gitOpen && workspace ? (
+            <GitPanel
+              projectName={workspace.name}
+              selectedModel={selectedModel}
+              running={runningTurnId !== null}
+              onProjectOpened={(event) => {
+                applyProjectSession(event);
+                void window.localAgent.listProjects().then((listed) => {
+                  setProjects(readProjectList(listed));
+                });
+              }}
+              onClose={() => setGitOpen(false)}
+            />
+          ) : null}
+
+          {contextOpen && activeThread ? (
+            <ContextPanel
+              threadId={activeThread.id}
+              projectName={workspace?.name}
+              running={runningTurnId !== null}
+              onClose={() => setContextOpen(false)}
+            />
+          ) : null}
         </div>
 
         <form className="composer" onSubmit={submit}>
@@ -1515,30 +1539,6 @@ function App() {
             )}
           </div>
         </form>
-
-        {gitOpen && workspace ? (
-          <GitPanel
-            projectName={workspace.name}
-            selectedModel={selectedModel}
-            running={runningTurnId !== null}
-            onProjectOpened={(event) => {
-              applyProjectSession(event);
-              void window.localAgent.listProjects().then((listed) => {
-                setProjects(readProjectList(listed));
-              });
-            }}
-            onClose={() => setGitOpen(false)}
-          />
-        ) : null}
-
-        {contextOpen && activeThread ? (
-          <ContextPanel
-            threadId={activeThread.id}
-            projectName={workspace?.name}
-            running={runningTurnId !== null}
-            onClose={() => setContextOpen(false)}
-          />
-        ) : null}
 
         {diagnosticsOpen ? (
           <DiagnosticsPanel
