@@ -1591,6 +1591,14 @@ class AgentServer:
             return False
         return True
 
+    def _checkpoint_thread_plans(self, thread_id: str, reason: str) -> None:
+        """Persist active plans on turn boundaries without replaying tools."""
+        plans = self.store.task_plans
+        for plan in plans.list_for_thread(thread_id):
+            if any(step["state"] in ("pending", "in_progress", "blocked")
+                   for step in plan["steps"]):
+                plans.checkpoint(plan["id"], reason)
+
     async def run_tool_turn(
         self,
         ws: web.WebSocketResponse,
@@ -1801,6 +1809,7 @@ class AgentServer:
                         assistant=assistant_text,
                     )
 
+                    self._checkpoint_thread_plans(thread_id, "turn_completed")
                     await ws.send_json(
                         envelope(
                             "turn.completed",
@@ -2162,6 +2171,7 @@ class AgentServer:
                 )
             )
         except asyncio.CancelledError:
+            self._checkpoint_thread_plans(thread_id, "turn_cancelled")
             with suppress(ConnectionResetError, RuntimeError):
                 await ws.send_json(
                     envelope(
