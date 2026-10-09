@@ -3456,3 +3456,23 @@ summary:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Non-modal Git/Context drawers: keep composer and conversation interactive. */
+.context-overlay,
+.git-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: transparent;
+}
+
+.context-panel,
+.git-panel {
+  pointer-events: auto;
+}
+
+.context-overlay ~ .jump-to-bottom,
+.git-overlay ~ .jump-to-bottom {
+  pointer-events: auto;
+}
