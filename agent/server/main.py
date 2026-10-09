@@ -2041,12 +2041,14 @@ class AgentServer:
                                 )
 
                     if active_plan and payload.get("ok"):
-                        current = self.store.task_plans.get(active_plan["id"])
-                        if active_step_id is None:
-                            next_step = next((item for item in current["steps"]
-                                              if item["state"] == "pending"), None)
-                            if next_step:
-                                active_step_id = next_step["id"]
+                        # Do not silently skip a blocked step, even after a
+                        # subsequent tool succeeds in the same model turn.
+                        current_step = self.store.task_plans.active_step(active_plan["id"])
+                        if current_step and current_step["state"] == "blocked":
+                            active_step_id = None
+                        elif current_step:
+                            active_step_id = current_step["id"]
+                            if current_step["state"] == "pending":
                                 self.store.task_plans.update_step(
                                     active_plan["id"], active_step_id, "in_progress")
                         if active_step_id:
