@@ -84,6 +84,14 @@ contextBridge.exposeInMainWorld("localAgent", {
       projectId,
       threadId
     ),
+  getGitOverview: () =>
+    ipcRenderer.invoke("agent:git-overview"),
+  openManagedWorktree: (pathValue: string, model?: string) =>
+    ipcRenderer.invoke(
+      "agent:git-worktree-open",
+      pathValue,
+      model
+    ),
   getContext: (threadId: string) =>
     ipcRenderer.invoke("agent:context-get", threadId),
   pinContext: (threadId: string, pathValue: string) =>
