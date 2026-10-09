@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 
@@ -52,6 +52,7 @@ class ContextUsage:
     omitted_history_messages: int
     runtime_messages_omitted: int = 0
     truncated_messages: int = 0
+    context_sources: dict[str, int] = field(default_factory=dict)
 
     @property
     def utilization(self) -> float:
@@ -95,10 +96,65 @@ class ContextBudgetManager:
         system_prompt: str,
         history: list[dict[str, Any]],
         user_prompt: str,
+        context_blocks: list[dict[str, str]] | None = None,
     ) -> ContextSelection:
-        system_message = {"role": "system", "content": system_prompt}
         user_message = {"role": "user", "content": user_prompt}
-        fixed_tokens = self._message_tokens(system_message) + self._message_tokens(user_message)
+        base_system_message = {"role": "system", "content": system_prompt}
+        base_tokens = (
+            self._message_tokens(base_system_message)
+            + self._message_tokens(user_message)
+        )
+        remaining_context = max(self.input_budget_tokens - base_tokens, 0)
+        system_parts = [system_prompt]
+        source_tokens: dict[str, int] = {}
+
+        for raw in context_blocks or []:
+            source = str(raw.get("source") or "context").strip() or "context"
+            content = str(raw.get("content") or "").strip()
+            if not content or remaining_context <= 0:
+                continue
+            header = f"[Context source: {source}]"
+            header_tokens = estimate_text_tokens(
+                header,
+                chars_per_token=self.chars_per_token,
+            )
+            if header_tokens >= remaining_context:
+                break
+            content_budget = remaining_context - header_tokens
+            content_tokens = estimate_text_tokens(
+                content,
+                chars_per_token=self.chars_per_token,
+            )
+            selected = content
+            if content_tokens > content_budget:
+                max_chars = max(
+                    content_budget * self.chars_per_token,
+                    0,
+                )
+                if max_chars < 64:
+                    continue
+                marker = "\n[Context block truncated]"
+                selected = content[: max(max_chars - len(marker), 1)] + marker
+                content_tokens = estimate_text_tokens(
+                    selected,
+                    chars_per_token=self.chars_per_token,
+                )
+
+            system_parts.append(header + "\n" + selected)
+            block_tokens = header_tokens + content_tokens
+            remaining_context = max(remaining_context - block_tokens, 0)
+            source_tokens[source] = (
+                source_tokens.get(source, 0) + content_tokens
+            )
+
+        system_message = {
+            "role": "system",
+            "content": "\n\n".join(system_parts),
+        }
+        fixed_tokens = (
+            self._message_tokens(system_message)
+            + self._message_tokens(user_message)
+        )
         remaining = max(self.input_budget_tokens - fixed_tokens, 0)
 
         selected_reversed: list[dict[str, Any]] = []
@@ -121,6 +177,7 @@ class ContextBudgetManager:
                 history_total=len(history),
                 history_included=len(selected_history),
                 omitted_history=omitted,
+                context_sources=source_tokens,
             ),
         )
 
@@ -129,6 +186,7 @@ class ContextBudgetManager:
         messages: list[dict[str, Any]],
         *,
         history_messages_total: int,
+        context_sources: dict[str, int] | None = None,
     ) -> ContextSelection:
         if not messages:
             return ContextSelection(
@@ -138,6 +196,7 @@ class ContextBudgetManager:
                     history_total=history_messages_total,
                     history_included=0,
                     omitted_history=history_messages_total,
+                    context_sources=context_sources,
                 ),
             )
 
@@ -149,6 +208,7 @@ class ContextBudgetManager:
                 history_messages_total=history_messages_total,
                 history_messages_included=max(len(messages) - 1, 0),
                 omitted_history=0,
+                context_sources=context_sources,
             )
 
         history = [dict(item) for item in messages[1:latest_user_index]]
@@ -184,6 +244,7 @@ class ContextBudgetManager:
                 omitted_history=omitted_history,
                 runtime_omitted=runtime_omitted,
                 truncated=truncated,
+                context_sources=context_sources,
             ),
         )
 
@@ -292,6 +353,7 @@ class ContextBudgetManager:
         history_messages_total: int,
         history_messages_included: int,
         omitted_history: int,
+        context_sources: dict[str, int] | None = None,
     ) -> ContextSelection:
         fitted = [dict(item) for item in messages]
         truncated = 0
@@ -311,6 +373,7 @@ class ContextBudgetManager:
                 history_included=history_messages_included,
                 omitted_history=omitted_history,
                 truncated=truncated,
+                context_sources=context_sources,
             ),
         )
 
@@ -360,6 +423,7 @@ class ContextBudgetManager:
         omitted_history: int,
         runtime_omitted: int = 0,
         truncated: int = 0,
+        context_sources: dict[str, int] | None = None,
     ) -> ContextUsage:
         return ContextUsage(
             context_window_tokens=self.context_window_tokens,
@@ -371,4 +435,5 @@ class ContextBudgetManager:
             omitted_history_messages=omitted_history,
             runtime_messages_omitted=runtime_omitted,
             truncated_messages=truncated,
+            context_sources=dict(context_sources or {}),
         )
