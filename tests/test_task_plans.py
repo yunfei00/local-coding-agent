@@ -23,10 +23,12 @@ class TaskPlanStoreTests(unittest.TestCase):
                               [{"tool": "test", "exit_code": 0}])
             store.checkpoint(plan_id, "milestone", commands_run=[{"exit_code": 0}])
             db.close()
-            restored = TaskPlanStore(sqlite3.connect(path)).resumable(plan_id)
+            restored_db = sqlite3.connect(path)
+            restored = TaskPlanStore(restored_db).resumable(plan_id)
             self.assertEqual(restored["plan"]["steps"][0]["state"], "completed")
             self.assertEqual(restored["checkpoint"]["reason"], "milestone")
             self.assertEqual(len(restored["checkpoint"]["snapshot"]["commands_run"]), 1)
+            restored_db.close()
 
     def test_edit_reorder_and_interrupt(self):
         store = TaskPlanStore(sqlite3.connect(":memory:"))
