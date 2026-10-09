@@ -84,6 +84,14 @@ contextBridge.exposeInMainWorld("localAgent", {
       projectId,
       threadId
     ),
+  getContext: (threadId: string) =>
+    ipcRenderer.invoke("agent:context-get", threadId),
+  pinContext: (threadId: string, pathValue: string) =>
+    ipcRenderer.invoke("agent:context-pin", threadId, pathValue),
+  unpinContext: (threadId: string, pathValue: string) =>
+    ipcRenderer.invoke("agent:context-unpin", threadId, pathValue),
+  refreshContext: (threadId: string) =>
+    ipcRenderer.invoke("agent:context-refresh", threadId),
   getPermission: () => ipcRenderer.invoke("agent:permission-get"),
   setPermission: (mode: string) =>
     ipcRenderer.invoke("agent:permission-set", mode),
