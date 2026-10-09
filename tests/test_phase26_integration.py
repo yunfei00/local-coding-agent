@@ -27,6 +27,17 @@ class Phase26IntegrationTests(unittest.TestCase):
         self.assertIn('plan_tool_evidence.clear()', source)
         self.assertIn('plan_commands_run.clear()', source)
 
+    def test_step_scoped_verification_and_single_turn_persistence(self):
+        source = (ROOT / "agent/server/main.py").read_text(encoding="utf-8")
+        self.assertIn('item.get("step_id") == active_step_id', source)
+        self.assertIn('for item in evidence', source)
+        self.assertNotIn('command.get("ok") is True for command in plan_commands_run', source)
+        continuation = source.index('# Advance to the next plan step within this same Agent turn')
+        persistence = source.index('state.append_exchange(', continuation)
+        checkpoint = source.index('self._checkpoint_thread_plans(thread_id, "turn_completed"', continuation)
+        self.assertLess(persistence, checkpoint)
+        self.assertIn('continue', source[continuation:persistence])
+
     def test_runtime_evidence_in_checkpoint(self):
         source = (ROOT / "agent/server/main.py").read_text(encoding="utf-8")
         self.assertIn('"step_id": active_step_id', source)
