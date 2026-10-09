@@ -40,11 +40,13 @@ class ReleaseCandidateVersionTests(unittest.TestCase):
                 tool_name="run_command",
                 arguments={"command": 'git commit -m "agent change"'},
                 workspace=workspace,
+                user_prompt="Please commit these staged changes.",
             )
             push = policy.evaluate(
                 tool_name="run_command",
                 arguments={"command": "git -C . push origin main"},
                 workspace=workspace,
+                user_prompt="Please push the current branch to origin.",
             )
 
             self.assertTrue(commit.allowed)
@@ -53,6 +55,23 @@ class ReleaseCandidateVersionTests(unittest.TestCase):
             self.assertTrue(push.allowed)
             self.assertTrue(push.requires_approval)
             self.assertEqual(push.risk, "git_publish")
+
+            unrelated_commit = policy.evaluate(
+                tool_name="run_command",
+                arguments={"command": 'git commit -m "agent change"'},
+                workspace=workspace,
+                user_prompt="Please run the tests and summarize the result.",
+            )
+            unrelated_push = policy.evaluate(
+                tool_name="run_command",
+                arguments={"command": "git push origin main"},
+                workspace=workspace,
+                user_prompt="Please inspect the current diff only.",
+            )
+            self.assertFalse(unrelated_commit.allowed)
+            self.assertEqual(unrelated_commit.risk, "git_commit_intent")
+            self.assertFalse(unrelated_push.allowed)
+            self.assertEqual(unrelated_push.risk, "git_publish_intent")
 
 
 class V01DatabaseUpgradeTests(unittest.TestCase):
