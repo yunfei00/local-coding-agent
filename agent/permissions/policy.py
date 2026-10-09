@@ -25,12 +25,20 @@ READ_ONLY_TOOLS = {
     "git_status",
     "git_diff",
     "git_log",
+    "git_branches",
+    "git_commit_prepare",
+    "git_worktree_list",
 }
 
 WORKSPACE_TOOLS = READ_ONLY_TOOLS | {
     "write_file",
     "apply_patch",
     "run_command",
+    "git_stage",
+    "git_unstage",
+    "git_commit",
+    "git_worktree_create",
+    "git_worktree_remove",
 }
 
 
@@ -79,6 +87,49 @@ def parse_permission_mode(value: str | PermissionMode) -> PermissionMode:
         return PermissionMode(value)
     except ValueError as exc:
         raise ValueError(f"Unknown permission mode: {value}") from exc
+
+
+_NEGATED_COMMIT = re.compile(
+    r"(?i)(?:do\s+not|don't|dont|不要|别|无需|不需要).{0,12}(?:git\s+commit|commit|提交)"
+)
+_NEGATED_PUSH = re.compile(
+    r"(?i)(?:do\s+not|don't|dont|不要|别|无需|不需要).{0,12}(?:git\s+push|push|推送)"
+)
+_NEGATED_WORKTREE = re.compile(
+    r"(?i)(?:do\s+not|don't|dont|不要|别|无需|不需要).{0,16}(?:worktree|工作树|独立工作区)"
+)
+
+
+def explicit_git_intent(prompt: str | None, action: str) -> bool:
+    text = str(prompt or "").strip()
+    if not text:
+        return False
+
+    if action == "commit":
+        if _NEGATED_COMMIT.search(text):
+            return False
+        return bool(
+            re.search(r"(?i)\bgit\s+commit\b|\bcommit\b", text)
+            or re.search(r"(?:提交代码|创建提交|做一个提交|提交这些改动|提交当前改动)", text)
+        )
+
+    if action == "push":
+        if _NEGATED_PUSH.search(text):
+            return False
+        return bool(
+            re.search(r"(?i)\bgit\s+push\b|\bpush\b", text)
+            or re.search(r"(?:推送到|推到远程|推送代码|推送提交)", text)
+        )
+
+    if action == "worktree":
+        if _NEGATED_WORKTREE.search(text):
+            return False
+        return bool(
+            re.search(r"(?i)\bworktree\b", text)
+            or re.search(r"(?:工作树|独立工作区|隔离工作区)", text)
+        )
+
+    return False
 
 
 def command_risk(command: str) -> tuple[str, str] | None:
@@ -186,6 +237,7 @@ class PermissionPolicy:
         arguments: dict[str, Any],
         workspace: Workspace,
         tool_metadata: dict[str, Any] | None = None,
+        user_prompt: str | None = None,
     ) -> PermissionVerdict:
         metadata = tool_metadata or {}
         if metadata.get("source") == "mcp":
@@ -230,6 +282,61 @@ class PermissionPolicy:
                 ),
                 approval_key="mcp:" + fingerprint,
                 risk=risk,
+            )
+
+        if tool_name == "git_commit":
+            if not explicit_git_intent(user_prompt, "commit"):
+                return PermissionVerdict(
+                    allowed=False,
+                    reason=(
+                        "Git commit requires an explicit request in the current "
+                        "user message. Approval alone is not sufficient."
+                    ),
+                    risk="git_commit_intent",
+                )
+            fingerprint = json.dumps(
+                {"tool": tool_name, "arguments": arguments},
+                sort_keys=True,
+                ensure_ascii=False,
+                default=str,
+            )
+            return PermissionVerdict(
+                allowed=True,
+                requires_approval=True,
+                reason="Git commit was explicitly requested and requires approval.",
+                approval_key="git_commit:" + fingerprint,
+                risk="git_commit",
+            )
+
+        if tool_name in {"git_worktree_create", "git_worktree_remove"}:
+            if not explicit_git_intent(user_prompt, "worktree"):
+                return PermissionVerdict(
+                    allowed=False,
+                    reason=(
+                        "Worktree creation/removal requires an explicit request "
+                        "in the current user message."
+                    ),
+                    risk="git_worktree_intent",
+                )
+            fingerprint = json.dumps(
+                {"tool": tool_name, "arguments": arguments},
+                sort_keys=True,
+                ensure_ascii=False,
+                default=str,
+            )
+            return PermissionVerdict(
+                allowed=True,
+                requires_approval=True,
+                reason=(
+                    "This changes Git worktree state in Local Coding Agent "
+                    "managed storage and requires approval."
+                ),
+                approval_key="git_worktree:" + fingerprint,
+                risk=(
+                    "git_worktree_create"
+                    if tool_name == "git_worktree_create"
+                    else "git_worktree_remove"
+                ),
             )
 
         if tool_name not in WORKSPACE_TOOLS:
@@ -298,6 +405,30 @@ class PermissionPolicy:
             risky = command_risk(command)
             if risky:
                 risk, reason = risky
+                if risk == "git_commit" and not explicit_git_intent(
+                    user_prompt,
+                    "commit",
+                ):
+                    return PermissionVerdict(
+                        allowed=False,
+                        reason=(
+                            "Git commit requires an explicit request in the "
+                            "current user message. Approval alone is not sufficient."
+                        ),
+                        risk="git_commit_intent",
+                    )
+                if risk == "git_publish" and not explicit_git_intent(
+                    user_prompt,
+                    "push",
+                ):
+                    return PermissionVerdict(
+                        allowed=False,
+                        reason=(
+                            "Git push requires an explicit request in the "
+                            "current user message. Approval alone is not sufficient."
+                        ),
+                        risk="git_publish_intent",
+                    )
                 fingerprint = json.dumps(
                     {"risk": risk, "command": command},
                     sort_keys=True,
