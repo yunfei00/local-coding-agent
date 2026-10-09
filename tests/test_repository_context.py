@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,46 +21,62 @@ class Phase24ManualFixtureTests(unittest.TestCase):
             / "manual-fixtures"
             / "phase24-context-demo"
         )
-        repo_map = RepositoryMap(root)
-        repo_map.build()
+        generated = {
+            "node_modules/ignored.js": "export const SHOULD_NOT_BE_INDEXED = true;\n",
+            "build/ignored.cpp": "int should_not_be_indexed() { return 0; }\n",
+            ".venv/ignored.py": "SHOULD_NOT_BE_INDEXED = True\n",
+            "target/ignored.java": "class IgnoredTarget {}\n",
+            ".gradle/ignored.kt": "class IgnoredGradle\n",
+        }
+        try:
+            for relative, content in generated.items():
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8")
 
-        self.assertEqual(len(repo_map.files), 10)
-        self.assertEqual(
-            repo_map.payload()["languages"],
-            {
-                "python": 3,
-                "typescript": 1,
-                "cpp": 1,
-                "java": 1,
-                "kotlin": 1,
-            },
-        )
+            repo_map = RepositoryMap(root)
+            repo_map.build()
 
-        indexed = set(repo_map.file_paths(limit=100))
-        self.assertEqual(
-            indexed,
-            {
-                "README.md",
-                "pyproject.toml",
-                "package.json",
-                "src/app.py",
-                "src/version_info.py",
-                "src/service.ts",
-                "native/engine.cpp",
-                "java/Main.java",
-                "kotlin/App.kt",
-                "tests/test_app.py",
-            },
-        )
+            self.assertEqual(len(repo_map.files), 10)
+            self.assertEqual(
+                repo_map.payload()["languages"],
+                {
+                    "python": 3,
+                    "typescript": 1,
+                    "cpp": 1,
+                    "java": 1,
+                    "kotlin": 1,
+                },
+            )
 
-        for ignored in (
-            "node_modules/ignored.js",
-            "build/ignored.cpp",
-            ".venv/ignored.py",
-            "target/ignored.java",
-            ".gradle/ignored.kt",
-        ):
-            self.assertNotIn(ignored, indexed)
+            indexed = set(repo_map.file_paths(limit=100))
+            self.assertEqual(
+                indexed,
+                {
+                    "README.md",
+                    "pyproject.toml",
+                    "package.json",
+                    "src/app.py",
+                    "src/version_info.py",
+                    "src/service.ts",
+                    "native/engine.cpp",
+                    "java/Main.java",
+                    "kotlin/App.kt",
+                    "tests/test_app.py",
+                },
+            )
+
+            for ignored in generated:
+                self.assertNotIn(ignored, indexed)
+        finally:
+            for directory in (
+                "node_modules",
+                "build",
+                ".venv",
+                "target",
+                ".gradle",
+            ):
+                shutil.rmtree(root / directory, ignore_errors=True)
 
 
 class RepositoryMapTests(unittest.TestCase):
