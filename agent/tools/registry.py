@@ -12,7 +12,19 @@ from agent.tools.filesystem import (
     SearchFilesTool,
     WriteFileTool,
 )
-from agent.tools.git import GitDiffTool, GitLogTool, GitStatusTool
+from agent.tools.git import (
+    GitBranchesTool,
+    GitCommitPrepareTool,
+    GitCommitTool,
+    GitDiffTool,
+    GitLogTool,
+    GitStageTool,
+    GitStatusTool,
+    GitUnstageTool,
+    GitWorktreeCreateTool,
+    GitWorktreeListTool,
+    GitWorktreeRemoveTool,
+)
 from agent.tools.shell import RunCommandTool
 from agent.tools.workspace import Workspace
 
@@ -35,6 +47,14 @@ class ToolRegistry:
             GitStatusTool(workspace),
             GitDiffTool(workspace),
             GitLogTool(workspace),
+            GitBranchesTool(workspace),
+            GitStageTool(workspace),
+            GitUnstageTool(workspace),
+            GitCommitPrepareTool(workspace),
+            GitCommitTool(workspace),
+            GitWorktreeListTool(workspace),
+            GitWorktreeCreateTool(workspace),
+            GitWorktreeRemoveTool(workspace),
         ]
         self._tools: dict[str, BaseTool] = {}
         for tool in [*tools, *list(extra_tools)]:
