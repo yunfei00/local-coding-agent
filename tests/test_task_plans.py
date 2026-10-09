@@ -86,6 +86,48 @@ class TaskPlanStoreTests(unittest.TestCase):
         self.assertTrue(store.advance_verified(plan, second, evidence, True))
         self.assertIsNone(store.active_step(plan))
 
+    def test_multi_step_checkpoint_restart_and_resume(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "plan.db")
+            db = sqlite3.connect(path)
+            store = TaskPlanStore(db)
+            plan = store.create("thread", "Repair calculator", [
+                {"description": "inspect"},
+                {"description": "fix"},
+                {"description": "test", "verification": "unittest passes"}])
+            ids = [step["id"] for step in store.get(plan)["steps"]]
+            self.assertTrue(store.advance_verified(
+                plan, ids[0], [{"tool": "read_file", "ok": True}], True))
+            store.update_step(plan, ids[1], "in_progress")
+            store.checkpoint(plan, "turn_cancelled",
+                             files_changed=["src/calculator.py"],
+                             commands_run=[{"tool": "write_file", "ok": True}])
+            db.close()
+            db = sqlite3.connect(path)
+            store = TaskPlanStore(db)
+            resumed = store.prepare_resume(plan)
+            self.assertEqual(resumed["next_step"]["id"], ids[1])
+            self.assertEqual(resumed["plan"]["steps"][0]["state"], "completed")
+            self.assertFalse(resumed["automatic_replay"])
+            self.assertEqual(resumed["checkpoint"]["reason"], "turn_cancelled")
+            self.assertTrue(store.advance_verified(
+                plan, ids[1], [{"tool": "write_file", "ok": True}], True))
+            store.update_step(plan, ids[2], "blocked")
+            store.checkpoint(plan, "verification_failed")
+            db.close()
+            db = sqlite3.connect(path)
+            store = TaskPlanStore(db)
+            self.assertEqual(store.prepare_resume(plan)["next_step"]["state"], "blocked")
+            self.assertFalse(store.advance_verified(
+                plan, ids[2], [{"tool": "shell", "ok": True}], True))
+            store.update_step(plan, ids[2], "in_progress")
+            self.assertTrue(store.advance_verified(
+                plan, ids[2], [{"tool": "shell", "ok": True}], True))
+            store.checkpoint(plan, "plan_completed")
+            self.assertIsNone(store.prepare_resume(plan)["next_step"])
+            self.assertEqual(store.latest_checkpoint(plan)["reason"], "plan_completed")
+            db.close()
+
     def test_thread_isolation_and_invalid_state(self):
         store = TaskPlanStore(sqlite3.connect(":memory:"))
         a = store.create("a", "Goal A", [{"description": "step"}])
