@@ -1205,6 +1205,52 @@ ipcMain.handle("agent:mcp-refresh", async () => {
   };
 });
 
+ipcMain.handle(
+  "agent:context-get",
+  async (_event, threadId: string) => {
+    return sendRequest(
+      "context.get",
+      "context.loaded",
+      { thread_id: threadId },
+      { threadId }
+    );
+  }
+);
+ipcMain.handle(
+  "agent:context-pin",
+  async (_event, threadId: string, pathValue: string) => {
+    return sendRequest(
+      "context.pin",
+      "context.changed",
+      { thread_id: threadId, path: pathValue },
+      { threadId }
+    );
+  }
+);
+ipcMain.handle(
+  "agent:context-unpin",
+  async (_event, threadId: string, pathValue: string) => {
+    return sendRequest(
+      "context.unpin",
+      "context.changed",
+      { thread_id: threadId, path: pathValue },
+      { threadId }
+    );
+  }
+);
+ipcMain.handle(
+  "agent:context-refresh",
+  async (_event, threadId: string) => {
+    return sendRequest(
+      "context.refresh",
+      "context.changed",
+      { thread_id: threadId },
+      { threadId },
+      45_000
+    );
+  }
+);
+
 ipcMain.handle("agent:permission-get", async () => {
   return sendRequest("permission.get", "permission.loaded");
 });
