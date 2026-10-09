@@ -135,6 +135,11 @@ declare global {
           }
         >;
       }>;
+      getGitOverview: () => Promise<AgentEnvelope>;
+      openManagedWorktree: (
+        pathValue: string,
+        model?: string
+      ) => Promise<AgentEnvelope>;
       getContext: (threadId: string) => Promise<AgentEnvelope>;
       pinContext: (
         threadId: string,
