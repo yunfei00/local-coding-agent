@@ -1834,12 +1834,6 @@ class AgentServer:
                         "changed_paths": sorted(guard.changed_paths),
                     }
 
-                    state.append_exchange(
-                        thread_id,
-                        user=prompt,
-                        assistant=assistant_text,
-                    )
-
                     if active_plan and active_step_id:
                         evidence = [item for item in plan_tool_evidence
                                     if item.get("step_id") == active_step_id]
@@ -1889,6 +1883,13 @@ class AgentServer:
                                 "Do not replay completed steps. Use tools and verify results."
                             )})
                             continue
+                    # Record the exchange once, at the real end of the turn.
+                    # Intermediate plan steps must not create duplicate user turns.
+                    state.append_exchange(
+                        thread_id,
+                        user=prompt,
+                        assistant=assistant_text,
+                    )
                     self._checkpoint_thread_plans(thread_id, "turn_completed", sorted(plan_files_changed), plan_commands_run)
                     await ws.send_json(
                         envelope(
