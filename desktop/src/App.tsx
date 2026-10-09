@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { ContextPanel } from "./components/ContextPanel";
+import { PlanPanel } from "./components/PlanPanel";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { GitPanel } from "./components/GitPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -214,6 +215,7 @@ function App() {
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [gitOpen, setGitOpen] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
   const conversationRef = useRef<HTMLElement | null>(null);
   const autoFollowRef = useRef(true);
 
@@ -1236,6 +1238,10 @@ function App() {
             >
               Git
             </button>
+            <button type="button" className={"context-button" + (planOpen ? " active" : "")}
+              disabled={!activeThread}
+              onClick={() => { setPlanOpen((current) => !current); setGitOpen(false); setContextOpen(false); setDiagnosticsOpen(false); setSettingsOpen(false); }}
+              title="Persistent task plans and checkpoints">Plan</button>
             <button
               type="button"
               className={"context-button" + (contextOpen ? " active" : "")}
@@ -1423,6 +1429,9 @@ function App() {
             />
           ) : null}
 
+          {planOpen && activeThread ? (
+            <PlanPanel threadId={activeThread.id} onClose={() => setPlanOpen(false)} />
+          ) : null}
           {contextOpen && activeThread ? (
             <ContextPanel
               threadId={activeThread.id}

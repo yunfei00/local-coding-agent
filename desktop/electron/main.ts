@@ -1340,6 +1340,12 @@ ipcMain.handle("agent:thread-create", async (_event, model?: string) => {
 ipcMain.handle("agent:thread-list", async () => {
   return sendRequest("thread.list", "thread.listed");
 });
+ipcMain.handle("agent:plan-request", async (_event, threadId: string, operation: string, payload: Record<string, unknown> = {}) => {
+  const allowed = new Set(["plan.list", "plan.create", "plan.step.update", "plan.step.edit", "plan.steps.reorder", "plan.checkpoint", "plan.resume"]);
+  if (!allowed.has(operation)) throw new Error("Unsupported plan operation");
+  return sendRequest(operation, operation === "plan.resume" ? "plan.resumable" : "plan.loaded",
+    { ...payload, thread_id: threadId }, { threadId });
+});
 ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
   return sendRequest(
     "thread.get",

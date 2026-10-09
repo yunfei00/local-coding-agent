@@ -185,6 +185,7 @@ declare global {
       createThread: (model?: string) => Promise<AgentEnvelope>;
       listThreads: () => Promise<AgentEnvelope>;
       getThread: (threadId: string) => Promise<AgentEnvelope>;
+      planRequest: (threadId: string, operation: string, payload?: Record<string, unknown>) => Promise<AgentEnvelope>;
       startTurn: (threadId: string, prompt: string) => Promise<AgentEnvelope>;
       cancelTurn: (turnId: string) => Promise<{ ok: boolean }>;
       onAgentEvent: (handler: (event: AgentEnvelope) => void) => () => void;
