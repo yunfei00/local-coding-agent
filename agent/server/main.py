@@ -1634,10 +1634,9 @@ class AgentServer:
         active_plan = active_plans[0] if active_plans else None
         active_step_id: str | None = None
         if active_plan:
-            for item in active_plan["steps"]:
-                if item["state"] == "in_progress":
-                    active_step_id = item["id"]
-                    break
+            first_step = self.store.task_plans.active_step(active_plan["id"])
+            if first_step and first_step["state"] != "blocked":
+                active_step_id = first_step["id"]
 
         history = state.get_messages(thread_id)
         context_manager = ContextBudgetManager(
@@ -1841,13 +1840,11 @@ class AgentServer:
                         assistant=assistant_text,
                     )
 
-                    if active_plan and active_step_id and not gaps:
-                        # Only advance a step with successful runtime tool evidence.
+                    if active_plan and active_step_id:
                         evidence = [item for item in plan_tool_evidence
-                                    if item.get("step_id") == active_step_id and item.get("ok")]
-                        if evidence:
-                            self.store.task_plans.update_step(
-                                active_plan["id"], active_step_id, "completed", evidence)
+                                    if item.get("step_id") == active_step_id]
+                        self.store.task_plans.advance_verified(
+                            active_plan["id"], active_step_id, evidence, not gaps)
                     self._checkpoint_thread_plans(thread_id, "turn_completed", sorted(plan_files_changed), plan_commands_run)
                     await ws.send_json(
                         envelope(
