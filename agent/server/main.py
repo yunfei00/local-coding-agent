@@ -398,6 +398,153 @@ class AgentServer:
             )
             return
 
+        if message_type == "git.overview":
+            project = self.projects.active
+            if not project:
+                await self.send_error(
+                    ws,
+                    "WORKSPACE_REQUIRED",
+                    "Open a workspace before reading Git state.",
+                    request_id=request_id,
+                )
+                return
+
+            results: dict[str, Any] = {}
+            errors: list[dict[str, str]] = []
+            for tool_name, key in (
+                ("git_status", "status"),
+                ("git_branches", "branches"),
+                ("git_worktree_list", "worktrees"),
+            ):
+                try:
+                    result = await project.tools.execute(tool_name, {})
+                    results[key] = result.data
+                    if not result.ok:
+                        errors.append(
+                            {
+                                "tool": tool_name,
+                                "message": (
+                                    result.stderr.strip()
+                                    or result.summary
+                                ),
+                            }
+                        )
+                except ToolError as exc:
+                    results[key] = {}
+                    errors.append(
+                        {
+                            "tool": tool_name,
+                            "message": exc.message,
+                        }
+                    )
+
+            await ws.send_json(
+                envelope(
+                    "git.loaded",
+                    {
+                        "project_id": project.id,
+                        "project_path": str(project.workspace.root),
+                        **results,
+                        "errors": errors,
+                    },
+                    request_id=request_id,
+                )
+            )
+            return
+
+        if message_type == "git.worktree.open":
+            if any(not task.done() for task in self.active_turns.values()):
+                await self.send_error(
+                    ws,
+                    "TURN_RUNNING",
+                    "Stop the active turn before switching worktrees.",
+                    request_id=request_id,
+                )
+                return
+
+            source = self.projects.active
+            if not source:
+                await self.send_error(
+                    ws,
+                    "WORKSPACE_REQUIRED",
+                    "Open a Git workspace before opening a managed worktree.",
+                    request_id=request_id,
+                )
+                return
+
+            requested_path = str(payload.get("path") or "").strip()
+            requested_model = str(payload.get("model") or "").strip() or None
+            if not requested_path:
+                await self.send_error(
+                    ws,
+                    "WORKTREE_PATH_REQUIRED",
+                    "Worktree path is required.",
+                    request_id=request_id,
+                )
+                return
+
+            try:
+                listed = await source.tools.execute("git_worktree_list", {})
+                records = listed.data.get("worktrees") or []
+                target = Path(requested_path).expanduser().resolve(strict=False)
+                allowed = next(
+                    (
+                        item
+                        for item in records
+                        if bool(item.get("managed"))
+                        and Path(
+                            str(item.get("path") or "")
+                        ).resolve(strict=False)
+                        == target
+                    ),
+                    None,
+                )
+                if allowed is None:
+                    raise ToolError(
+                        "WORKTREE_NOT_MANAGED",
+                        "Only a managed worktree of the active Git repository can be opened here.",
+                    )
+
+                project, thread, created = self.projects.open(
+                    target,
+                    active_model=(
+                        requested_model
+                        or self.default_model
+                        or self.provider.preferred_model
+                    ),
+                )
+            except (ToolError, OSError) as exc:
+                message = exc.message if isinstance(exc, ToolError) else str(exc)
+                await self.send_error(
+                    ws,
+                    "WORKTREE_OPEN_FAILED",
+                    message,
+                    request_id=request_id,
+                )
+                return
+
+            project.workspace.set_full_access(
+                self.permissions.mode == PermissionMode.FULL_ACCESS
+            )
+            self.mcp_runtime.apply_to_project(project)
+            response_payload = self.projects.project_payload(project)
+            response_payload["created"] = created
+            response_payload["worktree"] = {
+                "managed": True,
+                "branch": allowed.get("branch") if allowed else None,
+                "source_project_id": source.id,
+                "source_project_path": str(source.workspace.root),
+            }
+            await ws.send_json(
+                envelope(
+                    "project.opened",
+                    response_payload,
+                    request_id=request_id,
+                    thread_id=thread.id,
+                )
+            )
+            return
+
         if message_type == "permission.get":
             await ws.send_json(
                 envelope(
