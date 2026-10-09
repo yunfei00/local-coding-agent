@@ -1855,6 +1855,40 @@ class AgentServer:
                         self.store.task_plans.advance_verified(
                             active_plan["id"], active_step_id, evidence,
                             not gaps and (not requires_check or passed_checks))
+                    # Advance to the next plan step within this same Agent turn
+                    # only after the previous step has genuinely completed.
+                    # Keep the loop guard to prevent replaying identical tools.
+                    if active_plan and active_step_id:
+                        latest = self.store.task_plans.get(active_plan["id"])
+                        finished = next(
+                            (item for item in latest["steps"] if item["id"] == active_step_id),
+                            None,
+                        )
+                        next_step = self.store.task_plans.active_step(active_plan["id"])
+                        if (finished and finished["state"] == "completed"
+                                and next_step and next_step["state"] == "pending"
+                                and next_step["id"] != active_step_id):
+                            self._checkpoint_thread_plans(
+                                thread_id, "step_completed",
+                                sorted(plan_files_changed), plan_commands_run)
+                            await ws.send_json(envelope(
+                                "plan.step.completed",
+                                {"plan_id": active_plan["id"],
+                                 "step_id": active_step_id,
+                                 "next_step_id": next_step["id"]},
+                                thread_id=thread_id, turn_id=turn_id))
+                            active_step_id = next_step["id"]
+                            plan_tool_evidence.clear()
+                            plan_commands_run.clear()
+                            messages.append({"role": "assistant", "content": assistant_text})
+                            messages.append({"role": "user", "content": (
+                                "Continue the persistent plan with the next step only: "
+                                + next_step["description"]
+                                + ". Verification: " + next_step["verification"]
+                                + ". Inspect current workspace before mutations. "
+                                "Do not replay completed steps. Use tools and verify results."
+                            )})
+                            continue
                     self._checkpoint_thread_plans(thread_id, "turn_completed", sorted(plan_files_changed), plan_commands_run)
                     await ws.send_json(
                         envelope(
