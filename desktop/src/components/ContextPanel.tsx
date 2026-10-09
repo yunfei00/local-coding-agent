@@ -127,7 +127,7 @@ export function ContextPanel({
   );
 
   return (
-    <div className="context-overlay" role="dialog" aria-modal="true">
+    <aside className="context-overlay" aria-label="Context panel">
       <div className="context-panel">
         <header className="context-panel-header">
           <div>
@@ -282,6 +282,6 @@ export function ContextPanel({
           </div>
         </section>
       </div>
-    </div>
+    </aside>
   );
 }
