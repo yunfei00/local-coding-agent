@@ -135,6 +135,16 @@ declare global {
           }
         >;
       }>;
+      getContext: (threadId: string) => Promise<AgentEnvelope>;
+      pinContext: (
+        threadId: string,
+        pathValue: string
+      ) => Promise<AgentEnvelope>;
+      unpinContext: (
+        threadId: string,
+        pathValue: string
+      ) => Promise<AgentEnvelope>;
+      refreshContext: (threadId: string) => Promise<AgentEnvelope>;
       getPromptRules: (threadId?: string) => Promise<AgentEnvelope>;
       setPromptRule: (
         scope: string,
