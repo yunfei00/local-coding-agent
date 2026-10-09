@@ -24,6 +24,26 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
     } catch (cause) { setError(String(cause)); }
     finally { setBusy(false); }
   };
+  const continuePlan = async (plan: Plan) => {
+    const next = plan.steps.find(step => step.state !== "completed" && step.state !== "skipped");
+    if (!next) { setError("All plan steps are complete."); return; }
+    if (next.state === "blocked") {
+      setError("This step is blocked. Resolve the failure and change its state to in_progress before continuing.");
+      return;
+    }
+    if (!window.confirm("Continue from step: " + next.description +
+      "\nReview workspace changes before proceeding. Previously completed steps will not be requested again.")) return;
+    setBusy(true); setError("");
+    try {
+      await window.localAgent.startTurn(threadId,
+        "Continue the existing persistent task plan from its first unfinished step: " +
+        next.description + ". First inspect current workspace and checkpoint state. " +
+        "Do not replay completed steps or repeat mutating commands. " +
+        "Run the step verification and report actual evidence.");
+      onClose();
+    } catch (cause) { setError(String(cause)); }
+    finally { setBusy(false); }
+  };
   useEffect(() => { setPlans([]); void request("plan.list"); }, [threadId]);
   return <aside className="context-overlay" aria-label="Task plans">
     <div className="context-panel">
@@ -42,6 +62,7 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
         <div className="context-pin-input">
           <button type="button" disabled={busy} onClick={() => void request("plan.checkpoint", {plan_id: plan.id})}>Checkpoint</button>
           <button type="button" disabled={busy} onClick={() => void request("plan.resume", {plan_id: plan.id})}>Resume info</button>
+          <button type="button" disabled={busy} onClick={() => void continuePlan(plan)}>Continue plan</button>
         </div>
         {checkpoint ? <pre style={{whiteSpace:"pre-wrap", overflowWrap:"anywhere"}}>{JSON.stringify(checkpoint, null, 2)}</pre> : null}
         {plan.steps.map((step, index) => <div className="context-file-row" key={step.id}>
