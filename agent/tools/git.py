@@ -63,12 +63,22 @@ class GitStatusTool(BaseTool):
             "--branch",
             "--untracked-files=all",
         )
+        data = await _structured_status(self.workspace) if code == 0 else {}
         return ToolResult(
             ok=code == 0,
-            summary="Git status completed." if code == 0 else "Git status failed.",
+            summary=(
+                (
+                    f"Git status: {data.get('staged_count', 0)} staged, "
+                    f"{data.get('unstaged_count', 0)} unstaged, "
+                    f"{data.get('untracked_count', 0)} untracked."
+                )
+                if code == 0
+                else "Git status failed."
+            ),
             stdout=stdout,
             stderr=stderr,
             exit_code=code,
+            data=data,
         )
 
 
