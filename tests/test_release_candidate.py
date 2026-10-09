@@ -158,7 +158,7 @@ class V01DatabaseUpgradeTests(unittest.TestCase):
                 ).fetchone()
 
                 self.assertEqual(version, SCHEMA_VERSION)
-                self.assertEqual(version, 3)
+                self.assertEqual(version, 4)
                 self.assertEqual(integrity, "ok")
                 self.assertEqual(message, "preserve me")
                 self.assertEqual(permission, "read_only")
@@ -170,6 +170,13 @@ class V01DatabaseUpgradeTests(unittest.TestCase):
                     """
                 ).fetchone()
                 self.assertIsNotNone(mcp_table)
+                pinned_context_table = store.connection.execute(
+                    """
+                    SELECT name FROM sqlite_master
+                    WHERE type='table' AND name='pinned_context'
+                    """
+                ).fetchone()
+                self.assertIsNotNone(pinned_context_table)
             finally:
                 store.close()
 
