@@ -68,6 +68,24 @@ class TaskPlanStoreTests(unittest.TestCase):
         self.assertFalse(resume["automatic_replay"])
         self.assertEqual(store.get(plan)["steps"][1]["state"], "in_progress")
 
+    def test_ordered_evidence_and_blocked_step(self):
+        store = TaskPlanStore(sqlite3.connect(":memory:"))
+        plan = store.create("t", "goal", [
+            {"description": "first"}, {"description": "second"}])
+        first, second = [step["id"] for step in store.get(plan)["steps"]]
+        evidence = [{"tool": "read_file", "ok": True}]
+        self.assertFalse(store.advance_verified(plan, second, evidence, True))
+        self.assertFalse(store.advance_verified(plan, first, evidence, False))
+        self.assertFalse(store.advance_verified(
+            plan, first, [{"tool": "shell", "ok": False}], True))
+        self.assertTrue(store.advance_verified(plan, first, evidence, True))
+        self.assertEqual(store.active_step(plan)["id"], second)
+        store.update_step(plan, second, "blocked")
+        self.assertFalse(store.advance_verified(plan, second, evidence, True))
+        store.update_step(plan, second, "in_progress")
+        self.assertTrue(store.advance_verified(plan, second, evidence, True))
+        self.assertIsNone(store.active_step(plan))
+
     def test_thread_isolation_and_invalid_state(self):
         store = TaskPlanStore(sqlite3.connect(":memory:"))
         a = store.create("a", "Goal A", [{"description": "step"}])
