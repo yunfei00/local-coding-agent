@@ -193,6 +193,25 @@ class TaskPlanStore:
         return {"id": row[0], "created_at": row[1],
                 "reason": row[2], "snapshot": json.loads(row[3])}
 
+    def active_step(self, plan_id: str) -> dict[str, Any] | None:
+        """Return first unfinished step in plan order."""
+        return next((step for step in self.get(plan_id)["steps"]
+                     if step["state"] not in ("completed", "skipped")), None)
+
+    def advance_verified(self, plan_id: str, step_id: str,
+                         evidence: list[dict[str, Any]],
+                         verification_passed: bool) -> bool:
+        """Only complete the first unfinished, unblocked step with tool evidence."""
+        current = self.active_step(plan_id)
+        if not current or current["id"] != step_id or current["state"] == "blocked":
+            return False
+        if not verification_passed or not evidence:
+            return False
+        if not all(item.get("ok") is True for item in evidence):
+            return False
+        self.update_step(plan_id, step_id, "completed", evidence)
+        return True
+
     def prepare_resume(self, plan_id: str) -> dict[str, Any]:
         """Explicit, non-executing resume: identify the first unfinished step.
 
