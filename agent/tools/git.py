@@ -441,7 +441,7 @@ async def _worktree_records(workspace: Workspace) -> list[dict[str, Any]]:
     if current:
         records.append(current)
 
-    managed_root = _managed_worktree_root(workspace)
+    managed_root = (default_data_dir() / "worktrees").resolve(strict=False)
     for item in records:
         path_value = Path(str(item.get("path") or "")).resolve(strict=False)
         try:
