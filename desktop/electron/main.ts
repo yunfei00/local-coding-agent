@@ -1251,6 +1251,24 @@ ipcMain.handle(
   }
 );
 
+ipcMain.handle("agent:git-overview", async () => {
+  return sendRequest("git.overview", "git.loaded");
+});
+ipcMain.handle(
+  "agent:git-worktree-open",
+  async (_event, pathValue: string, model?: string) => {
+    return sendRequest(
+      "git.worktree.open",
+      "project.opened",
+      model
+        ? { path: pathValue, model }
+        : { path: pathValue },
+      {},
+      45_000
+    );
+  }
+);
+
 ipcMain.handle("agent:permission-get", async () => {
   return sendRequest("permission.get", "permission.loaded");
 });
