@@ -115,6 +115,53 @@ class TaskPlanStore:
                 (step_id if state == "in_progress" else None, _now(), plan_id),
             )
 
+
+    def edit_step(self, plan_id: str, step_id: str, description: str,
+                  verification: str = "") -> None:
+        """Edit a pending step without invalidating recorded execution evidence."""
+        if not description.strip():
+            raise ValueError("step description required")
+        with self.db:
+            changed = self.db.execute(
+                "UPDATE task_plan_steps SET description=?,verification=? "
+                "WHERE plan_id=? AND id=? AND state='pending'",
+                (description, verification, plan_id, step_id),
+            )
+            if changed.rowcount != 1:
+                raise ValueError("only pending steps can be edited")
+            self.db.execute("UPDATE task_plans SET updated_at=? WHERE id=?",
+                            (_now(), plan_id))
+
+    def reorder_steps(self, plan_id: str, step_ids: list[str]) -> None:
+        """Reorder only unstarted steps; completed evidence remains anchored."""
+        steps = self.get(plan_id)["steps"]
+        if len(step_ids) != len(steps) or set(step_ids) != {s["id"] for s in steps}:
+            raise ValueError("step ids must be an exact permutation")
+        original_fixed = {s["position"]: s["id"] for s in steps
+                          if s["state"] != "pending"}
+        if any(step_ids[position] != step_id
+               for position, step_id in original_fixed.items()):
+            raise ValueError("cannot move a started or finished step")
+        with self.db:
+            # UNIQUE(plan_id,position) requires a collision-free temporary range.
+            offset = len(steps)
+            for position, step_id in enumerate(step_ids):
+                self.db.execute(
+                    "UPDATE task_plan_steps SET position=? WHERE plan_id=? AND id=?",
+                    (position + offset, plan_id, step_id),
+                )
+            for position, step_id in enumerate(step_ids):
+                self.db.execute(
+                    "UPDATE task_plan_steps SET position=? WHERE plan_id=? AND id=?",
+                    (position, plan_id, step_id),
+                )
+            self.db.execute("UPDATE task_plans SET updated_at=? WHERE id=?",
+                            (_now(), plan_id))
+
+    def interrupt(self, plan_id: str, reason: str = "interrupted") -> str:
+        """Save a resumable snapshot without replaying any command."""
+        return self.checkpoint(plan_id, reason)
+
     def checkpoint(self, plan_id: str, reason: str,
                    files_changed: list[str] | None = None,
                    commands_run: list[dict[str, Any]] | None = None,

@@ -28,6 +28,24 @@ class TaskPlanStoreTests(unittest.TestCase):
             self.assertEqual(restored["checkpoint"]["reason"], "milestone")
             self.assertEqual(len(restored["checkpoint"]["snapshot"]["commands_run"]), 1)
 
+    def test_edit_reorder_and_interrupt(self):
+        store = TaskPlanStore(sqlite3.connect(":memory:"))
+        plan = store.create("t", "goal", [
+            {"description": "first"}, {"description": "second"},
+            {"description": "third"}])
+        steps = store.get(plan)["steps"]
+        ids = [step["id"] for step in steps]
+        store.edit_step(plan, ids[1], "edited", "test passes")
+        store.reorder_steps(plan, [ids[0], ids[2], ids[1]])
+        self.assertEqual(store.get(plan)["steps"][1]["id"], ids[2])
+        store.update_step(plan, ids[0], "completed", [{"tool": "test", "exit_code": 0}])
+        with self.assertRaises(ValueError):
+            store.reorder_steps(plan, [ids[2], ids[0], ids[1]])
+        with self.assertRaises(ValueError):
+            store.edit_step(plan, ids[0], "rewrite completed step")
+        store.interrupt(plan)
+        self.assertEqual(store.resumable(plan)["checkpoint"]["reason"], "interrupted")
+
     def test_thread_isolation_and_invalid_state(self):
         store = TaskPlanStore(sqlite3.connect(":memory:"))
         a = store.create("a", "Goal A", [{"description": "step"}])
