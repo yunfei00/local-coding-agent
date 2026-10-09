@@ -5,6 +5,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from agent.task_plans import TaskPlanStore
+
 
 SCHEMA_VERSION = 4
 
@@ -31,6 +33,7 @@ class SQLiteStore:
         self.connection.execute("PRAGMA journal_mode = WAL")
         self.connection.execute("PRAGMA synchronous = NORMAL")
         self._migrate()
+        self.task_plans = TaskPlanStore(self.connection)
 
     def _migrate(self) -> None:
         self.connection.executescript(

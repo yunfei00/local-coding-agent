@@ -1165,6 +1165,63 @@ class AgentServer:
             )
             return
 
+        if message_type.startswith("plan."):
+            project = self.projects.active
+            thread_id = str(payload.get("thread_id") or data.get("thread_id") or
+                            (project.active_thread_id if project else "") or "")
+            if not project or not project.state.get_thread(thread_id):
+                await self.send_error(ws, "THREAD_NOT_FOUND",
+                                      "Open a valid thread to manage its plan.",
+                                      request_id=request_id, thread_id=thread_id or None)
+                return
+            plans = self.store.task_plans
+            try:
+                plan_id = str(payload.get("plan_id") or "")
+                if message_type == "plan.create":
+                    plan_id = plans.create(thread_id, str(payload.get("goal") or ""),
+                                           list(payload.get("steps") or []))
+                elif message_type == "plan.step.update":
+                    plan = plans.get(plan_id)
+                    if plan["thread_id"] != thread_id:
+                        raise ValueError("Plan belongs to another thread")
+                    plans.update_step(plan_id, str(payload.get("step_id") or ""),
+                                      str(payload.get("state") or ""),
+                                      payload.get("evidence"))
+                elif message_type == "plan.step.edit":
+                    plan = plans.get(plan_id)
+                    if plan["thread_id"] != thread_id:
+                        raise ValueError("Plan belongs to another thread")
+                    plans.edit_step(plan_id, str(payload.get("step_id") or ""),
+                                    str(payload.get("description") or ""),
+                                    str(payload.get("verification") or ""))
+                elif message_type == "plan.steps.reorder":
+                    plan = plans.get(plan_id)
+                    if plan["thread_id"] != thread_id:
+                        raise ValueError("Plan belongs to another thread")
+                    plans.reorder_steps(plan_id, list(payload.get("step_ids") or []))
+                elif message_type == "plan.checkpoint":
+                    plan = plans.get(plan_id)
+                    if plan["thread_id"] != thread_id:
+                        raise ValueError("Plan belongs to another thread")
+                    plans.checkpoint(plan_id, "manual")
+                elif message_type == "plan.resume":
+                    plan = plans.get(plan_id)
+                    if plan["thread_id"] != thread_id:
+                        raise ValueError("Plan belongs to another thread")
+                    await ws.send_json(envelope(
+                        "plan.resumable", plans.resumable(plan_id),
+                        request_id=request_id, thread_id=thread_id))
+                    return
+                elif message_type != "plan.list":
+                    raise ValueError("Unsupported plan operation")
+                await ws.send_json(envelope(
+                    "plan.loaded", {"plans": plans.list_for_thread(thread_id)},
+                    request_id=request_id, thread_id=thread_id))
+            except (ValueError, KeyError, TypeError) as exc:
+                await self.send_error(ws, "PLAN_INVALID", str(exc),
+                                      request_id=request_id, thread_id=thread_id)
+            return
+
         if message_type == "thread.get":
             thread_id = str(payload.get("thread_id") or data.get("thread_id") or "")
             project = self.projects.active
