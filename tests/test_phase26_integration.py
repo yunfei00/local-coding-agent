@@ -14,6 +14,9 @@ class Phase26IntegrationTests(unittest.TestCase):
 
     def test_runtime_evidence_in_checkpoint(self):
         source = (ROOT / "agent/server/main.py").read_text(encoding="utf-8")
-        self.assertIn('"step_id": active_step_id', source)\n        self.assertIn("plan_tool_evidence.append(", source)\n        self.assertIn('"max_model_steps"', source)\n        self.assertIn('"provider_error"', source)
+        self.assertIn('"step_id": active_step_id', source)
+        self.assertIn("plan_tool_evidence.append(", source)
+        self.assertIn('"max_model_steps"', source)
+        self.assertIn('"provider_error"', source)
         self.assertIn('sorted(plan_files_changed), plan_commands_run', source)
         self.assertIn('self._checkpoint_thread_plans(thread_id, "turn_cancelled"', source)
