@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-type Step = { id: string; description: string; state: string; verification?: string };
+type Step = { id: string; description: string; state: string; verification?: string; evidence?: Array<Record<string, unknown>> };
 type Plan = { id: string; goal: string; steps: Step[] };
 export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: () => void }) {
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -8,13 +8,15 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
   const [stepsText, setStepsText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [checkpoint, setCheckpoint] = useState<Record<string, unknown> | null>(null);
   const request = async (operation: string, payload: Record<string, unknown> = {}) => {
     setBusy(true); setError("");
     try {
       const event = await window.localAgent.planRequest(threadId, operation, payload);
       if (operation === "plan.resume") {
         const checkpoint = event.payload?.checkpoint as { reason?: string } | null;
-        setError(checkpoint ? "Last checkpoint: " + checkpoint.reason : "No checkpoint yet.");
+        setCheckpoint(checkpoint ? (checkpoint as Record<string, unknown>) : null);
+        setError(checkpoint ? "" : "No checkpoint yet.");
       } else {
         setPlans((event.payload?.plans as Plan[]) ?? []);
       }
@@ -40,8 +42,26 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
           <button type="button" disabled={busy} onClick={() => void request("plan.checkpoint", {plan_id: plan.id})}>Checkpoint</button>
           <button type="button" disabled={busy} onClick={() => void request("plan.resume", {plan_id: plan.id})}>Resume info</button>
         </div>
+        {checkpoint ? <pre style={{whiteSpace:"pre-wrap", overflowWrap:"anywhere"}}>{JSON.stringify(checkpoint, null, 2)}</pre> : null}
         {plan.steps.map((step, index) => <div className="context-file-row" key={step.id}>
           <span>{index + 1}. {step.description} — {step.state}</span>
+          {step.state === "pending" ? <>
+            <button type="button" disabled={busy} onClick={() => {
+              const description = window.prompt("Edit step description", step.description);
+              if (!description?.trim()) return;
+              void request("plan.step.edit", {plan_id:plan.id,step_id:step.id,description,verification:step.verification ?? ""});
+            }}>Edit</button>
+            <button type="button" disabled={busy || index === 0 || plan.steps[index - 1].state !== "pending"} onClick={() => {
+              const ids = plan.steps.map(item => item.id);
+              [ids[index - 1], ids[index]] = [ids[index], ids[index - 1]];
+              void request("plan.steps.reorder", {plan_id:plan.id,step_ids:ids});
+            }}>↑</button>
+            <button type="button" disabled={busy || index === plan.steps.length - 1 || plan.steps[index + 1].state !== "pending"} onClick={() => {
+              const ids = plan.steps.map(item => item.id);
+              [ids[index], ids[index + 1]] = [ids[index + 1], ids[index]];
+              void request("plan.steps.reorder", {plan_id:plan.id,step_ids:ids});
+            }}>↓</button>
+          </> : null}
           <select value={step.state} disabled={busy} aria-label={"State for " + step.description}
             onChange={e => {
               const state = e.target.value;
