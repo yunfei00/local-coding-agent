@@ -86,10 +86,20 @@ class PermissionPolicyTests(unittest.TestCase):
             tool_name="run_command",
             arguments={"command": "git push origin main"},
             workspace=self.workspace,
+            user_prompt="Push the current branch to origin.",
         )
         self.assertTrue(verdict.allowed)
         self.assertTrue(verdict.requires_approval)
         self.assertEqual(verdict.risk, "git_publish")
+
+        denied = policy.evaluate(
+            tool_name="run_command",
+            arguments={"command": "git push origin main"},
+            workspace=self.workspace,
+            user_prompt="Inspect the current branch only.",
+        )
+        self.assertFalse(denied.allowed)
+        self.assertEqual(denied.risk, "git_publish_intent")
 
     def test_read_only_allows_only_trusted_read_only_mcp(self) -> None:
         policy = PermissionPolicy(PermissionMode.READ_ONLY)
