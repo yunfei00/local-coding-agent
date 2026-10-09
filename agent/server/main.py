@@ -1740,6 +1740,7 @@ class AgentServer:
                             tool_metadata=tools.permission_metadata(
                                 call.name
                             ),
+                            user_prompt=prompt,
                         )
 
                         if not verdict.allowed:
