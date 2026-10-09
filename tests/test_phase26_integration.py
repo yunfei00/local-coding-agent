@@ -12,6 +12,12 @@ class Phase26IntegrationTests(unittest.TestCase):
         self.assertIn('"source": "task_plan"', source)
         self.assertIn('active_step_id = next_step["id"]', source)
 
+    def test_blocked_step_cannot_be_skipped_by_successful_tool(self):
+        source = (ROOT / "agent/server/main.py").read_text(encoding="utf-8")
+        self.assertIn('current_step["state"] == "blocked"', source)
+        self.assertIn('active_step_id = None', source)
+        self.assertNotIn('next_step = next((item for item in current["steps"]', source)
+
     def test_runtime_evidence_in_checkpoint(self):
         source = (ROOT / "agent/server/main.py").read_text(encoding="utf-8")
         self.assertIn('"step_id": active_step_id', source)
