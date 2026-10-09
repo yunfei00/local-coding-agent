@@ -1840,6 +1840,13 @@ class AgentServer:
                         assistant=assistant_text,
                     )
 
+                    if active_plan and active_step_id and not gaps:
+                        # Only advance a step with successful runtime tool evidence.
+                        evidence = [item for item in plan_commands_run
+                                    if item.get("step_id") == active_step_id and item.get("ok")]
+                        if evidence:
+                            self.store.task_plans.update_step(
+                                active_plan["id"], active_step_id, "completed", evidence)
                     self._checkpoint_thread_plans(thread_id, "turn_completed", sorted(plan_files_changed), plan_commands_run)
                     await ws.send_json(
                         envelope(
@@ -2056,6 +2063,9 @@ class AgentServer:
                             "summary": str(payload.get("summary", ""))[:500],
                         })
                     plan_files_changed.update(str(p) for p in (payload.get("changed_paths") or []))
+                    if active_plan and active_step_id and not payload.get("ok"):
+                        self.store.task_plans.update_step(active_plan["id"], active_step_id, "blocked")
+                        active_step_id = None
                     guard.record_result(call.name, payload)
 
                     failure_limit_reached = guard.failure_limit_reached(
