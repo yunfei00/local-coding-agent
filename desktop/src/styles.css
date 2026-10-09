@@ -3074,3 +3074,86 @@ summary:focus-visible {
     width: 100vw;
   }
 }
+
+
+/* Phase 24 context UX clarification. */
+.context-pin-help {
+  margin: 7px 0 0;
+  color: #696b72;
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.context-pin-button {
+  min-width: 74px;
+  font-weight: 600;
+}
+
+.context-pinned-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.context-file-status {
+  width: fit-content;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #232529;
+}
+
+.context-file-status.status-ready {
+  color: #86b596;
+  background: rgba(113, 169, 130, 0.14);
+  border: 1px solid rgba(113, 169, 130, 0.28);
+}
+
+.context-file-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 9px;
+  background: #111214;
+  border-bottom: 1px solid #232428;
+}
+
+.context-file-row:last-child {
+  border-bottom: 0;
+}
+
+.context-file-row:hover {
+  background: #18191c;
+}
+
+.context-file-row code {
+  min-width: 0;
+  overflow: hidden;
+  color: #96989f;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-row-pin {
+  min-width: 58px;
+  padding: 5px 9px;
+  color: #c8c9cd;
+  font-size: 8px;
+  background: #24262a;
+  border: 1px solid #3a3c42;
+  border-radius: 6px;
+}
+
+.context-row-pin:hover:not(:disabled) {
+  background: #303238;
+  border-color: #52555d;
+}
+
+.context-row-pin:disabled {
+  color: #686a70;
+  background: #191a1d;
+  border-color: #292b30;
+  cursor: default;
+}
