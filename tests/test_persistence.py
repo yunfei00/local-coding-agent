@@ -57,6 +57,11 @@ class SQLitePersistenceTests(unittest.TestCase):
             )
             self.assertIsNotNone(selected)
             store.set_setting("permission_mode", "read_only")
+            store.pin_context(
+                thread_id=extra.id,
+                path="README.md",
+                created_at="2026-10-09T00:00:00+00:00",
+            )
             store.save_prompt_rule(
                 rule_key="global",
                 scope="global",
@@ -102,8 +107,12 @@ class SQLitePersistenceTests(unittest.TestCase):
                 "persisted global rule",
             )
             self.assertEqual(
+                reopened_store.list_pinned_context(extra.id)[0]["path"],
+                "README.md",
+            )
+            self.assertEqual(
                 reopened_store.connection.execute("PRAGMA user_version").fetchone()[0],
-                3,
+                4,
             )
             reopened_store.close()
 
