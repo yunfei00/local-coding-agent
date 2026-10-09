@@ -1623,6 +1623,7 @@ class AgentServer:
         guard = ToolLoopGuard()
         plan_files_changed: set[str] = set()
         plan_commands_run: list[dict] = []
+        plan_tool_evidence: list[dict] = []
 
 
         active_plans = [
@@ -1842,7 +1843,7 @@ class AgentServer:
 
                     if active_plan and active_step_id and not gaps:
                         # Only advance a step with successful runtime tool evidence.
-                        evidence = [item for item in plan_commands_run
+                        evidence = [item for item in plan_tool_evidence
                                     if item.get("step_id") == active_step_id and item.get("ok")]
                         if evidence:
                             self.store.task_plans.update_step(
@@ -2052,9 +2053,10 @@ class AgentServer:
                                 self.store.task_plans.update_step(
                                     active_plan["id"], active_step_id, "in_progress")
                         if active_step_id:
-                            plan_commands_run.append({
+                            plan_tool_evidence.append({
                                 "step_id": active_step_id, "tool": call.name,
                                 "ok": True, "summary": str(payload.get("summary", ""))[:500],
+                                "changed_paths": list(payload.get("changed_paths") or []),
                             })
                     if call.name in ("shell", "shell_exec", "run_command", "run_shell"):
                         plan_commands_run.append({
@@ -2210,6 +2212,7 @@ class AgentServer:
                         )
                     )
 
+            self._checkpoint_thread_plans(thread_id, "max_model_steps", sorted(plan_files_changed), plan_commands_run)
             self._record_diagnostic_error(
                 "MAX_MODEL_STEPS",
                 f"Agent exceeded {self.max_model_steps} model steps without completing the task.",
@@ -2249,6 +2252,7 @@ class AgentServer:
                 )
             raise
         except ProviderError as exc:
+            self._checkpoint_thread_plans(thread_id, "provider_error", sorted(plan_files_changed), plan_commands_run)
             self._record_diagnostic_error(
                 exc.code,
                 exc.message,
