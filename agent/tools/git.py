@@ -357,12 +357,17 @@ def _validated_branch(value: str) -> str:
     return branch
 
 
-def _managed_worktree_root(workspace: Workspace) -> Path:
+def _managed_worktree_root(
+    workspace: Workspace,
+    *,
+    create: bool = False,
+) -> Path:
     digest = hashlib.sha256(
         str(workspace.root).encode("utf-8")
     ).hexdigest()[:12]
     root = default_data_dir() / "worktrees" / digest
-    root.mkdir(parents=True, exist_ok=True)
+    if create:
+        root.mkdir(parents=True, exist_ok=True)
     return root.resolve(strict=False)
 
 
@@ -377,7 +382,9 @@ def _managed_worktree_path(
             "task_name must contain at least one letter or number.",
         )
     slug = slug[:60]
-    return (_managed_worktree_root(workspace) / slug).resolve(strict=False)
+    return (
+        _managed_worktree_root(workspace, create=True) / slug
+    ).resolve(strict=False)
 
 
 async def _worktree_records(workspace: Workspace) -> list[dict[str, Any]]:
