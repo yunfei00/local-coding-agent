@@ -53,6 +53,7 @@ class PermissionPolicyTests(unittest.TestCase):
             tool_name="write_file",
             arguments={"path": "a.txt", "content": "x"},
             workspace=self.workspace,
+            user_prompt="Push this branch to origin.",
         )
         self.assertTrue(verdict.allowed)
         self.assertFalse(verdict.requires_approval)
@@ -165,10 +166,68 @@ class PermissionPolicyTests(unittest.TestCase):
                 "read_only": False,
                 "risk": "git_publish",
             },
+            user_prompt="Please push this branch.",
         )
         self.assertTrue(verdict.allowed)
         self.assertTrue(verdict.requires_approval)
         self.assertEqual(verdict.risk, "git_publish")
+
+    def test_git_commit_requires_current_user_intent(self) -> None:
+        policy = PermissionPolicy(PermissionMode.WORKSPACE)
+        denied = policy.evaluate(
+            tool_name="git_commit",
+            arguments={"message": "update"},
+            workspace=self.workspace,
+            user_prompt="Run the tests and fix any failures.",
+        )
+        allowed = policy.evaluate(
+            tool_name="git_commit",
+            arguments={"message": "update"},
+            workspace=self.workspace,
+            user_prompt="Commit these changes with a suitable message.",
+        )
+        self.assertFalse(denied.allowed)
+        self.assertEqual(denied.risk, "git_commit_intent")
+        self.assertTrue(allowed.allowed)
+        self.assertTrue(allowed.requires_approval)
+        self.assertEqual(allowed.risk, "git_commit")
+
+    def test_worktree_requires_current_user_intent(self) -> None:
+        policy = PermissionPolicy(PermissionMode.WORKSPACE)
+        denied = policy.evaluate(
+            tool_name="git_worktree_create",
+            arguments={"task_name": "demo", "branch": "demo/task"},
+            workspace=self.workspace,
+            user_prompt="Inspect the repository.",
+        )
+        allowed = policy.evaluate(
+            tool_name="git_worktree_create",
+            arguments={"task_name": "demo", "branch": "demo/task"},
+            workspace=self.workspace,
+            user_prompt="Create an isolated worktree for this task.",
+        )
+        self.assertFalse(denied.allowed)
+        self.assertEqual(denied.risk, "git_worktree_intent")
+        self.assertTrue(allowed.allowed)
+        self.assertTrue(allowed.requires_approval)
+
+    def test_mcp_git_publish_requires_current_user_intent(self) -> None:
+        policy = PermissionPolicy(PermissionMode.WORKSPACE)
+        denied = policy.evaluate(
+            tool_name="mcp__git__push",
+            arguments={"branch": "main"},
+            workspace=self.workspace,
+            tool_metadata={
+                "source": "mcp",
+                "server": "git",
+                "trusted": True,
+                "read_only": False,
+                "risk": "git_publish",
+            },
+            user_prompt="Inspect the current branch.",
+        )
+        self.assertFalse(denied.allowed)
+        self.assertEqual(denied.risk, "git_publish_intent")
 
     def test_safe_test_command_does_not_require_approval(self) -> None:
         policy = PermissionPolicy(PermissionMode.WORKSPACE)
