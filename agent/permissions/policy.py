@@ -262,6 +262,31 @@ class PermissionPolicy:
             if trusted and read_only:
                 return PermissionVerdict(allowed=True)
 
+            if risk == "git_commit" and not explicit_git_intent(
+                user_prompt,
+                "commit",
+            ):
+                return PermissionVerdict(
+                    allowed=False,
+                    reason=(
+                        "Git commit through MCP requires an explicit request "
+                        "in the current user message."
+                    ),
+                    risk="git_commit_intent",
+                )
+            if risk == "git_publish" and not explicit_git_intent(
+                user_prompt,
+                "push",
+            ):
+                return PermissionVerdict(
+                    allowed=False,
+                    reason=(
+                        "Git push through MCP requires an explicit request "
+                        "in the current user message."
+                    ),
+                    risk="git_publish_intent",
+                )
+
             fingerprint = json.dumps(
                 {
                     "tool": tool_name,
