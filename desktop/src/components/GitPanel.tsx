@@ -141,7 +141,7 @@ export function GitPanel({
   };
 
   return (
-    <div className="git-overlay" role="dialog" aria-modal="true">
+    <aside className="git-overlay" aria-label="Git workflow panel">
       <div className="git-panel">
         <header className="git-panel-header">
           <div>
@@ -318,6 +318,6 @@ export function GitPanel({
           </p>
         </div>
       </div>
-    </div>
+    </aside>
   );
 }
