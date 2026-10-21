@@ -159,6 +159,8 @@ class AgentServer:
         self.recent_errors: deque[dict[str, Any]] = deque(maxlen=20)
         self.last_context_usage: dict[str, Any] | None = None
         self._sync_workspace_permissions()
+        from agent.core.orchestration import TaskService
+        self.tasks = TaskService(self)
 
     def authorized(self, request: web.Request) -> bool:
         return request.headers.get("Authorization") == f"Bearer {self.token}"
@@ -920,6 +922,10 @@ class AgentServer:
             )
             return
 
+        if message_type.startswith("task."):
+            await self.tasks.handle(ws, data, owned_turns)
+            return
+
         if message_type == "approval.respond":
             approval_id = str(payload.get("approval_id") or "")
             decision = str(payload.get("decision") or "")
@@ -1672,7 +1678,7 @@ class AgentServer:
 
     async def _checkpoint_thread_plans(self, thread_id: str, reason: str,
                                  files_changed: list[str] | None = None,
-                                 commands_run: list[dict] | None = None) -> None:
+                                 commands_run: list[dict] | None = None, *, project_override=None) -> None:
         """Persist active plans on turn boundaries without replaying tools."""
         plans = self.store.task_plans
         active = [plan for plan in plans.list_for_thread(thread_id)
@@ -1680,7 +1686,7 @@ class AgentServer:
         if not active:
             return
         git_status = "unavailable"
-        project = self.projects.active
+        project = project_override or self.projects.active
         if project:
             with suppress(Exception):
                 result = await project.tools.execute("git_status", {})
@@ -1701,8 +1707,13 @@ class AgentServer:
         turn_id: str,
         prompt: str,
         model: str,
+        provider=None,
+        project_override=None,
+        plan_id: str | None = None,
+        authorization_prompt: str | None = None,
     ) -> None:
-        project = self.projects.active
+        provider = provider or self.provider
+        project = project_override or self.projects.active
         if not project:
             return
 
@@ -1721,11 +1732,11 @@ class AgentServer:
 
         active_plans = [
             plan for plan in self.store.task_plans.list_for_thread(thread_id)
-            if any(item["state"] in ("pending", "in_progress", "blocked") for item in plan["steps"])
+            if (plan_id is None or plan["id"] == plan_id) and any(item["state"] in ("pending", "in_progress", "blocked") for item in plan["steps"])
         ]
         # Existing plans are explicit user intent. Do not create plans for simple turns.
-        active_plan = active_plans[0] if active_plans else None
-        if not active_plan:
+        active_plan = self.store.task_plans.get(plan_id) if plan_id else (active_plans[0] if active_plans else None)
+        if not active_plan and not plan_id:
             steps = automatic_steps(prompt)
             if steps:
                 plan_id = self.store.task_plans.create(thread_id, prompt[:1000], steps)
@@ -1739,7 +1750,7 @@ class AgentServer:
 
         history = state.get_messages(thread_id)
         context_manager = ContextBudgetManager(
-            context_window_tokens=self.provider.context_window,
+            context_window_tokens=provider.context_window,
             reserved_output_tokens=self.context_reserved_output_tokens,
         )
         pinned_rows = self.store.list_pinned_context(thread_id)
@@ -1864,7 +1875,7 @@ class AgentServer:
                             )
                         )
 
-                        async for chunk in self.provider.stream_chat(
+                        async for chunk in provider.stream_chat(
                             model=model,
                             messages=messages,
                             tools=tools.schemas(
@@ -1950,7 +1961,7 @@ class AgentServer:
                         )
                         verified = verification_passed(
                             active_step_id, requirement, evidence,
-                            loop_complete=not gaps or (not requirement.strip() and
+                            loop_complete=bool(plan_id) or not gaps or (not requirement.strip() and
                                 active_plan["steps"][-1]["id"] != active_step_id))
                         self.store.task_plans.advance_verified(
                             active_plan["id"], active_step_id, evidence, verified)
@@ -1969,7 +1980,7 @@ class AgentServer:
                                 and next_step["id"] != active_step_id):
                             await self._checkpoint_thread_plans(
                                 thread_id, "step_completed",
-                                sorted(plan_files_changed), plan_commands_run)
+                                sorted(plan_files_changed), plan_commands_run, project_override=project)
                             await ws.send_json(envelope(
                                 "plan.step.completed",
                                 {"plan_id": active_plan["id"],
@@ -1995,7 +2006,7 @@ class AgentServer:
                         user=prompt,
                         assistant=assistant_text,
                     )
-                    await self._checkpoint_thread_plans(thread_id, "turn_completed", sorted(plan_files_changed), plan_commands_run)
+                    await self._checkpoint_thread_plans(thread_id, "turn_completed", sorted(plan_files_changed), plan_commands_run, project_override=project)
                     # A fully completed plan is no longer considered active by
                     # _checkpoint_thread_plans. Persist its terminal state too.
                     if active_plan:
@@ -2014,9 +2025,9 @@ class AgentServer:
                             "turn.completed",
                             {
                                 "finish_reason": finish_reason or "stop",
-                                "provider": self.provider.provider_name,
+                                "provider": provider.provider_name,
                                 "model": model,
-                                "context_window": self.provider.context_window,
+                                "context_window": provider.context_window,
                                 "prompt_eval_count": prompt_eval_count,
                                 "eval_count": eval_count,
                                 "context": context_usage.to_dict(),
@@ -2067,7 +2078,7 @@ class AgentServer:
                                         "without completing the task."
                                     ),
                                     "recoverable": True,
-                                    "provider": self.provider.provider_name,
+                                    "provider": provider.provider_name,
                                     "model": model,
                                     "tool_calls": total_tool_calls,
                                 },
@@ -2159,62 +2170,12 @@ class AgentServer:
                                 "changed_paths": [],
                             }
                     else:
-                        verdict = self.permissions.evaluate(
-                            tool_name=call.name,
-                            arguments=call.arguments,
-                            workspace=workspace,
-                            tool_metadata=tools.permission_metadata(
-                                call.name
-                            ),
-                            user_prompt=prompt,
+                        payload = await self._authorize_tool(
+                            ws, project=project, call=call, call_id=call_id,
+                            thread_id=thread_id, turn_id=turn_id,
+                            user_prompt=authorization_prompt if authorization_prompt is not None else prompt,
+                            autonomous=plan_id is not None,
                         )
-
-                        if not verdict.allowed:
-                            payload = {
-                                "ok": False,
-                                "summary": verdict.reason,
-                                "error": {
-                                    "code": "PERMISSION_DENIED",
-                                    "message": verdict.reason,
-                                    "risk": verdict.risk,
-                                },
-                                "changed_paths": [],
-                            }
-                        else:
-                            approved = True
-                            if verdict.requires_approval:
-                                decision = await self.approvals.request(
-                                    ws,
-                                    turn_id=turn_id,
-                                    thread_id=thread_id,
-                                    approval_key=verdict.approval_key or call_id,
-                                    tool_name=call.name,
-                                    arguments=call.arguments,
-                                    reason=verdict.reason,
-                                    risk=verdict.risk,
-                                )
-                                approved = decision != APPROVAL_DENY
-
-                            if not approved:
-                                payload = {
-                                    "ok": False,
-                                    "summary": "User denied this operation.",
-                                    "error": {
-                                        "code": "APPROVAL_DENIED",
-                                        "message": "User denied this operation.",
-                                        "risk": verdict.risk,
-                                    },
-                                    "changed_paths": [],
-                                }
-                            else:
-                                payload = await self._execute_tool_call(
-                                    ws,
-                                    tools=tools,
-                                    call=call,
-                                    call_id=call_id,
-                                    thread_id=thread_id,
-                                    turn_id=turn_id,
-                                )
 
                     metrics.record_tool(round((perf_counter() - tool_started) * 1000), ok=bool(payload.get("ok")))
                     if active_plan and active_step_id:
@@ -2323,7 +2284,7 @@ class AgentServer:
                                         "The turn was stopped instead of continuing to fail."
                                     ),
                                     "recoverable": True,
-                                    "provider": self.provider.provider_name,
+                                    "provider": provider.provider_name,
                                     "model": model,
                                     "tool_calls": total_tool_calls,
                                     "consecutive_failures": guard.consecutive_failures,
@@ -2356,7 +2317,7 @@ class AgentServer:
                                         + " The turn was stopped to prevent an unproductive loop."
                                     ),
                                     "recoverable": True,
-                                    "provider": self.provider.provider_name,
+                                    "provider": provider.provider_name,
                                     "model": model,
                                     "tool_calls": total_tool_calls,
                                     "loop_reason": loop_abort_reason,
@@ -2392,7 +2353,7 @@ class AgentServer:
                         )
                     )
 
-            await self._checkpoint_thread_plans(thread_id, "max_model_steps", sorted(plan_files_changed), plan_commands_run)
+            await self._checkpoint_thread_plans(thread_id, "max_model_steps", sorted(plan_files_changed), plan_commands_run, project_override=project)
             self._record_diagnostic_error(
                 "MAX_MODEL_STEPS",
                 f"Agent exceeded {self.max_model_steps} model steps without completing the task.",
@@ -2408,7 +2369,7 @@ class AgentServer:
                             "without completing the task."
                         ),
                         "recoverable": True,
-                        "provider": self.provider.provider_name,
+                        "provider": provider.provider_name,
                         "model": model,
                     },
                     thread_id=thread_id,
@@ -2416,14 +2377,14 @@ class AgentServer:
                 )
             )
         except asyncio.CancelledError:
-            await self._checkpoint_thread_plans(thread_id, "turn_cancelled", sorted(plan_files_changed), plan_commands_run)
+            await self._checkpoint_thread_plans(thread_id, "turn_cancelled", sorted(plan_files_changed), plan_commands_run, project_override=project)
             with suppress(ConnectionResetError, RuntimeError):
                 await ws.send_json(
                     envelope(
                         "turn.cancelled",
                         {
                             "reason": "user_cancelled",
-                            "provider": self.provider.provider_name,
+                            "provider": provider.provider_name,
                             "model": model,
                         },
                         thread_id=thread_id,
@@ -2432,7 +2393,7 @@ class AgentServer:
                 )
             raise
         except ProviderError as exc:
-            await self._checkpoint_thread_plans(thread_id, "provider_error", sorted(plan_files_changed), plan_commands_run)
+            await self._checkpoint_thread_plans(thread_id, "provider_error", sorted(plan_files_changed), plan_commands_run, project_override=project)
             self._record_diagnostic_error(
                 exc.code,
                 exc.message,
@@ -2446,7 +2407,7 @@ class AgentServer:
                             "code": exc.code,
                             "message": exc.message,
                             "recoverable": exc.recoverable,
-                            "provider": self.provider.provider_name,
+                            "provider": provider.provider_name,
                             "model": model,
                         },
                         thread_id=thread_id,
@@ -2457,16 +2418,39 @@ class AgentServer:
             return
         finally:
             if active_plan and self.store.task_plans.latest_checkpoint(active_plan["id"]) == previous_checkpoint:
-                await self._checkpoint_thread_plans(thread_id, "turn_interrupted", sorted(plan_files_changed), plan_commands_run)
+                await self._checkpoint_thread_plans(thread_id, "turn_interrupted", sorted(plan_files_changed), plan_commands_run, project_override=project)
             self.approvals.finish_turn(turn_id)
             self.last_turn_trace = {
-                "provider": redact_text(self.provider.provider_name, exact_secrets=self._exact_secrets()),
+                "provider": redact_text(provider.provider_name, exact_secrets=self._exact_secrets()),
                 "model": redact_text(model, exact_secrets=self._exact_secrets()),
                 "execution_summary": metrics.summary(),
             }
             with suppress(ConnectionResetError, RuntimeError):
                 await ws.send_json(envelope("turn.metrics", self.last_turn_trace,
                     thread_id=thread_id, turn_id=turn_id))
+
+    async def _authorize_tool(self, ws, *, project, call, call_id, thread_id, turn_id,
+                              user_prompt, autonomous=False, on_raw_output=None):
+        if autonomous:
+            from agent.core.orchestration import autonomous_git_block
+            reason = autonomous_git_block(call.name, call.arguments)
+            if reason:
+                return {"ok": False, "summary": reason, "error": {"code": "TASK_GIT_REVIEW_REQUIRED", "message": reason}, "changed_paths": []}
+        verdict = self.permissions.evaluate(
+            tool_name=call.name, arguments=call.arguments, workspace=project.workspace,
+            tool_metadata=project.tools.permission_metadata(call.name), user_prompt=user_prompt)
+        if not verdict.allowed:
+            return {"ok": False, "summary": verdict.reason,
+                    "error": {"code": "PERMISSION_DENIED", "message": verdict.reason, "risk": verdict.risk}, "changed_paths": []}
+        if verdict.requires_approval:
+            decision = await self.approvals.request(ws, turn_id=turn_id, thread_id=thread_id,
+                approval_key=verdict.approval_key or call_id, tool_name=call.name,
+                arguments=call.arguments, reason=verdict.reason, risk=verdict.risk)
+            if decision == APPROVAL_DENY:
+                return {"ok": False, "summary": "User denied this operation.",
+                        "error": {"code": "APPROVAL_DENIED", "message": "User denied this operation."}, "changed_paths": []}
+        return await self._execute_tool_call(ws, tools=project.tools, call=call,
+            call_id=call_id, thread_id=thread_id, turn_id=turn_id, on_raw_output=on_raw_output)
 
     async def _execute_tool_call(
         self,
@@ -2477,6 +2461,7 @@ class AgentServer:
         call_id: str,
         thread_id: str,
         turn_id: str,
+        on_raw_output=None,
     ) -> dict[str, Any]:
         async def on_output(chunk: dict[str, Any]) -> None:
             await ws.send_json(
@@ -2493,10 +2478,12 @@ class AgentServer:
             )
 
         try:
+            extra = {"on_raw_output": on_raw_output} if on_raw_output is not None else {}
             result = await tools.execute(
                 call.name,
                 call.arguments,
                 on_output=on_output,
+                **extra,
             )
             return result.to_dict()
         except ToolError as exc:

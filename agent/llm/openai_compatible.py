@@ -198,12 +198,17 @@ class OpenAICompatibleProvider:
             "stream": True,
             "temperature": self.temperature,
         }
+        if getattr(self, "max_output_tokens", None):
+            request_body["max_tokens"] = self.max_output_tokens
+            request_body["stream_options"] = {"include_usage": True}
         if tools:
             request_body["tools"] = tools
 
         finish_reason: str | None = None
         prompt_eval_count: int | None = None
         eval_count: int | None = None
+        cached_tokens: int | None = None
+        actual_cost: float | None = None
         tool_states: dict[int, dict[str, str]] = {}
         emitted_done = False
 
@@ -239,6 +244,7 @@ class OpenAICompatibleProvider:
                                 finish_reason=finish_reason,
                                 prompt_eval_count=prompt_eval_count,
                                 eval_count=eval_count,
+                                cached_tokens=cached_tokens, actual_cost=actual_cost,
                             )
                             emitted_done = True
                             break
@@ -262,6 +268,13 @@ class OpenAICompatibleProvider:
                             eval_count = _optional_int(
                                 usage.get("completion_tokens")
                             )
+
+                        if isinstance(usage, dict):
+                            details = usage.get("prompt_tokens_details") or {}
+                            cached_tokens = _optional_int(details.get("cached_tokens")) if isinstance(details, dict) else None
+                            raw_cost = usage.get("cost")
+                            if isinstance(raw_cost, (int, float)) and 0 <= raw_cost < float("inf"):
+                                actual_cost = raw_cost
 
                         choices = payload.get("choices")
                         if not isinstance(choices, list) or not choices:
@@ -321,6 +334,7 @@ class OpenAICompatibleProvider:
                     finish_reason=finish_reason,
                     prompt_eval_count=prompt_eval_count,
                     eval_count=eval_count,
+                                cached_tokens=cached_tokens, actual_cost=actual_cost,
                 )
         except OpenAICompatibleProviderError:
             raise

@@ -50,6 +50,8 @@ class ProviderChunk:
     finish_reason: str | None = None
     prompt_eval_count: int | None = None
     eval_count: int | None = None
+    cached_tokens: int | None = None
+    actual_cost: float | None = None
 
 
 class LLMProvider(Protocol):

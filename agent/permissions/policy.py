@@ -240,6 +240,8 @@ class PermissionPolicy:
         user_prompt: str | None = None,
     ) -> PermissionVerdict:
         metadata = tool_metadata or {}
+        if metadata.get("source") != "mcp" and self.mode == PermissionMode.READ_ONLY and tool_name not in READ_ONLY_TOOLS:
+            return PermissionVerdict(allowed=False, reason=f"{tool_name} is disabled in Read Only mode.", risk="read_only")
         if metadata.get("source") == "mcp":
             trusted = bool(metadata.get("trusted"))
             read_only = bool(metadata.get("read_only"))
