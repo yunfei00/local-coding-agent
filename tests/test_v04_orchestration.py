@@ -341,6 +341,12 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
 
 
 class VerificationTests(unittest.TestCase):
+    def test_failure_fingerprint_ignores_attached_duration_units(self):
+        from agent.core.verification import failure_fingerprint
+        first = [{"command":"tests", "category":"assertion", "exit_code":1, "summary":"AssertionError: 1 != 5\nRan 1 test in 0.001s; 512ms"}]
+        second = [{**first[0], "summary":"AssertionError: 1 != 5\nRan 1 test in 0.122s; 810ms"}]
+        self.assertEqual(failure_fingerprint(first, "diff"), failure_fingerprint(second, "diff"))
+
     def test_no_large_model_is_implicitly_selected(self):
         from agent.core.settings import RuntimeSettings
         from agent.llm.ollama import OllamaProvider

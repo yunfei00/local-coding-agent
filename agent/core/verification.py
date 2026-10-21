@@ -67,8 +67,11 @@ def classify(result: dict) -> str:
 
 def failure_fingerprint(results: list[dict], diff: str) -> str:
     # Ignore durations/PIDs/temp roots so recurring failures compare reliably.
+    def normalized(text: str) -> str:
+        text = re.sub(r"\b\d+(?:\.\d+)?(?=\s*(?:ms|s|seconds?)\b)", "#", text)
+        return re.sub(r"\b\d+(?:\.\d+)?\b", "#", text)
     failures = [{"command": r["command"], "category": r["category"], "exit_code": r.get("exit_code"),
-                 "summary": re.sub(r"\b\d+(?:\.\d+)?\b", "#", r.get("summary", ""))} for r in results]
+                 "summary": normalized(r.get("summary", ""))} for r in results]
     return hashlib.sha256((json.dumps(failures, sort_keys=True) + diff).encode()).hexdigest()
 
 
