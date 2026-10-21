@@ -7,6 +7,22 @@ if ($env:OS -ne "Windows_NT") {
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Set-Location $RepoRoot
 
+function Invoke-Checked {
+    param([string]$Executable, [Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
+    & $Executable @Arguments
+    if ($LASTEXITCODE -ne 0) { throw "$Executable failed with exit code $LASTEXITCODE" }
+}
+
+function Remove-BuildArtifact {
+    param([string]$Target)
+    $Resolved = [System.IO.Path]::GetFullPath($Target, $RepoRoot)
+    $Allowed = @((Join-Path $RepoRoot "build"), (Join-Path $RepoRoot "desktop\release"))
+    if (-not ($Allowed | Where-Object { $Resolved -eq $_ -or $Resolved.StartsWith($_ + [System.IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) })) {
+        throw "Refusing cleanup outside build output directories: $Resolved"
+    }
+    if (Test-Path -LiteralPath $Resolved) { Remove-Item -LiteralPath $Resolved -Recurse -Force }
+}
+
 $DesktopPackage = Get-Content ".\desktop\package.json" -Raw | ConvertFrom-Json
 $RootPackage = Get-Content ".\package.json" -Raw | ConvertFrom-Json
 $Version = [string]$DesktopPackage.version
@@ -37,7 +53,7 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw "node was not
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { throw "npm was not found in PATH." }
 
 if (-not (Test-Path ".venv\Scripts\python.exe")) {
-    uv venv --python 3.12 .venv
+    Invoke-Checked uv venv --python 3.12 .venv
 }
 
 function Invoke-DesktopSmoke {
@@ -53,7 +69,7 @@ function Invoke-DesktopSmoke {
     $SmokeFile = Join-Path $RepoRoot ("build\packaged-" + $Name + "-smoke.json")
     $SmokeData = Join-Path $RepoRoot ("build\packaged-" + $Name + "-data")
     Remove-Item $SmokeFile -Force -ErrorAction SilentlyContinue
-    Remove-Item $SmokeData -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-BuildArtifact $SmokeData
     New-Item -ItemType Directory -Path $SmokeData -Force | Out-Null
 
     $BeforeAgentIds = @(Get-Process "lca-agent" -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
@@ -66,7 +82,7 @@ function Invoke-DesktopSmoke {
     $env:LCA_OLLAMA_URL = "http://127.0.0.1:1"
 
     try {
-        $DesktopProcess = Start-Process -FilePath $Executable -PassThru
+        $DesktopProcess = Start-Process -FilePath $Executable -PassThru -WindowStyle Hidden
         $Deadline = (Get-Date).AddSeconds(45)
 
         while ((Get-Date) -lt $Deadline -and -not (Test-Path $SmokeFile)) {
@@ -110,34 +126,34 @@ function Invoke-DesktopSmoke {
 }
 
 Write-Host "[1/11] Install Agent packaging dependencies..."
-uv pip install -e ".[packaging]"
+Invoke-Checked uv sync --locked --extra packaging
 
 Write-Host "[2/11] Run Agent compile + tests..."
-uv run --no-project python -m compileall agent
-uv run --no-project python -m unittest discover -s tests -v
+Invoke-Checked uv run --no-sync python -m compileall agent
+Invoke-Checked uv run --no-sync python -m unittest discover -s tests -v
 
 Write-Host "[3/11] Build packaged Python Agent..."
-Remove-Item "build\agent-dist" -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item "build\pyinstaller" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-BuildArtifact "build\agent-dist"
+Remove-BuildArtifact "build\pyinstaller"
 New-Item -ItemType Directory -Path "build\pyinstaller" -Force | Out-Null
-uv run --no-project pyinstaller --noconfirm --clean --name lca-agent --distpath build\agent-dist --workpath build\pyinstaller\work --specpath build\pyinstaller agent\launcher.py
+Invoke-Checked uv run --no-sync pyinstaller --noconfirm --clean --name lca-agent --distpath build\agent-dist --workpath build\pyinstaller\work --specpath build\pyinstaller agent\launcher.py
 
 $AgentExe = Join-Path $RepoRoot "build\agent-dist\lca-agent\lca-agent.exe"
 if (-not (Test-Path $AgentExe)) { throw "Packaged Agent executable was not created: $AgentExe" }
 
 Write-Host "[4/11] Smoke test packaged Agent..."
-uv run --no-project python scripts\validation\packaged_agent_smoke.py $AgentExe
+Invoke-Checked uv run --no-sync python scripts\validation\packaged_agent_smoke.py $AgentExe
 
 Write-Host "[5/11] Install Desktop dependencies..."
-npm --prefix desktop install --no-audit --no-fund
+Invoke-Checked npm.cmd --prefix desktop ci --no-audit --no-fund
 
 Write-Host "[6/11] Run Desktop checks..."
-npm --prefix desktop run typecheck
-npm --prefix desktop run test
+Invoke-Checked npm.cmd --prefix desktop run typecheck
+Invoke-Checked npm.cmd --prefix desktop run test
 
 Write-Host "[7/11] Build NSIS installer + portable executable..."
-Remove-Item "desktop\release" -Recurse -Force -ErrorAction SilentlyContinue
-npm --prefix desktop run package:win
+Remove-BuildArtifact "desktop\release"
+Invoke-Checked npm.cmd --prefix desktop run package:win
 
 $RendererIndex = Join-Path $RepoRoot "desktop\dist\index.html"
 if (-not (Test-Path $RendererIndex)) { throw "Renderer index was not created: $RendererIndex" }
@@ -161,9 +177,8 @@ Write-Host "[9/11] Smoke test Portable executable..."
 Invoke-DesktopSmoke -Executable $Portable -Name "portable"
 
 Write-Host "[10/11] Silent-install Setup and smoke test installed executable..."
-$InstallDir = Join-Path $env:TEMP "lca-rc-fresh-install"
-Remove-Item $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
-$InstallProcess = Start-Process -FilePath $Installer -ArgumentList @("/S", "/D=$InstallDir") -PassThru -Wait
+$InstallDir = Join-Path $RepoRoot ("build\setup-smoke-" + [guid]::NewGuid().ToString("N"))
+$InstallProcess = Start-Process -FilePath $Installer -ArgumentList @("/S", "/D=$InstallDir") -PassThru -Wait -WindowStyle Hidden
 if ($InstallProcess.ExitCode -ne 0) { throw "Setup installer exited with code $($InstallProcess.ExitCode)." }
 
 $InstalledExe = Join-Path $InstallDir "LocalCodingAgent.exe"
@@ -172,10 +187,10 @@ Invoke-DesktopSmoke -Executable $InstalledExe -Name "setup"
 
 $Uninstaller = Get-ChildItem $InstallDir -Filter "Uninstall*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($Uninstaller) {
-    $UninstallProcess = Start-Process -FilePath $Uninstaller.FullName -ArgumentList "/S" -PassThru -Wait
+    $UninstallProcess = Start-Process -FilePath $Uninstaller.FullName -ArgumentList "/S" -PassThru -Wait -WindowStyle Hidden
     if ($UninstallProcess.ExitCode -ne 0) { throw "Silent uninstall exited with code $($UninstallProcess.ExitCode)." }
 }
-Remove-Item $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
+Remove-BuildArtifact $InstallDir
 
 Write-Host "[11/11] Write and verify SHA256 checksums..."
 $ChecksumFile = Join-Path $RepoRoot "desktop\release\SHA256SUMS.txt"

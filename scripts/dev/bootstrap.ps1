@@ -17,14 +17,15 @@ foreach ($command in $required) {
 
 Write-Host "Using uv-managed project environment..." -ForegroundColor Cyan
 uv python install 3.12
-uv venv --python 3.12 .venv
+uv sync --locked
+if ($LASTEXITCODE -ne 0) { throw "uv environment synchronization failed." }
 
 $venvPython = Join-Path $repo ".venv\Scripts\python.exe"
 if (-not (Test-Path $venvPython)) {
     throw "Project virtual environment was not created correctly: $venvPython"
 }
 
-uv pip install --python $venvPython -e .
+uv sync --locked
 if ($LASTEXITCODE -ne 0) {
     throw "Unable to install Python project dependencies."
 }
@@ -36,7 +37,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Installing desktop dependencies..."
-npm --prefix desktop install
+npm.cmd --prefix desktop ci
+if ($LASTEXITCODE -ne 0) { throw "Desktop dependency installation failed." }
 
 Write-Host "Running backend checks with project .venv..."
 & $venvPython -m compileall agent

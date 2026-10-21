@@ -16,6 +16,8 @@ venv/
 # Local runtime
 data/
 logs/
+validation-reports/
+.codex-*.log
 *.db
 *.sqlite
 *.sqlite3

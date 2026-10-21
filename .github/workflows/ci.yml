@@ -30,11 +30,8 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Create project virtual environment
-        run: uv venv --python 3.12 .venv
-
       - name: Install Python dependencies
-        run: uv pip install -e .
+        run: uv sync --locked
 
       - name: Python compile check
         shell: bash
@@ -82,7 +79,7 @@ jobs:
 
       - name: Install desktop dependencies
         working-directory: desktop
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Desktop typecheck
         working-directory: desktop

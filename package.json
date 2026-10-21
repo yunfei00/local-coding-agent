@@ -7,7 +7,8 @@
     "desktop:build": "npm --prefix desktop run build",
     "desktop:typecheck": "npm --prefix desktop run typecheck",
     "desktop:test": "npm --prefix desktop run test",
-    "agent:check": "python -m compileall agent",
-    "agent:test": "python -m unittest discover -s tests -v"
+    "agent:check": "uv run python -m compileall agent",
+    "agent:test": "uv run python -m unittest discover -s tests -v",
+    "validate": "uv run python scripts/validation/check.py"
   }
 }
