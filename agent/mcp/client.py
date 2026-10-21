@@ -111,6 +111,8 @@ class _Connection:
     config: MCPServerConfig
     client: Client
     status: MCPServerStatus
+    owner: asyncio.Task
+    stop: asyncio.Event
 
 
 def _model_dict(value: Any) -> Any:
@@ -498,10 +500,33 @@ class MCPClientManager:
 
         config = self._config(name)
         client: Client | None = None
+        owner: asyncio.Task | None = None
+        stop = asyncio.Event()
         try:
             client = self._build_client(config)
-            async with asyncio.timeout(config.timeout_seconds):
-                await client.__aenter__()
+            ready = asyncio.get_running_loop().create_future()
+            ready.add_done_callback(lambda future: future.exception() if not future.cancelled() else None)
+
+            async def own_connection() -> None:
+                # MCP transports hold AnyIO task groups/cancel scopes. Their
+                # entire lifetime must enter and exit in the SAME task, isolated
+                # from the WebSocket and from other servers' scope stacks.
+                try:
+                    async with client:
+                        ready.set_result(None)
+                        await stop.wait()
+                except BaseException as exc:
+                    if not ready.done():
+                        ready.set_exception(RuntimeError(str(exc) or type(exc).__name__))
+                    elif not stop.is_set():
+                        failed = MCPServerStatus(name=name, transport=config.transport,
+                            connected=False, error=str(exc) or type(exc).__name__)
+                        self._statuses[name] = failed
+                        if name in self._connections:
+                            self._connections[name].status = failed
+
+            owner = asyncio.create_task(own_connection(), name=f"mcp:{name}")
+            await asyncio.wait_for(asyncio.shield(ready), config.timeout_seconds)
             info = client.server_info
             status = MCPServerStatus(
                 name=name,
@@ -528,15 +553,23 @@ class MCPClientManager:
                 config=config,
                 client=client,
                 status=status,
+                owner=owner,
+                stop=stop,
             )
             self._statuses[name] = status
             return status
+        except asyncio.CancelledError:
+            if owner is not None:
+                stop.set()
+                owner.cancel()
+                await asyncio.gather(owner, return_exceptions=True)
+            self._close_stdio_log(name)
+            raise
         except Exception as exc:
-            if client is not None:
-                try:
-                    await client.__aexit__(None, None, None)
-                except Exception:
-                    pass
+            if owner is not None:
+                stop.set()
+                owner.cancel()
+                await asyncio.gather(owner, return_exceptions=True)
             stderr = (
                 self._stdio_error_text(config)
                 if config.transport == "stdio"
@@ -568,7 +601,8 @@ class MCPClientManager:
         config = self._config(name)
         if connection is not None:
             try:
-                await connection.client.__aexit__(None, None, None)
+                connection.stop.set()
+                await asyncio.wait_for(connection.owner, timeout=10)
             finally:
                 self._close_stdio_log(name)
                 self._statuses[name] = MCPServerStatus(

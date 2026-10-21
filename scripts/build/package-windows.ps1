@@ -1,3 +1,5 @@
+param([switch]$ReuseDependencies)
+
 $ErrorActionPreference = "Stop"
 
 if ($env:OS -ne "Windows_NT") {
@@ -15,7 +17,7 @@ function Invoke-Checked {
 
 function Remove-BuildArtifact {
     param([string]$Target)
-    $Resolved = [System.IO.Path]::GetFullPath($Target, $RepoRoot)
+    $Resolved = if ([System.IO.Path]::IsPathRooted($Target)) { [System.IO.Path]::GetFullPath($Target) } else { [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $Target)) }
     $Allowed = @((Join-Path $RepoRoot "build"), (Join-Path $RepoRoot "desktop\release"))
     if (-not ($Allowed | Where-Object { $Resolved -eq $_ -or $Resolved.StartsWith($_ + [System.IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) })) {
         throw "Refusing cleanup outside build output directories: $Resolved"
@@ -77,9 +79,13 @@ function Invoke-DesktopSmoke {
     $OldSmoke = $env:LCA_PACKAGED_SMOKE_FILE
     $OldData = $env:LCA_DATA_DIR
     $OldOllama = $env:LCA_OLLAMA_URL
+    $OldDesktopData = $env:LCA_DESKTOP_DATA_DIR
+    $OldHeadless = $env:LCA_HEADLESS_SMOKE
     $env:LCA_PACKAGED_SMOKE_FILE = $SmokeFile
     $env:LCA_DATA_DIR = $SmokeData
     $env:LCA_OLLAMA_URL = "http://127.0.0.1:1"
+    $env:LCA_DESKTOP_DATA_DIR = Join-Path $SmokeData "desktop"
+    $env:LCA_HEADLESS_SMOKE = "1"
 
     try {
         $DesktopProcess = Start-Process -FilePath $Executable -PassThru -WindowStyle Hidden
@@ -113,6 +119,8 @@ function Invoke-DesktopSmoke {
         if ($null -eq $OldSmoke) { Remove-Item Env:LCA_PACKAGED_SMOKE_FILE -ErrorAction SilentlyContinue } else { $env:LCA_PACKAGED_SMOKE_FILE = $OldSmoke }
         if ($null -eq $OldData) { Remove-Item Env:LCA_DATA_DIR -ErrorAction SilentlyContinue } else { $env:LCA_DATA_DIR = $OldData }
         if ($null -eq $OldOllama) { Remove-Item Env:LCA_OLLAMA_URL -ErrorAction SilentlyContinue } else { $env:LCA_OLLAMA_URL = $OldOllama }
+        if ($null -eq $OldDesktopData) { Remove-Item Env:LCA_DESKTOP_DATA_DIR -ErrorAction SilentlyContinue } else { $env:LCA_DESKTOP_DATA_DIR = $OldDesktopData }
+        if ($null -eq $OldHeadless) { Remove-Item Env:LCA_HEADLESS_SMOKE -ErrorAction SilentlyContinue } else { $env:LCA_HEADLESS_SMOKE = $OldHeadless }
     }
 
     Start-Sleep -Milliseconds 750
@@ -126,6 +134,9 @@ function Invoke-DesktopSmoke {
 }
 
 Write-Host "[1/11] Install Agent packaging dependencies..."
+if ($ReuseDependencies) {
+    Invoke-Checked uv lock --check
+}
 Invoke-Checked uv sync --locked --extra packaging
 
 Write-Host "[2/11] Run Agent compile + tests..."
@@ -145,7 +156,11 @@ Write-Host "[4/11] Smoke test packaged Agent..."
 Invoke-Checked uv run --no-sync python scripts\validation\packaged_agent_smoke.py $AgentExe
 
 Write-Host "[5/11] Install Desktop dependencies..."
-Invoke-Checked npm.cmd --prefix desktop ci --no-audit --no-fund
+if ($ReuseDependencies) {
+    Invoke-Checked npm.cmd --prefix desktop ls --depth=0
+} else {
+    Invoke-Checked npm.cmd --prefix desktop ci --no-audit --no-fund
+}
 
 Write-Host "[6/11] Run Desktop checks..."
 Invoke-Checked npm.cmd --prefix desktop run typecheck
@@ -172,11 +187,20 @@ foreach ($Required in @($Installer, $Portable, $DesktopExe, $BundledAgent)) {
 
 Write-Host "[8/11] Smoke test unpacked Desktop + bundled Agent..."
 Invoke-DesktopSmoke -Executable $DesktopExe -Name "unpacked"
+$OldSmokeExecutable = $env:LCA_SMOKE_EXECUTABLE
+try {
+    $env:LCA_SMOKE_EXECUTABLE = $DesktopExe
+    Invoke-Checked node scripts/validation/desktop-smoke.cjs
+} finally {
+    if ($null -eq $OldSmokeExecutable) { Remove-Item Env:LCA_SMOKE_EXECUTABLE -ErrorAction SilentlyContinue } else { $env:LCA_SMOKE_EXECUTABLE = $OldSmokeExecutable }
+}
 
 Write-Host "[9/11] Smoke test Portable executable..."
 Invoke-DesktopSmoke -Executable $Portable -Name "portable"
 
 Write-Host "[10/11] Silent-install Setup and smoke test installed executable..."
+$ExistingInstall = @("HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*", "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*") | ForEach-Object { Get-ItemProperty -Path $_ -ErrorAction SilentlyContinue } | Where-Object DisplayName -EQ "Local Coding Agent"
+if ($ExistingInstall) { throw "Setup smoke requires a clean Windows profile; an existing Local Coding Agent installation was preserved. Use the clean Windows CI runner for Setup acceptance." }
 $InstallDir = Join-Path $RepoRoot ("build\setup-smoke-" + [guid]::NewGuid().ToString("N"))
 $InstallProcess = Start-Process -FilePath $Installer -ArgumentList @("/S", "/D=$InstallDir") -PassThru -Wait -WindowStyle Hidden
 if ($InstallProcess.ExitCode -ne 0) { throw "Setup installer exited with code $($InstallProcess.ExitCode)." }

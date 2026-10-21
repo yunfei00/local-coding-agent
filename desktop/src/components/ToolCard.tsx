@@ -450,6 +450,16 @@ function GenericToolCard({ tool }: { tool: ToolView }) {
 }
 
 export function ToolCard({ tool }: { tool: ToolView }) {
+  const [expanded, setExpanded] = useState(false);
+  const running = ["running", "requested", "stopping"].includes(tool.status);
+  return <section className="tool-disclosure">
+    <button type="button" className="tool-toggle" aria-expanded={expanded || running}
+      onClick={() => setExpanded(!expanded)}>{expanded || running ? "⌄" : "›"} {tool.name} · {statusLabel(tool)}{tool.summary ? " · " + tool.summary : ""}</button>
+    {expanded || running ? <ToolDetails tool={tool} /> : null}
+  </section>;
+}
+
+function ToolDetails({ tool }: { tool: ToolView }) {
   if (tool.name === "run_command") {
     return <TerminalCard tool={tool} />;
   }

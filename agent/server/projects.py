@@ -254,5 +254,6 @@ class ProjectRegistry:
         for project in self.list_projects():
             data = project.to_dict()
             data["active"] = project.id == self.active_project_id
+            data["threads"] = [thread.to_dict() for thread in project.state.list_threads()]
             result.append(data)
         return result

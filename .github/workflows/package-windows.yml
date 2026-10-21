@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - "feature/v0.1-mvp"
+      - "feature/v0.3"
     paths:
       - "agent/**"
       - "desktop/**"
@@ -12,6 +13,7 @@ on:
       - "scripts/validation/**"
       - "tests/**"
       - "pyproject.toml"
+      - "uv.lock"
       - "package.json"
       - ".github/workflows/package-windows.yml"
       - ".github/workflows/release.yml"

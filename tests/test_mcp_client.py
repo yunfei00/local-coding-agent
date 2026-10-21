@@ -406,6 +406,8 @@ class MCPClientManagerTests(unittest.IsolatedAsyncioTestCase):
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait(timeout=5)
+            if process.stderr is not None:
+                process.stderr.close()
 
 
 if __name__ == "__main__":

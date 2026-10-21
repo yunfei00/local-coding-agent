@@ -24,6 +24,9 @@ import { checkProtocolCompatibility } from "./protocol";
 import { checkForUpdates } from "./updateCheck";
 
 const APP_ID = "com.yunfei.localcodingagent";
+if (process.env.LCA_DESKTOP_DATA_DIR) {
+  app.setPath("userData", path.resolve(process.env.LCA_DESKTOP_DATA_DIR));
+}
 app.setAppUserModelId(APP_ID);
 
 type AgentStatus = {
@@ -863,12 +866,15 @@ async function stopAgent(): Promise<void> {
 function createWindow(): void {
   rendererReady = false;
   mainWindow = new BrowserWindow({
+    show: process.env.LCA_HEADLESS_SMOKE !== "1",
     width: 1180,
     height: 780,
     minWidth: 900,
     minHeight: 600,
     backgroundColor: "#111111",
     webPreferences: {
+      offscreen: process.env.LCA_HEADLESS_SMOKE === "1",
+      backgroundThrottling: process.env.LCA_HEADLESS_SMOKE !== "1",
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false
@@ -968,6 +974,14 @@ ipcMain.handle("agent:diagnostics-get", async () => {
     }
   };
 });
+ipcMain.handle(
+  "clipboard:copy-text",
+  async (_event, text: string) => {
+    if (typeof text !== "string" || text.length > 2_000_000) throw new Error("Clipboard text is too large");
+    clipboard.writeText(text);
+    return {ok: true};
+  }
+);
 ipcMain.handle(
   "agent:diagnostics-copy",
   async (_event, report: string) => {
@@ -1341,7 +1355,7 @@ ipcMain.handle("agent:thread-list", async () => {
   return sendRequest("thread.list", "thread.listed");
 });
 ipcMain.handle("agent:plan-request", async (_event, threadId: string, operation: string, payload: Record<string, unknown> = {}) => {
-  const allowed = new Set(["plan.list", "plan.create", "plan.step.update", "plan.step.edit", "plan.steps.reorder", "plan.checkpoint", "plan.resume"]);
+  const allowed = new Set(["plan.list", "plan.create", "plan.step.update", "plan.step.edit", "plan.steps.reorder", "plan.checkpoint", "plan.resume", "plan.resume.confirm"]);
   if (!allowed.has(operation)) throw new Error("Unsupported plan operation");
   return sendRequest(operation, operation === "plan.resume" ? "plan.resumable" : "plan.loaded",
     { ...payload, thread_id: threadId }, { threadId });

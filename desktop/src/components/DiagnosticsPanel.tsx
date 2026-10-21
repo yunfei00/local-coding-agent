@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { formatDiagnosticsReport } from "../lib/diagnostics";
+import { ExecutionSummary, TurnTrace } from "./ExecutionSummary";
 
 type Props = {
   onClose: () => void;
@@ -140,6 +141,15 @@ export function DiagnosticsPanel({ onClose }: Props) {
         ) : (
           <>
             <div className="diagnostics-grid">
+              <section className="diagnostics-card">
+                <h2>Agent & workspace health</h2>
+                <dl>
+                  <div><dt>Agent</dt><dd>{objectValue(bundle.agent.agent_state).running ? "Running" : "Idle"}</dd></div>
+                  <div><dt>Worktree</dt><dd>{stringValue(objectValue(bundle.agent.worktree).status)} · {stringValue(objectValue(bundle.agent.worktree).count, "0")}</dd></div>
+                  <div><dt>Repository map</dt><dd>{stringValue(objectValue(bundle.agent.repository_map).file_count, "0")} files · revision {stringValue(objectValue(bundle.agent.repository_map).revision, "0")}</dd></div>
+                </dl>
+              </section>
+              {bundle.agent.last_turn_trace ? <ExecutionSummary trace={bundle.agent.last_turn_trace as TurnTrace} /> : null}
               <section className="diagnostics-card">
                 <h2>Application</h2>
                 <dl>

@@ -6,6 +6,16 @@ Local Coding Agent 是一个面向 Windows 本地开发环境的桌面 Coding Ag
 >
 > 当前开发：**v0.3**（`feature/v0.3`）
 
+v0.3 候选版增加 MCP stdio/HTTP、Repository Map、Pinned Context、Git Stage/Unstage 与 Worktree、持久化任务计划和执行统计。桌面支持项目树独立展开、会话改名、Markdown/代码复制、浅深主题，以及不遮挡输入框的右侧面板。正式合并仍以 [最终验收记录](docs/v0.3-final-validation.md) 的门禁为准。
+
+本地依赖统一由 uv 与 npm 锁文件管理：
+
+```powershell
+uv sync --locked
+npm.cmd --prefix desktop ci
+uv run python scripts/validation/check.py
+```
+
 ## 当前能力
 
 v0.2.0 已经完成可用的单 Agent 本地开发闭环：
@@ -56,10 +66,12 @@ Ollama 是默认 Provider，适合完全本地运行。
 已经验证过的开发环境包括本地代码模型，例如：
 
 ```text
-qwen3-coder:30b
+qwen2.5-coder:1.5b
 ```
 
 Provider URL、模型、Context Window 和 Temperature 可以在 Settings 中配置。
+
+本轮在 Windows CPU 环境验证了该 1.5B 模型的聊天、Stop 与历史恢复；文件读写任务未发出结构化工具调用，记录为模型能力限制。多步骤工具行为使用确定性 Provider 和实际工具回归验证。
 
 ### OpenAI-compatible
 

@@ -16,18 +16,12 @@ foreach ($command in $required) {
 }
 
 Write-Host "Using uv-managed project environment..." -ForegroundColor Cyan
-uv python install 3.12
 uv sync --locked
 if ($LASTEXITCODE -ne 0) { throw "uv environment synchronization failed." }
 
 $venvPython = Join-Path $repo ".venv\Scripts\python.exe"
 if (-not (Test-Path $venvPython)) {
     throw "Project virtual environment was not created correctly: $venvPython"
-}
-
-uv sync --locked
-if ($LASTEXITCODE -ne 0) {
-    throw "Unable to install Python project dependencies."
 }
 
 Write-Host "Verifying Agent runtime dependencies..." -ForegroundColor Cyan

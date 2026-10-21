@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
-type Step = { id: string; description: string; state: string; verification?: string; evidence?: Array<Record<string, unknown>> };
+type Step = { id: string; description: string; state: string; verification?: string; evidence?: Array<Record<string, unknown>>;
+  executions?: Array<{call_id: string; tool: string; status: string; exit_code?: number | null}> };
 type Plan = { id: string; goal: string; steps: Step[] };
 export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: () => void }) {
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -35,6 +36,7 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
       "\nReview workspace changes before proceeding. Previously completed steps will not be requested again.")) return;
     setBusy(true); setError("");
     try {
+      await window.localAgent.planRequest(threadId, "plan.resume.confirm", {plan_id: plan.id});
       await window.localAgent.startTurn(threadId,
         "Continue the existing persistent task plan from its first unfinished step: " +
         next.description + ". First inspect current workspace and checkpoint state. " +
@@ -44,7 +46,12 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
     } catch (cause) { setError(String(cause)); }
     finally { setBusy(false); }
   };
-  useEffect(() => { setPlans([]); void request("plan.list"); }, [threadId]);
+  useEffect(() => {
+    setPlans([]); setCheckpoint(null); void request("plan.list");
+    return window.localAgent.onAgentEvent((event: AgentEnvelope) => {
+      if (event.thread_id === threadId && ["plan.completed", "plan.step.completed", "turn.completed", "turn.cancelled", "turn.failed"].includes(event.type)) void request("plan.list");
+    });
+  }, [threadId]);
   return <aside className="context-overlay" aria-label="Task plans">
     <div className="context-panel">
       <header className="context-panel-header"><div><span className="eyebrow">PERSISTENT TASK PLANS</span>
@@ -67,6 +74,7 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
         {checkpoint ? <pre style={{whiteSpace:"pre-wrap", overflowWrap:"anywhere"}}>{JSON.stringify(checkpoint, null, 2)}</pre> : null}
         {plan.steps.map((step, index) => <div className="context-file-row" key={step.id}>
           <span>{index + 1}. {step.description} — {step.state}</span>
+          {step.executions?.map(call => <small key={call.call_id} title={call.call_id}>{call.tool} · {call.status}{call.exit_code != null ? ` · exit ${call.exit_code}` : ""}</small>)}
           {step.state === "pending" ? <>
             <button type="button" disabled={busy} onClick={() => {
               const description = window.prompt("Edit step description", step.description);
@@ -87,10 +95,10 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
           <select value={step.state} disabled={busy} aria-label={"State for " + step.description}
             onChange={e => {
               const state = e.target.value;
-              const evidence = state === "completed" ? window.prompt("Verification evidence (required)") : null;
-              if (state === "completed" && !evidence?.trim()) return;
+              const callIds = step.executions?.filter(call => call.status === "succeeded").map(call => call.call_id) ?? [];
+              if (state === "completed" && !callIds.length) { setError("This step has no successful runtime tool evidence yet."); return; }
               void request("plan.step.update", {plan_id: plan.id, step_id: step.id, state,
-                evidence: evidence ? [{note: evidence}] : undefined});
+                tool_call_ids: callIds});
             }}>
             {["pending", "in_progress", "blocked", "skipped", "completed"].map(state => <option key={state} value={state}>{state}</option>)}
           </select>

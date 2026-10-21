@@ -425,6 +425,14 @@ class ContextBudgetManager:
         truncated: int = 0,
         context_sources: dict[str, int] | None = None,
     ) -> ContextUsage:
+        sources = dict(context_sources or {})
+        # Recompute history/tool contributions from the messages actually selected.
+        user_index = self._latest_user_index(messages)
+        sources["history"] = self._messages_tokens(messages[1:user_index]) if user_index > 0 else 0
+        sources["tool_output"] = self._messages_tokens([m for m in messages[user_index + 1:] if m.get("role") == "tool"])
+        system_cost = self._message_tokens(messages[0]) if messages else 0
+        selected_blocks = sum(v for k, v in sources.items() if k not in ("history", "tool_output", "system_rules"))
+        sources["system_rules"] = max(0, system_cost - selected_blocks)
         return ContextUsage(
             context_window_tokens=self.context_window_tokens,
             reserved_output_tokens=self.reserved_output_tokens,
@@ -435,5 +443,5 @@ class ContextBudgetManager:
             omitted_history_messages=omitted_history,
             runtime_messages_omitted=runtime_omitted,
             truncated_messages=truncated,
-            context_sources=dict(context_sources or {}),
+            context_sources=sources,
         )

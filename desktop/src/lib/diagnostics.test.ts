@@ -50,6 +50,16 @@ describe("diagnostics redaction", () => {
 });
 
 describe("phase27 execution trace", () => {
+  it("redacts credentials, URLs, environment and reasoning fields", () => {
+    const safe = JSON.stringify(sanitizeDiagnostics({
+      mcp_credentials: "private-mcp", env: { CUSTOM_SECRET: "private-env" },
+      reasoning: "private-thought", message: "Authorization: Basic private-basic",
+      url: "https://user:private-pass@example.test/path?token=private-token",
+      context_token_estimate: 123,
+    }));
+    for (const secret of ["private-mcp", "private-env", "private-thought", "private-basic", "private-pass", "private-token"]) expect(safe).not.toContain(secret);
+    expect(safe).toContain("123");
+  });
   it("keeps token accounting without exposing secrets", () => {
     const safe = sanitizeDiagnostics({
       context: { estimated_input_tokens: 123, context_sources: { history: 40 } },

@@ -8,11 +8,35 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+import re
+import hashlib
 from datetime import datetime, timezone
 from typing import Any
 
 STATES = frozenset({"pending", "in_progress", "completed", "skipped", "blocked"})
 MAX_STEPS = 100
+
+
+def automatic_steps(prompt: str) -> list[dict[str, str]]:
+    """Plan explicit multi-step work; ordinary chat and small tasks stay plan-free."""
+    lines = [re.sub(r"^\s*(?:\d+[.)、]|[-*])\s*", "", line).strip()
+             for line in prompt.splitlines() if re.match(r"^\s*(?:\d+[.)、]|[-*])\s*\S", line)]
+    if len(lines) >= 3:
+        return [{"description": line[:1000]} for line in lines[:MAX_STEPS]]
+    actions = re.findall(r"修复|重构|实现|测试|验证|检查|implement|refactor|verify|test|review", prompt, re.I)
+    if len(prompt) >= 180 and len(set(actions)) >= 3:
+        return [{"description": "Inspect the project and identify the requested changes"},
+                {"description": "Implement the requested changes"},
+                {"description": "Run relevant tests and inspect the final diff", "verification": "Successful validation command"}]
+    return []
+
+
+def mutation_fingerprint(tool: str, arguments: dict[str, Any], read_only: bool = False) -> str:
+    if read_only:
+        return ""
+    if tool == "run_command" and re.match(r"^(?:uv\s+run\s+)?(?:python(?:3)?\s+-m\s+(?:unittest|pytest|compileall)\b|npm(?:\.cmd)?\s+(?:run\s+)?(?:test|typecheck|build)\b)", str(arguments.get("command", "")).strip(), re.I):
+        return ""
+    return hashlib.sha256((tool + json.dumps(arguments, sort_keys=True, ensure_ascii=False)).encode()).hexdigest()
 
 
 def _now() -> str:
@@ -53,14 +77,63 @@ class TaskPlanStore:
             );
             CREATE INDEX IF NOT EXISTS idx_task_checkpoints_plan
                 ON task_checkpoints(plan_id, created_at);
+            CREATE TABLE IF NOT EXISTS task_plan_executions (
+                call_id TEXT PRIMARY KEY,
+                plan_id TEXT NOT NULL REFERENCES task_plans(id) ON DELETE CASCADE,
+                step_id TEXT NOT NULL,
+                turn_id TEXT NOT NULL,
+                tool TEXT NOT NULL,
+                status TEXT NOT NULL,
+                exit_code INTEGER,
+                changed_paths TEXT NOT NULL DEFAULT '[]',
+                fingerprint TEXT NOT NULL DEFAULT ''
+            );
         """)
+        if "fingerprint" not in {row[1] for row in self.db.execute("PRAGMA table_info(task_plan_executions)")}:
+            self.db.execute("ALTER TABLE task_plan_executions ADD COLUMN fingerprint TEXT NOT NULL DEFAULT ''")
         self.db.commit()
+
+    def record_execution(self, plan_id: str, step_id: str, call_id: str, turn_id: str,
+                         tool: str, result: dict[str, Any] | None = None, fingerprint: str = "") -> None:
+        """Store only execution metadata, never arguments, output, or model reasoning."""
+        with self.db:
+            self.db.execute(
+                "INSERT INTO task_plan_executions VALUES(?,?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(call_id) DO UPDATE SET status=excluded.status,exit_code=excluded.exit_code,changed_paths=excluded.changed_paths",
+                (call_id, plan_id, step_id, turn_id, tool,
+                 "running" if result is None else "succeeded" if result.get("ok") else "failed",
+                 result.get("exit_code") if result else None,
+                 json.dumps(list((result or {}).get("changed_paths") or [])[:100]), fingerprint),
+            )
+
+    def previously_applied(self, plan_id: str, fingerprint: str) -> bool:
+        return bool(fingerprint and self.db.execute(
+            "SELECT 1 FROM task_plan_executions WHERE plan_id=? AND fingerprint=? AND status='succeeded' LIMIT 1",
+            (plan_id, fingerprint)).fetchone())
+
+    def execution_evidence(self, plan_id: str, step_id: str,
+                           call_ids: list[str]) -> list[dict[str, Any]]:
+        if not call_ids or len(call_ids) > 100:
+            raise ValueError("Provide 1..100 actual tool call IDs for this step")
+        evidence = []
+        for call_id in call_ids:
+            row = self.db.execute(
+                "SELECT * FROM task_plan_executions WHERE call_id=? AND plan_id=? AND step_id=?",
+                (call_id, plan_id, step_id),
+            ).fetchone()
+            if row is None or row["status"] != "succeeded" or row["exit_code"] not in (None, 0):
+                raise ValueError("Completion requires successful persisted tool evidence for this step")
+            evidence.append({"tool_call_id": row["call_id"], "step_id": step_id,
+                             "tool": row["tool"], "ok": True, "exit_code": row["exit_code"]})
+        return evidence
 
     def create(self, thread_id: str, goal: str, steps: list[dict[str, str]]) -> str:
         if not thread_id.strip() or not goal.strip() or not 1 <= len(steps) <= MAX_STEPS:
             raise ValueError("thread, goal and 1..100 steps required")
-        if any(not s.get("description", "").strip() for s in steps):
-            raise ValueError("step description required")
+        if any(not isinstance(s, dict) or not isinstance(s.get("description"), str)
+               or not s["description"].strip() or len(s["description"]) > 4000
+               or not isinstance(s.get("verification", ""), str) for s in steps):
+            raise ValueError("Each step requires a nonempty description of at most 4000 characters")
         plan_id, now = str(uuid.uuid4()), _now()
         with self.db:
             self.db.execute(
@@ -82,10 +155,13 @@ class TaskPlanStore:
         steps = self.db.execute(
             "SELECT * FROM task_plan_steps WHERE plan_id=? ORDER BY position", (plan_id,)
         ).fetchall()
+        executions = [dict(row) for row in self.db.execute(
+            "SELECT call_id,step_id,tool,status,exit_code FROM task_plan_executions WHERE plan_id=? ORDER BY rowid DESC LIMIT 100", (plan_id,))]
         return {
             **dict(plan),
             "steps": [
-                {**dict(s), "evidence": json.loads(s["evidence_json"])}
+                {**dict(s), "evidence": json.loads(s["evidence_json"]),
+                 "executions": [item for item in executions if item["step_id"] == s["id"]]}
                 for s in steps
             ],
         }
@@ -181,6 +257,9 @@ class TaskPlanStore:
                 "INSERT INTO task_checkpoints(id,plan_id,created_at,reason,snapshot_json) VALUES(?,?,?,?,?)",
                 (checkpoint_id, plan_id, _now(), reason, json.dumps(snapshot)),
             )
+            self.db.execute("DELETE FROM task_checkpoints WHERE plan_id=? AND id NOT IN "
+                            "(SELECT id FROM task_checkpoints WHERE plan_id=? ORDER BY rowid DESC LIMIT 50)",
+                            (plan_id, plan_id))
         return checkpoint_id
 
     def latest_checkpoint(self, plan_id: str) -> dict[str, Any] | None:

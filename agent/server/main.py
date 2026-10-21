@@ -5,8 +5,10 @@ import asyncio
 import json
 import os
 import platform
+import re
 import secrets
 import sys
+from time import perf_counter
 from collections import deque
 from contextlib import suppress
 from dataclasses import asdict
@@ -36,6 +38,7 @@ from agent.core.diagnostics import (
     sanitize_provider_status,
 )
 from agent.core.settings import RuntimeSettings
+from agent.core.turn_metrics import TurnMetrics
 from agent.core.version import APP_VERSION, PROTOCOL_VERSION
 from agent.llm.base import ProviderError, ToolCall
 from agent.mcp.runtime import MCPRuntime
@@ -45,8 +48,9 @@ from agent.permissions.approval import (
     ApprovalManager,
 )
 from agent.plan_verification import verification_passed
+from agent.task_plans import automatic_steps, mutation_fingerprint
 from agent.persistence.store import SQLiteStore
-from agent.permissions.policy import PermissionMode, PermissionPolicy
+from agent.permissions.policy import PermissionMode, PermissionPolicy, READ_ONLY_TOOLS
 from agent.core.prompt_rules import PromptRuleManager
 from agent.server.projects import ProjectRegistry
 from agent.server.protocol import envelope, new_id, validate_client_message
@@ -120,6 +124,8 @@ class AgentServer:
     def __init__(self, token: str) -> None:
         self.token = token
         self.store = SQLiteStore()
+        self.last_turn_trace: dict[str, Any] | None = None
+        self.confirmed_plan_resumes: set[tuple[str, str]] = set()
         self.projects = ProjectRegistry(self.store)
         self.mcp_settings = MCPSettingsManager(self.store)
         self.mcp_runtime = MCPRuntime(self.mcp_settings, self.projects)
@@ -1194,6 +1200,8 @@ class AgentServer:
                 return
             plans = self.store.task_plans
             try:
+                if message_type != "plan.list" and self.active_turns:
+                    raise ValueError("Stop the active turn before editing or resuming a plan")
                 plan_id = str(payload.get("plan_id") or "")
                 if message_type == "plan.create":
                     plan_id = plans.create(thread_id, str(payload.get("goal") or ""),
@@ -1202,9 +1210,14 @@ class AgentServer:
                     plan = plans.get(plan_id)
                     if plan["thread_id"] != thread_id:
                         raise ValueError("Plan belongs to another thread")
-                    plans.update_step(plan_id, str(payload.get("step_id") or ""),
-                                      str(payload.get("state") or ""),
-                                      payload.get("evidence"))
+                    step_id = str(payload.get("step_id") or "")
+                    state = str(payload.get("state") or "")
+                    evidence = plans.execution_evidence(plan_id, step_id, list(payload.get("tool_call_ids") or [])) if state == "completed" else None
+                    if state == "completed":
+                        step = next(s for s in plan["steps"] if s["id"] == step_id)
+                        if not verification_passed(step_id, step["verification"], evidence, loop_complete=True):
+                            raise ValueError("The step verification requires successful command evidence")
+                    plans.update_step(plan_id, step_id, state, evidence)
                 elif message_type == "plan.step.edit":
                     plan = plans.get(plan_id)
                     if plan["thread_id"] != thread_id:
@@ -1230,6 +1243,14 @@ class AgentServer:
                         "plan.resumable", plans.prepare_resume(plan_id),
                         request_id=request_id, thread_id=thread_id))
                     return
+                elif message_type == "plan.resume.confirm":
+                    plan = plans.get(plan_id)
+                    if plan["thread_id"] != thread_id:
+                        raise ValueError("Plan belongs to another thread")
+                    checkpoint = plans.latest_checkpoint(plan_id)
+                    step = plans.active_step(plan_id)
+                    if step:
+                        self.confirmed_plan_resumes.add((thread_id, checkpoint["id"] if checkpoint else "uncheckpointed:" + step["id"]))
                 elif message_type != "plan.list":
                     raise ValueError("Unsupported plan operation")
                 await ws.send_json(envelope(
@@ -1263,6 +1284,9 @@ class AgentServer:
             return
 
         if message_type == "turn.start":
+            if any(not task.done() for task in self.active_turns.values()):
+                await self.send_error(ws, "TURN_RUNNING", "Stop the active turn before starting another task.", request_id=request_id)
+                return
             thread_id = str(data.get("thread_id") or payload.get("thread_id") or "")
             prompt = str(payload.get("prompt") or "").strip()
             project = self.projects.active
@@ -1277,6 +1301,19 @@ class AgentServer:
             if not prompt:
                 await self.send_error(ws, "EMPTY_PROMPT", "Prompt cannot be empty.", request_id=request_id, thread_id=thread_id)
                 return
+
+            for plan in self.store.task_plans.list_for_thread(thread_id):
+                next_step = self.store.task_plans.active_step(plan["id"])
+                checkpoint = self.store.task_plans.latest_checkpoint(plan["id"])
+                if next_step and next_step["state"] == "blocked":
+                    await self.send_error(ws, "PLAN_BLOCKED", "Resolve the blocked plan step before continuing.", request_id=request_id, thread_id=thread_id)
+                    return
+                if next_step and next_step["state"] == "in_progress":
+                    confirmation = (thread_id, checkpoint["id"] if checkpoint else "uncheckpointed:" + next_step["id"])
+                    if confirmation not in self.confirmed_plan_resumes:
+                        await self.send_error(ws, "PLAN_RESUME_CONFIRMATION_REQUIRED", "Review the workspace and use Continue plan to confirm recovery of the interrupted step.", request_id=request_id, thread_id=thread_id)
+                        return
+                    self.confirmed_plan_resumes.discard(confirmation)
 
             model = thread.active_model or self.default_model or self.provider.preferred_model
             if not await self.ensure_model_available(ws, model, request_id=request_id, thread_id=thread_id):
@@ -1402,6 +1439,8 @@ class AgentServer:
             for secret in (
                 self.openai_api_key,
                 *self.mcp_runtime.exact_secrets(),
+                *(value for key, value in os.environ.items()
+                  if re.search(r"API.?KEY|TOKEN|PASSWORD|SECRET|CREDENTIAL|AUTHORIZATION", key, re.I) and len(value) >= 4),
             )
             if secret
         )
@@ -1508,6 +1547,10 @@ class AgentServer:
             "workspace": project_payload,
             "prompt_rules": prompt_rules,
             "mcp": self.mcp_runtime.diagnostic_payload(),
+            "agent_state": {"running": bool(self.active_turns), "active_turns": len(self.active_turns)},
+            "repository_map": project.ensure_repository_map().payload() if project else None,
+            "worktree": await self._worktree_health(project),
+            "last_turn_trace": self.last_turn_trace,
             "database": database_summary(self.store),
             "agent_limits": {
                 "max_model_steps": self.max_model_steps,
@@ -1535,6 +1578,16 @@ class AgentServer:
         return self.settings.to_public_dict(
             api_key_configured=bool(configured_key),
         )
+
+    async def _worktree_health(self, project) -> dict[str, Any]:
+        if not project:
+            return {"status": "no_workspace", "count": 0}
+        try:
+            result = await project.tools.execute("git_worktree_list", {})
+            return {"status": "ready" if result.ok else "unavailable",
+                    "count": len((result.data or {}).get("worktrees", []))}
+        except Exception:
+            return {"status": "unavailable", "count": 0}
 
     def _apply_runtime_settings(
         self,
@@ -1617,15 +1670,28 @@ class AgentServer:
             return False
         return True
 
-    def _checkpoint_thread_plans(self, thread_id: str, reason: str,
+    async def _checkpoint_thread_plans(self, thread_id: str, reason: str,
                                  files_changed: list[str] | None = None,
                                  commands_run: list[dict] | None = None) -> None:
         """Persist active plans on turn boundaries without replaying tools."""
         plans = self.store.task_plans
-        for plan in plans.list_for_thread(thread_id):
-            if any(step["state"] in ("pending", "in_progress", "blocked")
-                   for step in plan["steps"]):
-                plans.checkpoint(plan["id"], reason, files_changed=files_changed, commands_run=commands_run)
+        active = [plan for plan in plans.list_for_thread(thread_id)
+                  if any(step["state"] in ("pending", "in_progress", "blocked") for step in plan["steps"])]
+        if not active:
+            return
+        git_status = "unavailable"
+        project = self.projects.active
+        if project:
+            with suppress(Exception):
+                result = await project.tools.execute("git_status", {})
+                if result.ok:
+                    git_status = redact_text(result.stdout, exact_secrets=self._exact_secrets(), max_chars=4000)
+        commands = [{"tool": item.get("tool"), "ok": bool(item.get("ok")),
+                     "summary": redact_text(str(item.get("summary", "")), exact_secrets=self._exact_secrets())}
+                    for item in (commands_run or [])[-100:]]
+        for plan in active:
+            plans.checkpoint(plan["id"], reason, files_changed=files_changed, commands_run=commands,
+                git_status=git_status, blockers=[step["description"] for step in plan["steps"] if step["state"] == "blocked"])
 
     async def run_tool_turn(
         self,
@@ -1647,6 +1713,7 @@ class AgentServer:
         tools = project.tools
         state = project.state
         guard = ToolLoopGuard()
+        metrics = TurnMetrics()
         plan_files_changed: set[str] = set()
         plan_commands_run: list[dict] = []
         plan_tool_evidence: list[dict] = []
@@ -1658,6 +1725,12 @@ class AgentServer:
         ]
         # Existing plans are explicit user intent. Do not create plans for simple turns.
         active_plan = active_plans[0] if active_plans else None
+        if not active_plan:
+            steps = automatic_steps(prompt)
+            if steps:
+                plan_id = self.store.task_plans.create(thread_id, prompt[:1000], steps)
+                active_plan = self.store.task_plans.get(plan_id)
+                await ws.send_json(envelope("plan.loaded", {"plans": [active_plan]}, thread_id=thread_id))
         active_step_id: str | None = None
         if active_plan:
             first_step = self.store.task_plans.active_step(active_plan["id"])
@@ -1746,6 +1819,7 @@ class AgentServer:
         context_usage = initial_context.usage
         context_source_tokens = dict(context_usage.context_sources)
         self.last_context_usage = context_usage.to_dict()
+        metrics.record_context(self.last_context_usage)
 
         await ws.send_json(
             envelope(
@@ -1759,9 +1833,11 @@ class AgentServer:
         prompt_eval_count: int | None = None
         eval_count: int | None = None
         total_tool_calls = 0
+        previous_checkpoint = self.store.task_plans.latest_checkpoint(active_plan["id"]) if active_plan else None
 
         try:
             for step in range(1, self.max_model_steps + 1):
+                metrics.model_steps += 1
                 assistant_parts: list[str] = []
                 tool_calls: list[ToolCall] = []
                 step_tool_keys: set[str] = set()
@@ -1778,6 +1854,7 @@ class AgentServer:
                         messages = fitted_context.messages
                         context_usage = fitted_context.usage
                         self.last_context_usage = context_usage.to_dict()
+                        metrics.record_context(self.last_context_usage)
                         await ws.send_json(
                             envelope(
                                 "context.updated",
@@ -1834,6 +1911,8 @@ class AgentServer:
                         if not can_retry:
                             raise
 
+                        metrics.retries += 1
+
                         await ws.send_json(
                             envelope(
                                 "turn.status",
@@ -1871,7 +1950,8 @@ class AgentServer:
                         )
                         verified = verification_passed(
                             active_step_id, requirement, evidence,
-                            loop_complete=not gaps)
+                            loop_complete=not gaps or (not requirement.strip() and
+                                active_plan["steps"][-1]["id"] != active_step_id))
                         self.store.task_plans.advance_verified(
                             active_plan["id"], active_step_id, evidence, verified)
                     # Advance to the next plan step within this same Agent turn
@@ -1887,7 +1967,7 @@ class AgentServer:
                         if (finished and finished["state"] == "completed"
                                 and next_step and next_step["state"] == "pending"
                                 and next_step["id"] != active_step_id):
-                            self._checkpoint_thread_plans(
+                            await self._checkpoint_thread_plans(
                                 thread_id, "step_completed",
                                 sorted(plan_files_changed), plan_commands_run)
                             await ws.send_json(envelope(
@@ -1915,7 +1995,7 @@ class AgentServer:
                         user=prompt,
                         assistant=assistant_text,
                     )
-                    self._checkpoint_thread_plans(thread_id, "turn_completed", sorted(plan_files_changed), plan_commands_run)
+                    await self._checkpoint_thread_plans(thread_id, "turn_completed", sorted(plan_files_changed), plan_commands_run)
                     # A fully completed plan is no longer considered active by
                     # _checkpoint_thread_plans. Persist its terminal state too.
                     if active_plan:
@@ -1943,6 +2023,7 @@ class AgentServer:
                                 "model_steps": step,
                                 "tool_calls": total_tool_calls,
                                 "verification": verification,
+                                "execution_summary": metrics.summary(),
                             },
                             thread_id=thread_id,
                             turn_id=turn_id,
@@ -2028,7 +2109,19 @@ class AgentServer:
                         )
                     )
 
-                    if not allowed:
+                    tool_started = perf_counter()
+                    metadata = tools.permission_metadata(call.name) or {}
+                    fingerprint = mutation_fingerprint(call.name, call.arguments,
+                        read_only=call.name in READ_ONLY_TOOLS or bool(metadata.get("trusted") and metadata.get("read_only")))
+                    replay = active_plan and self.store.task_plans.previously_applied(active_plan["id"], fingerprint)
+                    if active_plan and active_step_id:
+                        self.store.task_plans.update_step(active_plan["id"], active_step_id, "in_progress")
+                        self.store.task_plans.record_execution(active_plan["id"], active_step_id,
+                            call_id, turn_id, call.name, fingerprint=fingerprint)
+                    if replay:
+                        payload = {"ok": False, "summary": "This plan already applied this operation. Inspect the workspace instead of replaying it.",
+                            "error": {"code": "PLAN_OPERATION_ALREADY_APPLIED", "message": "A successful persisted operation cannot be automatically replayed."}, "changed_paths": []}
+                    elif not allowed:
                         if guard.last_block_reason and guard.last_block_reason.startswith(
                             "cycle:"
                         ):
@@ -2123,6 +2216,10 @@ class AgentServer:
                                     turn_id=turn_id,
                                 )
 
+                    metrics.record_tool(round((perf_counter() - tool_started) * 1000), ok=bool(payload.get("ok")))
+                    if active_plan and active_step_id:
+                        self.store.task_plans.record_execution(active_plan["id"], active_step_id,
+                            call_id, turn_id, call.name, payload)
                     if active_plan and payload.get("ok"):
                         # Do not silently skip a blocked step, even after a
                         # subsequent tool succeeds in the same model turn.
@@ -2137,6 +2234,7 @@ class AgentServer:
                         if active_step_id:
                             plan_tool_evidence.append({
                                 "step_id": active_step_id, "tool": call.name,
+                                "tool_call_id": call_id, "exit_code": payload.get("exit_code"),
                                 "ok": True, "summary": str(payload.get("summary", ""))[:500],
                                 "changed_paths": list(payload.get("changed_paths") or []),
                             })
@@ -2294,7 +2392,7 @@ class AgentServer:
                         )
                     )
 
-            self._checkpoint_thread_plans(thread_id, "max_model_steps", sorted(plan_files_changed), plan_commands_run)
+            await self._checkpoint_thread_plans(thread_id, "max_model_steps", sorted(plan_files_changed), plan_commands_run)
             self._record_diagnostic_error(
                 "MAX_MODEL_STEPS",
                 f"Agent exceeded {self.max_model_steps} model steps without completing the task.",
@@ -2318,7 +2416,7 @@ class AgentServer:
                 )
             )
         except asyncio.CancelledError:
-            self._checkpoint_thread_plans(thread_id, "turn_cancelled", sorted(plan_files_changed), plan_commands_run)
+            await self._checkpoint_thread_plans(thread_id, "turn_cancelled", sorted(plan_files_changed), plan_commands_run)
             with suppress(ConnectionResetError, RuntimeError):
                 await ws.send_json(
                     envelope(
@@ -2334,7 +2432,7 @@ class AgentServer:
                 )
             raise
         except ProviderError as exc:
-            self._checkpoint_thread_plans(thread_id, "provider_error", sorted(plan_files_changed), plan_commands_run)
+            await self._checkpoint_thread_plans(thread_id, "provider_error", sorted(plan_files_changed), plan_commands_run)
             self._record_diagnostic_error(
                 exc.code,
                 exc.message,
@@ -2358,7 +2456,17 @@ class AgentServer:
         except (ConnectionResetError, RuntimeError):
             return
         finally:
+            if active_plan and self.store.task_plans.latest_checkpoint(active_plan["id"]) == previous_checkpoint:
+                await self._checkpoint_thread_plans(thread_id, "turn_interrupted", sorted(plan_files_changed), plan_commands_run)
             self.approvals.finish_turn(turn_id)
+            self.last_turn_trace = {
+                "provider": redact_text(self.provider.provider_name, exact_secrets=self._exact_secrets()),
+                "model": redact_text(model, exact_secrets=self._exact_secrets()),
+                "execution_summary": metrics.summary(),
+            }
+            with suppress(ConnectionResetError, RuntimeError):
+                await ws.send_json(envelope("turn.metrics", self.last_turn_trace,
+                    thread_id=thread_id, turn_id=turn_id))
 
     async def _execute_tool_call(
         self,

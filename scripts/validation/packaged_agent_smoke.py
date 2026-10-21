@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import queue
 import re
 import subprocess
 import threading
 import time
+import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -32,6 +34,7 @@ def main() -> int:
     if not executable.is_file():
         raise SystemExit(f"Agent executable does not exist: {executable}")
 
+    smoke_data = tempfile.TemporaryDirectory(prefix="lca-packaged-agent-")
     process = subprocess.Popen(
         [str(executable), "--port", "0"],
         cwd=str(executable.parent),
@@ -40,6 +43,7 @@ def main() -> int:
         text=True,
         encoding="utf-8",
         errors="replace",
+        env={**os.environ, "LCA_DATA_DIR": smoke_data.name},
     )
 
     assert process.stdout is not None
@@ -61,7 +65,6 @@ def main() -> int:
                 line = stdout_lines.get(timeout=0.2)
             except queue.Empty:
                 continue
-            print(line)
             if line.startswith(READY_PREFIX):
                 ready = json.loads(line[len(READY_PREFIX) :])
                 break
@@ -125,6 +128,7 @@ def main() -> int:
         if process.poll() is None:
             process.kill()
             process.wait(timeout=5)
+        smoke_data.cleanup()
 
 
 if __name__ == "__main__":
