@@ -2,11 +2,11 @@
 
 Local Coding Agent 是一个面向 Windows 本地开发环境的桌面 Coding Agent。目标是提供类似 Codex Desktop 的核心开发体验，同时让模型、Agent、工具链、数据和权限边界保持在用户自己的环境中。
 
-> 稳定版本：**v0.2.0**
+> 当前代码版本：**v0.3.0**
 >
-> 当前开发：**v0.3**（`feature/v0.3`）
+> 最近正式发布：**v0.2.0**（v0.3 未创建 tag 或 GitHub Release）
 
-v0.3 候选版增加 MCP stdio/HTTP、Repository Map、Pinned Context、Git Stage/Unstage 与 Worktree、持久化任务计划和执行统计。桌面支持项目树独立展开、会话改名、Markdown/代码复制、浅深主题，以及不遮挡输入框的右侧面板。正式合并仍以 [最终验收记录](docs/v0.3-final-validation.md) 的门禁为准。
+v0.3 增加 MCP stdio/HTTP、Repository Map、Pinned Context、Git Stage/Unstage 与 Worktree、持久化任务计划和执行统计。桌面支持项目树独立展开、会话改名、Markdown/代码复制、浅深主题，以及不遮挡输入框的右侧面板。人工验收已通过；自动化证据与主线集成记录见 [最终验收记录](docs/v0.3-final-validation.md)。
 
 本地依赖统一由 uv 与 npm 锁文件管理：
 
