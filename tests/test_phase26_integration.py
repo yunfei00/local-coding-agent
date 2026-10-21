@@ -29,8 +29,8 @@ class Phase26IntegrationTests(unittest.TestCase):
 
     def test_step_scoped_verification_and_single_turn_persistence(self):
         source = (ROOT / "agent/server/main.py").read_text(encoding="utf-8")
-        self.assertIn('item.get("step_id") == active_step_id', source)
-        self.assertIn('for item in evidence', source)
+        self.assertIn('verification_passed(', source)
+        self.assertIn('loop_complete=not gaps', source)
         self.assertNotIn('command.get("ok") is True for command in plan_commands_run', source)
         continuation = source.index('# Advance to the next plan step within this same Agent turn')
         persistence = source.index('state.append_exchange(', continuation)
