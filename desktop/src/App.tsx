@@ -141,7 +141,7 @@ function readPermission(event: AgentEnvelope): PermissionMode | null {
 
 function readProjectList(event: AgentEnvelope): ProjectInfo[] {
   const value = event.payload?.projects;
-  return Array.isArray(value) ? (value as ProjectInfo[]) : [];
+  return Array.isArray(value) ? [...(value as ProjectInfo[])].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id)) : [];
 }
 
 function readProjectSession(event: AgentEnvelope): ProjectSessionPayload | null {
@@ -275,7 +275,7 @@ function App() {
       const next = current
         .filter((project) => project.id !== activeProject.id)
         .map((project) => ({ ...project, active: false }));
-      return [activeProject, ...next];
+      return [...next, activeProject].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id));
     });
   }, []);
 
@@ -334,6 +334,17 @@ function App() {
         event.type === "project.selected"
       ) {
         applyProjectSession(event);
+        return;
+      }
+
+      if (event.type === "thread.updated") {
+        const thread = readThread(event);
+        if (thread) {
+          setThreads((current) => current.map((item) =>
+            item.id === thread.id ? thread : item));
+          setActiveThread((current) =>
+            current?.id === thread.id ? thread : current);
+        }
         return;
       }
 

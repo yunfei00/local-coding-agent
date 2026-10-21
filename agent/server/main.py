@@ -1265,6 +1265,14 @@ class AgentServer:
             if not await self.ensure_model_available(ws, model, request_id=request_id, thread_id=thread_id):
                 return
 
+            renamed_thread = project.state.summarize_thread_title(thread_id, prompt)
+            if renamed_thread:
+                await ws.send_json(envelope(
+                    "thread.updated",
+                    {"thread": renamed_thread.to_dict()},
+                    thread_id=thread_id,
+                ))
+
             turn_id = new_id("turn")
             project.state.touch_thread(thread_id)
             self.projects.mark_active_thread(thread_id)

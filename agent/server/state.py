@@ -91,6 +91,20 @@ class InMemoryState:
         self._persist_thread(thread)
         return thread
 
+    def summarize_thread_title(self, thread_id: str, prompt: str) -> ThreadRecord | None:
+        """Name an untouched thread from its first user task, without model calls."""
+        thread = self._threads.get(thread_id)
+        if not thread or thread.title != "New thread":
+            return None
+        title = " ".join(prompt.split()).strip()
+        if not title:
+            return None
+        if len(title) > 46:
+            title = title[:45].rstrip() + "…"
+        thread.title = title
+        self._persist_thread(thread)
+        return thread
+
     def list_threads(self) -> list[ThreadRecord]:
         return sorted(
             self._threads.values(),
