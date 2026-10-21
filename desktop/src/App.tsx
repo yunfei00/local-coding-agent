@@ -201,6 +201,8 @@ function App() {
     useState<PermissionMode>("workspace");
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
+  const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([]);
+  const [projectThreadCache, setProjectThreadCache] = useState<Record<string, ThreadRecord[]>>({});
   const [workspace, setWorkspace] = useState<ProjectInfo | null>(null);
   const [selectedModel, setSelectedModel] = useState("");
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
@@ -256,6 +258,8 @@ function App() {
     const activeProject = { ...session.project, active: true };
     setWorkspace(activeProject);
     setThreads(session.threads);
+    setProjectThreadCache((cache) => ({ ...cache, [activeProject.id]: session.threads }));
+    setExpandedProjectIds((ids) => ids.includes(activeProject.id) ? ids : [...ids, activeProject.id]);
     setActiveThread(session.activeThread);
     setItems(
       session.activeThread
@@ -936,6 +940,16 @@ function App() {
     }
   };
 
+  const toggleProject = (project: ProjectInfo) => {
+    const isExpanded = expandedProjectIds.includes(project.id);
+    setExpandedProjectIds((ids) => isExpanded
+      ? ids.filter((id) => id !== project.id)
+      : [...ids, project.id]);
+    if (!isExpanded && workspace?.id !== project.id) {
+      void selectProject(project);
+    }
+  };
+
   const selectProject = async (project: ProjectInfo) => {
     if (runningTurnId || project.id === workspace?.id) {
       return;
@@ -1151,22 +1165,25 @@ function App() {
               <div className="project-group" key={project.id}>
                 <button className={"project-tree-header " + (workspace?.id === project.id ? "active" : "")}
                   disabled={Boolean(runningTurnId)} title={project.path}
-                  aria-expanded={workspace?.id === project.id}
-                  onClick={() => void selectProject(project)}>
+                  aria-expanded={expandedProjectIds.includes(project.id)}
+                  onClick={() => toggleProject(project)}>
                   <span className="project-tree-folder" aria-hidden="true">📁</span>
                   <span className="project-tree-name">{project.name}</span>
                   <span className="project-tree-count">{project.thread_count}</span>
-                  <span className="project-tree-chevron" aria-hidden="true">{workspace?.id === project.id ? "⌄" : "›"}</span>
+                  <span className="project-tree-chevron" aria-hidden="true">{expandedProjectIds.includes(project.id) ? "⌄" : "›"}</span>
                 </button>
-                {workspace?.id === project.id && (
+                {expandedProjectIds.includes(project.id) && (
                   <div className="project-tree-threads">
-                    {threads.length === 0 ? (
-                      <div className="empty-list">No threads yet</div>
-                    ) : threads.map((thread) => (
+                    {(workspace?.id === project.id ? threads : (projectThreadCache[project.id] ?? [])).length === 0 ? (
+                      <div className="empty-list">No threads loaded</div>
+                    ) : (workspace?.id === project.id ? threads : (projectThreadCache[project.id] ?? [])).map((thread) => (
                       <button key={thread.id}
-                        className={"thread-item project-tree-thread " + (activeThread?.id === thread.id ? "active" : "")}
+                        className={"thread-item project-tree-thread " + (workspace?.id === project.id && activeThread?.id === thread.id ? "active" : "")}
                         disabled={Boolean(runningTurnId)} title={thread.title}
-                        onClick={() => void loadThread(thread)}>
+                        onClick={() => {
+                          if (workspace?.id === project.id) void loadThread(thread);
+                          else void selectProject(project);
+                        }}>
                         <span className="project-tree-thread-icon" aria-hidden="true">◦</span>
                         <span className="project-tree-thread-name">{thread.title}</span>
                       </button>
