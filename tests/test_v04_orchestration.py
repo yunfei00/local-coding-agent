@@ -222,11 +222,15 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
         original_count = self.server.store.connection.execute("SELECT COUNT(*) FROM task_plan_executions WHERE plan_id=? AND tool='apply_patch'", (task["id"],)).fetchone()[0]
         local = ScriptedProvider([final_step("Already fixed; inspect test results"), final_step("review")])
         self.server.tasks.provider_factory_override = lambda *_: local
+        resume_event_start = len(self.ws.messages)
         await self.server.tasks.handle(self.ws, {"type":"task.resume", "thread_id":self.thread.id,
             "payload":{"task_id":task["id"], "confirm_workspace":True}}, set())
         await asyncio.gather(*list(self.server.active_turns.values()))
         restored = self.server.store.task_runtime.get(task["id"])
         self.assertEqual(restored["status"], "awaiting_approval", restored["reason"])
+        resumed = [e["payload"]["task"] for e in self.ws.messages[resume_event_start:] if e["type"] == "task.updated" and e["payload"]["task"]["status"] == "executing"]
+        self.assertTrue(resumed)
+        self.assertTrue(all(not t["report"] for t in resumed))
         self.assertEqual(self.server.store.connection.execute("SELECT COUNT(*) FROM task_plan_executions WHERE plan_id=? AND tool='apply_patch'", (task["id"],)).fetchone()[0], original_count)
 
     async def test_multifile_plan_checkpoint_and_git_review(self):

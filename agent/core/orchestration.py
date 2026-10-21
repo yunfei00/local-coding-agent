@@ -232,7 +232,7 @@ class TaskService:
             if remaining <= 0:
                 raise BudgetExceeded("Task execution time exhausted; explicitly add time before recovery")
             async with asyncio.timeout(remaining):
-                await update("planning" if not task["planned"] else "executing", "Inspect workspace before resuming; completed mutations are not replayed")
+                await update("planning" if not task["planned"] else "executing", "Inspect workspace before resuming; completed mutations are not replayed", report={})
                 if not task["workspace"]:
                     # Existing worktree policy still requires explicit intent and Approval.
                     result = await self.server._authorize_tool(ws, project=source,
