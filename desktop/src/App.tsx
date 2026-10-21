@@ -1133,54 +1133,37 @@ function App() {
 
         <div className="sidebar-scroll">
           <div className="section-label">PROJECTS</div>
-          <div className="project-list">
+          <div className="project-tree">
             {projects.length === 0 ? (
               <div className="empty-list">No projects opened</div>
-            ) : (
-              projects.map((project) => (
-                <button
-                  key={project.id}
-                  className={
-                    "project-item " +
-                    (workspace?.id === project.id ? "active" : "")
-                  }
-                  disabled={Boolean(runningTurnId)}
-                  title={project.path}
-                  onClick={() => void selectProject(project)}
-                >
-                  <strong>{project.name}</strong>
-                  <span>{project.path}</span>
-                  <small>
-                    {project.thread_count} thread
-                    {project.thread_count === 1 ? "" : "s"}
-                  </small>
+            ) : projects.map((project) => (
+              <div className="project-group" key={project.id}>
+                <button className={"project-tree-header " + (workspace?.id === project.id ? "active" : "")}
+                  disabled={Boolean(runningTurnId)} title={project.path}
+                  aria-expanded={workspace?.id === project.id}
+                  onClick={() => void selectProject(project)}>
+                  <span className="project-tree-folder" aria-hidden="true">📁</span>
+                  <span className="project-tree-name">{project.name}</span>
+                  <span className="project-tree-count">{project.thread_count}</span>
+                  <span className="project-tree-chevron" aria-hidden="true">{workspace?.id === project.id ? "⌄" : "›"}</span>
                 </button>
-              ))
-            )}
-          </div>
-
-          <div className="section-label">THREADS</div>
-          <div className="thread-list">
-            {threads.length === 0 ? (
-              <div className="empty-list">
-                {workspace ? "No threads yet" : "Select a project"}
+                {workspace?.id === project.id && (
+                  <div className="project-tree-threads">
+                    {threads.length === 0 ? (
+                      <div className="empty-list">No threads yet</div>
+                    ) : threads.map((thread) => (
+                      <button key={thread.id}
+                        className={"thread-item project-tree-thread " + (activeThread?.id === thread.id ? "active" : "")}
+                        disabled={Boolean(runningTurnId)} title={thread.title}
+                        onClick={() => void loadThread(thread)}>
+                        <span className="project-tree-thread-icon" aria-hidden="true">◦</span>
+                        <span className="project-tree-thread-name">{thread.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            ) : (
-              threads.map((thread) => (
-                <button
-                  key={thread.id}
-                  className={
-                    "thread-item " +
-                    (activeThread?.id === thread.id ? "active" : "")
-                  }
-                  disabled={Boolean(runningTurnId)}
-                  onClick={() => void loadThread(thread)}
-                >
-                  <span>{thread.title}</span>
-                  <small>{thread.active_model ?? "no model"}</small>
-                </button>
-              ))
-            )}
+            ))}
           </div>
         </div>
 

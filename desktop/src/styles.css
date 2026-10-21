@@ -3476,3 +3476,23 @@ summary:focus-visible {
 .git-overlay ~ .jump-to-bottom {
   pointer-events: auto;
 }
+
+/* Project > thread hierarchy (Codex-style sidebar). */
+.project-tree { display: flex; flex-direction: column; gap: 5px; padding-bottom: 8px; }
+.project-group { min-width: 0; }
+.project-tree-header {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0;
+  padding: 9px 8px; border: 0; border-radius: 7px;
+  background: transparent; color: #b9b9b9; text-align: left;
+}
+.project-tree-header:hover:not(:disabled), .project-tree-header.active {
+  background: #232323; color: #f2f2f2;
+}
+.project-tree-folder { flex: 0 0 auto; font-size: 15px; color: #a0a0a0; }
+.project-tree-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 650; }
+.project-tree-count { color: #818181; font-size: 10px; }
+.project-tree-chevron { color: #999; font-size: 16px; }
+.project-tree-threads { margin-left: 16px; padding-left: 7px; border-left: 1px solid #343434; }
+.project-tree-thread { display: flex; align-items: center; gap: 7px; text-align: left; padding: 7px 8px; }
+.project-tree-thread-icon { flex: 0 0 auto; color: #777; font-size: 18px; line-height: 10px; }
+.project-tree-thread-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
