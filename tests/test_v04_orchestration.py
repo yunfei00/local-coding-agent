@@ -275,6 +275,19 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(local.calls, 0)
         self.assertEqual(self.server.store.task_runtime.usage(task["id"])["api_calls"], 0)
 
+    async def test_model_cannot_replace_project_verification_with_echo(self):
+        (self.repo / ".lca").mkdir()
+        (self.repo / ".lca/verification.json").write_text(json.dumps({"commands":[COMMAND]}))
+        subprocess.run(["git", "add", ".lca"], cwd=self.repo, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-qm", "verification contract"], cwd=self.repo, check=True, capture_output=True)
+        config = self.config(local_repairs=0, api_calls=0)
+        config["verification_commands"] = []
+        task, _, api = await self.run_task([PLAN, tool_step("write_file", {"path":".lca/verification.json", "content":'{"commands":["echo passed"]}'}), final_step()], config=config)
+        self.assertEqual(task["status"], "paused", task["reason"])
+        self.assertEqual(task["verification"][0]["command"], COMMAND)
+        self.assertFalse(task["verification"][0]["ok"])
+        self.assertEqual(api.calls, 0)
+
     async def test_request_timeout_cancellation_and_json_tool_compatibility(self):
         runtime = self.server.store.task_runtime
         config = self.config(request_seconds=1)

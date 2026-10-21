@@ -22,6 +22,8 @@ from agent.tools.workspace import Workspace
 
 
 def autonomous_git_block(name: str, arguments: dict) -> str:
+    if name in {"write_file", "apply_patch"} and ".git" in re.split(r"[/\\]+", str(arguments.get("path", "")).lower()):
+        return "Task Git metadata is protected; use the explicit Git workflow."
     if name in {"git_commit", "git_worktree_remove", "git_worktree_create"}:
         return "Autonomous execution stops at Git review; use the explicit Git workflow after reviewing tests and Diff."
     command = str(arguments.get("command", "")) if name == "run_command" else ""
@@ -150,6 +152,7 @@ class TaskService:
                             raise ValueError("Pause task before explicitly changing its configuration")
                         task["config"] = validate_config(payload.get("config"))
                         task["provider_settings"] = asdict(self.server.settings)
+                        task.pop("resolved_verification_commands", None)
                         self.runtime.save(task)
                     elif kind == "task.approve":
                         if task["status"] != "awaiting_approval":
@@ -249,6 +252,12 @@ class TaskService:
                     raise ValueError("Persisted task path is not a managed worktree of the source repository")
                 view.workspace.set_full_access(self.server.permissions.mode.value == "full_access")
                 self.server.mcp_runtime.apply_to_project(view)
+                task = self.runtime.get(plan_id)
+                if "resolved_verification_commands" not in task:
+                    # Model edits must never weaken the verification command contract.
+                    task["resolved_verification_commands"] = discover_commands(view.workspace.root, task["config"]["verification_commands"])
+                    self.runtime.save(task)
+                commands = task["resolved_verification_commands"]
                 budget = BudgetGuard(self.runtime, plan_id, self.settings()["budget"])
                 router = ModelRouter(task["config"], lambda route, profile: self.make_provider(task["provider_settings"], route, profile), budget, emit)
                 async def execute(name, arguments, on_raw_output=None, environment=None):
@@ -312,7 +321,6 @@ class TaskService:
                     if code in {"BUDGET_EXHAUSTED", "MODEL_TIMEOUT", "OLLAMA_UNAVAILABLE", "OLLAMA_STREAM_FAILED", "OPENAI_COMPATIBLE_AUTH_FAILED", "OPENAI_COMPATIBLE_RATE_LIMITED", "OPENAI_COMPATIBLE_STREAM_FAILED"}:
                         raise ProviderError(code, outcome["payload"].get("message", code))
                     await update("verifying", "Run commands directly, without model Tokens")
-                    commands = discover_commands(view.workspace.root, task["config"]["verification_commands"])
                     before_validation = await self.workspace_fingerprint(view)
                     results = await verifier.run(commands)
                     for result in results:

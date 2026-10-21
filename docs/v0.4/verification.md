@@ -8,6 +8,8 @@
 
 只填写本工程实际可执行的命令。未配置时检查 `package.json` 中的 test/typecheck/build；Python 检查 tests 目录和 pyproject 中的 pytest 配置，否则运行 unittest；发现可用验证命令且为 Git 工程时补充 `git diff --check`。不会对每个工程执行固定列表，也不会自动安装缺失依赖。没有可用命令、发现零项测试或配置无效时不能验收通过。
 
+在模型执行前解析并持久化命令快照，后续修复和恢复继续使用此快照。模型修改 `.lca/verification.json` 或 package scripts 配置不能替换已经选定的命令列表；项目自身测试脚本的内容仍应在最终 Diff 审查中复核。只有用户暂停后显式 Apply configuration to paused task，才重新解析验证配置。
+
 每条命令记录退出码、stdout/stderr、耗时、类别和日志路径。Shell 的内存/实时输出有限，完整流写入应用数据目录 `verification/<plan-id>/<uuid>.log`；单文件上限 64 MiB，超出后明确标记截断且不认定验证通过。模型只收到有限摘要，完整日志留本地。分类为代码错误、断言、环境、权限、网络、超时、配置。分类是基于错误码和输出的启发式，报告保留原始退出码与摘要，用户可据此复核。
 
 每次验证通过内部白名单环境参数设置唯一 `PYTHONPYCACHEPREFIX` 并启用 `PYTHONDONTWRITEBYTECODE`。这避开旧缓存且不生成新缓存，防止自主快速编辑遇到 Python 同一秒、同大小的旧 `.pyc`，不会删除或改写用户缓存。模型工具参数没有开放任意环境变量注入。
