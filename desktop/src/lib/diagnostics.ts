@@ -6,7 +6,7 @@ export type DiagnosticValue =
   | DiagnosticValue[]
   | { [key: string]: DiagnosticValue };
 
-const SENSITIVE_KEY = /(api[_-]?key|token|secret|password|authorization|prompt|messages?)/i;
+const SENSITIVE_KEY = /(api[_-]?key|(?:^|[_-])(?:access_token|refresh_token|auth_token|token_value)(?:$|[_-])|secret|password|authorization|prompt|messages?)/i;
 const SECRET_PATTERNS = [
   /(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi,
   /\bsk-[A-Za-z0-9_-]{8,}\b/g,
@@ -71,4 +71,36 @@ export function formatDiagnosticsReport(value: unknown): string {
     "",
     JSON.stringify(safe, null, 2)
   ].join("\n");
+}
+
+/** Export only allowlisted numeric metrics; never include prompts or tool payloads. */
+export function formatTurnTrace(
+  turn: Record<string, unknown>
+): string {
+  const allowed = ["provider", "model", "finish_reason", "model_steps",
+    "tool_calls", "prompt_eval_count", "eval_count"];
+  const safe: Record<string, unknown> = {};
+  for (const key of allowed) {
+    const value = turn[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      safe[key] = value;
+    } else if (typeof value === "string" && key !== "model") {
+      safe[key] = value.slice(0, 100);
+    } else if (key === "model" && typeof value === "string") {
+      safe[key] = value.slice(0, 100);
+    }
+  }
+  const summary = turn.execution_summary;
+  if (summary && typeof summary === "object" && !Array.isArray(summary)) {
+    const metrics: Record<string, number> = {};
+    for (const key of ["elapsed_ms", "tool_duration_ms", "tool_failures",
+      "provider_retries", "model_steps", "tool_calls"]) {
+      const value = (summary as Record<string, unknown>)[key];
+      if (typeof value === "number" && Number.isFinite(value)) {
+        metrics[key] = value;
+      }
+    }
+    safe.execution_summary = metrics;
+  }
+  return JSON.stringify(sanitizeDiagnostics(safe), null, 2);
 }
