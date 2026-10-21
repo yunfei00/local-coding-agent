@@ -120,7 +120,7 @@ class RunCommandTool(BaseTool):
     def __init__(self, workspace: Workspace) -> None:
         self.workspace = workspace
 
-    async def execute(self, arguments: dict[str, Any], *, on_output=None, on_raw_output=None) -> ToolResult:
+    async def execute(self, arguments: dict[str, Any], *, on_output=None, on_raw_output=None, environment=None) -> ToolResult:
         command = str(arguments["command"])
         validate_command(command)
 
@@ -142,6 +142,10 @@ class RunCommandTool(BaseTool):
             "stderr": asyncio.subprocess.PIPE,
             "env": os.environ.copy(),
         }
+        if environment:
+            if set(environment) - {"PYTHONPYCACHEPREFIX", "PYTHONDONTWRITEBYTECODE"}:
+                raise ToolError("INVALID_COMMAND_ENVIRONMENT", "Only internal Python verification cache controls are supported")
+            spawn_kwargs["env"].update(environment)
         if os.name == "nt":
             spawn_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
         else:

@@ -2430,7 +2430,7 @@ class AgentServer:
                     thread_id=thread_id, turn_id=turn_id))
 
     async def _authorize_tool(self, ws, *, project, call, call_id, thread_id, turn_id,
-                              user_prompt, autonomous=False, on_raw_output=None):
+                              user_prompt, autonomous=False, on_raw_output=None, environment=None):
         if autonomous:
             from agent.core.orchestration import autonomous_git_block
             reason = autonomous_git_block(call.name, call.arguments)
@@ -2450,7 +2450,7 @@ class AgentServer:
                 return {"ok": False, "summary": "User denied this operation.",
                         "error": {"code": "APPROVAL_DENIED", "message": "User denied this operation."}, "changed_paths": []}
         return await self._execute_tool_call(ws, tools=project.tools, call=call,
-            call_id=call_id, thread_id=thread_id, turn_id=turn_id, on_raw_output=on_raw_output)
+            call_id=call_id, thread_id=thread_id, turn_id=turn_id, on_raw_output=on_raw_output, environment=environment)
 
     async def _execute_tool_call(
         self,
@@ -2462,6 +2462,7 @@ class AgentServer:
         thread_id: str,
         turn_id: str,
         on_raw_output=None,
+        environment=None,
     ) -> dict[str, Any]:
         async def on_output(chunk: dict[str, Any]) -> None:
             await ws.send_json(
@@ -2479,6 +2480,8 @@ class AgentServer:
 
         try:
             extra = {"on_raw_output": on_raw_output} if on_raw_output is not None else {}
+            if environment is not None:
+                extra["environment"] = environment
             result = await tools.execute(
                 call.name,
                 call.arguments,

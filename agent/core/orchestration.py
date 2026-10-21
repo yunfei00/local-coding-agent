@@ -118,6 +118,11 @@ class TaskService:
                             self.server.approvals.cancel_turn(turn_id)
                             running.cancel()
                             await asyncio.gather(running, return_exceptions=True)
+                            target = "paused" if kind == "task.pause" else "cancelled"
+                            if self.runtime.get(plan_id)["status"] != target:
+                                self.runtime.transition(plan_id, target, "User requested")
+                            self.stop_reasons.pop(plan_id, None)
+                            self.running.pop(plan_id, None)
                         else:
                             self.runtime.transition(plan_id, "paused" if kind == "task.pause" else "cancelled", "User requested")
                     elif kind == "task.resume":
@@ -246,10 +251,10 @@ class TaskService:
                 self.server.mcp_runtime.apply_to_project(view)
                 budget = BudgetGuard(self.runtime, plan_id, self.settings()["budget"])
                 router = ModelRouter(task["config"], lambda route, profile: self.make_provider(task["provider_settings"], route, profile), budget, emit)
-                async def execute(name, arguments, on_raw_output=None):
+                async def execute(name, arguments, on_raw_output=None, environment=None):
                     return await self.server._authorize_tool(ws, project=view, call=ToolCall(name, arguments),
                         call_id=new_id("verification"), thread_id=thread_id, turn_id=turn_id,
-                        user_prompt=goal, autonomous=True, on_raw_output=on_raw_output)
+                        user_prompt=goal, autonomous=True, on_raw_output=on_raw_output, environment=environment)
                 verifier = VerificationEngine(self.server.store.data_dir / "verification" / plan_id, execute, task["config"]["budget"]["verification_seconds"])
                 advice = ""
                 # A fixed safety bound supplements configurable time and API limits.
@@ -377,9 +382,9 @@ class TaskService:
 
     def diagnostic_context(self, task, results, diff, question):
         # Explicit byte/character bounds and redaction; no repository dump or full logs.
-        text = json.dumps({"goal": task["goal"][:3000], "diff": diff[:6000],
+        text = json.dumps({"question": question, "goal": task["goal"][:3000], "diff": diff[:6000],
             "failures": [{"command": r["command"], "category": r["category"], "summary": r.get("summary", "")[-1200:]} for r in results[:6]],
-            "attempts": task["attempt_history"][-4:], "question": question}, ensure_ascii=False)
+            "attempts": task["attempt_history"][-4:]}, ensure_ascii=False)
         return redact_text(text[:16000], exact_secrets=self.server._exact_secrets())
 
     async def escalate(self, router, task, results, diff, reason, update):

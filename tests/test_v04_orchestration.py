@@ -245,6 +245,36 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"old"', (self.repo / "formatting.py").read_text())
         self.assertEqual(self.server.store.task_plans.latest_checkpoint(task["id"])["reason"], "task_awaiting_approval")
 
+    async def test_verification_ignores_stale_python_bytecode(self):
+        from agent.core.verification import VerificationEngine
+        env = dict(os.environ)
+        env.pop("PYTHONPYCACHEPREFIX", None)
+        env.pop("PYTHONDONTWRITEBYTECODE", None)
+        args = ["uv", "run", "--no-project", "python", "-c", "import calculator; print(calculator.add(3,2))"]
+        self.assertEqual(subprocess.check_output(args, cwd=self.repo, env=env, text=True).strip(), "1")
+        source = self.repo / "calculator.py"
+        previous = source.stat()
+        source.write_text(source.read_text().replace("a - b", "a + b"), encoding="utf-8")
+        os.utime(source, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+        self.assertTrue(list((self.repo / "__pycache__").glob("calculator*.pyc")))
+        # Demonstrate the dangerous same-size/same-mtime cache hit first.
+        self.assertEqual(subprocess.check_output(args, cwd=self.repo, env=env, text=True).strip(), "1")
+        async def execute(name, arguments, **kwargs):
+            return (await self.project.tools.execute(name, arguments, **kwargs)).to_dict()
+        results = await VerificationEngine(self.root / "fresh-logs", execute, 30).run([COMMAND])
+        self.assertTrue(all(r["ok"] for r in results), results)
+
+    async def test_pause_before_coroutine_start_preserves_resumable_state(self):
+        local = ScriptedProvider([PLAN])
+        self.server.tasks.provider_factory_override = lambda *_: local
+        await self.server.tasks.handle(self.ws, {"type":"task.start", "thread_id":self.thread.id,
+            "payload":{"goal":"Fix calculator", "config":self.config()}}, set())
+        task = self.server.store.task_runtime.list(self.thread.id)[0]
+        await self.server.tasks.handle(self.ws, {"type":"task.pause", "thread_id":self.thread.id, "payload":{"task_id":task["id"]}}, set())
+        self.assertEqual(self.server.store.task_runtime.get(task["id"])["status"], "paused")
+        self.assertEqual(local.calls, 0)
+        self.assertEqual(self.server.store.task_runtime.usage(task["id"])["api_calls"], 0)
+
     async def test_request_timeout_cancellation_and_json_tool_compatibility(self):
         runtime = self.server.store.task_runtime
         config = self.config(request_seconds=1)

@@ -118,10 +118,11 @@ class ToolRegistry:
         *,
         on_output: OutputCallback | None = None,
         on_raw_output=None,
+        environment=None,
     ) -> ToolResult:
         tool = self._tools.get(name)
         if not tool:
             raise ToolError("TOOL_NOT_FOUND", f"Unknown tool: {name}")
-        if name == "run_command" and on_raw_output is not None:
-            return await tool.execute(arguments, on_output=on_output, on_raw_output=on_raw_output)
+        if name == "run_command" and (on_raw_output is not None or environment is not None):
+            return await tool.execute(arguments, on_output=on_output, on_raw_output=on_raw_output, environment=environment)
         return await tool.execute(arguments, on_output=on_output)

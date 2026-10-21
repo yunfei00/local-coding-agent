@@ -96,7 +96,8 @@ class VerificationEngine:
                         written += len(data.encode("utf-8"))
                     else:
                         truncated = True
-                result = await self.execute("run_command", {"command": command, "timeout_seconds": self.timeout}, on_raw_output=raw_output)
+                result = await self.execute("run_command", {"command": command, "timeout_seconds": self.timeout}, on_raw_output=raw_output,
+                    environment={"PYTHONPYCACHEPREFIX": str(self.log_root / "python-cache" / uuid.uuid4().hex), "PYTHONDONTWRITEBYTECODE": "1"})
             category = classify(result)
             # An empty unittest/pytest run is never independent acceptance evidence.
             output = str(result.get("stdout", "")) + "\n" + str(result.get("stderr", ""))
