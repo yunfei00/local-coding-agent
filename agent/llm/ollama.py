@@ -135,8 +135,8 @@ class OllamaProvider:
         ).rstrip("/")
         self.preferred_model = (
             preferred_model
-            or os.getenv("LCA_OLLAMA_MODEL")
-            or "qwen3-coder:30b"
+            if preferred_model is not None
+            else os.getenv("LCA_OLLAMA_MODEL", "")
         )
         self.context_window = context_window or int(
             os.getenv("LCA_OLLAMA_NUM_CTX", "32768")

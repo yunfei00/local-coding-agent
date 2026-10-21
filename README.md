@@ -2,7 +2,7 @@
 
 Local Coding Agent 是一个面向 Windows 本地开发环境的桌面 Coding Agent。目标是提供类似 Codex Desktop 的核心开发体验，同时让模型、Agent、工具链、数据和权限边界保持在用户自己的环境中。
 
-> 当前代码版本：**v0.3.0**
+> 当前代码版本：**v0.4.0 候选版**（`feature/v0.4-local-first-agent`）
 >
 > 最近正式发布：**v0.2.0**（v0.3 未创建 tag 或 GitHub Release）
 
@@ -15,6 +15,16 @@ uv sync --locked
 npm.cmd --prefix desktop ci
 uv run python scripts/validation/check.py
 ```
+
+## v0.4 Local-first Autonomous Coding
+
+Task 面板按需启动自主任务：默认 Local-first，规划/执行/审查使用本地模型，有限升级调用 API；支持 Local-only、API-only、四角色配置、持久化阶段、暂停/取消/恢复、请求前任务/全局预算、独立验证和完成报告。实际执行复用 v0.3 Agent Loop、权限、Approval、计划、Checkpoint、Shell 与受管理 Worktree，不自动提交、推送或合并。
+
+当前真实 CPU Ollama 已验证连接、计划和实际读取文件，但未完成修复；真实付费 API 尚未验收。不能把 Mock 成功视作真实模型验收通过。合并/正式发布仍受 [验收与阻断记录](docs/v0.4/acceptance.md) 约束。
+
+- [架构审计](docs/v0.4/architecture-audit.md) / [设计](docs/v0.4/design.md)
+- [模型路由](docs/v0.4/model-routing.md) / [预算](docs/v0.4/budget-control.md)
+- [独立验证](docs/v0.4/verification.md) / [公司部署与使用](docs/v0.4/user-guide.md)
 
 ## 当前能力
 
@@ -131,7 +141,7 @@ Desktop 与 Python Agent 使用独立于产品版本的语义协议版本。
 启动：
 
 ```powershell
-git checkout feature/v0.3
+git switch feature/v0.4-local-first-agent
 git pull
 .\scripts\dev\start.ps1
 ```
@@ -141,14 +151,14 @@ git pull
 Python：
 
 ```powershell
-python -m compileall agent
-python -m unittest discover -s tests -v
+uv run python -m compileall agent
+uv run python -m unittest discover -s tests -v
 ```
 
 Desktop：
 
 ```powershell
-npm --prefix desktop install
+npm.cmd --prefix desktop ci
 npm --prefix desktop run typecheck
 npm --prefix desktop run test
 npm --prefix desktop run build
@@ -247,8 +257,8 @@ Python Agent Server
 
 ## 分支策略
 
-- `main`：最新正式稳定版本，目前为 v0.2.0。
-- `feature/v0.3`：v0.3 主开发分支。
+- `main`：已验收的 v0.3 主线；最近正式 GitHub Release 仍为 v0.2.0。
+- `feature/v0.4-local-first-agent`：v0.4 开发与候选验收分支。
 - 必要时再从 v0.3 分支拆短期功能分支。
 
 ## License

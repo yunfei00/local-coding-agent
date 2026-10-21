@@ -294,6 +294,14 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
 
 
 class VerificationTests(unittest.TestCase):
+    def test_no_large_model_is_implicitly_selected(self):
+        from agent.core.settings import RuntimeSettings
+        from agent.llm.ollama import OllamaProvider
+        with patch.dict(os.environ, {"LCA_OLLAMA_MODEL":""}):
+            self.assertEqual(RuntimeSettings.defaults().ollama_model, "")
+            self.assertEqual(OllamaProvider().preferred_model, "")
+            RuntimeSettings.validate({"ollama_model":""})
+
     def test_error_categories(self):
         for code, text, expected in (("PERMISSION_DENIED", "", "permission"), ("COMMAND_TIMEOUT", "", "timeout"),
             ("", "ModuleNotFoundError: abc", "environment"), ("", "ECONNREFUSED", "network"),

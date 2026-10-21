@@ -752,3 +752,12 @@ Agent Server 不变即可更换 UI。
 Tool backend 抽象后可以增加 SSH / container。
 
 这也是本项目架构设计最重要的长期价值之一。
+
+
+## v0.4 实现扩展
+
+自主执行元数据通过原 TaskPlan ID 关联，不另建平行计划生命周期。TaskService 负责角色阶段、失败修复和最终验证；执行仍进入同一个 `AgentServer.run_tool_turn`，以任务 Provider、原计划、隔离 ProjectSession 和原用户授权作为参数。普通 v0.3 Turn 行为保持兼容。
+
+ModelRouter 在每次请求前调用 BudgetGuard 原子预留预算，角色 Provider 使用既有 Ollama/OpenAI 兼容实现。VerificationEngine 通过统一 `_authorize_tool` 调用原 Shell，不经过模型。TaskRuntimeStore 保存状态、时间、配置快照和请求账本；进程重启将活动状态转为 paused，原计划证据和不确定预算仍保留。UI 经允许列表 IPC 请求任务快照，以 revision 防止迟到响应倒退状态。
+
+详细实现、使用与验收边界见 [v0.4 设计](v0.4/design.md) 和 [v0.4 验收](v0.4/acceptance.md)。
