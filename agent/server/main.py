@@ -44,6 +44,7 @@ from agent.permissions.approval import (
     APPROVAL_DENY,
     ApprovalManager,
 )
+from agent.plan_verification import verification_passed
 from agent.persistence.store import SQLiteStore
 from agent.permissions.policy import PermissionMode, PermissionPolicy
 from agent.core.prompt_rules import PromptRuleManager
@@ -1837,24 +1838,17 @@ class AgentServer:
                     if active_plan and active_step_id:
                         evidence = [item for item in plan_tool_evidence
                                     if item.get("step_id") == active_step_id]
-                        # A step declaring verification cannot be completed
-                        # solely by reading a file or reporting tool success.
                         current_step = self.store.task_plans.active_step(active_plan["id"])
-                        requires_check = bool(current_step and
-                                              current_step["id"] == active_step_id and
-                                              current_step["verification"].strip())
-                        # Evidence must belong to the current step and be
-                        # collected after its activation, not an earlier step.
-                        passed_checks = any(
-                            item.get("step_id") == active_step_id
-                            and item.get("ok") is True
-                            and item.get("tool") in (
-                                "shell", "shell_exec", "run_command", "run_shell")
-                            for item in evidence
+                        requirement = (
+                            current_step["verification"]
+                            if current_step and current_step["id"] == active_step_id
+                            else ""
                         )
+                        verified = verification_passed(
+                            active_step_id, requirement, evidence,
+                            loop_complete=not gaps)
                         self.store.task_plans.advance_verified(
-                            active_plan["id"], active_step_id, evidence,
-                            not gaps and (not requires_check or passed_checks))
+                            active_plan["id"], active_step_id, evidence, verified)
                     # Advance to the next plan step within this same Agent turn
                     # only after the previous step has genuinely completed.
                     # Keep the loop guard to prevent replaying identical tools.
