@@ -12,6 +12,7 @@ from typing import Any
 from agent.tools.base import BaseTool, ToolError, ToolResult
 from agent.tools.stream import ToolStreamState
 from agent.tools.workspace import Workspace
+from agent.tools.windows_job import WindowsJob
 
 
 MAX_OUTPUT_CHARS = 200_000
@@ -153,16 +154,12 @@ class RunCommandTool(BaseTool):
             **spawn_kwargs,
         )
 
-        if on_output:
-            await on_output(
-                stream_state.meta(
-                    "process_started",
-                    pid=process.pid,
-                    command=command,
-                    cwd=self.workspace.display(cwd),
-                    timeout_seconds=timeout,
-                )
-            )
+        try:
+            job = WindowsJob(process.pid)
+        except OSError:
+            await terminate_process_tree(process)
+            await process.communicate()
+            raise ToolError("PROCESS_ISOLATION_FAILED", "Could not safely own the command process tree.")
 
         stdout_parts: list[str] = []
         stderr_parts: list[str] = []
@@ -174,6 +171,8 @@ class RunCommandTool(BaseTool):
                     break
                 text = chunk.decode("utf-8", errors="replace")
                 target.append(text)
+                while sum(map(len, target)) > MAX_OUTPUT_CHARS:
+                    target.pop(0)
                 if on_output:
                     for event in stream_state.output(label, text):
                         await on_output(event)
@@ -186,7 +185,13 @@ class RunCommandTool(BaseTool):
         )
 
         try:
+            if on_output:
+                await on_output(stream_state.meta(
+                    "process_started", pid=process.pid, command=command,
+                    cwd=self.workspace.display(cwd), timeout_seconds=timeout,
+                ))
             await asyncio.wait_for(process.wait(), timeout=timeout)
+            job.terminate()
             await asyncio.gather(stdout_task, stderr_task)
         except asyncio.TimeoutError as exc:
             if on_output:
@@ -197,6 +202,7 @@ class RunCommandTool(BaseTool):
                         reason="timeout",
                     )
                 )
+            job.terminate()
             method = await terminate_process_tree(process)
             await asyncio.gather(
                 stdout_task,
@@ -227,9 +233,8 @@ class RunCommandTool(BaseTool):
                             reason="user_cancelled",
                         )
                     )
+            job.terminate()
             method = await terminate_process_tree(process)
-            stdout_task.cancel()
-            stderr_task.cancel()
             await asyncio.gather(
                 stdout_task,
                 stderr_task,
@@ -247,6 +252,20 @@ class RunCommandTool(BaseTool):
                         )
                     )
             raise
+        finally:
+            if process.returncode is None:
+                job.terminate()
+                await terminate_process_tree(process)
+            # Also kill detached descendants when the root shell exits normally.
+            job.close()
+            for reader in (stdout_task, stderr_task):
+                if not reader.done():
+                    reader.cancel()
+            await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
+            # asyncio's Proactor transport otherwise closes pipes only during GC,
+            # after the test loop and temporary working directory have gone away.
+            process._transport.close()
+            await asyncio.sleep(0)
 
         stdout = "".join(stdout_parts)
         stderr = "".join(stderr_parts)

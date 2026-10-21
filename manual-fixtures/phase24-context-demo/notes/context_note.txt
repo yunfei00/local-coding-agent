@@ -1,0 +1,2 @@
+PHASE24_CONTEXT_NOTE=explicit-context-ready
+This file is intentionally simple for Pin and @file validation.

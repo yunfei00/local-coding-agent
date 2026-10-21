@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import queue
+import re
 import subprocess
 import threading
 import time
+import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -31,6 +34,7 @@ def main() -> int:
     if not executable.is_file():
         raise SystemExit(f"Agent executable does not exist: {executable}")
 
+    smoke_data = tempfile.TemporaryDirectory(prefix="lca-packaged-agent-")
     process = subprocess.Popen(
         [str(executable), "--port", "0"],
         cwd=str(executable.parent),
@@ -39,6 +43,7 @@ def main() -> int:
         text=True,
         encoding="utf-8",
         errors="replace",
+        env={**os.environ, "LCA_DATA_DIR": smoke_data.name},
     )
 
     assert process.stdout is not None
@@ -60,7 +65,6 @@ def main() -> int:
                 line = stdout_lines.get(timeout=0.2)
             except queue.Empty:
                 continue
-            print(line)
             if line.startswith(READY_PREFIX):
                 ready = json.loads(line[len(READY_PREFIX) :])
                 break
@@ -84,6 +88,23 @@ def main() -> int:
         if not payload.get("ok"):
             raise RuntimeError(f"Packaged Agent health failed: {payload}")
 
+        ready_protocol = str(ready.get("protocol") or "")
+        health_protocol = str(payload.get("protocol") or "")
+        if ready_protocol != health_protocol:
+            raise RuntimeError(
+                "Packaged Agent protocol mismatch between ready and health: "
+                f"{ready_protocol!r} != {health_protocol!r}"
+            )
+        if not re.fullmatch(r"\d+\.\d+\.\d+", ready_protocol):
+            raise RuntimeError(
+                "Packaged Agent protocol is not semantic: "
+                f"{ready_protocol!r}"
+            )
+        if ready.get("version") != payload.get("version"):
+            raise RuntimeError(
+                "Packaged Agent version mismatch between ready and health."
+            )
+
         shutdown = urllib.request.Request(
             f"http://127.0.0.1:{ready['port']}/shutdown",
             headers={"Authorization": f"Bearer {ready['token']}"},
@@ -97,7 +118,7 @@ def main() -> int:
         if exit_code != 0:
             raise RuntimeError(f"Packaged Agent exited with code {exit_code}")
 
-        print("PHASE9_AGENT_SMOKE_OK " + json.dumps({
+        print("PACKAGED_AGENT_SMOKE_OK " + json.dumps({
             "version": ready.get("version"),
             "protocol": ready.get("protocol"),
             "port": ready.get("port"),
@@ -107,6 +128,7 @@ def main() -> int:
         if process.poll() is None:
             process.kill()
             process.wait(timeout=5)
+        smoke_data.cleanup()
 
 
 if __name__ == "__main__":

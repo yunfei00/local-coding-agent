@@ -6,7 +6,7 @@ export type DiagnosticValue =
   | DiagnosticValue[]
   | { [key: string]: DiagnosticValue };
 
-const SENSITIVE_KEY = /(api[_-]?key|token|secret|password|authorization|prompt|messages?)/i;
+const SENSITIVE_KEY = /(api[_-]?key|(?:^|[_-])(?:access_token|refresh_token|auth_token|token_value|token)(?:$|[_-])|secret|password|authorization|credential|private[_-]?key|environment|^env$|prompt|messages?|reasoning|chain.of.thought)/i;
 const SECRET_PATTERNS = [
   /(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi,
   /\bsk-[A-Za-z0-9_-]{8,}\b/g,
@@ -16,10 +16,13 @@ const SECRET_PATTERNS = [
 function sanitizeString(value: string): string {
   let next = value;
   for (const pattern of SECRET_PATTERNS) {
-    next = next.replace(pattern, (_match, prefix?: string) =>
-      (prefix ?? "") + "<REDACTED>"
+    next = next.replace(pattern, (_match, prefix?: unknown) =>
+      (typeof prefix === "string" ? prefix : "") + "<REDACTED>"
     );
   }
+  next = next.replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1<REDACTED>@")
+    .replace(/([?&](?:token|key|password|secret|credential)=)[^&\s]+/gi, "$1<REDACTED>")
+    .replace(/(Authorization\s*[:=]\s*)(?:Basic\s+)?[^\s,;]+/gi, "$1<REDACTED>");
   return next;
 }
 
@@ -46,6 +49,7 @@ export function sanitizeDiagnostics(value: unknown): DiagnosticValue {
     )) {
       if (SENSITIVE_KEY.test(key)) {
         if (
+          key.endsWith("_tokens") || key === "context_token_estimate" ||
           key === "prompt_rules" ||
           key === "redaction" ||
           (key === "messages" && typeof item === "number")
@@ -71,4 +75,45 @@ export function formatDiagnosticsReport(value: unknown): string {
     "",
     JSON.stringify(safe, null, 2)
   ].join("\n");
+}
+
+/** Export only allowlisted numeric metrics; never include prompts or tool payloads. */
+export function formatTurnTrace(
+  turn: Record<string, unknown>
+): string {
+  const allowed = ["provider", "model", "finish_reason", "model_steps",
+    "tool_calls", "prompt_eval_count", "eval_count"];
+  const safe: Record<string, unknown> = {};
+  for (const key of allowed) {
+    const value = turn[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      safe[key] = value;
+    } else if (typeof value === "string" && key !== "model") {
+      safe[key] = value.slice(0, 100);
+    } else if (key === "model" && typeof value === "string") {
+      safe[key] = value.slice(0, 100);
+    }
+  }
+  const summary = turn.execution_summary;
+  if (summary && typeof summary === "object" && !Array.isArray(summary)) {
+    const metrics: Record<string, number> = {};
+    for (const key of ["elapsed_ms", "tool_duration_ms", "tool_failures",
+      "provider_retries", "model_steps", "tool_calls", "context_token_estimate"]) {
+      const value = (summary as Record<string, unknown>)[key];
+      if (typeof value === "number" && Number.isFinite(value)) {
+        metrics[key] = value;
+      }
+    }
+    safe.execution_summary = metrics;
+    const sources = (summary as Record<string, unknown>).context_sources;
+    if (sources && typeof sources === "object") {
+      const selected: Record<string, number> = {};
+      for (const key of ["pinned_file", "mentioned_file", "repo_map", "history", "tool_output", "system_rules", "task_plan"]) {
+        const count = (sources as Record<string, unknown>)[key];
+        if (typeof count === "number" && Number.isFinite(count)) selected[key] = count;
+      }
+      safe.context_sources = selected;
+    }
+  }
+  return JSON.stringify(sanitizeDiagnostics(safe), null, 2);
 }

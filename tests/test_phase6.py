@@ -87,6 +87,33 @@ class GitDiffToolTests(unittest.IsolatedAsyncioTestCase):
 
 
 class CommandCancellationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_cancel_after_descendant_is_running_releases_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            Path(root, "child.py").write_text(
+                "from pathlib import Path\nimport time\nprint('CHILD_READY', flush=True)\n"
+                "time.sleep(0.5)\nPath('orphan.txt').write_text('still alive')\ntime.sleep(30)\n",
+                encoding="utf-8")
+            Path(root, "parent.py").write_text(
+                "import subprocess,sys,time\nsubprocess.Popen([sys.executable,'child.py'])\ntime.sleep(30)\n",
+                encoding="utf-8")
+            ready = asyncio.Event()
+
+            async def on_output(chunk):
+                if "CHILD_READY" in str(chunk.get("text", "")):
+                    ready.set()
+
+            task = asyncio.create_task(RunCommandTool(Workspace(root)).execute(
+                {"command": "python parent.py", "timeout_seconds": 30}, on_output=on_output))
+            try:
+                await asyncio.wait_for(ready.wait(), 10)
+            finally:
+                task.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await task
+            await asyncio.sleep(0.7)
+            self.assertFalse(Path(root, "orphan.txt").exists(), "Cancelled command left a live descendant")
+        # Immediate TemporaryDirectory cleanup also proves Windows released cwd handles.
+
     async def test_cancelling_command_returns_quickly(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             tool = RunCommandTool(Workspace(root))

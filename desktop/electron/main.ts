@@ -20,9 +20,13 @@ import {
 import path from "node:path";
 import WebSocket from "ws";
 
+import { checkProtocolCompatibility } from "./protocol";
 import { checkForUpdates } from "./updateCheck";
 
 const APP_ID = "com.yunfei.localcodingagent";
+if (process.env.LCA_DESKTOP_DATA_DIR) {
+  app.setPath("userData", path.resolve(process.env.LCA_DESKTOP_DATA_DIR));
+}
 app.setAppUserModelId(APP_ID);
 
 type AgentStatus = {
@@ -62,6 +66,7 @@ let quitReady = false;
 let rendererReady = false;
 let packagedSmokeWritten = false;
 let sessionOpenAIKey: string | null = null;
+let sessionMcpSecrets: Record<string, Record<string, string>> = {};
 let lastAgentReady: {
   host: string;
   port: number;
@@ -145,6 +150,145 @@ type SecretStorageMode =
 function secretFilePath(): string {
   return path.join(app.getPath("userData"), "provider-secrets.json");
 }
+
+function mcpSecretFilePath(): string {
+  return path.join(app.getPath("userData"), "mcp-secrets.json");
+}
+
+function readMcpSecrets(): Record<string, Record<string, string>> {
+  if (Object.keys(sessionMcpSecrets).length > 0) {
+    return sessionMcpSecrets;
+  }
+  const file = mcpSecretFilePath();
+  if (!existsSync(file) || !safeStorage.isEncryptionAvailable()) {
+    return sessionMcpSecrets;
+  }
+
+  try {
+    const payload = JSON.parse(readFileSync(file, "utf8")) as {
+      encrypted?: string;
+    };
+    if (!payload.encrypted) {
+      return sessionMcpSecrets;
+    }
+    const decrypted = safeStorage.decryptString(
+      Buffer.from(payload.encrypted, "base64")
+    );
+    const parsed = JSON.parse(decrypted) as Record<
+      string,
+      Record<string, string>
+    >;
+    sessionMcpSecrets = parsed;
+  } catch (error) {
+    appendRuntimeLog(
+      "desktop.log",
+      "Unable to read protected MCP secrets: " + String(error)
+    );
+  }
+  return sessionMcpSecrets;
+}
+
+function persistMcpSecrets(): void {
+  const file = mcpSecretFilePath();
+  if (!safeStorage.isEncryptionAvailable()) {
+    return;
+  }
+  try {
+    if (Object.keys(sessionMcpSecrets).length === 0) {
+      if (existsSync(file)) {
+        unlinkSync(file);
+      }
+      return;
+    }
+    const encrypted = safeStorage
+      .encryptString(JSON.stringify(sessionMcpSecrets))
+      .toString("base64");
+    writeFileSync(
+      file,
+      JSON.stringify({ encrypted }),
+      { encoding: "utf8", mode: 0o600 }
+    );
+  } catch (error) {
+    appendRuntimeLog(
+      "desktop.log",
+      "Unable to persist protected MCP secrets: " + String(error)
+    );
+  }
+}
+
+function updateMcpSecrets(
+  serverId: string,
+  action: "keep" | "set" | "clear",
+  values?: Record<string, string>
+): void {
+  readMcpSecrets();
+  if (action === "keep") {
+    return;
+  }
+  if (action === "clear") {
+    delete sessionMcpSecrets[serverId];
+  } else {
+    const next: Record<string, string> = {};
+    for (const [key, value] of Object.entries(values ?? {})) {
+      const name = String(key).trim();
+      if (name && String(value)) {
+        next[name] = String(value);
+      }
+    }
+    if (Object.keys(next).length > 0) {
+      sessionMcpSecrets[serverId] = next;
+    } else {
+      delete sessionMcpSecrets[serverId];
+    }
+  }
+  persistMcpSecrets();
+}
+
+function mcpSecretStatuses(): Record<
+  string,
+  {
+    configured: boolean;
+    keys: string[];
+    stored: boolean;
+    mode: SecretStorageMode;
+  }
+> {
+  const values = readMcpSecrets();
+  const mode: SecretStorageMode = safeStorage.isEncryptionAvailable()
+    ? "os_protected"
+    : Object.keys(values).length > 0
+      ? "session_only"
+      : "none";
+  return Object.fromEntries(
+    Object.entries(values).map(([serverId, secrets]) => [
+      serverId,
+      {
+        configured: Object.keys(secrets).length > 0,
+        keys: Object.keys(secrets).sort(),
+        stored: mode === "os_protected",
+        mode
+      }
+    ])
+  );
+}
+
+async function syncMcpSecretsToAgent(): Promise<void> {
+  try {
+    await sendRequest(
+      "mcp.secrets",
+      "mcp.changed",
+      { secrets: readMcpSecrets() },
+      {},
+      45_000
+    );
+  } catch (error) {
+    appendRuntimeLog(
+      "desktop.log",
+      "Unable to sync MCP secrets to Agent: " + String(error)
+    );
+  }
+}
+
 
 function readStoredOpenAIKey(): string | null {
   if (sessionOpenAIKey !== null) {
@@ -397,6 +541,7 @@ function connectAgentWebSocket(ready: {
     };
     maybeCompletePackagedSmoke();
     void syncOpenAISecretToAgent();
+    void syncMcpSecretsToAgent();
   });
 
   socket.on("message", handleAgentMessage);
@@ -452,6 +597,23 @@ function updateFromAgentStdout(chunk: Buffer): void {
         version: string;
         protocol: string;
       };
+      const compatibility = checkProtocolCompatibility(ready.protocol);
+      if (!compatibility.compatible) {
+        const message =
+          compatibility.reason ??
+          "Agent protocol is not supported by this Desktop build.";
+        agentStatus = {
+          state: "error",
+          host: ready.host,
+          port: ready.port,
+          version: ready.version,
+          protocol: ready.protocol,
+          error: message
+        };
+        appendRuntimeLog("desktop.log", message);
+        agentProcess?.kill();
+        return;
+      }
       agentToken = ready.token;
       agentStatus = {
         state: "starting",
@@ -487,6 +649,11 @@ function launchAgent(
   };
   if (virtualEnv) {
     environment.VIRTUAL_ENV = virtualEnv;
+  }
+  if (
+    /(?:^|[\\/])python(?:3)?(?:\.exe)?$/i.test(command)
+  ) {
+    environment.LCA_AGENT_PYTHON = command;
   }
 
   appendRuntimeLog(
@@ -600,7 +767,8 @@ function sendRequest(
   type: string,
   expectedType: string,
   payload: Record<string, unknown> = {},
-  ids: { threadId?: string; turnId?: string } = {}
+  ids: { threadId?: string; turnId?: string } = {},
+  timeoutMs = 15000
 ): Promise<AgentEnvelope> {
   const socket = agentSocket;
   if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -621,7 +789,7 @@ function sendRequest(
     const timer = setTimeout(() => {
       pending.delete(requestId);
       reject(new Error("Agent request timed out: " + type));
-    }, 15000);
+    }, timeoutMs);
 
     pending.set(requestId, {
       expectedType,
@@ -698,12 +866,15 @@ async function stopAgent(): Promise<void> {
 function createWindow(): void {
   rendererReady = false;
   mainWindow = new BrowserWindow({
+    show: process.env.LCA_HEADLESS_SMOKE !== "1",
     width: 1180,
     height: 780,
     minWidth: 900,
     minHeight: 600,
     backgroundColor: "#111111",
     webPreferences: {
+      offscreen: process.env.LCA_HEADLESS_SMOKE === "1",
+      backgroundThrottling: process.env.LCA_HEADLESS_SMOKE !== "1",
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false
@@ -803,6 +974,14 @@ ipcMain.handle("agent:diagnostics-get", async () => {
     }
   };
 });
+ipcMain.handle(
+  "clipboard:copy-text",
+  async (_event, text: string) => {
+    if (typeof text !== "string" || text.length > 2_000_000) throw new Error("Clipboard text is too large");
+    clipboard.writeText(text);
+    return {ok: true};
+  }
+);
 ipcMain.handle(
   "agent:diagnostics-copy",
   async (_event, report: string) => {
@@ -963,6 +1142,147 @@ ipcMain.handle(
   }
 );
 
+ipcMain.handle("agent:mcp-list", async () => {
+  const event = await sendRequest("mcp.list", "mcp.listed");
+  return {
+    event,
+    secrets: mcpSecretStatuses()
+  };
+});
+ipcMain.handle(
+  "agent:mcp-upsert",
+  async (
+    _event,
+    server: Record<string, unknown>,
+    secretUpdate?: {
+      action?: "keep" | "set" | "clear";
+      values?: Record<string, string>;
+    }
+  ) => {
+    const event = await sendRequest(
+      "mcp.upsert",
+      "mcp.changed",
+      { server },
+      {},
+      45_000
+    );
+    const serverPayload = event.payload?.server;
+    const serverId =
+      serverPayload && typeof serverPayload === "object"
+        ? String((serverPayload as Record<string, unknown>).id ?? "")
+        : "";
+    if (serverId) {
+      updateMcpSecrets(
+        serverId,
+        secretUpdate?.action ?? "keep",
+        secretUpdate?.values
+      );
+      await syncMcpSecretsToAgent();
+    }
+    const listed = await sendRequest("mcp.list", "mcp.listed");
+    return {
+      event: listed,
+      secrets: mcpSecretStatuses()
+    };
+  }
+);
+ipcMain.handle(
+  "agent:mcp-delete",
+  async (_event, serverId: string) => {
+    const id = String(serverId ?? "");
+    const event = await sendRequest(
+      "mcp.delete",
+      "mcp.changed",
+      { server_id: id },
+      {},
+      45_000
+    );
+    updateMcpSecrets(id, "clear");
+    return {
+      event,
+      secrets: mcpSecretStatuses()
+    };
+  }
+);
+ipcMain.handle("agent:mcp-refresh", async () => {
+  await syncMcpSecretsToAgent();
+  const event = await sendRequest(
+    "mcp.refresh",
+    "mcp.refreshed",
+    {},
+    {},
+    45_000
+  );
+  return {
+    event,
+    secrets: mcpSecretStatuses()
+  };
+});
+
+ipcMain.handle(
+  "agent:context-get",
+  async (_event, threadId: string) => {
+    return sendRequest(
+      "context.get",
+      "context.loaded",
+      { thread_id: threadId },
+      { threadId }
+    );
+  }
+);
+ipcMain.handle(
+  "agent:context-pin",
+  async (_event, threadId: string, pathValue: string) => {
+    return sendRequest(
+      "context.pin",
+      "context.changed",
+      { thread_id: threadId, path: pathValue },
+      { threadId }
+    );
+  }
+);
+ipcMain.handle(
+  "agent:context-unpin",
+  async (_event, threadId: string, pathValue: string) => {
+    return sendRequest(
+      "context.unpin",
+      "context.changed",
+      { thread_id: threadId, path: pathValue },
+      { threadId }
+    );
+  }
+);
+ipcMain.handle(
+  "agent:context-refresh",
+  async (_event, threadId: string) => {
+    return sendRequest(
+      "context.refresh",
+      "context.changed",
+      { thread_id: threadId },
+      { threadId },
+      45_000
+    );
+  }
+);
+
+ipcMain.handle("agent:git-overview", async () => {
+  return sendRequest("git.overview", "git.loaded");
+});
+ipcMain.handle(
+  "agent:git-worktree-open",
+  async (_event, pathValue: string, model?: string) => {
+    return sendRequest(
+      "git.worktree.open",
+      "project.opened",
+      model
+        ? { path: pathValue, model }
+        : { path: pathValue },
+      {},
+      45_000
+    );
+  }
+);
+
 ipcMain.handle("agent:permission-get", async () => {
   return sendRequest("permission.get", "permission.loaded");
 });
@@ -1033,6 +1353,15 @@ ipcMain.handle("agent:thread-create", async (_event, model?: string) => {
 });
 ipcMain.handle("agent:thread-list", async () => {
   return sendRequest("thread.list", "thread.listed");
+});
+ipcMain.handle("agent:plan-request", async (_event, threadId: string, operation: string, payload: Record<string, unknown> = {}) => {
+  const allowed = new Set(["plan.list", "plan.create", "plan.step.update", "plan.step.edit", "plan.steps.reorder", "plan.checkpoint", "plan.resume", "plan.resume.confirm"]);
+  if (!allowed.has(operation)) throw new Error("Unsupported plan operation");
+  return sendRequest(operation, operation === "plan.resume" ? "plan.resumable" : "plan.loaded",
+    { ...payload, thread_id: threadId }, { threadId });
+});
+ipcMain.handle("agent:thread-rename", async (_event, threadId: string, title: string) => {
+  return sendRequest("thread.rename", "thread.updated", { title }, { threadId });
 });
 ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
   return sendRequest(

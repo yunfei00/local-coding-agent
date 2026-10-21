@@ -5,12 +5,15 @@ import asyncio
 import json
 import os
 import platform
+import re
 import secrets
 import sys
+from time import perf_counter
 from collections import deque
 from contextlib import suppress
 from dataclasses import asdict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from aiohttp import WSMsgType, web
@@ -21,6 +24,12 @@ from agent.core.agent_loop import (
     compact_tool_payload,
 )
 from agent.core.context import ContextBudgetManager
+from agent.core.explicit_context import (
+    context_blocks_for_files,
+    extract_file_mentions,
+    load_context_file,
+    normalize_context_path,
+)
 from agent.core.diagnostics import (
     database_summary,
     prompt_rules_summary,
@@ -29,14 +38,19 @@ from agent.core.diagnostics import (
     sanitize_provider_status,
 )
 from agent.core.settings import RuntimeSettings
+from agent.core.turn_metrics import TurnMetrics
 from agent.core.version import APP_VERSION, PROTOCOL_VERSION
 from agent.llm.base import ProviderError, ToolCall
+from agent.mcp.runtime import MCPRuntime
+from agent.mcp.settings import MCPSettingsManager
 from agent.permissions.approval import (
     APPROVAL_DENY,
     ApprovalManager,
 )
+from agent.plan_verification import verification_passed
+from agent.task_plans import automatic_steps, mutation_fingerprint
 from agent.persistence.store import SQLiteStore
-from agent.permissions.policy import PermissionMode, PermissionPolicy
+from agent.permissions.policy import PermissionMode, PermissionPolicy, READ_ONLY_TOOLS
 from agent.core.prompt_rules import PromptRuleManager
 from agent.server.projects import ProjectRegistry
 from agent.server.protocol import envelope, new_id, validate_client_message
@@ -110,7 +124,11 @@ class AgentServer:
     def __init__(self, token: str) -> None:
         self.token = token
         self.store = SQLiteStore()
+        self.last_turn_trace: dict[str, Any] | None = None
+        self.confirmed_plan_resumes: set[tuple[str, str]] = set()
         self.projects = ProjectRegistry(self.store)
+        self.mcp_settings = MCPSettingsManager(self.store)
+        self.mcp_runtime = MCPRuntime(self.mcp_settings, self.projects)
         self.prompt_rules = PromptRuleManager(self.store)
         self.settings = RuntimeSettings.load(self.store)
         self.openai_api_key: str | None = os.getenv("LCA_OPENAI_API_KEY")
@@ -216,6 +234,8 @@ class AgentServer:
                 task = self.active_turns.get(turn_id)
                 if task and not task.done():
                     task.cancel()
+            with suppress(Exception):
+                await self.mcp_runtime.close()
 
         return ws
 
@@ -264,6 +284,271 @@ class AgentServer:
                     "diagnostics.loaded",
                     await self._diagnostics_payload(),
                     request_id=request_id,
+                )
+            )
+            return
+
+        if message_type in {
+            "context.get",
+            "context.pin",
+            "context.unpin",
+            "context.refresh",
+        }:
+            project = self.projects.active
+            if not project:
+                await self.send_error(
+                    ws,
+                    "WORKSPACE_REQUIRED",
+                    "Open a workspace before managing context.",
+                    request_id=request_id,
+                    thread_id=data.get("thread_id"),
+                )
+                return
+
+            thread_id = str(
+                payload.get("thread_id")
+                or data.get("thread_id")
+                or project.active_thread_id
+                or ""
+            ).strip()
+            if not thread_id or not project.state.get_thread(thread_id):
+                await self.send_error(
+                    ws,
+                    "THREAD_NOT_FOUND",
+                    "A valid thread is required for pinned context.",
+                    request_id=request_id,
+                    thread_id=thread_id or None,
+                )
+                return
+
+            if message_type != "context.get" and any(
+                not task.done() for task in self.active_turns.values()
+            ):
+                await self.send_error(
+                    ws,
+                    "TURN_RUNNING",
+                    "Stop the active turn before changing pinned or repository context.",
+                    request_id=request_id,
+                    thread_id=thread_id,
+                )
+                return
+
+            try:
+                if message_type == "context.pin":
+                    relative = normalize_context_path(
+                        project.workspace,
+                        str(payload.get("path") or ""),
+                    )
+                    loaded = load_context_file(
+                        project.workspace,
+                        relative,
+                        source="pinned_file",
+                    )
+                    if loaded.status != "ready":
+                        raise ValueError(
+                            f"Cannot pin {relative}: {loaded.status}."
+                        )
+                    self.store.pin_context(
+                        thread_id=thread_id,
+                        path=relative,
+                        created_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                elif message_type == "context.unpin":
+                    relative = normalize_context_path(
+                        project.workspace,
+                        str(payload.get("path") or ""),
+                    )
+                    self.store.unpin_context(
+                        thread_id=thread_id,
+                        path=relative,
+                    )
+                elif message_type == "context.refresh":
+                    project.ensure_repository_map().build()
+
+                pinned = [
+                    load_context_file(
+                        project.workspace,
+                        str(row["path"]),
+                        source="pinned_file",
+                    ).to_dict()
+                    for row in self.store.list_pinned_context(thread_id)
+                ]
+                repo_map = project.ensure_repository_map()
+                result_payload = {
+                    "thread_id": thread_id,
+                    "repository_map": {
+                        **repo_map.payload(),
+                        "files": repo_map.file_paths(limit=500),
+                    },
+                    "pinned": pinned,
+                }
+            except ValueError as exc:
+                await self.send_error(
+                    ws,
+                    "CONTEXT_INVALID",
+                    str(exc),
+                    request_id=request_id,
+                    thread_id=thread_id,
+                )
+                return
+
+            await ws.send_json(
+                envelope(
+                    (
+                        "context.loaded"
+                        if message_type == "context.get"
+                        else "context.changed"
+                    ),
+                    result_payload,
+                    request_id=request_id,
+                    thread_id=thread_id,
+                )
+            )
+            return
+
+        if message_type == "git.overview":
+            project = self.projects.active
+            if not project:
+                await self.send_error(
+                    ws,
+                    "WORKSPACE_REQUIRED",
+                    "Open a workspace before reading Git state.",
+                    request_id=request_id,
+                )
+                return
+
+            results: dict[str, Any] = {}
+            errors: list[dict[str, str]] = []
+            for tool_name, key in (
+                ("git_status", "status"),
+                ("git_branches", "branches"),
+                ("git_worktree_list", "worktrees"),
+            ):
+                try:
+                    result = await project.tools.execute(tool_name, {})
+                    results[key] = result.data
+                    if not result.ok:
+                        errors.append(
+                            {
+                                "tool": tool_name,
+                                "message": (
+                                    result.stderr.strip()
+                                    or result.summary
+                                ),
+                            }
+                        )
+                except ToolError as exc:
+                    results[key] = {}
+                    errors.append(
+                        {
+                            "tool": tool_name,
+                            "message": exc.message,
+                        }
+                    )
+
+            await ws.send_json(
+                envelope(
+                    "git.loaded",
+                    {
+                        "project_id": project.id,
+                        "project_path": str(project.workspace.root),
+                        **results,
+                        "errors": errors,
+                    },
+                    request_id=request_id,
+                )
+            )
+            return
+
+        if message_type == "git.worktree.open":
+            if any(not task.done() for task in self.active_turns.values()):
+                await self.send_error(
+                    ws,
+                    "TURN_RUNNING",
+                    "Stop the active turn before switching worktrees.",
+                    request_id=request_id,
+                )
+                return
+
+            source = self.projects.active
+            if not source:
+                await self.send_error(
+                    ws,
+                    "WORKSPACE_REQUIRED",
+                    "Open a Git workspace before opening a managed worktree.",
+                    request_id=request_id,
+                )
+                return
+
+            requested_path = str(payload.get("path") or "").strip()
+            requested_model = str(payload.get("model") or "").strip() or None
+            if not requested_path:
+                await self.send_error(
+                    ws,
+                    "WORKTREE_PATH_REQUIRED",
+                    "Worktree path is required.",
+                    request_id=request_id,
+                )
+                return
+
+            try:
+                listed = await source.tools.execute("git_worktree_list", {})
+                records = listed.data.get("worktrees") or []
+                target = Path(requested_path).expanduser().resolve(strict=False)
+                allowed = next(
+                    (
+                        item
+                        for item in records
+                        if bool(item.get("managed"))
+                        and Path(
+                            str(item.get("path") or "")
+                        ).resolve(strict=False)
+                        == target
+                    ),
+                    None,
+                )
+                if allowed is None:
+                    raise ToolError(
+                        "WORKTREE_NOT_MANAGED",
+                        "Only a managed worktree of the active Git repository can be opened here.",
+                    )
+
+                project, thread, created = self.projects.open(
+                    target,
+                    active_model=(
+                        requested_model
+                        or self.default_model
+                        or self.provider.preferred_model
+                    ),
+                )
+            except (ToolError, OSError) as exc:
+                message = exc.message if isinstance(exc, ToolError) else str(exc)
+                await self.send_error(
+                    ws,
+                    "WORKTREE_OPEN_FAILED",
+                    message,
+                    request_id=request_id,
+                )
+                return
+
+            project.workspace.set_full_access(
+                self.permissions.mode == PermissionMode.FULL_ACCESS
+            )
+            self.mcp_runtime.apply_to_project(project)
+            response_payload = self.projects.project_payload(project)
+            response_payload["created"] = created
+            response_payload["worktree"] = {
+                "managed": True,
+                "branch": allowed.get("branch") if allowed else None,
+                "source_project_id": source.id,
+                "source_project_path": str(source.workspace.root),
+            }
+            await ws.send_json(
+                envelope(
+                    "project.opened",
+                    response_payload,
+                    request_id=request_id,
+                    thread_id=thread.id,
                 )
             )
             return
@@ -546,6 +831,95 @@ class AgentServer:
             )
             return
 
+        if message_type == "mcp.list":
+            await ws.send_json(
+                envelope(
+                    "mcp.listed",
+                    self.mcp_runtime.public_payload(),
+                    request_id=request_id,
+                )
+            )
+            return
+
+        if message_type in {
+            "mcp.upsert",
+            "mcp.delete",
+            "mcp.refresh",
+            "mcp.secrets",
+        }:
+            if any(not task.done() for task in self.active_turns.values()):
+                await self.send_error(
+                    ws,
+                    "TURN_RUNNING",
+                    "Stop the active turn before changing MCP configuration.",
+                    request_id=request_id,
+                )
+                return
+
+            try:
+                if message_type == "mcp.upsert":
+                    raw_config = payload.get("server")
+                    if not isinstance(raw_config, dict):
+                        raise ValueError("server must be an object.")
+                    server_config = self.mcp_settings.upsert(raw_config)
+                    await self.mcp_runtime.refresh()
+                    result_payload = {
+                        "server": server_config.to_public_dict(),
+                        **self.mcp_runtime.public_payload(),
+                    }
+                    response_type = "mcp.changed"
+                elif message_type == "mcp.delete":
+                    server_id = str(payload.get("server_id") or "").strip()
+                    if not server_id:
+                        raise ValueError("server_id is required.")
+                    self.mcp_settings.delete(server_id)
+                    self.mcp_runtime.secret_env.pop(server_id, None)
+                    await self.mcp_runtime.refresh()
+                    result_payload = self.mcp_runtime.public_payload()
+                    response_type = "mcp.changed"
+                elif message_type == "mcp.secrets":
+                    raw_secrets = payload.get("secrets")
+                    if not isinstance(raw_secrets, dict):
+                        raise ValueError("secrets must be an object.")
+                    self.mcp_runtime.set_secrets(raw_secrets)
+                    await self.mcp_runtime.refresh()
+                    result_payload = self.mcp_runtime.public_payload()
+                    response_type = "mcp.changed"
+                else:
+                    await self.mcp_runtime.refresh()
+                    result_payload = self.mcp_runtime.public_payload()
+                    response_type = "mcp.refreshed"
+            except ValueError as exc:
+                await self.send_error(
+                    ws,
+                    "MCP_CONFIG_INVALID",
+                    str(exc),
+                    request_id=request_id,
+                )
+                return
+            except Exception as exc:
+                self._record_diagnostic_error(
+                    "MCP_RUNTIME_ERROR",
+                    str(exc),
+                    source="mcp",
+                )
+                await self.send_error(
+                    ws,
+                    "MCP_RUNTIME_ERROR",
+                    str(exc),
+                    request_id=request_id,
+                )
+                return
+
+            await ws.send_json(
+                envelope(
+                    response_type,
+                    result_payload,
+                    request_id=request_id,
+                )
+            )
+            return
+
         if message_type == "approval.respond":
             approval_id = str(payload.get("approval_id") or "")
             decision = str(payload.get("decision") or "")
@@ -626,6 +1000,7 @@ class AgentServer:
             project.workspace.set_full_access(
                 self.permissions.mode == PermissionMode.FULL_ACCESS
             )
+            self.mcp_runtime.apply_to_project(project)
             response_payload = self.projects.project_payload(project)
             response_payload["created"] = created
             await ws.send_json(
@@ -678,6 +1053,7 @@ class AgentServer:
             project.workspace.set_full_access(
                 self.permissions.mode == PermissionMode.FULL_ACCESS
             )
+            self.mcp_runtime.apply_to_project(project)
             await ws.send_json(
                 envelope(
                     "project.selected",
@@ -778,6 +1154,23 @@ class AgentServer:
             )
             return
 
+        if message_type == "thread.rename":
+            project = self.projects.active
+            thread_id = str(data.get("thread_id") or payload.get("thread_id") or "")
+            title = str(payload.get("title") or "")
+            if not project or not project.state.get_thread(thread_id):
+                await self.send_error(ws, "THREAD_NOT_FOUND", "Select a valid thread.", request_id=request_id, thread_id=thread_id or None)
+                return
+            thread = project.state.rename_thread(thread_id, title)
+            if not thread:
+                await self.send_error(ws, "INVALID_TITLE", "Title must be 1-120 characters.", request_id=request_id, thread_id=thread_id)
+                return
+            await ws.send_json(envelope(
+                "thread.updated", {"thread": thread.to_dict(), "project_id": project.id},
+                request_id=request_id, thread_id=thread_id,
+            ))
+            return
+
         if message_type == "thread.list":
             project = self.projects.active
             await ws.send_json(
@@ -794,6 +1187,78 @@ class AgentServer:
                     request_id=request_id,
                 )
             )
+            return
+
+        if message_type.startswith("plan."):
+            project = self.projects.active
+            thread_id = str(payload.get("thread_id") or data.get("thread_id") or
+                            (project.active_thread_id if project else "") or "")
+            if not project or not project.state.get_thread(thread_id):
+                await self.send_error(ws, "THREAD_NOT_FOUND",
+                                      "Open a valid thread to manage its plan.",
+                                      request_id=request_id, thread_id=thread_id or None)
+                return
+            plans = self.store.task_plans
+            try:
+                if message_type != "plan.list" and self.active_turns:
+                    raise ValueError("Stop the active turn before editing or resuming a plan")
+                plan_id = str(payload.get("plan_id") or "")
+                if message_type == "plan.create":
+                    plan_id = plans.create(thread_id, str(payload.get("goal") or ""),
+                                           list(payload.get("steps") or []))
+                elif message_type == "plan.step.update":
+                    plan = plans.get(plan_id)
+                    if plan["thread_id"] != thread_id:
+                        raise ValueError("Plan belongs to another thread")
+                    step_id = str(payload.get("step_id") or "")
+                    state = str(payload.get("state") or "")
+                    evidence = plans.execution_evidence(plan_id, step_id, list(payload.get("tool_call_ids") or [])) if state == "completed" else None
+                    if state == "completed":
+                        step = next(s for s in plan["steps"] if s["id"] == step_id)
+                        if not verification_passed(step_id, step["verification"], evidence, loop_complete=True):
+                            raise ValueError("The step verification requires successful command evidence")
+                    plans.update_step(plan_id, step_id, state, evidence)
+                elif message_type == "plan.step.edit":
+                    plan = plans.get(plan_id)
+                    if plan["thread_id"] != thread_id:
+                        raise ValueError("Plan belongs to another thread")
+                    plans.edit_step(plan_id, str(payload.get("step_id") or ""),
+                                    str(payload.get("description") or ""),
+                                    str(payload.get("verification") or ""))
+                elif message_type == "plan.steps.reorder":
+                    plan = plans.get(plan_id)
+                    if plan["thread_id"] != thread_id:
+                        raise ValueError("Plan belongs to another thread")
+                    plans.reorder_steps(plan_id, list(payload.get("step_ids") or []))
+                elif message_type == "plan.checkpoint":
+                    plan = plans.get(plan_id)
+                    if plan["thread_id"] != thread_id:
+                        raise ValueError("Plan belongs to another thread")
+                    plans.checkpoint(plan_id, "manual")
+                elif message_type == "plan.resume":
+                    plan = plans.get(plan_id)
+                    if plan["thread_id"] != thread_id:
+                        raise ValueError("Plan belongs to another thread")
+                    await ws.send_json(envelope(
+                        "plan.resumable", plans.prepare_resume(plan_id),
+                        request_id=request_id, thread_id=thread_id))
+                    return
+                elif message_type == "plan.resume.confirm":
+                    plan = plans.get(plan_id)
+                    if plan["thread_id"] != thread_id:
+                        raise ValueError("Plan belongs to another thread")
+                    checkpoint = plans.latest_checkpoint(plan_id)
+                    step = plans.active_step(plan_id)
+                    if step:
+                        self.confirmed_plan_resumes.add((thread_id, checkpoint["id"] if checkpoint else "uncheckpointed:" + step["id"]))
+                elif message_type != "plan.list":
+                    raise ValueError("Unsupported plan operation")
+                await ws.send_json(envelope(
+                    "plan.loaded", {"plans": plans.list_for_thread(thread_id)},
+                    request_id=request_id, thread_id=thread_id))
+            except (ValueError, KeyError, TypeError) as exc:
+                await self.send_error(ws, "PLAN_INVALID", str(exc),
+                                      request_id=request_id, thread_id=thread_id)
             return
 
         if message_type == "thread.get":
@@ -819,6 +1284,9 @@ class AgentServer:
             return
 
         if message_type == "turn.start":
+            if any(not task.done() for task in self.active_turns.values()):
+                await self.send_error(ws, "TURN_RUNNING", "Stop the active turn before starting another task.", request_id=request_id)
+                return
             thread_id = str(data.get("thread_id") or payload.get("thread_id") or "")
             prompt = str(payload.get("prompt") or "").strip()
             project = self.projects.active
@@ -834,9 +1302,30 @@ class AgentServer:
                 await self.send_error(ws, "EMPTY_PROMPT", "Prompt cannot be empty.", request_id=request_id, thread_id=thread_id)
                 return
 
+            for plan in self.store.task_plans.list_for_thread(thread_id):
+                next_step = self.store.task_plans.active_step(plan["id"])
+                checkpoint = self.store.task_plans.latest_checkpoint(plan["id"])
+                if next_step and next_step["state"] == "blocked":
+                    await self.send_error(ws, "PLAN_BLOCKED", "Resolve the blocked plan step before continuing.", request_id=request_id, thread_id=thread_id)
+                    return
+                if next_step and next_step["state"] == "in_progress":
+                    confirmation = (thread_id, checkpoint["id"] if checkpoint else "uncheckpointed:" + next_step["id"])
+                    if confirmation not in self.confirmed_plan_resumes:
+                        await self.send_error(ws, "PLAN_RESUME_CONFIRMATION_REQUIRED", "Review the workspace and use Continue plan to confirm recovery of the interrupted step.", request_id=request_id, thread_id=thread_id)
+                        return
+                    self.confirmed_plan_resumes.discard(confirmation)
+
             model = thread.active_model or self.default_model or self.provider.preferred_model
             if not await self.ensure_model_available(ws, model, request_id=request_id, thread_id=thread_id):
                 return
+
+            renamed_thread = project.state.summarize_thread_title(thread_id, prompt)
+            if renamed_thread:
+                await ws.send_json(envelope(
+                    "thread.updated",
+                    {"thread": renamed_thread.to_dict()},
+                    thread_id=thread_id,
+                ))
 
             turn_id = new_id("turn")
             project.state.touch_thread(thread_id)
@@ -944,6 +1433,18 @@ class AgentServer:
         parts.append(self._permission_prompt())
         return "\n\n".join(parts)
 
+    def _exact_secrets(self) -> tuple[str, ...]:
+        return tuple(
+            secret
+            for secret in (
+                self.openai_api_key,
+                *self.mcp_runtime.exact_secrets(),
+                *(value for key, value in os.environ.items()
+                  if re.search(r"API.?KEY|TOKEN|PASSWORD|SECRET|CREDENTIAL|AUTHORIZATION", key, re.I) and len(value) >= 4),
+            )
+            if secret
+        )
+
     def _record_diagnostic_error(
         self,
         code: str,
@@ -951,11 +1452,7 @@ class AgentServer:
         *,
         source: str,
     ) -> None:
-        exact_secrets = tuple(
-            secret
-            for secret in (self.openai_api_key,)
-            if secret
-        )
+        exact_secrets = self._exact_secrets()
         self.recent_errors.append(
             {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -970,11 +1467,7 @@ class AgentServer:
         )
 
     async def _diagnostics_payload(self) -> dict[str, Any]:
-        exact_secrets = tuple(
-            secret
-            for secret in (self.openai_api_key,)
-            if secret
-        )
+        exact_secrets = self._exact_secrets()
         try:
             provider_status = await self.provider.get_status()
         except Exception as exc:
@@ -1053,6 +1546,11 @@ class AgentServer:
             },
             "workspace": project_payload,
             "prompt_rules": prompt_rules,
+            "mcp": self.mcp_runtime.diagnostic_payload(),
+            "agent_state": {"running": bool(self.active_turns), "active_turns": len(self.active_turns)},
+            "repository_map": project.ensure_repository_map().payload() if project else None,
+            "worktree": await self._worktree_health(project),
+            "last_turn_trace": self.last_turn_trace,
             "database": database_summary(self.store),
             "agent_limits": {
                 "max_model_steps": self.max_model_steps,
@@ -1066,6 +1564,7 @@ class AgentServer:
             "recent_errors": list(self.recent_errors),
             "redaction": {
                 "api_keys": True,
+                "mcp_credentials": True,
                 "prompt_rule_content": True,
                 "chat_history": True,
                 "home_path": True,
@@ -1079,6 +1578,16 @@ class AgentServer:
         return self.settings.to_public_dict(
             api_key_configured=bool(configured_key),
         )
+
+    async def _worktree_health(self, project) -> dict[str, Any]:
+        if not project:
+            return {"status": "no_workspace", "count": 0}
+        try:
+            result = await project.tools.execute("git_worktree_list", {})
+            return {"status": "ready" if result.ok else "unavailable",
+                    "count": len((result.data or {}).get("worktrees", []))}
+        except Exception:
+            return {"status": "unavailable", "count": 0}
 
     def _apply_runtime_settings(
         self,
@@ -1161,6 +1670,29 @@ class AgentServer:
             return False
         return True
 
+    async def _checkpoint_thread_plans(self, thread_id: str, reason: str,
+                                 files_changed: list[str] | None = None,
+                                 commands_run: list[dict] | None = None) -> None:
+        """Persist active plans on turn boundaries without replaying tools."""
+        plans = self.store.task_plans
+        active = [plan for plan in plans.list_for_thread(thread_id)
+                  if any(step["state"] in ("pending", "in_progress", "blocked") for step in plan["steps"])]
+        if not active:
+            return
+        git_status = "unavailable"
+        project = self.projects.active
+        if project:
+            with suppress(Exception):
+                result = await project.tools.execute("git_status", {})
+                if result.ok:
+                    git_status = redact_text(result.stdout, exact_secrets=self._exact_secrets(), max_chars=4000)
+        commands = [{"tool": item.get("tool"), "ok": bool(item.get("ok")),
+                     "summary": redact_text(str(item.get("summary", "")), exact_secrets=self._exact_secrets())}
+                    for item in (commands_run or [])[-100:]]
+        for plan in active:
+            plans.checkpoint(plan["id"], reason, files_changed=files_changed, commands_run=commands,
+                git_status=git_status, blockers=[step["description"] for step in plan["steps"] if step["state"] == "blocked"])
+
     async def run_tool_turn(
         self,
         ws: web.WebSocketResponse,
@@ -1181,12 +1713,97 @@ class AgentServer:
         tools = project.tools
         state = project.state
         guard = ToolLoopGuard()
+        metrics = TurnMetrics()
+        plan_files_changed: set[str] = set()
+        plan_commands_run: list[dict] = []
+        plan_tool_evidence: list[dict] = []
+
+
+        active_plans = [
+            plan for plan in self.store.task_plans.list_for_thread(thread_id)
+            if any(item["state"] in ("pending", "in_progress", "blocked") for item in plan["steps"])
+        ]
+        # Existing plans are explicit user intent. Do not create plans for simple turns.
+        active_plan = active_plans[0] if active_plans else None
+        if not active_plan:
+            steps = automatic_steps(prompt)
+            if steps:
+                plan_id = self.store.task_plans.create(thread_id, prompt[:1000], steps)
+                active_plan = self.store.task_plans.get(plan_id)
+                await ws.send_json(envelope("plan.loaded", {"plans": [active_plan]}, thread_id=thread_id))
+        active_step_id: str | None = None
+        if active_plan:
+            first_step = self.store.task_plans.active_step(active_plan["id"])
+            if first_step and first_step["state"] != "blocked":
+                active_step_id = first_step["id"]
 
         history = state.get_messages(thread_id)
         context_manager = ContextBudgetManager(
             context_window_tokens=self.provider.context_window,
             reserved_output_tokens=self.context_reserved_output_tokens,
         )
+        pinned_rows = self.store.list_pinned_context(thread_id)
+        pinned_paths = [str(row["path"]) for row in pinned_rows]
+        mention_paths = extract_file_mentions(prompt)
+        pinned_set = set(pinned_paths)
+        mentioned_files = [
+            load_context_file(
+                workspace,
+                path,
+                source="mentioned_file",
+            )
+            for path in mention_paths
+            if path not in pinned_set
+        ]
+        pinned_files = [
+            load_context_file(
+                workspace,
+                path,
+                source="pinned_file",
+            )
+            for path in pinned_paths
+        ]
+        context_blocks = [
+            *([{
+                "source": "task_plan",
+                "content": (
+                    "Persistent task plan (user-authored; follow these steps in order). "
+                    "Do not claim completion without real tool evidence. "
+                    "Never repeat mutating tools merely because a checkpoint exists.\n"
+                    + "\n".join(
+                        f'{index + 1}. [{item["state"]}] {item["description"]} '
+                        f'(verify: {item["verification"]})'
+                        for index, item in enumerate(active_plan["steps"])
+                    )
+                ),
+            }] if active_plan else []),
+            *context_blocks_for_files(mentioned_files),
+            *context_blocks_for_files(pinned_files),
+            {
+                "source": "repo_map",
+                "content": project.ensure_repository_map().render(),
+            },
+        ]
+        unavailable = [
+            item
+            for item in [*mentioned_files, *pinned_files]
+            if item.status != "ready"
+        ]
+        if unavailable:
+            context_blocks.insert(
+                0,
+                {
+                    "source": "explicit_context_status",
+                    "content": (
+                        "Some explicitly selected workspace files are unavailable:\n"
+                        + "\n".join(
+                            f"- {item.path}: {item.status}"
+                            for item in unavailable
+                        )
+                    ),
+                },
+            )
+
         initial_context = context_manager.prepare_initial(
             system_prompt=self._system_prompt(
                 project_id=project.id,
@@ -1196,10 +1813,13 @@ class AgentServer:
             ),
             history=history,
             user_prompt=prompt,
+            context_blocks=context_blocks,
         )
         messages: list[dict[str, Any]] = initial_context.messages
         context_usage = initial_context.usage
+        context_source_tokens = dict(context_usage.context_sources)
         self.last_context_usage = context_usage.to_dict()
+        metrics.record_context(self.last_context_usage)
 
         await ws.send_json(
             envelope(
@@ -1213,9 +1833,11 @@ class AgentServer:
         prompt_eval_count: int | None = None
         eval_count: int | None = None
         total_tool_calls = 0
+        previous_checkpoint = self.store.task_plans.latest_checkpoint(active_plan["id"]) if active_plan else None
 
         try:
             for step in range(1, self.max_model_steps + 1):
+                metrics.model_steps += 1
                 assistant_parts: list[str] = []
                 tool_calls: list[ToolCall] = []
                 step_tool_keys: set[str] = set()
@@ -1227,10 +1849,12 @@ class AgentServer:
                         fitted_context = context_manager.fit_runtime(
                             messages,
                             history_messages_total=len(history),
+                            context_sources=context_source_tokens,
                         )
                         messages = fitted_context.messages
                         context_usage = fitted_context.usage
                         self.last_context_usage = context_usage.to_dict()
+                        metrics.record_context(self.last_context_usage)
                         await ws.send_json(
                             envelope(
                                 "context.updated",
@@ -1244,7 +1868,10 @@ class AgentServer:
                             model=model,
                             messages=messages,
                             tools=tools.schemas(
-                                self.permissions.visible_tools(tools.names)
+                                self.permissions.visible_tools(
+                                    tools.names,
+                                    tools.permission_metadata_map(),
+                                )
                             ),
                         ):
                             if chunk.content:
@@ -1284,6 +1911,8 @@ class AgentServer:
                         if not can_retry:
                             raise
 
+                        metrics.retries += 1
+
                         await ws.send_json(
                             envelope(
                                 "turn.status",
@@ -1310,12 +1939,76 @@ class AgentServer:
                         "changed_paths": sorted(guard.changed_paths),
                     }
 
+                    if active_plan and active_step_id:
+                        evidence = [item for item in plan_tool_evidence
+                                    if item.get("step_id") == active_step_id]
+                        current_step = self.store.task_plans.active_step(active_plan["id"])
+                        requirement = (
+                            current_step["verification"]
+                            if current_step and current_step["id"] == active_step_id
+                            else ""
+                        )
+                        verified = verification_passed(
+                            active_step_id, requirement, evidence,
+                            loop_complete=not gaps or (not requirement.strip() and
+                                active_plan["steps"][-1]["id"] != active_step_id))
+                        self.store.task_plans.advance_verified(
+                            active_plan["id"], active_step_id, evidence, verified)
+                    # Advance to the next plan step within this same Agent turn
+                    # only after the previous step has genuinely completed.
+                    # Keep the loop guard to prevent replaying identical tools.
+                    if active_plan and active_step_id:
+                        latest = self.store.task_plans.get(active_plan["id"])
+                        finished = next(
+                            (item for item in latest["steps"] if item["id"] == active_step_id),
+                            None,
+                        )
+                        next_step = self.store.task_plans.active_step(active_plan["id"])
+                        if (finished and finished["state"] == "completed"
+                                and next_step and next_step["state"] == "pending"
+                                and next_step["id"] != active_step_id):
+                            await self._checkpoint_thread_plans(
+                                thread_id, "step_completed",
+                                sorted(plan_files_changed), plan_commands_run)
+                            await ws.send_json(envelope(
+                                "plan.step.completed",
+                                {"plan_id": active_plan["id"],
+                                 "step_id": active_step_id,
+                                 "next_step_id": next_step["id"]},
+                                thread_id=thread_id, turn_id=turn_id))
+                            active_step_id = next_step["id"]
+                            plan_tool_evidence.clear()
+                            plan_commands_run.clear()
+                            messages.append({"role": "assistant", "content": assistant_text})
+                            messages.append({"role": "user", "content": (
+                                "Continue the persistent plan with the next step only: "
+                                + next_step["description"]
+                                + ". Verification: " + next_step["verification"]
+                                + ". Inspect current workspace before mutations. "
+                                "Do not replay completed steps. Use tools and verify results."
+                            )})
+                            continue
+                    # Record the exchange once, at the real end of the turn.
+                    # Intermediate plan steps must not create duplicate user turns.
                     state.append_exchange(
                         thread_id,
                         user=prompt,
                         assistant=assistant_text,
                     )
-
+                    await self._checkpoint_thread_plans(thread_id, "turn_completed", sorted(plan_files_changed), plan_commands_run)
+                    # A fully completed plan is no longer considered active by
+                    # _checkpoint_thread_plans. Persist its terminal state too.
+                    if active_plan:
+                        terminal_plan = self.store.task_plans.get(active_plan["id"])
+                        if all(item["state"] in ("completed", "skipped")
+                               for item in terminal_plan["steps"]):
+                            self.store.task_plans.checkpoint(
+                                active_plan["id"], "plan_completed",
+                                files_changed=sorted(plan_files_changed),
+                                commands_run=plan_commands_run)
+                            await ws.send_json(envelope(
+                                "plan.completed", {"plan_id": active_plan["id"]},
+                                thread_id=thread_id, turn_id=turn_id))
                     await ws.send_json(
                         envelope(
                             "turn.completed",
@@ -1330,6 +2023,7 @@ class AgentServer:
                                 "model_steps": step,
                                 "tool_calls": total_tool_calls,
                                 "verification": verification,
+                                "execution_summary": metrics.summary(),
                             },
                             thread_id=thread_id,
                             turn_id=turn_id,
@@ -1415,7 +2109,19 @@ class AgentServer:
                         )
                     )
 
-                    if not allowed:
+                    tool_started = perf_counter()
+                    metadata = tools.permission_metadata(call.name) or {}
+                    fingerprint = mutation_fingerprint(call.name, call.arguments,
+                        read_only=call.name in READ_ONLY_TOOLS or bool(metadata.get("trusted") and metadata.get("read_only")))
+                    replay = active_plan and self.store.task_plans.previously_applied(active_plan["id"], fingerprint)
+                    if active_plan and active_step_id:
+                        self.store.task_plans.update_step(active_plan["id"], active_step_id, "in_progress")
+                        self.store.task_plans.record_execution(active_plan["id"], active_step_id,
+                            call_id, turn_id, call.name, fingerprint=fingerprint)
+                    if replay:
+                        payload = {"ok": False, "summary": "This plan already applied this operation. Inspect the workspace instead of replaying it.",
+                            "error": {"code": "PLAN_OPERATION_ALREADY_APPLIED", "message": "A successful persisted operation cannot be automatically replayed."}, "changed_paths": []}
+                    elif not allowed:
                         if guard.last_block_reason and guard.last_block_reason.startswith(
                             "cycle:"
                         ):
@@ -1457,6 +2163,10 @@ class AgentServer:
                             tool_name=call.name,
                             arguments=call.arguments,
                             workspace=workspace,
+                            tool_metadata=tools.permission_metadata(
+                                call.name
+                            ),
+                            user_prompt=prompt,
                         )
 
                         if not verdict.allowed:
@@ -1506,6 +2216,38 @@ class AgentServer:
                                     turn_id=turn_id,
                                 )
 
+                    metrics.record_tool(round((perf_counter() - tool_started) * 1000), ok=bool(payload.get("ok")))
+                    if active_plan and active_step_id:
+                        self.store.task_plans.record_execution(active_plan["id"], active_step_id,
+                            call_id, turn_id, call.name, payload)
+                    if active_plan and payload.get("ok"):
+                        # Do not silently skip a blocked step, even after a
+                        # subsequent tool succeeds in the same model turn.
+                        current_step = self.store.task_plans.active_step(active_plan["id"])
+                        if current_step and current_step["state"] == "blocked":
+                            active_step_id = None
+                        elif current_step:
+                            active_step_id = current_step["id"]
+                            if current_step["state"] == "pending":
+                                self.store.task_plans.update_step(
+                                    active_plan["id"], active_step_id, "in_progress")
+                        if active_step_id:
+                            plan_tool_evidence.append({
+                                "step_id": active_step_id, "tool": call.name,
+                                "tool_call_id": call_id, "exit_code": payload.get("exit_code"),
+                                "ok": True, "summary": str(payload.get("summary", ""))[:500],
+                                "changed_paths": list(payload.get("changed_paths") or []),
+                            })
+                    if call.name in ("shell", "shell_exec", "run_command", "run_shell"):
+                        plan_commands_run.append({
+                            "tool": call.name, "arguments": call.arguments,
+                            "ok": bool(payload.get("ok")),
+                            "summary": str(payload.get("summary", ""))[:500],
+                        })
+                    plan_files_changed.update(str(p) for p in (payload.get("changed_paths") or []))
+                    if active_plan and active_step_id and not payload.get("ok"):
+                        self.store.task_plans.update_step(active_plan["id"], active_step_id, "blocked")
+                        active_step_id = None
                     guard.record_result(call.name, payload)
 
                     failure_limit_reached = guard.failure_limit_reached(
@@ -1528,7 +2270,14 @@ class AgentServer:
                         )
                     )
 
-                    for changed_path in payload.get("changed_paths") or []:
+                    changed_paths = [
+                        str(path)
+                        for path in (payload.get("changed_paths") or [])
+                    ]
+                    if changed_paths:
+                        project.refresh_repository_paths(changed_paths)
+
+                    for changed_path in changed_paths:
                         await ws.send_json(
                             envelope(
                                 "file.changed",
@@ -1643,6 +2392,7 @@ class AgentServer:
                         )
                     )
 
+            await self._checkpoint_thread_plans(thread_id, "max_model_steps", sorted(plan_files_changed), plan_commands_run)
             self._record_diagnostic_error(
                 "MAX_MODEL_STEPS",
                 f"Agent exceeded {self.max_model_steps} model steps without completing the task.",
@@ -1666,6 +2416,7 @@ class AgentServer:
                 )
             )
         except asyncio.CancelledError:
+            await self._checkpoint_thread_plans(thread_id, "turn_cancelled", sorted(plan_files_changed), plan_commands_run)
             with suppress(ConnectionResetError, RuntimeError):
                 await ws.send_json(
                     envelope(
@@ -1681,6 +2432,7 @@ class AgentServer:
                 )
             raise
         except ProviderError as exc:
+            await self._checkpoint_thread_plans(thread_id, "provider_error", sorted(plan_files_changed), plan_commands_run)
             self._record_diagnostic_error(
                 exc.code,
                 exc.message,
@@ -1704,7 +2456,17 @@ class AgentServer:
         except (ConnectionResetError, RuntimeError):
             return
         finally:
+            if active_plan and self.store.task_plans.latest_checkpoint(active_plan["id"]) == previous_checkpoint:
+                await self._checkpoint_thread_plans(thread_id, "turn_interrupted", sorted(plan_files_changed), plan_commands_run)
             self.approvals.finish_turn(turn_id)
+            self.last_turn_trace = {
+                "provider": redact_text(self.provider.provider_name, exact_secrets=self._exact_secrets()),
+                "model": redact_text(model, exact_secrets=self._exact_secrets()),
+                "execution_summary": metrics.summary(),
+            }
+            with suppress(ConnectionResetError, RuntimeError):
+                await ws.send_json(envelope("turn.metrics", self.last_turn_trace,
+                    thread_id=thread_id, turn_id=turn_id))
 
     async def _execute_tool_call(
         self,
@@ -1767,6 +2529,9 @@ class AgentServer:
                 },
                 "changed_paths": [],
             }
+
+    async def close_async(self) -> None:
+        await self.mcp_runtime.close()
 
     def close(self) -> None:
         self.store.close()
@@ -1839,6 +2604,7 @@ async def run(host: str, port: int) -> None:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         await runner.cleanup()
+        await server.close_async()
         server.close()
         print("LCA_AGENT_STOPPED", flush=True)
 

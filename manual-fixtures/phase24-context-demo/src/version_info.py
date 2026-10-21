@@ -1,0 +1,2 @@
+DEMO_APP_VERSION = "24.1"
+DEMO_PROTOCOL = "context-demo"

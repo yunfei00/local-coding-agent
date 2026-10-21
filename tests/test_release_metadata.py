@@ -22,7 +22,16 @@ class ReleaseMetadataTests(unittest.TestCase):
         self.assertEqual(root_package["version"], APP_VERSION)
         self.assertEqual(desktop_package["version"], APP_VERSION)
         self.assertEqual(pyproject["project"]["version"], APP_VERSION)
-        self.assertEqual(PROTOCOL_VERSION, "phase9")
+        self.assertEqual(PROTOCOL_VERSION, "1.0.0")
+
+        desktop_protocol = (
+            ROOT / "desktop" / "electron" / "protocol.ts"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            f'DESKTOP_PROTOCOL_VERSION = "{PROTOCOL_VERSION}"',
+            desktop_protocol,
+        )
+        self.assertNotIn("phase9", desktop_protocol.lower())
 
     def test_vite_uses_relative_assets_for_packaged_file_protocol(self) -> None:
         vite_config = (ROOT / "desktop" / "vite.config.ts").read_text(encoding="utf-8")

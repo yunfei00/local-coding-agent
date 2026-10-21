@@ -419,12 +419,24 @@ function DiffReview({ tool }: { tool: ToolView }) {
   );
 }
 
+function mcpServerName(name: string): string | null {
+  if (!name.startsWith("mcp__")) {
+    return null;
+  }
+  const parts = name.split("__");
+  return parts.length >= 3 ? parts[1] : "MCP";
+}
+
 function GenericToolCard({ tool }: { tool: ToolView }) {
   return (
     <div className={"tool-card generic-tool-card tool-" + tool.status}>
       <div className="tool-card-header">
         <div>
-          <span className="tool-kind">TOOL</span>
+          <span className="tool-kind">
+            {mcpServerName(tool.name)
+              ? "MCP · " + mcpServerName(tool.name)
+              : "TOOL"}
+          </span>
           <strong>{tool.name}</strong>
         </div>
         <span>{statusLabel(tool)}</span>
@@ -438,6 +450,16 @@ function GenericToolCard({ tool }: { tool: ToolView }) {
 }
 
 export function ToolCard({ tool }: { tool: ToolView }) {
+  const [expanded, setExpanded] = useState(false);
+  const running = ["running", "requested", "stopping"].includes(tool.status);
+  return <section className="tool-disclosure">
+    <button type="button" className="tool-toggle" aria-expanded={expanded || running}
+      onClick={() => setExpanded(!expanded)}>{expanded || running ? "⌄" : "›"} {tool.name} · {statusLabel(tool)}{tool.summary ? " · " + tool.summary : ""}</button>
+    {expanded || running ? <ToolDetails tool={tool} /> : null}
+  </section>;
+}
+
+function ToolDetails({ tool }: { tool: ToolView }) {
   if (tool.name === "run_command") {
     return <TerminalCard tool={tool} />;
   }

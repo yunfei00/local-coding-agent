@@ -95,6 +95,8 @@ def database_summary(store: Any) -> dict[str, Any]:
         "approvals",
         "prompt_rules",
         "settings",
+        "mcp_servers",
+        "pinned_context",
     ):
         row = store.connection.execute(
             f"SELECT COUNT(*) AS count FROM {table}"

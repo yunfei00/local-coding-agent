@@ -5,8 +5,10 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from agent.task_plans import TaskPlanStore
 
-SCHEMA_VERSION = 2
+
+SCHEMA_VERSION = 4
 
 
 def default_data_dir() -> Path:
@@ -31,6 +33,7 @@ class SQLiteStore:
         self.connection.execute("PRAGMA journal_mode = WAL")
         self.connection.execute("PRAGMA synchronous = NORMAL")
         self._migrate()
+        self.task_plans = TaskPlanStore(self.connection)
 
     def _migrate(self) -> None:
         self.connection.executescript(
@@ -107,6 +110,35 @@ class SQLiteStore:
 
             CREATE INDEX IF NOT EXISTS idx_prompt_rules_scope
             ON prompt_rules(scope, scope_id);
+
+            CREATE TABLE IF NOT EXISTS mcp_servers (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                transport TEXT NOT NULL,
+                command TEXT,
+                args_json TEXT NOT NULL DEFAULT '[]',
+                url TEXT,
+                env_json TEXT NOT NULL DEFAULT '{}',
+                secret_env_keys_json TEXT NOT NULL DEFAULT '[]',
+                enabled INTEGER NOT NULL DEFAULT 1,
+                trusted INTEGER NOT NULL DEFAULT 0,
+                timeout_seconds REAL NOT NULL DEFAULT 30,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_mcp_servers_name
+            ON mcp_servers(name);
+
+            CREATE TABLE IF NOT EXISTS pinned_context (
+                thread_id TEXT NOT NULL,
+                path TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(thread_id, path),
+                FOREIGN KEY(thread_id) REFERENCES threads(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_pinned_context_thread
+            ON pinned_context(thread_id, created_at);
             """
         )
         self.connection.execute(
@@ -134,6 +166,116 @@ class SQLiteStore:
             (key, value),
         )
         self.connection.commit()
+
+    def save_mcp_server(
+        self,
+        *,
+        server_id: str,
+        name: str,
+        transport: str,
+        command: str | None,
+        args_json: str,
+        url: str | None,
+        env_json: str,
+        secret_env_keys_json: str,
+        enabled: bool,
+        trusted: bool,
+        timeout_seconds: float,
+        updated_at: str,
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO mcp_servers(
+                id, name, transport, command, args_json, url, env_json,
+                secret_env_keys_json, enabled, trusted, timeout_seconds,
+                updated_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                transport = excluded.transport,
+                command = excluded.command,
+                args_json = excluded.args_json,
+                url = excluded.url,
+                env_json = excluded.env_json,
+                secret_env_keys_json = excluded.secret_env_keys_json,
+                enabled = excluded.enabled,
+                trusted = excluded.trusted,
+                timeout_seconds = excluded.timeout_seconds,
+                updated_at = excluded.updated_at
+            """,
+            (
+                server_id,
+                name,
+                transport,
+                command,
+                args_json,
+                url,
+                env_json,
+                secret_env_keys_json,
+                1 if enabled else 0,
+                1 if trusted else 0,
+                float(timeout_seconds),
+                updated_at,
+            ),
+        )
+        self.connection.commit()
+
+    def list_mcp_servers(self) -> list[dict[str, Any]]:
+        rows = self.connection.execute(
+            """
+            SELECT
+                id, name, transport, command, args_json, url, env_json,
+                secret_env_keys_json, enabled, trusted, timeout_seconds,
+                updated_at
+            FROM mcp_servers
+            ORDER BY name COLLATE NOCASE ASC
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def delete_mcp_server(self, server_id: str) -> None:
+        self.connection.execute(
+            "DELETE FROM mcp_servers WHERE id = ?",
+            (server_id,),
+        )
+        self.connection.commit()
+
+    def pin_context(
+        self,
+        *,
+        thread_id: str,
+        path: str,
+        created_at: str,
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO pinned_context(thread_id, path, created_at)
+            VALUES(?, ?, ?)
+            ON CONFLICT(thread_id, path) DO NOTHING
+            """,
+            (thread_id, path, created_at),
+        )
+        self.connection.commit()
+
+    def unpin_context(self, *, thread_id: str, path: str) -> None:
+        self.connection.execute(
+            "DELETE FROM pinned_context WHERE thread_id = ? AND path = ?",
+            (thread_id, path),
+        )
+        self.connection.commit()
+
+    def list_pinned_context(self, thread_id: str) -> list[dict[str, Any]]:
+        rows = self.connection.execute(
+            """
+            SELECT thread_id, path, created_at
+            FROM pinned_context
+            WHERE thread_id = ?
+            ORDER BY created_at ASC, path COLLATE NOCASE ASC
+            """,
+            (thread_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def save_project(
         self,

@@ -1,58 +1,39 @@
-# Python Environment
+# Python 环境
 
-Local Coding Agent uses a repository-local Python virtual environment managed by **uv**.
+本项目统一使用 uv 管理仓库内的 `.venv`，由 `.python-version` 固定 Python 3.12，由 `uv.lock` 固定依赖解析结果。
 
-## Windows setup
-
-Install uv once:
-
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-Open a new PowerShell window and verify:
+## 安装与验证
 
 ```powershell
 uv --version
+uv sync --locked
+uv run python -c "import sys, aiohttp, httpx2, mcp; print(sys.executable)"
+uv run python -m unittest discover -s tests -v
 ```
 
-Then bootstrap the project:
+Windows 解释器应为仓库内 `.venv\Scripts\python.exe`。Electron 开发模式使用这一解释器，不退回系统 Python；高级调试可显式设置 `LCA_PYTHON`。
+
+首次准备前后端环境和检查：
 
 ```powershell
 .\scripts\dev\bootstrap.ps1
+.\scripts\dev\start.ps1
 ```
 
-The bootstrap script pins Python 3.12 through uv, creates:
-
-```text
-.venv\Scripts\python.exe
-```
-
-and installs the Agent dependencies into that environment.
-
-## Runtime rule
-
-Electron launches the Agent only with the repository virtual environment:
-
-```text
-<repo>\.venv\Scripts\python.exe
-```
-
-It does not fall back to the Windows system Python.
-
-This prevents missing-package errors and avoids polluting or depending on the user's global Python installation.
-
-For advanced debugging only, `LCA_PYTHON` can explicitly override the interpreter.
-
-## Diagnostics
+只安装打包依赖：
 
 ```powershell
-.\scripts\diagnostics\check-env.ps1
+uv sync --locked --extra packaging
+uv run --no-sync pyinstaller --version
 ```
 
-The output should show both:
+带 `--no-sync` 的命令复用当前 uv 环境，避免打包中途删除可选依赖。
 
-```text
-[OK] uv: ...
-[OK] project .venv: Python 3.12.x
+完整本地验收：
+
+```powershell
+npm.cmd --prefix desktop ci
+uv run python scripts/validation/check.py
 ```
+
+脚本会识别 uv 和 Windows npm.cmd，输出编号错误，并把完整日志和 JSON 报告保存在本地 `validation-reports`。不要因裸系统 Python 缺少模块而误判项目依赖缺失。

@@ -1,3 +1,4 @@
+import { MCPSettingsSection } from "./MCPSettingsSection";
 import { useEffect, useMemo, useState } from "react";
 
 type PermissionMode = "read_only" | "workspace" | "full_access";
@@ -59,6 +60,7 @@ type Tab =
   | "provider"
   | "agent"
   | "context"
+  | "mcp"
   | "prompt_rules"
   | "safety";
 
@@ -77,6 +79,7 @@ const tabs: Array<{ id: Tab; label: string }> = [
   { id: "provider", label: "Provider" },
   { id: "agent", label: "Agent" },
   { id: "context", label: "Context" },
+  { id: "mcp", label: "MCP" },
   { id: "prompt_rules", label: "Prompt Rules" },
   { id: "safety", label: "Safety" }
 ];
@@ -926,6 +929,10 @@ export function SettingsPanel({
                 </small>
               </label>
             </div>
+          ) : null}
+
+          {tab === "mcp" ? (
+            <MCPSettingsSection running={running} />
           ) : null}
 
           {tab === "prompt_rules" ? (

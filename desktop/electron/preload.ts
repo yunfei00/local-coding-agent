@@ -4,6 +4,7 @@ type AgentEventHandler = (event: unknown) => void;
 
 contextBridge.exposeInMainWorld("localAgent", {
   platform: process.platform,
+  copyText: (text: string) => ipcRenderer.invoke("clipboard:copy-text", text),
   notifyRendererReady: () => ipcRenderer.send("renderer:ready"),
   getAgentStatus: () => ipcRenderer.invoke("agent:get-status"),
   checkForUpdates: () => ipcRenderer.invoke("agent:update-check"),
@@ -26,6 +27,23 @@ contextBridge.exposeInMainWorld("localAgent", {
       secretUpdate
     ),
   resetSettings: () => ipcRenderer.invoke("agent:settings-reset"),
+  listMcpServers: () => ipcRenderer.invoke("agent:mcp-list"),
+  upsertMcpServer: (
+    server: Record<string, unknown>,
+    secretUpdate?: {
+      action?: "keep" | "set" | "clear";
+      values?: Record<string, string>;
+    }
+  ) =>
+    ipcRenderer.invoke(
+      "agent:mcp-upsert",
+      server,
+      secretUpdate
+    ),
+  deleteMcpServer: (serverId: string) =>
+    ipcRenderer.invoke("agent:mcp-delete", serverId),
+  refreshMcpServers: () =>
+    ipcRenderer.invoke("agent:mcp-refresh"),
   getPromptRules: (threadId?: string) =>
     ipcRenderer.invoke("agent:prompt-rules-get", threadId),
   setPromptRule: (
@@ -67,6 +85,22 @@ contextBridge.exposeInMainWorld("localAgent", {
       projectId,
       threadId
     ),
+  getGitOverview: () =>
+    ipcRenderer.invoke("agent:git-overview"),
+  openManagedWorktree: (pathValue: string, model?: string) =>
+    ipcRenderer.invoke(
+      "agent:git-worktree-open",
+      pathValue,
+      model
+    ),
+  getContext: (threadId: string) =>
+    ipcRenderer.invoke("agent:context-get", threadId),
+  pinContext: (threadId: string, pathValue: string) =>
+    ipcRenderer.invoke("agent:context-pin", threadId, pathValue),
+  unpinContext: (threadId: string, pathValue: string) =>
+    ipcRenderer.invoke("agent:context-unpin", threadId, pathValue),
+  refreshContext: (threadId: string) =>
+    ipcRenderer.invoke("agent:context-refresh", threadId),
   getPermission: () => ipcRenderer.invoke("agent:permission-get"),
   setPermission: (mode: string) =>
     ipcRenderer.invoke("agent:permission-set", mode),
@@ -91,6 +125,9 @@ contextBridge.exposeInMainWorld("localAgent", {
     ipcRenderer.invoke("agent:model-select", threadId, model),
   createThread: (model?: string) => ipcRenderer.invoke("agent:thread-create", model),
   listThreads: () => ipcRenderer.invoke("agent:thread-list"),
+  planRequest: (threadId: string, operation: string, payload: Record<string, unknown> = {}) =>
+    ipcRenderer.invoke("agent:plan-request", threadId, operation, payload),
+  renameThread: (threadId: string, title: string) => ipcRenderer.invoke("agent:thread-rename", threadId, title),
   getThread: (threadId: string) => ipcRenderer.invoke("agent:thread-get", threadId),
   startTurn: (threadId: string, prompt: string) =>
     ipcRenderer.invoke("agent:turn-start", threadId, prompt),

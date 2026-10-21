@@ -35,6 +35,9 @@ class BaseTool:
     description: str
     parameters: dict[str, Any]
 
+    def permission_metadata(self) -> dict[str, Any]:
+        return {"source": "builtin"}
+
     def ollama_schema(self) -> dict[str, Any]:
         return {
             "type": "function",

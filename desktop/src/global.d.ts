@@ -13,6 +13,7 @@ declare global {
   interface Window {
     localAgent: {
       platform: string;
+      copyText: (text: string) => Promise<{ok: boolean}>;
       notifyRendererReady: () => void;
       getAgentStatus: () => Promise<{
         state: "starting" | "ready" | "error" | "stopped";
@@ -81,6 +82,75 @@ declare global {
           mode: "os_protected" | "session_only" | "environment" | "none";
         };
       }>;
+      listMcpServers: () => Promise<{
+        event: AgentEnvelope;
+        secrets: Record<
+          string,
+          {
+            configured: boolean;
+            keys: string[];
+            stored: boolean;
+            mode: "os_protected" | "session_only" | "environment" | "none";
+          }
+        >;
+      }>;
+      upsertMcpServer: (
+        server: Record<string, unknown>,
+        secretUpdate?: {
+          action?: "keep" | "set" | "clear";
+          values?: Record<string, string>;
+        }
+      ) => Promise<{
+        event: AgentEnvelope;
+        secrets: Record<
+          string,
+          {
+            configured: boolean;
+            keys: string[];
+            stored: boolean;
+            mode: "os_protected" | "session_only" | "environment" | "none";
+          }
+        >;
+      }>;
+      deleteMcpServer: (serverId: string) => Promise<{
+        event: AgentEnvelope;
+        secrets: Record<
+          string,
+          {
+            configured: boolean;
+            keys: string[];
+            stored: boolean;
+            mode: "os_protected" | "session_only" | "environment" | "none";
+          }
+        >;
+      }>;
+      refreshMcpServers: () => Promise<{
+        event: AgentEnvelope;
+        secrets: Record<
+          string,
+          {
+            configured: boolean;
+            keys: string[];
+            stored: boolean;
+            mode: "os_protected" | "session_only" | "environment" | "none";
+          }
+        >;
+      }>;
+      getGitOverview: () => Promise<AgentEnvelope>;
+      openManagedWorktree: (
+        pathValue: string,
+        model?: string
+      ) => Promise<AgentEnvelope>;
+      getContext: (threadId: string) => Promise<AgentEnvelope>;
+      pinContext: (
+        threadId: string,
+        pathValue: string
+      ) => Promise<AgentEnvelope>;
+      unpinContext: (
+        threadId: string,
+        pathValue: string
+      ) => Promise<AgentEnvelope>;
+      refreshContext: (threadId: string) => Promise<AgentEnvelope>;
       getPromptRules: (threadId?: string) => Promise<AgentEnvelope>;
       setPromptRule: (
         scope: string,
@@ -115,7 +185,9 @@ declare global {
       selectModel: (threadId: string, model: string) => Promise<AgentEnvelope>;
       createThread: (model?: string) => Promise<AgentEnvelope>;
       listThreads: () => Promise<AgentEnvelope>;
+      renameThread: (threadId: string, title: string) => Promise<AgentEnvelope>;
       getThread: (threadId: string) => Promise<AgentEnvelope>;
+      planRequest: (threadId: string, operation: string, payload?: Record<string, unknown>) => Promise<AgentEnvelope>;
       startTurn: (threadId: string, prompt: string) => Promise<AgentEnvelope>;
       cancelTurn: (turnId: string) => Promise<{ ok: boolean }>;
       onAgentEvent: (handler: (event: AgentEnvelope) => void) => () => void;

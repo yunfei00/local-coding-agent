@@ -8,7 +8,12 @@ import {
   useState
 } from "react";
 
+import { ContextPanel } from "./components/ContextPanel";
+import { PlanPanel } from "./components/PlanPanel";
+import { ExecutionSummary, TurnTrace } from "./components/ExecutionSummary";
+import { MessageContent } from "./components/MessageContent";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
+import { GitPanel } from "./components/GitPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import {
   DiffFile,
@@ -60,6 +65,7 @@ type ContextUsage = {
   omitted_history_messages: number;
   runtime_messages_omitted: number;
   truncated_messages: number;
+  context_sources?: Record<string, number>;
   utilization: number;
 };
 
@@ -81,6 +87,7 @@ type ProjectInfo = {
   created_at?: string;
   updated_at?: string;
   active?: boolean;
+  threads?: ThreadRecord[];
 };
 
 type ThreadRecord = {
@@ -96,6 +103,7 @@ type ChatItem = {
   role: "user" | "agent" | "system" | "tool";
   text: string;
   tool?: ToolView;
+  trace?: TurnTrace;
 };
 
 type StoredMessage = {
@@ -137,7 +145,7 @@ function readPermission(event: AgentEnvelope): PermissionMode | null {
 
 function readProjectList(event: AgentEnvelope): ProjectInfo[] {
   const value = event.payload?.projects;
-  return Array.isArray(value) ? (value as ProjectInfo[]) : [];
+  return Array.isArray(value) ? [...(value as ProjectInfo[])].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id)) : [];
 }
 
 function readProjectSession(event: AgentEnvelope): ProjectSessionPayload | null {
@@ -196,7 +204,16 @@ function App() {
   const [permissionMode, setPermissionMode] =
     useState<PermissionMode>("workspace");
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
+  const [renamingThread, setRenamingThread] = useState<{ projectId: string; thread: ThreadRecord } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
+  const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>(() => {
+    try { const saved: unknown = JSON.parse(localStorage.getItem("lca-expanded-projects") ?? "[]");
+      return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : [];
+    } catch { return []; }
+  });
+  const [theme, setTheme] = useState(() => localStorage.getItem("lca-theme") ?? "dark");
+  const [projectThreadCache, setProjectThreadCache] = useState<Record<string, ThreadRecord[]>>({});
   const [workspace, setWorkspace] = useState<ProjectInfo | null>(null);
   const [selectedModel, setSelectedModel] = useState("");
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
@@ -209,8 +226,23 @@ function App() {
   const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [gitOpen, setGitOpen] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
   const conversationRef = useRef<HTMLElement | null>(null);
   const autoFollowRef = useRef(true);
+  const navigationInitializedRef = useRef(localStorage.getItem("lca-expanded-projects") !== null);
+  const sendingRef = useRef(false);
+
+  useEffect(() => { localStorage.setItem("lca-expanded-projects", JSON.stringify(expandedProjectIds)); }, [expandedProjectIds]);
+  useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem("lca-theme", theme); }, [theme]);
+  useEffect(() => {
+    setProjectThreadCache(cache => ({ ...cache, ...Object.fromEntries(projects
+      .filter(project => project.threads).map(project => [project.id, project.threads!])) }));
+  }, [projects]);
+  useEffect(() => {
+    if (workspace) setProjectThreadCache(cache => ({...cache, [workspace.id]: threads}));
+  }, [workspace?.id, threads]);
 
   const scrollConversationToBottom = useCallback(
     (smooth = false) => {
@@ -249,6 +281,11 @@ function App() {
     const activeProject = { ...session.project, active: true };
     setWorkspace(activeProject);
     setThreads(session.threads);
+    setProjectThreadCache((cache) => ({ ...cache, [activeProject.id]: session.threads }));
+    if (!navigationInitializedRef.current) {
+      setExpandedProjectIds((ids) => ids.includes(activeProject.id) ? ids : [...ids, activeProject.id]);
+      navigationInitializedRef.current = true;
+    }
     setActiveThread(session.activeThread);
     setItems(
       session.activeThread
@@ -268,7 +305,7 @@ function App() {
       const next = current
         .filter((project) => project.id !== activeProject.id)
         .map((project) => ({ ...project, active: false }));
-      return [activeProject, ...next];
+      return [...next, activeProject].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id));
     });
   }, []);
 
@@ -327,6 +364,17 @@ function App() {
         event.type === "project.selected"
       ) {
         applyProjectSession(event);
+        return;
+      }
+
+      if (event.type === "thread.updated") {
+        const thread = readThread(event);
+        if (thread) {
+          setThreads((current) => current.map((item) =>
+            item.id === thread.id ? thread : item));
+          setActiveThread((current) =>
+            current?.id === thread.id ? thread : current);
+        }
         return;
       }
 
@@ -750,6 +798,11 @@ function App() {
         return;
       }
 
+      if (event.type === "turn.metrics" && event.turn_id) {
+        setItems(current => [...current.filter(item => item.id !== "metrics:" + event.turn_id),
+          {id: "metrics:" + event.turn_id, role: "system", text: "", trace: event.payload as TurnTrace}]);
+        return;
+      }
       if (event.type === "turn.completed" && event.turn_id) {
         setApprovals((current) =>
           current.filter((item) => item.turnId !== event.turn_id)
@@ -910,11 +963,23 @@ function App() {
         return;
       }
       applyProjectSession(result.event);
+      const openedId = readProjectSession(result.event)?.project.id;
+      if (openedId) setExpandedProjectIds(ids => ids.includes(openedId) ? ids : [...ids, openedId]);
 
       const listEvent = await window.localAgent.listProjects();
       setProjects(readProjectList(listEvent));
     } catch (error) {
       setUiError(String(error));
+    }
+  };
+
+  const toggleProject = (project: ProjectInfo) => {
+    const isExpanded = expandedProjectIds.includes(project.id);
+    setExpandedProjectIds((ids) => isExpanded
+      ? ids.filter((id) => id !== project.id)
+      : [...ids, project.id]);
+    if (!isExpanded && workspace?.id !== project.id) {
+      void selectProject(project);
     }
   };
 
@@ -992,6 +1057,48 @@ function App() {
     }
   };
 
+  const openProjectThread = async (project: ProjectInfo, thread: ThreadRecord) => {
+    if (runningTurnId) return;
+    try {
+      if (workspace?.id !== project.id) {
+        const selected = await window.localAgent.selectProject(project.id);
+        applyProjectSession(selected);
+      }
+      const event = await window.localAgent.getThread(thread.id);
+      const loaded = readThread(event) ?? thread;
+      setActiveThread(loaded);
+      setSelectedModel(loaded.active_model ?? provider?.default_model ?? "");
+      setItems(historyItems(project.id, loaded.id, (event.payload?.messages ?? []) as StoredMessage[]));
+      setContextUsage(null);
+    } catch (error) { setUiError(String(error)); }
+  };
+
+  const commitThreadRename = async () => {
+    if (!renamingThread) return;
+    const title = renameValue.trim();
+    const target = renamingThread;
+    setRenamingThread(null);
+    if (!title || title === target.thread.title) return;
+    try {
+      if (workspace?.id !== target.projectId) {
+        const selected = await window.localAgent.selectProject(target.projectId);
+        applyProjectSession(selected);
+      }
+      const event = await window.localAgent.renameThread(target.thread.id, title);
+      const updated = readThread(event);
+      if (!updated) return;
+      setThreads((items) => items.map((item) => item.id === updated.id ? updated : item));
+      setProjectThreadCache((cache) => ({
+        ...cache,
+        [target.projectId]: (cache[target.projectId] ?? []).map((item) =>
+          item.id === updated.id ? updated : item)
+      }));
+      setActiveThread((item) => item?.id === updated.id ? updated : item);
+    } catch (error) {
+      setUiError(String(error));
+    }
+  };
+
   const changePermission = async (mode: PermissionMode) => {
     setUiError(null);
     try {
@@ -1046,18 +1153,20 @@ function App() {
       !prompt ||
       runningTurnId ||
       !providerReady
+      || sendingRef.current
     ) {
       return;
     }
 
     setUiError(null);
-    setInput("");
+    sendingRef.current = true;
+    const userItemId = "user:" + Date.now();
     autoFollowRef.current = true;
     setShowJumpToBottom(false);
     setItems((current) => [
       ...current,
       {
-        id: "user:" + Date.now(),
+        id: userItemId,
         role: "user",
         text: prompt
       }
@@ -1071,9 +1180,13 @@ function App() {
       if (started.turn_id) {
         setRunningTurnId(started.turn_id);
       }
+      setInput(current => current.trim() === prompt ? "" : current);
     } catch (error) {
       setUiError(String(error));
       setRunningTurnId(null);
+      setItems(current => current.filter(item => item.id !== userItemId));
+    } finally {
+      sendingRef.current = false;
     }
   };
 
@@ -1126,57 +1239,62 @@ function App() {
 
         <div className="sidebar-scroll">
           <div className="section-label">PROJECTS</div>
-          <div className="project-list">
+          <div className="project-tree">
             {projects.length === 0 ? (
               <div className="empty-list">No projects opened</div>
-            ) : (
-              projects.map((project) => (
-                <button
-                  key={project.id}
-                  className={
-                    "project-item " +
-                    (workspace?.id === project.id ? "active" : "")
-                  }
-                  disabled={Boolean(runningTurnId)}
-                  title={project.path}
-                  onClick={() => void selectProject(project)}
-                >
-                  <strong>{project.name}</strong>
-                  <span>{project.path}</span>
-                  <small>
-                    {project.thread_count} thread
-                    {project.thread_count === 1 ? "" : "s"}
-                  </small>
+            ) : projects.map((project) => (
+              <div className="project-group" key={project.id}>
+                <button className={"project-tree-header " + (workspace?.id === project.id ? "active" : "")}
+                  disabled={Boolean(runningTurnId)} title={project.path}
+                  aria-expanded={expandedProjectIds.includes(project.id)}
+                  onClick={() => toggleProject(project)}>
+                  <span className="project-tree-folder" aria-hidden="true">📁</span>
+                  <span className="project-tree-name">{project.name}</span>
+                  <span className="project-tree-count">{project.thread_count}</span>
+                  <span className="project-tree-chevron" aria-hidden="true">{expandedProjectIds.includes(project.id) ? "⌄" : "›"}</span>
                 </button>
-              ))
-            )}
-          </div>
-
-          <div className="section-label">THREADS</div>
-          <div className="thread-list">
-            {threads.length === 0 ? (
-              <div className="empty-list">
-                {workspace ? "No threads yet" : "Select a project"}
+                {expandedProjectIds.includes(project.id) && (
+                  <div className="project-tree-threads">
+                    {(workspace?.id === project.id ? threads : (projectThreadCache[project.id] ?? [])).length === 0 ? (
+                      <div className="empty-list">No threads loaded</div>
+                    ) : (workspace?.id === project.id ? threads : (projectThreadCache[project.id] ?? [])).map((thread) => (
+                      <button key={thread.id}
+                        className={"thread-item project-tree-thread " + (workspace?.id === project.id && activeThread?.id === thread.id ? "active" : "")}
+                        disabled={Boolean(runningTurnId)} title={thread.title}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          setRenamingThread({ projectId: project.id, thread });
+                          setRenameValue(thread.title);
+                        }}
+                        onClick={() => {
+                          void openProjectThread(project, thread);
+                        }}>
+                        <span className="project-tree-thread-icon" aria-hidden="true">◦</span>
+                        <span className="project-tree-thread-name">{thread.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            ) : (
-              threads.map((thread) => (
-                <button
-                  key={thread.id}
-                  className={
-                    "thread-item " +
-                    (activeThread?.id === thread.id ? "active" : "")
-                  }
-                  disabled={Boolean(runningTurnId)}
-                  onClick={() => void loadThread(thread)}
-                >
-                  <span>{thread.title}</span>
-                  <small>{thread.active_model ?? "no model"}</small>
-                </button>
-              ))
-            )}
+            ))}
           </div>
         </div>
 
+        {renamingThread && (
+          <div className="thread-rename-dialog" role="dialog" aria-label="Rename thread">
+            <label htmlFor="thread-rename-input">Rename thread</label>
+            <input id="thread-rename-input" autoFocus maxLength={120}
+              value={renameValue} onChange={(event) => setRenameValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void commitThreadRename();
+                if (event.key === "Escape") setRenamingThread(null);
+              }} />
+            <div className="thread-rename-actions">
+              <button onClick={() => setRenamingThread(null)}>Cancel</button>
+              <button disabled={!renameValue.trim()} onClick={() => void commitThreadRename()}>Save</button>
+            </div>
+          </div>
+        )}
         <div className="sidebar-footer">
           <div className={"status-dot status-" + status.state} />
           <div>
@@ -1219,12 +1337,49 @@ function App() {
             </button>
             <button
               type="button"
+              className={"git-button" + (gitOpen ? " active" : "")}
+              disabled={!workspace}
+              onClick={() => {
+                setGitOpen((current) => !current);
+                setPlanOpen(false);
+                setContextOpen(false);
+                setDiagnosticsOpen(false);
+                setSettingsOpen(false);
+              }}
+              title="Git workflow and worktrees"
+            >
+              Git
+            </button>
+            <button type="button" className={"context-button" + (planOpen ? " active" : "")}
+              disabled={!activeThread}
+              onClick={() => { setPlanOpen((current) => !current); setGitOpen(false); setContextOpen(false); setDiagnosticsOpen(false); setSettingsOpen(false); }}
+              title="Persistent task plans and checkpoints">Plan</button>
+            <button
+              type="button"
+              className={"context-button" + (contextOpen ? " active" : "")}
+              disabled={!activeThread}
+              onClick={() => {
+                setContextOpen((current) => !current);
+                setPlanOpen(false);
+                setGitOpen(false);
+                setDiagnosticsOpen(false);
+                setSettingsOpen(false);
+              }}
+              title="Repository and pinned context"
+            >
+              Context
+            </button>
+            <button
+              type="button"
               className={
                 "diagnostics-button" + (diagnosticsOpen ? " active" : "")
               }
               onClick={() => {
                 setDiagnosticsOpen((current) => !current);
+                setPlanOpen(false);
+                setGitOpen(false);
                 setSettingsOpen(false);
+                setContextOpen(false);
               }}
               title="Diagnostics"
             >
@@ -1235,17 +1390,20 @@ function App() {
               className={"settings-button" + (settingsOpen ? " active" : "")}
               onClick={() => {
                 setSettingsOpen((current) => !current);
+                setPlanOpen(false);
+                setGitOpen(false);
                 setDiagnosticsOpen(false);
+                setContextOpen(false);
               }}
               title="Settings"
             >
               Settings
             </button>
-            <span className="platform">{window.localAgent.platform}</span>
+            <button type="button" className="theme-button" aria-label="Toggle color theme" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? "☀" : "☾"}</button>
           </div>
         </header>
 
-        <div className="conversation-shell">
+        <div className={"conversation-shell" + (gitOpen || planOpen || contextOpen || diagnosticsOpen ? " with-panel" : "")}>
           <section
             ref={conversationRef}
             className="conversation"
@@ -1311,12 +1469,12 @@ function App() {
           ) : (
             <div className="message-list">
               {items.map((item) =>
-                item.role === "tool" && item.tool ? (
+                item.trace ? <ExecutionSummary key={item.id} trace={item.trace} /> : item.role === "tool" && item.tool ? (
                   <ToolCard key={item.id} tool={item.tool} />
                 ) : (
                   <div key={item.id} className={"message " + item.role}>
                     <div className="message-role">{item.role}</div>
-                    <div>{item.text}</div>
+                    <MessageContent text={item.text} markdown={item.role === "agent"} />
                   </div>
                 )
               )}
@@ -1370,6 +1528,34 @@ function App() {
               ↓
             </button>
           ) : null}
+
+          {gitOpen && workspace ? (
+            <GitPanel
+              projectName={workspace.name}
+              selectedModel={selectedModel}
+              running={runningTurnId !== null}
+              onProjectOpened={(event) => {
+                applyProjectSession(event);
+                void window.localAgent.listProjects().then((listed) => {
+                  setProjects(readProjectList(listed));
+                });
+              }}
+              onClose={() => setGitOpen(false)}
+            />
+          ) : null}
+
+          {planOpen && activeThread ? (
+            <PlanPanel threadId={activeThread.id} onClose={() => setPlanOpen(false)} />
+          ) : null}
+          {contextOpen && activeThread ? (
+            <ContextPanel
+              threadId={activeThread.id}
+              projectName={workspace?.name}
+              running={runningTurnId !== null}
+              onClose={() => setContextOpen(false)}
+            />
+          ) : null}
+          {diagnosticsOpen ? <DiagnosticsPanel onClose={() => setDiagnosticsOpen(false)} /> : null}
         </div>
 
         <form className="composer" onSubmit={submit}>
@@ -1448,6 +1634,7 @@ function App() {
                     Context {contextLabel}
                   </span>
                 ) : null}
+                <span>@file adds one-turn context</span>
                 <span>Enter to send</span>
                 <span>Shift+Enter newline</span>
               </span>
@@ -1478,11 +1665,6 @@ function App() {
           </div>
         </form>
 
-        {diagnosticsOpen ? (
-          <DiagnosticsPanel
-            onClose={() => setDiagnosticsOpen(false)}
-          />
-        ) : null}
 
         {settingsOpen ? (
           <SettingsPanel
