@@ -92,3 +92,7 @@ jobs:
       - name: Desktop build
         working-directory: desktop
         run: npm run build
+
+      - name: Actual desktop task and regression smoke
+        if: runner.os == 'Windows'
+        run: node scripts/validation/desktop-smoke.cjs

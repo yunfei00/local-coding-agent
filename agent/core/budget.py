@@ -60,6 +60,8 @@ class BudgetGuard:
         if context_estimate > context_window:
             raise ProviderError("MODEL_CONTEXT_LIMIT", "Conservative request estimate exceeds model context. Reduce context or choose a larger configured window.")
         cost = (input_estimate * (input_price or 0) + output_limit * (output_price or 0)) / 1_000_000
+        if not math.isfinite(cost):
+            raise BudgetExceeded("Configured prices overflow the request cost estimate")
         if route == "api" and (limits["api_cost"] is not None or self.global_limits["global_api_cost"] is not None):
             if input_price is None or output_price is None:
                 raise BudgetExceeded("Cost cap requires configured input and output prices")

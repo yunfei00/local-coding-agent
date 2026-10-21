@@ -1961,7 +1961,7 @@ class AgentServer:
                         )
                         verified = verification_passed(
                             active_step_id, requirement, evidence,
-                            loop_complete=bool(plan_id) or not gaps or (not requirement.strip() and
+                            loop_complete=not gaps or bool(plan_id) or (not requirement.strip() and
                                 active_plan["steps"][-1]["id"] != active_step_id))
                         self.store.task_plans.advance_verified(
                             active_plan["id"], active_step_id, evidence, verified)

@@ -229,6 +229,59 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(restored["status"], "awaiting_approval", restored["reason"])
         self.assertEqual(self.server.store.connection.execute("SELECT COUNT(*) FROM task_plan_executions WHERE plan_id=? AND tool='apply_patch'", (task["id"],)).fetchone()[0], original_count)
 
+    async def test_multifile_plan_checkpoint_and_git_review(self):
+        (self.repo / "formatting.py").write_text('def title():\n    return "old"\n')
+        subprocess.run(["git", "add", "formatting.py"], cwd=self.repo, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-qm", "second file"], cwd=self.repo, check=True, capture_output=True)
+        plan = final_step(json.dumps({"steps":[{"description":"Fix addition"},{"description":"Update title"}]}))
+        task, _, api = await self.run_task([plan, self.fix(), final_step(),
+            tool_step("apply_patch", {"path":"formatting.py", "old_text":'"old"', "new_text":'"new"'}),
+            final_step(), final_step("Reviewed both files")])
+        self.assertEqual(task["status"], "awaiting_approval", task["reason"])
+        self.assertIn("calculator.py", task["report"]["diff"])
+        self.assertIn("formatting.py", task["report"]["diff"])
+        self.assertTrue(all(step["state"] == "completed" for step in self.server.store.task_plans.get(task["id"])["steps"]))
+        self.assertEqual(api.calls, 0)
+        self.assertIn('"old"', (self.repo / "formatting.py").read_text())
+        self.assertEqual(self.server.store.task_plans.latest_checkpoint(task["id"])["reason"], "task_awaiting_approval")
+
+    async def test_request_timeout_cancellation_and_json_tool_compatibility(self):
+        runtime = self.server.store.task_runtime
+        config = self.config(request_seconds=1)
+        task = runtime.create(self.thread.id, "bounded call", config, str(self.repo))
+        guard = BudgetGuard(runtime, task["id"], config["budget"])
+        events = []
+        async def notify(kind, payload): events.append(kind)
+        class Slow(ScriptedProvider):
+            async def stream_chat(self, **kwargs):
+                self.calls += 1
+                await asyncio.sleep(30)
+                yield final_step()
+        slow = Slow([])
+        config["roles"]["planner"]["route"] = "api"
+        router = ModelRouter(config, lambda *_: slow, guard, notify)
+        with self.assertRaises(ProviderError) as caught:
+            await router.text("planner", [{"role":"user", "content":"hello"}])
+        self.assertEqual(caught.exception.code, "MODEL_TIMEOUT")
+        self.assertEqual(runtime.usage(task["id"])["api_calls"], 1)
+        self.assertEqual(slow.calls, 1)
+        reserved = runtime.usage(task["id"])["reserved_tokens"]
+        request = asyncio.create_task(router.text("planner", [{"role":"user", "content":"hello"}]))
+        await asyncio.sleep(.05)
+        request.cancel()
+        with self.assertRaises(asyncio.CancelledError): await request
+        self.assertEqual(runtime.usage(task["id"])["api_calls"], 2)
+        self.assertGreater(runtime.usage(task["id"])["reserved_tokens"], reserved)
+        config["strategy"] = "local-only"
+        config["roles"]["executor"]["tool_mode"] = "json"
+        provider = ScriptedProvider([final_step('{"tool_calls":[{"name":"read_file","arguments":{"path":"calculator.py"}}],"content":"inspect"}')])
+        router = ModelRouter(config, lambda *_: provider, guard, notify)
+        routed = router.resolve("executor")
+        chunks = [chunk async for chunk in routed.stream_chat(model="test", messages=[], tools=[{"type":"function", "function":{"name":"read_file"}}])]
+        self.assertEqual(chunks[-1].tool_calls[0].name, "read_file")
+        self.assertIn("model.compatibility", events)
+        self.assertEqual(runtime.usage(task["id"])["api_calls"], 2)
+
     async def test_frontend_snapshot_matches_backend_and_wrong_thread_cannot_mutate(self):
         task, _, _ = await self.run_task([PLAN, self.fix(), final_step(), final_step("review")])
         events = [e for e in self.ws.messages if e["type"] == "task.updated"]

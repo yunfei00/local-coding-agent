@@ -23,6 +23,11 @@ def discover_commands(root: Path, configured: list[str]) -> list[str]:
         return commands
     commands = []
     package = root / "package.json"
+    def confined(path: Path) -> bool:
+        return path.resolve().is_relative_to(root.resolve())
+    for path in (package, root / "pyproject.toml", root / "tests"):
+        if path.exists() and not confined(path):
+            raise ValueError("Verification discovery cannot read a path outside the workspace")
     if package.is_file() and package.stat().st_size < 100000:
         scripts = json.loads(package.read_text(encoding="utf-8")).get("scripts", {})
         for name in ("test", "typecheck", "build"):
@@ -31,6 +36,8 @@ def discover_commands(root: Path, configured: list[str]) -> list[str]:
     if (root / "tests").is_dir() and any((root / "tests").glob("test*.py")):
         pyproject = root / "pyproject.toml"
         has_uv = pyproject.exists()
+        if has_uv and pyproject.stat().st_size > 262144:
+            raise ValueError("pyproject.toml exceeds bounded verification discovery size")
         pytest = has_uv and "pytest" in pyproject.read_text(encoding="utf-8")
         commands.append("uv run pytest" if pytest else ("uv run " if has_uv else "") + "python -m unittest discover -s tests -v")
     if commands and (root / ".git").exists():

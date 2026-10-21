@@ -9,6 +9,8 @@ import {
 } from "react";
 
 import { ContextPanel } from "./components/ContextPanel";
+import { AutonomousTaskPanel } from "./components/AutonomousTaskPanel";
+import { TaskSnapshot } from "./lib/autonomousTask";
 import { PlanPanel } from "./components/PlanPanel";
 import { ExecutionSummary, TurnTrace } from "./components/ExecutionSummary";
 import { MessageContent } from "./components/MessageContent";
@@ -229,6 +231,7 @@ function App() {
   const [contextOpen, setContextOpen] = useState(false);
   const [gitOpen, setGitOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
+  const [taskOpen, setTaskOpen] = useState(false);
   const conversationRef = useRef<HTMLElement | null>(null);
   const autoFollowRef = useRef(true);
   const navigationInitializedRef = useRef(localStorage.getItem("lca-expanded-projects") !== null);
@@ -780,6 +783,14 @@ function App() {
             text: "Changed file: " + path
           }
         ]);
+        return;
+      }
+
+      if (event.type === "task.updated") {
+        const task = event.payload?.task as TaskSnapshot | undefined;
+        if (task) setItems(current => [...current.filter(item => item.id !== "task:" + task.id), {
+          id:"task:" + task.id, role:"system", text:`Task · ${task.status} · API ${task.usage.api_calls} · Tokens reserved ${task.usage.reserved_tokens} · ${task.reason}`
+        }]);
         return;
       }
 
@@ -1341,7 +1352,7 @@ function App() {
               disabled={!workspace}
               onClick={() => {
                 setGitOpen((current) => !current);
-                setPlanOpen(false);
+                setPlanOpen(false); setTaskOpen(false);
                 setContextOpen(false);
                 setDiagnosticsOpen(false);
                 setSettingsOpen(false);
@@ -1350,9 +1361,12 @@ function App() {
             >
               Git
             </button>
+            <button type="button" className={"context-button" + (taskOpen ? " active" : "")} disabled={!activeThread}
+              onClick={() => {setTaskOpen(current => !current); setPlanOpen(false); setGitOpen(false); setContextOpen(false); setDiagnosticsOpen(false); setSettingsOpen(false);}}
+              title="Local-first autonomous task">Task</button>
             <button type="button" className={"context-button" + (planOpen ? " active" : "")}
               disabled={!activeThread}
-              onClick={() => { setPlanOpen((current) => !current); setGitOpen(false); setContextOpen(false); setDiagnosticsOpen(false); setSettingsOpen(false); }}
+              onClick={() => { setPlanOpen((current) => !current); setTaskOpen(false); setGitOpen(false); setContextOpen(false); setDiagnosticsOpen(false); setSettingsOpen(false); }}
               title="Persistent task plans and checkpoints">Plan</button>
             <button
               type="button"
@@ -1360,7 +1374,7 @@ function App() {
               disabled={!activeThread}
               onClick={() => {
                 setContextOpen((current) => !current);
-                setPlanOpen(false);
+                setPlanOpen(false); setTaskOpen(false);
                 setGitOpen(false);
                 setDiagnosticsOpen(false);
                 setSettingsOpen(false);
@@ -1376,7 +1390,7 @@ function App() {
               }
               onClick={() => {
                 setDiagnosticsOpen((current) => !current);
-                setPlanOpen(false);
+                setPlanOpen(false); setTaskOpen(false);
                 setGitOpen(false);
                 setSettingsOpen(false);
                 setContextOpen(false);
@@ -1390,7 +1404,7 @@ function App() {
               className={"settings-button" + (settingsOpen ? " active" : "")}
               onClick={() => {
                 setSettingsOpen((current) => !current);
-                setPlanOpen(false);
+                setPlanOpen(false); setTaskOpen(false);
                 setGitOpen(false);
                 setDiagnosticsOpen(false);
                 setContextOpen(false);
@@ -1403,7 +1417,7 @@ function App() {
           </div>
         </header>
 
-        <div className={"conversation-shell" + (gitOpen || planOpen || contextOpen || diagnosticsOpen ? " with-panel" : "")}>
+        <div className={"conversation-shell" + (gitOpen || planOpen || taskOpen || contextOpen || diagnosticsOpen ? " with-panel" : "")}>
           <section
             ref={conversationRef}
             className="conversation"
@@ -1544,6 +1558,8 @@ function App() {
             />
           ) : null}
 
+          {taskOpen && activeThread ? <AutonomousTaskPanel key={activeThread.id} threadId={activeThread.id} running={runningTurnId !== null}
+            onClose={() => setTaskOpen(false)} onSettings={() => {setTaskOpen(false); setSettingsOpen(true);}} /> : null}
           {planOpen && activeThread ? (
             <PlanPanel threadId={activeThread.id} onClose={() => setPlanOpen(false)} />
           ) : null}

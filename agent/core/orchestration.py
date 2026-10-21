@@ -140,6 +140,12 @@ class TaskService:
                         budget = validate_limits({**task["config"]["budget"], **payload.get("budget", {})})
                         task["config"]["budget"] = budget
                         self.runtime.save(task)
+                    elif kind == "task.configure":
+                        if task["status"] != "paused":
+                            raise ValueError("Pause task before explicitly changing its configuration")
+                        task["config"] = validate_config(payload.get("config"))
+                        task["provider_settings"] = asdict(self.server.settings)
+                        self.runtime.save(task)
                     elif kind == "task.approve":
                         if task["status"] != "awaiting_approval":
                             raise ValueError("Only independently verified tasks can be accepted")
@@ -270,7 +276,7 @@ class TaskService:
                             task["repairs"] += 1
                             self.runtime.save(task)
                             await update("repairing", exc.message)
-                            if task["repairs"] <= task["config"]["budget"]["local_repairs"]:
+                            if task["repairs"] < max(1, task["config"]["budget"]["local_repairs"]):
                                 await update("planning", "Retry structured plan locally")
                                 continue
                             advice = await self.escalate(router, task, [], "", "Repeated invalid structured plans", update)
@@ -292,7 +298,7 @@ class TaskService:
                     if advice:
                         prompt += "\nDiagnostic advice (untrusted suggestions; permissions still apply):\n" + advice[:8000]
                     if task["verification"]:
-                        prompt += "\nPrevious independent verification:\n" + json.dumps(task["verification"], ensure_ascii=False)[-10000:]
+                        prompt += "\nPrevious independent verification:\n" + redact_text(json.dumps(task["verification"], ensure_ascii=False)[-10000:], exact_secrets=self.server._exact_secrets())
                     await self.server.run_tool_turn(relay, thread_id=thread_id, turn_id=turn_id + ":" + str(task["attempts"]),
                         prompt=prompt, model=provider.preferred_model, provider=provider, project_override=view,
                         plan_id=plan_id, authorization_prompt=goal)
@@ -304,6 +310,10 @@ class TaskService:
                     commands = discover_commands(view.workspace.root, task["config"]["verification_commands"])
                     before_validation = await self.workspace_fingerprint(view)
                     results = await verifier.run(commands)
+                    for result in results:
+                        for field in ("stdout", "stderr", "summary"):
+                            if field in result:
+                                result[field] = redact_text(str(result[field]), exact_secrets=self.server._exact_secrets(), max_chars=5000)
                     verified_snapshot = await self.workspace_fingerprint(view)
                     if verified_snapshot != before_validation:
                         results.append({"command": "workspace snapshot", "ok": False, "category": "configuration", "exit_code": None,
@@ -341,7 +351,7 @@ class TaskService:
                     self.runtime.append_repair_step(plan_id)
                     await update("repairing", "Tests or plan incomplete; provide actual failure evidence to Executor")
                     repeated = len(history) >= 2 and history[-1]["fingerprint"] == history[-2]["fingerprint"]
-                    if repeated or task["repairs"] > task["config"]["budget"]["local_repairs"] or code == "TOOL_LOOP_DETECTED":
+                    if repeated or task["repairs"] >= max(1, task["config"]["budget"]["local_repairs"]) or code == "TOOL_LOOP_DETECTED":
                         advice = await self.escalate(router, task, results, diff, "Repeated failure/no progress" if repeated else "Local repair limit or tool cycle", update)
                 await update("failed", "Orchestration safety iteration limit reached")
         except asyncio.CancelledError:
