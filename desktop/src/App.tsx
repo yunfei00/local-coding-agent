@@ -200,6 +200,8 @@ function App() {
   const [permissionMode, setPermissionMode] =
     useState<PermissionMode>("workspace");
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
+  const [renamingThread, setRenamingThread] = useState<{ projectId: string; thread: ThreadRecord } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([]);
   const [projectThreadCache, setProjectThreadCache] = useState<Record<string, ThreadRecord[]>>({});
@@ -1024,6 +1026,32 @@ function App() {
     }
   };
 
+  const commitThreadRename = async () => {
+    if (!renamingThread) return;
+    const title = renameValue.trim();
+    const target = renamingThread;
+    setRenamingThread(null);
+    if (!title || title === target.thread.title) return;
+    if (workspace?.id !== target.projectId) {
+      setUiError("Switch to this project before renaming its thread.");
+      return;
+    }
+    try {
+      const event = await window.localAgent.renameThread(target.thread.id, title);
+      const updated = readThread(event);
+      if (!updated) return;
+      setThreads((items) => items.map((item) => item.id === updated.id ? updated : item));
+      setProjectThreadCache((cache) => ({
+        ...cache,
+        [target.projectId]: (cache[target.projectId] ?? []).map((item) =>
+          item.id === updated.id ? updated : item)
+      }));
+      setActiveThread((item) => item?.id === updated.id ? updated : item);
+    } catch (error) {
+      setUiError(String(error));
+    }
+  };
+
   const changePermission = async (mode: PermissionMode) => {
     setUiError(null);
     try {
@@ -1180,6 +1208,11 @@ function App() {
                       <button key={thread.id}
                         className={"thread-item project-tree-thread " + (workspace?.id === project.id && activeThread?.id === thread.id ? "active" : "")}
                         disabled={Boolean(runningTurnId)} title={thread.title}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          setRenamingThread({ projectId: project.id, thread });
+                          setRenameValue(thread.title);
+                        }}
                         onClick={() => {
                           if (workspace?.id === project.id) void loadThread(thread);
                           else void selectProject(project);
@@ -1195,6 +1228,21 @@ function App() {
           </div>
         </div>
 
+        {renamingThread && (
+          <div className="thread-rename-dialog" role="dialog" aria-label="Rename thread">
+            <label htmlFor="thread-rename-input">Rename thread</label>
+            <input id="thread-rename-input" autoFocus maxLength={120}
+              value={renameValue} onChange={(event) => setRenameValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void commitThreadRename();
+                if (event.key === "Escape") setRenamingThread(null);
+              }} />
+            <div className="thread-rename-actions">
+              <button onClick={() => setRenamingThread(null)}>Cancel</button>
+              <button disabled={!renameValue.trim()} onClick={() => void commitThreadRename()}>Save</button>
+            </div>
+          </div>
+        )}
         <div className="sidebar-footer">
           <div className={"status-dot status-" + status.state} />
           <div>

@@ -184,6 +184,7 @@ declare global {
       selectModel: (threadId: string, model: string) => Promise<AgentEnvelope>;
       createThread: (model?: string) => Promise<AgentEnvelope>;
       listThreads: () => Promise<AgentEnvelope>;
+      renameThread: (threadId: string, title: string) => Promise<AgentEnvelope>;
       getThread: (threadId: string) => Promise<AgentEnvelope>;
       planRequest: (threadId: string, operation: string, payload?: Record<string, unknown>) => Promise<AgentEnvelope>;
       startTurn: (threadId: string, prompt: string) => Promise<AgentEnvelope>;

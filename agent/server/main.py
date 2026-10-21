@@ -1148,6 +1148,23 @@ class AgentServer:
             )
             return
 
+        if message_type == "thread.rename":
+            project = self.projects.active
+            thread_id = str(data.get("thread_id") or payload.get("thread_id") or "")
+            title = str(payload.get("title") or "")
+            if not project or not project.state.get_thread(thread_id):
+                await self.send_error(ws, "THREAD_NOT_FOUND", "Select a valid thread.", request_id=request_id, thread_id=thread_id or None)
+                return
+            thread = project.state.rename_thread(thread_id, title)
+            if not thread:
+                await self.send_error(ws, "INVALID_TITLE", "Title must be 1-120 characters.", request_id=request_id, thread_id=thread_id)
+                return
+            await ws.send_json(envelope(
+                "thread.updated", {"thread": thread.to_dict(), "project_id": project.id},
+                request_id=request_id, thread_id=thread_id,
+            ))
+            return
+
         if message_type == "thread.list":
             project = self.projects.active
             await ws.send_json(

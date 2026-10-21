@@ -105,6 +105,15 @@ class InMemoryState:
         self._persist_thread(thread)
         return thread
 
+    def rename_thread(self, thread_id: str, title: str) -> ThreadRecord | None:
+        thread = self._threads.get(thread_id)
+        title = " ".join(title.split()).strip()
+        if not thread or not title or len(title) > 120:
+            return None
+        thread.title = title
+        self._persist_thread(thread)
+        return thread
+
     def list_threads(self) -> list[ThreadRecord]:
         return sorted(
             self._threads.values(),

@@ -3496,3 +3496,15 @@ summary:focus-visible {
 .project-tree-thread { display: flex; align-items: center; gap: 7px; text-align: left; padding: 7px 8px; }
 .project-tree-thread-icon { flex: 0 0 auto; color: #777; font-size: 18px; line-height: 10px; }
 .project-tree-thread-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+.thread-rename-dialog {
+  margin: 8px; padding: 10px; border: 1px solid #444;
+  border-radius: 8px; background: #242424; display: grid; gap: 8px;
+}
+.thread-rename-dialog label { font-size: 12px; font-weight: 600; }
+.thread-rename-dialog input {
+  min-width: 0; width: 100%; box-sizing: border-box; padding: 7px;
+  color: #eee; background: #171717; border: 1px solid #555; border-radius: 5px;
+}
+.thread-rename-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.thread-rename-actions button { padding: 5px 10px; border-radius: 5px; }

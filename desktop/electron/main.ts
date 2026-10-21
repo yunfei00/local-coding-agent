@@ -1346,6 +1346,9 @@ ipcMain.handle("agent:plan-request", async (_event, threadId: string, operation:
   return sendRequest(operation, operation === "plan.resume" ? "plan.resumable" : "plan.loaded",
     { ...payload, thread_id: threadId }, { threadId });
 });
+ipcMain.handle("agent:thread-rename", async (_event, threadId: string, title: string) => {
+  return sendRequest("thread.rename", "thread.updated", { title }, { threadId });
+});
 ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
   return sendRequest(
     "thread.get",

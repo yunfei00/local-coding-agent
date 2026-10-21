@@ -126,6 +126,7 @@ contextBridge.exposeInMainWorld("localAgent", {
   listThreads: () => ipcRenderer.invoke("agent:thread-list"),
   planRequest: (threadId: string, operation: string, payload: Record<string, unknown> = {}) =>
     ipcRenderer.invoke("agent:plan-request", threadId, operation, payload),
+  renameThread: (threadId: string, title: string) => ipcRenderer.invoke("agent:thread-rename", threadId, title),
   getThread: (threadId: string) => ipcRenderer.invoke("agent:thread-get", threadId),
   startTurn: (threadId: string, prompt: string) =>
     ipcRenderer.invoke("agent:turn-start", threadId, prompt),
