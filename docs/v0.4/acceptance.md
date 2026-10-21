@@ -2,6 +2,31 @@
 
 日期：2026-10-22。开发分支：`feature/v0.4-local-first-agent`，基于已验收的 v0.3 main `9c73179`。本页区分 Mock、真实工具、真实模型，不以 Mock 替代真实环境结果。
 
+交付结论：v0.4 候选实现、自动化和 Windows 产物已完成；真实本地修复场景未通过、真实 API 尚未验收，因此保留 [Draft PR #3](https://github.com/yunfei00/local-coding-agent/pull/3)，不合并 main、不创建 Tag/Release。
+
+## 最终自动化与产物
+
+运行代码提交：`9cf3186ef040a5179b4f87f48a5295d5cd20be24`。其后的验收文档提交不改变运行代码。
+
+| 门禁 | 最终结果 | 证据 |
+| --- | --- | --- |
+| Python 回归 | 197 通过，0 失败 | 本地 `.codex-v04-package-verified.log`；含原 174 项与新增 23 项 |
+| Desktop 单元测试 | 32 通过，0 失败 | 同一打包运行；原 29 项与新增 3 项 |
+| TypeScript / Build | 全部通过 | 同一运行 |
+| Windows / Ubuntu CI | 全部通过 | [PR CI](https://github.com/yunfei00/local-coding-agent/actions/runs/39649623066)、[分支 CI](https://github.com/yunfei00/local-coding-agent/actions/runs/39649615892) |
+| 实际 Electron UI | 15 项通过，远端 0 跳过 | 上述 Windows CI，包括实际系统剪贴板内容回读 |
+| Windows 候选打包 | 全部通过 | [Windows Package Candidate](https://github.com/yunfei00/local-coding-agent/actions/runs/39649615667)，Setup 安装启动/卸载、Portable、打包桌面和哈希复算 |
+| 本地 Windows 打包 | 11 阶段通过 | `.codex-v04-package-verified.log`；本地剪贴板探针环境限制仍单列 skipped |
+
+本地产物位于 `desktop/release`，来自上述运行代码，非正式 Release：
+
+| 文件 | 字节数 | SHA256 |
+| --- | ---: | --- |
+| Local-Coding-Agent-0.4.0-x64-Setup.exe | 114107533 | 8ca91740e4f7b7d5b437704d40647b5d0b08590d9b688c1c6c3fb36c5640ccac |
+| Local-Coding-Agent-0.4.0-x64-Portable.exe | 113877442 | e7896eaaffcc12f72876a75140bb89f636b07a5926412d06f6a8d382b59a4c46 |
+
+`SHA256SUMS.txt` 已生成并复算一致。远端独立构建的哈希不要求与本机字节一致。最后复核 main 仍为 `9c73179`，工作区干净；开发提交已推送功能分支。没有 v0.4.0 Tag 或 GitHub Release。
+
 ## 可复制的自动化命令
 
 ```powershell
@@ -37,7 +62,7 @@ uv run python scripts/validation/v04_model_smoke.py --mode ollama --model qwen2.
 - 基线：174 Python、29 Desktop 测试通过。
 - 验收运行 `20261022-015127-798572`：192 Python、32 Desktop 测试通过，TypeScript/Build 通过，0 失败。之后审查修复由最终运行和远端 CI 继续核对。
 - 实际 Electron：15 项检查完成，包括自主任务 Mock Ollama → Worktree 审批 → 真实 Patch → 真实测试 → 报告确认，以及 v0.3 MCP、面板发送、Stop、改名、主题与重启。
-- 当前 Windows 会话的系统剪贴板写入已知探针后也读回空值；该环境下仅验证渲染和复制 IPC 确认，系统剪贴板实际内容单列 skipped，不能声称原生剪贴板验收通过。真实桌面会话或远端 Windows CI 应继续复核。
+- 当前本机 Windows 会话的系统剪贴板写入已知探针后也读回空值，本地原生回读单列 skipped；远端 Windows CI 已独立验证真实剪贴板内容，0 跳过。本机环境限制不被描述成已通过。
 
 ## 最终代码审查
 
@@ -60,4 +85,4 @@ uv run python scripts/validation/v04_model_smoke.py --mode api --model $env:LCA_
 
 ## 合并和发布门禁
 
-必须完成新增/回归测试、实际 UI、Windows 产物和最终审查，并满足真实环境验收后，才合并 main、创建 v0.4.0 Tag 并走现有 Release Windows 流程。当前真实本地场景 A 未通过、真实 API 未验收，保留功能分支，不创建正式 Tag/Release。自动化和 Windows 产物的最终结果在完成后补录，不能将待运行项目写成通过。
+新增/回归测试、实际 UI、Windows 产物和最终审查已完成。按任务要求，还需满足真实环境验收后，才合并 main、创建 v0.4.0 Tag 并走现有 Release Windows 流程。当前真实本地场景 A 未通过、真实 API 未验收，保留功能分支，不创建正式 Tag/Release。
