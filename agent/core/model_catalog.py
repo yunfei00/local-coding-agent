@@ -47,7 +47,7 @@ def validate_catalog(raw):
             raise ValueError("Credential reference must belong to its connection")
     profile_ids = set()
     for p in profiles:
-        fields = {"model_profile_id", "connection_id", "model_id", "display_name", "context_window", "max_output_tokens", "temperature", "pricing", "tool_mode"}
+        fields = {"model_profile_id", "connection_id", "model_id", "display_name", "context_window", "max_output_tokens", "temperature", "pricing", "tool_mode", "supports_vision"}
         if not isinstance(p, dict) or set(p) - fields or not {"model_profile_id", "connection_id", "model_id", "display_name"}.issubset(p):
             raise ValueError("Invalid model profile fields")
         identifier(p["model_profile_id"])
@@ -62,6 +62,8 @@ def validate_catalog(raw):
         p.setdefault("temperature", None)
         p.setdefault("pricing", None)
         p.setdefault("tool_mode", "auto")
+        if 'supports_vision' in p and not isinstance(p['supports_vision'], bool):
+            raise ValueError('supports_vision must be an explicit boolean capability')
         # Reuse the router's existing range/price validation.
         pricing = p["pricing"] or {}
         if not isinstance(pricing, dict) or set(pricing) - {"input_price", "output_price"}:
@@ -154,5 +156,5 @@ class ModelCatalog:
             binding.update(model=profile["model_id"], route="local" if connection["provider_type"] == "ollama" else "api",
                 context_window=profile["context_window"], output_limit=profile["max_output_tokens"],
                 tool_mode=profile["tool_mode"], input_price=(profile["pricing"] or {}).get("input_price"),
-                output_price=(profile["pricing"] or {}).get("output_price"), _connection=deepcopy(connection), temperature=profile["temperature"])
+                output_price=(profile["pricing"] or {}).get("output_price"), _connection=deepcopy(connection), temperature=profile["temperature"], supports_vision=profile.get('supports_vision',False))
         return result

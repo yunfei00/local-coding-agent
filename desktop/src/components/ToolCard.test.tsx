@@ -3,6 +3,12 @@ import {renderToStaticMarkup} from "react-dom/server";
 import {ToolCard} from "./ToolCard";
 
 describe("managed process terminal cards", () => {
+  it("shows desktop artifact identity and explicit image feedback state", () => {
+    const html = renderToStaticMarkup(<ToolCard tool={{id:"capture", name:"desktop_screenshot", arguments:{window_id:"window_owned"},status:"running", chunks:[],
+      desktopData:{artifact_id:"capture_owned",path:"local/desktop-artifacts/capture.png",vision_feedback:"local_artifact_only",redacted_controls:2}}} />);
+    for (const value of ["WINDOWS DESKTOP", "capture_owned", "local/desktop-artifacts/capture.png", "local_artifact_only", "redacted_controls"])
+      expect(html).toContain(value);
+  });
   it("shows background server output and process/log identity", () => {
     const html = renderToStaticMarkup(<ToolCard tool={{id:"call", name:"start_process", arguments:{command:"npm run dev"},
       status:"running", pid:1234, processId:"process_owned", logPath:"logs/output.jsonl", shell:"powershell",

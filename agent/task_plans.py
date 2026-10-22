@@ -34,7 +34,7 @@ def automatic_steps(prompt: str) -> list[dict[str, str]]:
 def mutation_fingerprint(tool: str, arguments: dict[str, Any], read_only: bool = False) -> str:
     # Process handles expire at scope cleanup; starting a new process after an
     # explicit task resume is not replaying a completed file mutation.
-    if read_only or tool in {"start_process", "read_process", "stop_process"}:
+    if read_only or tool.startswith('desktop_') or tool in {"start_process", "read_process", "stop_process"}:
         return ""
     if tool == "run_command" and re.match(r"^(?:uv\s+run\s+)?(?:python(?:3)?\s+-m\s+(?:unittest|pytest|compileall)\b|npm(?:\.cmd)?\s+(?:run\s+)?(?:test|typecheck|build)\b)", str(arguments.get("command", "")).strip(), re.I):
         return ""
@@ -102,7 +102,7 @@ class TaskPlanStore:
         """Store only execution metadata, never arguments, output, or model reasoning."""
         with self.db:
             data = (result or {}).get("data") or {}
-            metadata = {k: data[k] for k in ("process_id", "pid", "shell", "state", "log_path", "metadata_path", "log_truncated") if k in data}
+            metadata = {k: data[k] for k in ("process_id", "pid", "shell", "state", "log_path", "metadata_path", "log_truncated", "artifact_id", "path", "width", "height", "dpi", "vision_feedback", "window_id", "window_generation", "sha256", "captured_at") if k in data}
             if result:
                 metadata.update(duration_ms=result.get("duration_ms"), error_code=(result.get("error") or {}).get("code") or data.get("error_code"))
             self.db.execute(

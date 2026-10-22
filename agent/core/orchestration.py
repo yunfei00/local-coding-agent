@@ -247,10 +247,14 @@ class TaskService:
                       "context_window": profile.get("context_window") or 32768,
                       "temperature": profile.get("temperature") if profile.get("temperature") is not None else 0.2}
             if connection["provider_type"] == "ollama":
-                return OllamaProvider(**kwargs)
+                provider = OllamaProvider(**kwargs)
+                provider.supports_vision = profile.get('supports_vision',False)
+                return provider
             ref = connection["credential_reference"]
             key = self.server.openai_api_key if ref == "legacy-openai" else self.credentials.get(ref, "")
-            return OpenAICompatibleProvider(**kwargs, api_key=key or "")
+            provider = OpenAICompatibleProvider(**kwargs, api_key=key or "")
+            provider.supports_vision = profile.get('supports_vision',False)
+            return provider
         settings = RuntimeSettings.validate({**snapshot, "provider": "ollama" if route == "local" else "openai_compatible"})
         return settings.create_provider(openai_api_key=self.server.openai_api_key)
 

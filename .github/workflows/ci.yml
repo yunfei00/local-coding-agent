@@ -113,3 +113,11 @@ jobs:
           name: m2-project-evidence-${{ matrix.os }}
           path: validation-reports/m2-project-*.json
           if-no-files-found: ignore
+
+      - name: Retain sanitized M3 desktop evidence (never screenshots)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-desktop-evidence-${{ matrix.os }}
+          path: validation-reports/m3-*.json
+          if-no-files-found: ignore

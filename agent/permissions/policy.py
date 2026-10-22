@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from agent.tools.workspace import Workspace
+from agent.desktop.runtime import NAMES as DESKTOP_TOOLS, public_arguments
 
 
 class PermissionMode(StrEnum):
@@ -30,7 +31,7 @@ READ_ONLY_TOOLS = {
     "git_worktree_list",
 }
 
-WORKSPACE_TOOLS = READ_ONLY_TOOLS | {
+WORKSPACE_TOOLS = READ_ONLY_TOOLS | set(DESKTOP_TOOLS) | {
     "write_file",
     "apply_patch",
     "run_command",
@@ -280,6 +281,23 @@ class PermissionPolicy:
         user_prompt: str | None = None,
     ) -> PermissionVerdict:
         metadata = tool_metadata or {}
+        if tool_name in DESKTOP_TOOLS:
+            if self.mode == PermissionMode.READ_ONLY:
+                return PermissionVerdict(False, reason="Desktop tools require explicit desktop consent outside Read Only mode", risk="read_only")
+            target = str(arguments.get('window_id') or 'current-session-enumeration')
+            share = bool(arguments.get('share_with_model'))
+            risk = bool(arguments.get('confirm_risk')) or arguments.get('method') == 'coordinate' or tool_name == 'desktop_keypress'
+            category = 'capture-upload' if share else 'capture-local' if tool_name == 'desktop_screenshot' else 'controls-to-model' if tool_name in {'desktop_inspect','desktop_wait'} else 'enumerate-to-model' if tool_name == 'desktop_list_windows' else 'control'
+            reason = ('授权当前任务访问指定 Windows 窗口。仅当前用户会话，不含 UAC/锁屏。'
+                      + ('截图可能发送至当前模型服务（在线服务为第三方）；请确认窗口没有敏感内容。' if share else
+                         '窗口标题/控件树可能发送至当前模型服务；不读取编辑框值，敏感控件已隐藏。' if category in {'controls-to-model','enumerate-to-model'} else
+                         '截图仅保存本机，编辑框区域遮盖。' if category == 'capture-local' else '允许操作此窗口；敏感控件禁止输入，高风险动作需再次审批。'))
+            # Dangerous/unclassified operations get a call-specific key in the server.
+            key = 'desktop:' + category + ':' + target
+            if risk:
+                reason += '此为风险确认、坐标回退或按键动作，需要本次新审批，不复用之前授权。'
+                key += ':fresh:' + json.dumps(public_arguments(tool_name,arguments), sort_keys=True,ensure_ascii=False)
+            return PermissionVerdict(True, True, reason, key, 'desktop_fresh' if risk else 'desktop')
         if metadata.get("source") != "mcp" and self.mode == PermissionMode.READ_ONLY and tool_name not in READ_ONLY_TOOLS:
             return PermissionVerdict(allowed=False, reason=f"{tool_name} is disabled in Read Only mode.", risk="read_only")
         if metadata.get("source") == "mcp":
