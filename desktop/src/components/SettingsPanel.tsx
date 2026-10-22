@@ -1,4 +1,5 @@
 import { MCPSettingsSection } from "./MCPSettingsSection";
+import { ModelSettingsSection } from "./ModelSettingsSection";
 import { useEffect, useMemo, useState } from "react";
 
 type PermissionMode = "read_only" | "workspace" | "full_access";
@@ -58,6 +59,7 @@ type UpdateCheckResult = {
 type Tab =
   | "general"
   | "provider"
+  | "models"
   | "agent"
   | "context"
   | "mcp"
@@ -77,6 +79,7 @@ type Props = {
 const tabs: Array<{ id: Tab; label: string }> = [
   { id: "general", label: "General" },
   { id: "provider", label: "Provider" },
+  { id: "models", label: "Models & Routing" },
   { id: "agent", label: "Agent" },
   { id: "context", label: "Context" },
   { id: "mcp", label: "MCP" },
@@ -931,6 +934,7 @@ export function SettingsPanel({
             </div>
           ) : null}
 
+          {tab === "models" ? <ModelSettingsSection threadId={threadId} running={running} /> : null}
           {tab === "mcp" ? (
             <MCPSettingsSection running={running} />
           ) : null}
@@ -988,7 +992,7 @@ export function SettingsPanel({
         </span>
         <button
           type="button"
-          disabled={busy || running}
+          disabled={busy || running || tab === "models"}
           onClick={() => void save()}
         >
           {busy ? "Applying…" : "Save settings"}

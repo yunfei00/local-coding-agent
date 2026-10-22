@@ -155,6 +155,28 @@ function mcpSecretFilePath(): string {
   return path.join(app.getPath("userData"), "mcp-secrets.json");
 }
 
+let modelCredentials: Record<string, string> | null = null;
+function readModelCredentials(): Record<string, string> {
+  if (modelCredentials !== null) return modelCredentials;
+  const file = path.join(app.getPath("userData"), "model-secrets.json");
+  if (!existsSync(file)) return modelCredentials = {};
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("Protected model credentials unavailable; restore OS storage before changing keys.");
+  try {
+    const payload = JSON.parse(readFileSync(file, "utf8"));
+    return modelCredentials = JSON.parse(safeStorage.decryptString(Buffer.from(payload.encrypted, "base64")));
+  } catch {throw new Error("Cannot decrypt model credentials; existing encrypted file was preserved.");}
+}
+async function syncModelCredentials(): Promise<void> {
+  await sendRequest("task.credentials.update", "task.loaded", {credentials: readModelCredentials()});
+}
+function storeModelCredentials(values: Record<string, string>): void {
+  const file = path.join(app.getPath("userData"), "model-secrets.json");
+  if (safeStorage.isEncryptionAvailable()) {
+    writeFileSync(file, JSON.stringify({encrypted: safeStorage.encryptString(JSON.stringify(values)).toString("base64")}), {encoding:"utf8", mode:0o600});
+  }
+  modelCredentials = values;
+}
+
 function readMcpSecrets(): Record<string, Record<string, string>> {
   if (Object.keys(sessionMcpSecrets).length > 0) {
     return sessionMcpSecrets;
@@ -542,6 +564,7 @@ function connectAgentWebSocket(ready: {
     maybeCompletePackagedSmoke();
     void syncOpenAISecretToAgent();
     void syncMcpSecretsToAgent();
+    void syncModelCredentials().catch(() => appendRuntimeLog("desktop.log", "Protected model credential synchronization failed; check Settings."));
   });
 
   socket.on("message", handleAgentMessage);
@@ -1353,6 +1376,23 @@ ipcMain.handle("agent:thread-create", async (_event, model?: string) => {
 });
 ipcMain.handle("agent:thread-list", async () => {
   return sendRequest("thread.list", "thread.listed");
+});
+ipcMain.handle("agent:task-request", async (_event, threadId: string, operation: string, payload: Record<string, unknown> = {}) => {
+  if (operation === "task.credential.status") return {type:"task.loaded", payload:{configured:Object.keys(readModelCredentials()), mode:safeStorage.isEncryptionAvailable() ? "os_protected" : "session_only"}};
+  if (operation === "task.credential.set") {
+    const id = String(payload.connection_id ?? "");
+    const key = payload.api_key;
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(id) || typeof key !== "string" || key.length > 16000) throw new Error("Invalid connection credential");
+    const values = {...readModelCredentials()};
+    if (key) values["connection-" + id] = key; else delete values["connection-" + id];
+    // Agent rejects changes while a turn is running before disk persistence.
+    await sendRequest("task.credentials.update", "task.loaded", {credentials:values});
+    storeModelCredentials(values);
+    return {type:"task.loaded", payload:{mode:safeStorage.isEncryptionAvailable() ? "os_protected" : "session_only", configured:!!key}};
+  }
+  const allowed = new Set(["task.catalog.get", "task.catalog.update", "task.settings.get", "task.settings.update", "task.connection.test", "task.list", "task.start", "task.resume", "task.pause", "task.cancel", "task.budget.add", "task.configure", "task.approve"]);
+  if (!allowed.has(operation)) throw new Error("Unsupported task operation");
+  return sendRequest(operation, "task.loaded", payload, {threadId}, operation === "task.connection.test" ? 30000 : 15000);
 });
 ipcMain.handle("agent:plan-request", async (_event, threadId: string, operation: string, payload: Record<string, unknown> = {}) => {
   const allowed = new Set(["plan.list", "plan.create", "plan.step.update", "plan.step.edit", "plan.steps.reorder", "plan.checkpoint", "plan.resume", "plan.resume.confirm"]);

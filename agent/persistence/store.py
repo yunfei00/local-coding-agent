@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from agent.task_plans import TaskPlanStore
+from agent.core.task_runtime import TaskRuntimeStore
 
 
 SCHEMA_VERSION = 4
@@ -34,6 +35,7 @@ class SQLiteStore:
         self.connection.execute("PRAGMA synchronous = NORMAL")
         self._migrate()
         self.task_plans = TaskPlanStore(self.connection)
+        self.task_runtime = TaskRuntimeStore(self.task_plans)
 
     def _migrate(self) -> None:
         self.connection.executescript(

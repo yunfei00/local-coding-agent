@@ -1,0 +1,15 @@
+# API 预算控制
+
+默认任务限制：API 3 次、30000 Token、本地连续失败上限 3、活动执行时间 1800 秒、单次模型请求 120 秒、单次验证 120 秒。全局默认累计限制为 API 30 次、300000 Token；跨任务、跨重启保留，不按日自动归零。任务和全局费用上限默认未设置，配置价格后可设置。Settings → Models & Routing 配置模型价格、输出限制和 API Budget；Task → Models and budget 可以调整任务配置。
+
+每次模型调用先预留，再发送请求。API 输入采用序列化消息与工具 Schema 的 UTF-8 字节数加 256 开销，输出预留该角色的 `output_limit`。原子 SQLite `BEGIN IMMEDIATE` 同时检查任务与全局调用数、Token 和费用上限；不足时不调用 Provider。输入与最大输出还需满足配置的模型上下文。OpenAI 请求传递 `max_tokens` 和流式 usage 参数，Ollama 传递 `num_predict`，请求还有超时保护。
+
+这是一种保守的请求预算，并非供应商 Tokenizer 或账单的精确硬上限。不同 Tokenizer、工具协议和供应商计费可能存在差异；UI 明确显示限制精度。若供应商不遵守输出限制，不能保证供应商侧实际账单不会超过估算。费用硬限制必须有输入/输出单价，否则拒绝 API 请求。若报告的实际用量大于预留，账本提高占用额度并阻止后续超限调用。
+
+账本区分 API/本地调用数、API 输入/输出/缓存 Token、估算费用、供应商返回的实际费用、累计活动时间。未知 usage 标记估算；供应商不返回费用时显示 unavailable，不把零费用当作实际费用。缓存 Token 是输入的一部分，预留不依赖缓存折扣。
+
+取消、429、网络中断、超时和崩溃的请求可能已被供应商接收，因此保留预留，恢复不重复扣同一个 request ID，也不自动退还不确定额度。即便实际报告较少，也不退还保守预留；这避免通过重启绕过硬限制。账本是累计保守上界，可能比供应商实际消耗大。
+
+耗尽后任务暂停，可 Continue local-only、保持暂停或 Add task budget（输入明确的新上限）。新任务同时冻结任务级与全局上限；修改 Settings 不改变旧任务。暂停后 Apply configuration to paused task 才刷新全局上限快照。也可在 Add task budget 显式传入 `global_api_calls` / `global_api_tokens` / `global_api_cost` 更新该任务使用的全局阈值；只追加 `api_calls` 不会覆盖全局阈值。任何路径都保留跨任务累计账本，不退款或清零。
+
+追加执行时间同样使用 `task_seconds`，暂停等待不消耗活动时间；崩溃到恢复的时间保守计入，以免重启绕过时限。API 失败没有无限重试；原 Loop 的有限重试每次也必须重新通过预算预检。连接类型为 Ollama 的 LAN 服务仍计本地调用；收费 API 统计来自实际解析后的 OpenAI Compatible 连接，而非 URL 是否 localhost。

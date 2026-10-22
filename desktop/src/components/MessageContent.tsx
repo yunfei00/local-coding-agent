@@ -1,18 +1,23 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Markdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
+function CopyButton({ text, label = "Copy" }: { text: string | (() => string); label?: string }) {
   const [status, setStatus] = useState(label);
   return <button type="button" className="copy-button" onClick={() => {
-    void window.localAgent.copyText(text).then(() => setStatus("Copied")).catch(() => setStatus("Copy failed"));
+    void window.localAgent.copyText(typeof text === "function" ? text() : text).then(() => setStatus("Copied")).catch(() => setStatus("Copy failed"));
   }}>{status}</button>;
+}
+
+function CodeBlock({children}: {children?: React.ReactNode}) {
+  const pre = useRef<HTMLPreElement>(null);
+  return <div className="code-block"><CopyButton text={() => pre.current?.textContent ?? extractText(children)} label="Copy code" /><pre ref={pre}>{children}</pre></div>;
 }
 
 const markdownComponents: Components = {
       // Raw HTML is disabled by react-markdown; javascript: URLs are filtered.
       a: ({ children, href }) => <a href={href} target="_blank" rel="noreferrer">{children}</a>,
-      pre: ({children}) => <div className="code-block"><CopyButton text={extractText(children)} label="Copy code" /><pre>{children}</pre></div>,
+      pre: CodeBlock,
 };
 
 export function MessageContent({ text, markdown }: { text: string; markdown: boolean }) {

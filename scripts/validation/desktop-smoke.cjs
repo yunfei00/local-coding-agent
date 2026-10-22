@@ -15,13 +15,22 @@ const data = fs.mkdtempSync(path.join(os.tmpdir(), "lca-ui-"));
 const project = path.join(data, "calculator-project");
 fs.mkdirSync(project);
 fs.writeFileSync(path.join(project, "README.md"), "# Calculator\nLocal smoke fixture\n");
-execFileSync("git", ["init", "-q"], {cwd: project});
+execFileSync("git", ["init", "-q", "-b", "main"], {cwd: project});
+fs.writeFileSync(path.join(project, "calculator.py"), "def add(a,b):\n    return a - b\n");
+fs.writeFileSync(path.join(project, ".gitignore"), "__pycache__/\n.venv/\n");
+fs.mkdirSync(path.join(project, "tests"));
+fs.writeFileSync(path.join(project, "tests/test_calc.py"), "import unittest\nfrom calculator import add\nclass Calc(unittest.TestCase):\n def test_add(self): self.assertEqual(add(2,3),5)\n");
+for (const args of [["config","user.name","Smoke"],["config","user.email","smoke@example.test"],["add","."],["commit","-qm","fixture"]]) execFileSync("git", args, {cwd:project});
 let rejectModels = false;
+let protectedCredentialSeen = false;
 let mcpProcess;
 const checks = [];
+const skipped = [];
 const errors = [];
 const provider = http.createServer((req, res) => {
+  if (req.url === "/api/tags") {res.writeHead(200, {"Content-Type":"application/json"}); return res.end(JSON.stringify({models:[{name:"task-executor"}]}));}
   if (req.url.endsWith("/models")) {
+    if (req.headers.authorization === "Bearer mock-only-not-a-real-key") protectedCredentialSeen = true;
     res.writeHead(rejectModels ? 503 : 200, {"Content-Type": "application/json"});
     return res.end(JSON.stringify(rejectModels ? {error: {message: "Intentional startup failure"}} : {data: [{id: "smoke-coder"}]}));
   }
@@ -29,6 +38,15 @@ const provider = http.createServer((req, res) => {
   req.on("data", chunk => body += chunk);
   req.on("end", () => {
     const payload = JSON.parse(body || "{}");
+    if (req.url === "/api/show") {res.writeHead(200, {"Content-Type":"application/json"}); return res.end(JSON.stringify({capabilities:["tools"]}));}
+    if (req.url === "/api/chat") {
+      let message = {content:"Task implementation complete"};
+      if (payload.model === "task-planner") message.content = JSON.stringify({steps:[{description:"Fix calculator using actual tools"}]});
+      else if (payload.model === "task-reviewer") message.content = "Tests passed; review isolated Diff before Git actions.";
+      else if (!payload.messages.some(m => m.role === "tool" && (m.name === "apply_patch" || m.tool_name === "apply_patch"))) message = {content:"", tool_calls:[{function:{name:"apply_patch", arguments:{path:"calculator.py", old_text:"return a - b", new_text:"return a + b"}}}]};
+      res.writeHead(200, {"Content-Type":"application/x-ndjson"});
+      return res.end(JSON.stringify({message, done:true, prompt_eval_count:120, eval_count:30}) + "\n");
+    }
     const prompt = payload.messages?.filter(m => m.role === "user").at(-1)?.content ?? "";
     res.writeHead(200, {"Content-Type": "text/event-stream"});
     const send = (text, finish = null) => res.write("data: " + JSON.stringify({choices: [{index: 0, delta: {content: text}, finish_reason: finish}]}) + "\n\n");
@@ -54,6 +72,7 @@ async function main() {
   await new Promise(resolve => provider.listen(0, "127.0.0.1", resolve));
   const env = {...process.env, ELECTRON_RUN_AS_NODE: undefined, LCA_HEADLESS_SMOKE: "1",
     LCA_DATA_DIR: path.join(data, "agent"), LCA_DESKTOP_DATA_DIR: path.join(data, "desktop"),
+    LCA_OLLAMA_URL: `http://127.0.0.1:${provider.address().port}`, LCA_OLLAMA_MODEL: "task-executor",
     LCA_PROVIDER: "openai_compatible", LCA_OPENAI_BASE_URL: `http://127.0.0.1:${provider.address().port}/v1`,
     LCA_OPENAI_MODEL: "smoke-coder", LCA_OPENAI_API_KEY: "", LCA_CONTEXT_RESERVED_OUTPUT_TOKENS: "1024"};
   let application;
@@ -127,7 +146,93 @@ async function main() {
     }
     checks.push("Real file read and MCP stdio/HTTP calls through the Agent loop");
 
-    for (const panel of ["Context", "Git", "Plan", "Diagnostics"]) {
+    // Exercise the actual Settings form, not only the IPC configuration endpoint.
+    await page.getByRole("button", {name:"Settings", exact:true}).click();
+    await page.getByRole("button", {name:"Models & Routing", exact:true}).click();
+    await page.getByLabel("Model connection", {exact:true}).waitFor();
+    const profileIds = {};
+    for (const [kind, name, models] of [["ollama","Company Ollama",["task-planner","task-executor"]],["openai_compatible","Company API",["api-reviewer","api-escalation"]]]) {
+      await page.getByRole("button", {name:"Add connection", exact:true}).click();
+      await page.getByLabel("Connection name", {exact:true}).fill(name);
+      await page.getByLabel("Connection provider type", {exact:true}).selectOption(kind);
+      await page.getByLabel("Connection base URL", {exact:true}).fill(`http://127.0.0.1:${provider.address().port}${kind === "ollama" ? "" : "/v1"}`);
+      if (kind === "openai_compatible") {
+        await page.getByLabel("Connection API key", {exact:true}).fill("mock-only-not-a-real-key");
+        await page.getByRole("button", {name:"Save / clear connection key", exact:true}).click();
+        await page.getByText(/Credential updated:/).waitFor();
+      }
+      for (const model of models) {
+        await page.getByRole("button", {name:"Manually add model", exact:true}).click();
+        await page.getByLabel("Profile model ID", {exact:true}).fill(model);
+        await page.getByLabel("Profile display name", {exact:true}).fill(model);
+        await page.getByLabel("Profile context window", {exact:true}).fill("65536");
+        profileIds[model] = await page.getByLabel("Edit model profile", {exact:true}).inputValue();
+      }
+    }
+    const roleChoices = {planner:"task-planner",executor:"task-executor",reviewer:"api-reviewer",escalation:"api-escalation"};
+    for (const [role,name] of Object.entries(roleChoices)) await page.getByLabel(role + " profile", {exact:true}).selectOption(profileIds[name]);
+    await page.getByRole("button", {name:"Save model configuration", exact:true}).click();
+    await page.getByText("Model configuration saved. Running task snapshots are unchanged.").waitFor();
+    await page.getByRole("button", {name:"Test connection / fetch models", exact:true}).click();
+    await page.getByRole("button", {name:"Add model: smoke-coder", exact:true}).waitFor();
+    await screenshot("desktop-mixed-provider-settings.png");
+    const persistedRouting = await page.evaluate(async () => (await window.localAgent.taskRequest("", "task.catalog.get")).payload);
+    assert.equal(new Set(Object.values(persistedRouting.config.roles).map(p => p.model_profile_id)).size, 4);
+    checks.push("Settings creates local/API connections, four model profiles, distinct role bindings and protected key");
+    await application.close();
+    page = await launch();
+    await page.getByRole("button", {name:"Settings", exact:true}).click();
+    await page.getByRole("button", {name:"Models & Routing", exact:true}).click();
+    for (const [role,name] of Object.entries(roleChoices)) {
+      await page.getByLabel(role + " profile", {exact:true}).waitFor();
+      assert.equal(await page.getByLabel(role + " profile", {exact:true}).inputValue(), profileIds[name]);
+    }
+    await page.getByLabel("Model connection", {exact:true}).selectOption({label:"Company API · openai_compatible"});
+    protectedCredentialSeen = false;
+    await page.getByRole("button", {name:"Test connection / fetch models", exact:true}).click();
+    await page.getByRole("button", {name:"Add model: smoke-coder", exact:true}).waitFor();
+    const keyStorage = await page.evaluate(async () => (await window.localAgent.taskRequest("", "task.credential.status")).payload.mode);
+    if (keyStorage === "os_protected") {
+      assert(protectedCredentialSeen, "Restart lost the protected per-connection key");
+      assert(!fs.readFileSync(path.join(data,"desktop","model-secrets.json"),"utf8").includes("mock-only-not-a-real-key"));
+    } else skipped.push("OS protected model credentials unavailable; key is session-only as shown in Settings");
+    checks.push("Restart restores four distinct role bindings; protected credential reaches the selected API connection");
+    await page.getByRole("button", {name:"Settings", exact:true}).click();
+
+    await page.evaluate(async () => {
+      const session = await window.localAgent.getProject();
+      const thread = session.payload.active_thread.id;
+      const loaded = await window.localAgent.taskRequest(thread, "task.settings.get");
+      const config = loaded.payload.config;
+      config.budget.api_calls = 0;
+      config.verification_commands = ["uv run --no-project python -m unittest discover -s tests -v", "git diff --check"];
+      // Use the local Executor also as Reviewer for the zero-API success scenario.
+      config.roles.reviewer.model_profile_id = config.roles.executor.model_profile_id;
+      await window.localAgent.taskRequest(thread, "task.settings.update", {config});
+    });
+    await page.getByRole("button", {name:"Task", exact:true}).click();
+    await page.getByLabel("Task strategy", {exact:true}).selectOption("local-first");
+    await page.getByLabel("Autonomous task goal").fill("Fix calculator in an isolated task worktree");
+    await page.getByRole("button", {name:"Start autonomous task", exact:true}).click();
+    await page.getByRole("button", {name:"Allow once", exact:true}).click();
+    await page.locator('[data-task-status="awaiting_approval"]').waitFor({timeout:60000});
+    await page.locator(".send-button").waitFor();
+    const taskBefore = await page.evaluate(async () => {
+      const session = await window.localAgent.getProject();
+      const loaded = await window.localAgent.taskRequest(session.payload.active_thread.id, "task.list");
+      return loaded.payload.tasks[0];
+    });
+    assert.equal(taskBefore.usage.api_calls, 0);
+    assert(taskBefore.verification.every(test => test.ok));
+    assert(fs.readFileSync(path.join(project,"calculator.py"),"utf8").includes("a - b"));
+    assert(fs.readFileSync(path.join(taskBefore.workspace,"calculator.py"),"utf8").includes("a + b"));
+    await screenshot("desktop-v04-task-report.png");
+    await page.getByRole("button", {name:"Accept verified report", exact:true}).click();
+    await page.locator('[data-task-status="completed"]').waitFor();
+    checks.push("Autonomous task uses Mock Ollama, actual worktree/tools/tests, zero API and verified report approval");
+    await page.getByRole("button", {name:"Task", exact:true}).click();
+
+    for (const panel of ["Task", "Context", "Git", "Plan", "Diagnostics"]) {
       await page.getByRole("button", {name: panel, exact: true}).click();
       const composer = await page.locator(".composer").boundingBox();
       const drawer = await page.locator(".conversation-shell > aside, .conversation-shell > .diagnostics-panel").boundingBox();
@@ -142,11 +247,21 @@ async function main() {
     await page.getByRole("button", {name: "Diagnostics", exact: true}).click();
     assert(await page.locator(".message.agent h3").count() > 0);
     assert(await page.locator(".message.agent table").count() > 0);
-    await page.getByRole("button", {name: "Copy code", exact: true}).first().click();
-    await page.getByRole("button", {name: "Copied", exact: true}).first().waitFor();
-    const copied = await application.evaluate(({clipboard}) => clipboard.readText());
-    assert(copied.includes("print('local agent')"));
-    checks.push("Markdown headings, fenced code, tables and code clipboard");
+    const codeBlock = page.locator(".message.agent .code-block").filter({hasText:"print('local agent')"}).first();
+    await codeBlock.getByRole("button", {name:"Copy code", exact:true}).click();
+    await codeBlock.getByRole("button", {name:"Copied", exact:true}).waitFor();
+    let copied = "";
+    for (let retry = 0; retry < 10; retry++) {
+      copied = await application.evaluate(({clipboard}) => clipboard.readText());
+      if (copied.includes("print('local agent')")) break;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    if (!copied.includes("print('local agent')")) {
+      const probe = await application.evaluate(({clipboard}) => {clipboard.writeText("lca-native-clipboard-probe"); return clipboard.readText();});
+      if (probe === "lca-native-clipboard-probe") throw new Error(`Code copy failed while native clipboard is available: ${JSON.stringify(copied)}`);
+      skipped.push("Native clipboard readback unavailable in this Windows session; renderer copy acknowledgement observed, OS clipboard content requires real-session verification");
+      checks.push("Markdown headings, fenced code, tables and copy button acknowledgement");
+    } else checks.push("Markdown headings, fenced code, tables and actual code clipboard");
 
     const blockedPlan = await page.evaluate(async () => {
       const session = await window.localAgent.getProject();
@@ -199,14 +314,23 @@ async function main() {
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "light");
     assert(await page.locator(".message.agent h3").count() > 0);
     checks.push("Restart restores thread, message history, expansion and theme");
+    await page.getByRole("button", {name:"Settings", exact:true}).click();
+    await page.getByRole("button", {name:"Models & Routing", exact:true}).click();
+    await page.getByLabel("executor profile", {exact:true}).waitFor();
+    assert.equal(await page.getByLabel("executor profile", {exact:true}).inputValue(), profileIds["task-executor"]);
+    assert.equal(await page.getByLabel("escalation profile", {exact:true}).inputValue(), profileIds["api-escalation"]);
+    const afterRestart = await page.evaluate(async () => (await window.localAgent.taskRequest("", "task.catalog.get")).payload.catalog);
+    assert.deepEqual(afterRestart, persistedRouting.catalog);
+    checks.push("Restart restores multiple connections, model identities and role routing");
+    await page.getByRole("button", {name:"Settings", exact:true}).click();
     await page.locator(".project-tree-header.active").click();
     await application.close();
     page = await launch();
     assert.equal(await page.locator(".project-tree-header.active").getAttribute("aria-expanded"), "false");
     checks.push("Collapsed project remains collapsed after restart");
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ok: true, checks}, null, 2));
-    fs.writeFileSync(path.join(reportDir, "desktop-smoke.json"), JSON.stringify({ok: true, checks}, null, 2));
+    console.log(JSON.stringify({ok: true, checks, skipped}, null, 2));
+    fs.writeFileSync(path.join(reportDir, "desktop-smoke.json"), JSON.stringify({ok: true, checks, skipped}, null, 2));
   } catch (error) {
     if (application) {
       const page = application.windows()[0];

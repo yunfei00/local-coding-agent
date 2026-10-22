@@ -135,8 +135,8 @@ class OllamaProvider:
         ).rstrip("/")
         self.preferred_model = (
             preferred_model
-            or os.getenv("LCA_OLLAMA_MODEL")
-            or "qwen3-coder:30b"
+            if preferred_model is not None
+            else os.getenv("LCA_OLLAMA_MODEL", "")
         )
         self.context_window = context_window or int(
             os.getenv("LCA_OLLAMA_NUM_CTX", "32768")
@@ -193,6 +193,18 @@ class OllamaProvider:
             "error": None,
         }
 
+    async def capabilities(self, model: str) -> dict[str, Any]:
+        timeout = aiohttp.ClientTimeout(total=10, connect=3)
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(self.base_url + "/api/show", json={"model": model}) as response:
+                    payload = await self._read_json_response(response)
+            capabilities = payload.get("capabilities")
+            return {"tools": "tools" in capabilities if isinstance(capabilities, list) else None,
+                    "source": "ollama.show"}
+        except (aiohttp.ClientError, asyncio.TimeoutError, ProviderError):
+            return {"tools": None, "source": "unknown; configure tool mode or test connection"}
+
     async def stream_chat(
         self,
         *,
@@ -215,6 +227,8 @@ class OllamaProvider:
                 "temperature": self.temperature,
             },
         }
+        if getattr(self, "max_output_tokens", None):
+            request_body["options"]["num_predict"] = self.max_output_tokens
         if tools:
             request_body["tools"] = tools
 

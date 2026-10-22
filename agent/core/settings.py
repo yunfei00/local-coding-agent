@@ -63,7 +63,7 @@ class RuntimeSettings:
             ).rstrip("/"),
             ollama_model=(
                 os.getenv("LCA_OLLAMA_MODEL")
-                or "qwen3-coder:30b"
+                or ""
             ).strip(),
             ollama_context_window=_env_int(
                 "LCA_OLLAMA_NUM_CTX",
@@ -188,7 +188,7 @@ class RuntimeSettings:
         return cls(
             provider=provider,
             ollama_base_url=url("ollama_base_url"),
-            ollama_model=text("ollama_model"),
+            ollama_model=text("ollama_model", allow_empty=True),
             ollama_context_window=integer(
                 "ollama_context_window",
                 1024,

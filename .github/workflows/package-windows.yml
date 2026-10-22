@@ -6,6 +6,7 @@ on:
     branches:
       - "feature/v0.1-mvp"
       - "feature/v0.3"
+      - "feature/v0.4-local-first-agent"
     paths:
       - "agent/**"
       - "desktop/**"
