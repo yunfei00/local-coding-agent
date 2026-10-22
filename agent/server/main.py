@@ -2492,7 +2492,7 @@ class AgentServer:
         if call.name in DESKTOP_TOOLS and call.name != 'desktop_list_windows':
             try:
                 binding=project.tools.desktop.binding(call.arguments.get('window_id'), turn_id)
-                review_arguments={**review_arguments,'target_window':{'title':binding.get('title',''), 'pid':binding['native']['pid'], 'generation':binding['native']['generation']}}
+                review_arguments={**review_arguments,'target_window':{'title':binding.get('title',''), 'pid':binding['native']['pid'], 'class':binding['native']['class'], 'generation':binding['native']['generation']}}
             except ToolError as exc:
                 return {'ok':False, 'summary':exc.message, 'error':{'code':exc.code,'message':exc.message}, 'changed_paths':[]}
         if autonomous:

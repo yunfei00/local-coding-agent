@@ -120,6 +120,9 @@ class WindowsDesktopTests(unittest.IsolatedAsyncioTestCase):
         result=await self.call('desktop_inspect')
         names={c['automation_id'] for c in result.data['controls']}
         self.assertTrue({'SettingsButton','NameInput','PasswordInput','ScrollPanel'}<=names, result.data)
+        ids={tuple(c['runtime_id']) for c in result.data['controls']}
+        self.assertTrue(any(c['parent_runtime_id'] for c in result.data['controls']))
+        self.assertTrue(all(tuple(c['parent_runtime_id']) in ids for c in result.data['controls'] if c['parent_runtime_id']))
         await self.call('desktop_focus_window')
         before=await self.call('desktop_screenshot')
         self.assertIsNone(self.registry.desktop.image_message(self.owner))
@@ -160,6 +163,7 @@ class WindowsDesktopTests(unittest.IsolatedAsyncioTestCase):
     async def test_sensitive_ambiguous_and_risky_targets_fail_closed(self):
         for name,args,code in [
             ('desktop_type_text',{'selector':{'automation_id':'PasswordInput'},'text':'fixture'},'DESKTOP_SENSITIVE_CONTROL'),
+            ('desktop_keypress',{'keys':'ALT+ESCAPE','confirm_risk':True},'DESKTOP_KEYS_FORBIDDEN'),
             ('desktop_click',{'selector':{'control_type':'Button'}},'DESKTOP_SELECTOR_AMBIGUOUS'),
             ('desktop_click',{'selector':{'automation_id':'DeleteButton'}},'DESKTOP_RISK_APPROVAL_REQUIRED')]:
             with self.assertRaises(ToolError) as error:
@@ -289,6 +293,9 @@ class WindowsDesktopTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('not_vision_capable',capture.data['vision_feedback'])
         self.assertIsNone(self.registry.desktop.image_message(self.owner))
         self.assertGreater(capture.data['dpi'],0)
+        win32gui.SetWindowText(self.state['hwnd'],'')
+        listed=await self.call('desktop_list_windows',pid=self.state['pid'])
+        self.assertTrue(any(w['window_id']==self.window and w['title']=='' for w in listed.data['windows']),'Untitled GUI windows must remain addressable by stable identity')
         await self.registry.processes.close_owner(self.owner)
         with self.assertRaises(ToolError) as error:
             await self.call('desktop_inspect')

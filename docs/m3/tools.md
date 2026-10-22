@@ -4,9 +4,9 @@
 
 | 工具 | 参数与行为 |
 | --- | --- |
-| desktop_list_windows | 可选 pid；枚举当前用户会话可访问的可见顶层窗口，返回 window_id、PID、标题、物理 bounds、DPI；窗口标题回传模型需审批 |
+| desktop_list_windows | 可选 pid；枚举当前用户会话可访问的可见顶层窗口，含无标题窗口，返回 window_id、PID、标题、物理 bounds、DPI；窗口标题回传模型需审批 |
 | desktop_screenshot | window_id；scope=window/screen，默认 window；share_with_model 默认 false。返回本地 PNG 产物引用、SHA256、captured_at、尺寸、物理 origin/client_origin/client_size、DPI、遮盖数、vision_feedback |
-| desktop_inspect | window_id；返回有界 UIA controls、runtime_id、automation_id、control_type、非敏感 name、enabled/visible、物理 bounds。不读 Value 内容 |
+| desktop_inspect | window_id；返回有界 UIA controls、runtime_id、parent_runtime_id、automation_id、control_type、非敏感 name、enabled/visible、物理 bounds。不读 Value 内容 |
 | desktop_focus_window | window_id；恢复最小化窗口并请求焦点，Windows 未授予焦点则报错 |
 | desktop_click | window_id + selector，默认 method=uia（InvokePattern）；坐标回退 method=coordinate、x/y、confirm_risk=true，需新审批和先前 inspect/capture 的有效几何信息 |
 | desktop_type_text | window_id + selector + text（最多 4000 字符）；仅普通 Edit + ValuePattern，敏感控件/疑似密钥文本拒绝；回读值但只返回 value_verified/字符数，不保存输入值 |

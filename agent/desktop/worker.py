@@ -174,30 +174,33 @@ def sensitive(control):
 
 
 def controls(window):
-    queue = [(window, 0)]
+    queue = [(window, 0, None)]
     result = []
+    parents = {}
     truncated = False
     while queue and len(result) < 200:
-        control, depth = queue.pop(0)
+        control, depth, parent_id = queue.pop(0)
         result.append(control)
+        control_id=tuple(control.element_info.runtime_id)
+        parents[control_id]=parent_id
         children = control.children()
         if depth < 8:
             remaining = max(0,200-len(result)-len(queue))
             truncated |= len(children)>remaining
-            queue.extend((child, depth+1) for child in children[:remaining])
+            queue.extend((child, depth+1, list(control_id)) for child in children[:remaining])
         elif children:
             truncated = True
-    return result, bool(queue) or truncated
+    return result, bool(queue) or truncated, parents
 
 
-def describe(control):
+def describe(control, parent_id=None):
     info = control.element_info
     hidden = sensitive(control)
     editable = info.control_type in ('Edit', 'Document')
     rect = control.rectangle()
     return {'name':'[redacted]' if hidden or editable else redact_text(str(info.name))[:200],
             'automation_id':str(info.automation_id)[:160], 'control_type':info.control_type,
-            'runtime_id':list(info.runtime_id), 'enabled':bool(control.is_enabled()), 'visible':bool(control.is_visible()),
+            'runtime_id':list(info.runtime_id), 'parent_runtime_id':parent_id, 'enabled':bool(control.is_enabled()), 'visible':bool(control.is_visible()),
             'sensitive':hidden, 'bounds':[rect.left, rect.top, rect.right, rect.bottom]}
 
 
@@ -205,7 +208,7 @@ def find(window, selector):
     if not isinstance(selector, dict) or not selector or set(selector)-{'name','automation_id','control_type','runtime_id'}:
         fail('DESKTOP_SELECTOR_REQUIRED', 'Provide an exact selector from desktop_inspect')
     matches = []
-    items, truncated = controls(window)
+    items, truncated, _ = controls(window)
     if truncated:
         fail('DESKTOP_TREE_LIMIT', 'Control tree is incomplete at the bounded depth/node limit; exact uniqueness cannot be verified')
     for control in items:
@@ -274,7 +277,7 @@ def execute(request):
     if op == 'desktop_list_windows':
         windows = []
         def visit(hwnd, _):
-            if len(windows) >= 200 or not gui.IsWindowVisible(hwnd) or not gui.GetWindowText(hwnd):
+            if len(windows) >= 200 or not gui.IsWindowVisible(hwnd):
                 return
             try:
                 ident = identity(hwnd)
@@ -289,13 +292,13 @@ def execute(request):
     hwnd = check(binding)
     window = root(binding)
     if op == 'desktop_inspect':
-        items, truncated = controls(window)
-        return {'controls':[describe(c) for c in items], 'truncated':truncated, 'coordinate_space':'physical screen pixels', **geometry(hwnd)}
+        items, truncated, parents = controls(window)
+        return {'controls':[describe(c,parents.get(tuple(c.element_info.runtime_id))) for c in items], 'truncated':truncated, 'coordinate_space':'physical screen pixels', **geometry(hwnd)}
     if op == 'desktop_screenshot':
         from PIL import Image, ImageDraw
         if gui.IsIconic(hwnd):
             fail('DESKTOP_WINDOW_MINIMIZED', 'Restore/focus the window before capturing')
-        items, truncated = controls(window)
+        items, truncated, _ = controls(window)
         if truncated:
             fail('DESKTOP_REDACTION_INCOMPLETE', 'Control tree exceeds the safety bound; screenshot not saved')
         image = capture_window(hwnd)
@@ -403,7 +406,7 @@ def execute(request):
         names.update({'F'+str(k):111+k for k in range(1,13)})
         if not 1 <= len(keys) <= 4 or any(k not in names for k in keys) or len(set(keys)) != len(keys) or keys[-1] in ('CTRL','ALT','SHIFT') or any(k not in ('CTRL','ALT','SHIFT') for k in keys[:-1]):
             fail('DESKTOP_KEYS_INVALID','Use one named key or modifier chord; no key scripts or held keys')
-        if '+'.join(keys) in ('CTRL+ALT+DELETE','CTRL+SHIFT+ESC','CTRL+SHIFT+ESCAPE','ALT+TAB','ALT+ESC'):
+        if ('ALT' in keys and keys[-1] in ('TAB','ESC','ESCAPE')) or ('CTRL' in keys and keys[-1] in ('ESC','ESCAPE')) or ('CTRL' in keys and 'ALT' in keys and keys[-1]=='DELETE'):
             fail('DESKTOP_KEYS_FORBIDDEN','System/session switching shortcuts are outside the authorized window scope')
         if a.get('keys','').upper() not in ('CTRL+A','TAB','SHIFT+TAB','ESC','ESCAPE','UP','DOWN','LEFT','RIGHT','HOME','END','PAGEUP','PAGEDOWN') and not a.get('confirm_risk'):
             fail('DESKTOP_RISK_APPROVAL_REQUIRED','This shortcut requires fresh confirm_risk approval')

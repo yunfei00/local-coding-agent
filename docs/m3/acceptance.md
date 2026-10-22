@@ -36,4 +36,17 @@ git diff --check
 
 本轮特别修复：客户区截图与外框偏移混淆导致遮盖偏移；物理 UIA 坐标与未感知 DPI 的测试线程混用；树截断时不能宣称唯一定位；原生焦点短暂无窗口时必须等待或报错。
 
-最终本地/CI 数量与运行链接在对应 PR 验收记录中补充，以实际运行结果为准。远端 Windows/Ubuntu CI 成功后才合并 main；无 Tag、Release 或安装包，不提交 API Key。既有未跟踪 local_coding_agent.egg-info/ 不属于本次修改。
+## 本地结果
+
+| 检查 | 实际结果 |
+| --- | --- |
+| validation/check.py | Errors: 0；报告 validation-reports/20261023-072756-799654.json |
+| 全量 Python | 302 项，OK；Windows 跳过 2 项非本平台契约（M2 POSIX、M3 非 Windows） |
+| M3 专项 | 10 项，OK；6 项真实 Windows GUI 场景执行，1 项非 Windows 契约跳过；m3-final-head.log，系统快捷键别名拒绝补测 m3-security-final.log |
+| Desktop | typecheck、11 个文件/39 项 Vitest、源码 build 全通过 |
+| desktop-smoke | 26 项通过、0 跳过；m3-desktop-smoke.log / desktop-smoke.json |
+| compileall / diff --check / 凭据与截图暂存扫描 | 通过；未暂存截图、安装包或凭据 |
+
+缩放程序还补充检查客户区没有黑色填充、实际输入框像素遮盖、物理坐标移动后点击、无标题窗口仍可定位、返回控件父子 ID 均在当前树内。最新专项覆盖最终代码，Windows/Ubuntu CI 重新全量发现全部用例。Windows 真实桌面测试不以 Mock 或静默 skip 替代。
+
+远端检查、最终提交和 artifact 见 [PR #14](https://github.com/yunfei00/local-coding-agent/pull/14) 验收记录；Windows/Ubuntu CI 成功后才合并 main。无 Tag、Release 或安装包，不提交 API Key。既有未跟踪 local_coding_agent.egg-info/ 不属于本次修改。
