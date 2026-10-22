@@ -38,4 +38,6 @@ uv run python scripts/validation/check.py
 node scripts/validation/desktop-smoke.cjs
 ```
 
-Windows 安装包与 Portable 的构建及启动结果另记发布验收；本说明不将源码测试等同于已发布产物测试。
+Windows 本机完整打包的 11 个阶段全部通过：223 项 Python、32 项桌面单元测试，以及打包后的 21 项 Electron 回归均通过；解包版、Portable、Setup 安装/启动/卸载与 SHA256 校验通过。
+
+远端 [Windows / Linux CI](https://github.com/yunfei00/local-coding-agent/actions/runs/39719814146) 和 [Windows 候选包](https://github.com/yunfei00/local-coding-agent/actions/runs/39719824555) 通过。Windows runner 使用短路径时，测试已改为比较文件系统规范路径。功能经 [PR #6](https://github.com/yunfei00/local-coding-agent/pull/6) 合并至 `d844d7d8392173cf151528a47cce54ab81c8ffdc`，Tag 为 `v0.4.1`。正式产物状态见 [验收记录](acceptance.md)。

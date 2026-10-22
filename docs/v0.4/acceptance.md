@@ -76,3 +76,16 @@ node scripts/validation/desktop-smoke.cjs
 ~~~
 
 固定场景 A 使用 manual-fixtures/v04-local-first；B 由混合 HTTP 专项复现；C 由 test_v04_orchestration.py 覆盖多文件、恢复与 Git 审批。没有更改旧 manual-fixtures 路径或测试约定。
+
+## v0.4.1 桌面交互补丁
+
+本节补充 v0.4.1，前文 v0.4.0 的发布和模型验收记录继续作为历史证据保留。字体统一为 16/14/12px，会话通过 `…` 或右键菜单打开居中改名弹框，新增居中 New project 弹框。详细行为与目录保护见 [桌面交互更新](desktop-usability.md)。模型路由、预算与原任务机制继续复用。
+
+- 代码：[PR #6](https://github.com/yunfei00/local-coding-agent/pull/6)，合并提交 `d844d7d8392173cf151528a47cce54ab81c8ffdc`，Tag `v0.4.1`。
+- 本地完整打包：223 项 Python、32 项桌面单元测试通过；打包后的 21 项 Electron 回归通过、0 跳过；类型检查、构建、Portable 启动、Setup 安装/启动/卸载和 SHA256 校验均通过。日志 `.codex-v041-package.log`。
+- 最终分支 [Windows / Ubuntu CI](https://github.com/yunfei00/local-coding-agent/actions/runs/39719814146) 与 [Windows Candidate](https://github.com/yunfei00/local-coding-agent/actions/runs/39719824555) 全通过；合并提交 [main CI](https://github.com/yunfei00/local-coding-agent/actions/runs/39720402463) 全通过。
+- 正式构建与上传：[Release Windows](https://github.com/yunfei00/local-coding-agent/actions/runs/39720437014)。下载与正式校验文件：[v0.4.1 Release](https://github.com/yunfei00/local-coding-agent/releases/tag/v0.4.1)。
+
+新增 7 项后端测试覆盖创建目录、名称合法性、同名保护、活动任务阻止、Git 失败保留目录与非当前项目改名。Electron 实测字体计算值、居中弹框、Enter/Escape、目录冲突、Git 初始化、重启恢复、900/1180px 工具栏/Settings 布局，保留既有模型路由、审批、Worktree 和聊天回归。Windows CI 曾发现测试将短路径与完整路径直接比较，已改为比较真实文件系统路径后通过，没有放宽目录保护。
+
+安装包沿用原签名状态，未增加企业签名。新建空 Git 仓库不会自动创建初始提交；自主 Worktree 任务仍要求已有初始提交。真实付费 API 和公司环境模型能力的验收边界与前文相同，本补丁不新增这类验证声明。
