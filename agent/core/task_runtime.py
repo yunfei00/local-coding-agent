@@ -8,7 +8,7 @@ from typing import Any
 
 ACTIVE = {"planning", "executing", "verifying", "repairing", "escalating"}
 TRANSITIONS = {
-    "pending": {"planning", "paused", "cancelled", "failed"},
+    "pending": {"planning", "executing", "paused", "cancelled", "failed"},
     "planning": {"executing", "repairing", "escalating", "paused", "failed", "cancelled"},
     "executing": {"verifying", "repairing", "escalating", "paused", "failed", "cancelled"},
     "verifying": {"repairing", "awaiting_approval", "paused", "failed", "cancelled"},

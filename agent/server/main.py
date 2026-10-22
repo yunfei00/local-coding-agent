@@ -1747,6 +1747,7 @@ class AgentServer:
         project_override=None,
         plan_id: str | None = None,
         authorization_prompt: str | None = None,
+        single_agent: bool = False,
     ) -> None:
         provider = provider or self.provider
         project = project_override or self.projects.active
@@ -1936,12 +1937,14 @@ class AgentServer:
                             if chunk.tool_calls:
                                 observed_output = True
                                 for call in chunk.tool_calls:
-                                    key = canonical_tool_fingerprint(
+                                    key = call.id or canonical_tool_fingerprint(
                                         call.name,
                                         call.arguments,
                                     )
                                     if key not in step_tool_keys:
                                         step_tool_keys.add(key)
+                                        if provider.provider_name == "openai_compatible" and not call.id:
+                                            call = ToolCall(call.name, call.arguments, new_id("call"))
                                         tool_calls.append(call)
 
                             if chunk.done:
@@ -1977,6 +1980,11 @@ class AgentServer:
                         await asyncio.sleep(0.5 * attempt)
 
                 assistant_text = "".join(assistant_parts)
+
+                if finish_reason in {"length", "max_tokens", "content_filter"}:
+                    raise ProviderError("MODEL_TRUNCATED" if finish_reason != "content_filter" else "MODEL_REFUSED", "Model response was truncated or filtered; completion was not accepted")
+                if not assistant_text.strip() and not tool_calls:
+                    raise ProviderError("MODEL_EMPTY_RESPONSE", "Model returned no text or tool calls; completion was not accepted")
 
                 if not tool_calls:
                     gaps = guard.completion_gaps()
@@ -2242,7 +2250,7 @@ class AgentServer:
                             "summary": str(payload.get("summary", ""))[:500],
                         })
                     plan_files_changed.update(str(p) for p in (payload.get("changed_paths") or []))
-                    if active_plan and active_step_id and not payload.get("ok"):
+                    if active_plan and active_step_id and not payload.get("ok") and not single_agent:
                         self.store.task_plans.update_step(active_plan["id"], active_step_id, "blocked")
                         active_step_id = None
                     guard.record_result(call.name, payload)

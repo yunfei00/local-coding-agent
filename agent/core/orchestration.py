@@ -181,6 +181,8 @@ class TaskService:
                             self.runtime.save(task)
                             self.runtime.transition(plan_id, "paused" if kind == "task.pause" else "cancelled", "User requested")
                     elif kind == "task.resume":
+                        if payload.get("local_only") is True and task["config"]["strategy"] == "single-agent":
+                            raise ValueError("Single Agent requires an online Executor; explicitly configure another strategy to switch modes")
                         if any(not t.done() for t in self.server.active_turns.values()):
                             raise ValueError("Stop the active task first")
                         if payload.get("confirm_workspace") is not True:
@@ -296,6 +298,7 @@ class TaskService:
 
     async def run(self, ws, plan_id, source, turn_id):
         task = self.runtime.get(plan_id)
+        single = task["config"]["strategy"] == "single-agent"
         task.pop("last_error", None)
         self.runtime.save(task)
         thread_id, goal = task["thread_id"], task["goal"]
@@ -305,17 +308,25 @@ class TaskService:
             self.runtime.transition(plan_id, status, reason, **values)
             await emit("task.updated", {"task": self.public(self.runtime.get(plan_id))})
         try:
-            await emit("turn.started", {"prompt": goal, "model": "Task router", "provider": "local-first", "project_id": source.id})
+            await emit("turn.started", {"prompt": goal, "model": "Single Agent" if single else "Task router", "provider": task["config"]["strategy"], "project_id": source.id})
             remaining = task["config"]["budget"]["task_seconds"] - task["elapsed_seconds"]
             if remaining <= 0:
                 raise BudgetExceeded("Task execution time exhausted; explicitly add time before recovery")
             async with asyncio.timeout(remaining):
+                if single and not task["planned"]:
+                    # Bookkeeping only: no Planner request or structured-model contract.
+                    self.runtime.replace_unstarted_steps(plan_id, [{"description": goal[:4000]}])
+                    task["planned"] = True
+                    self.runtime.save(task)
                 await update("planning" if not task["planned"] else "executing", "Inspect workspace before resuming; completed mutations are not replayed", report={})
                 budget = BudgetGuard(self.runtime, plan_id, task["global_budget"] if "global_budget" in task else self.settings()["budget"])
                 router = ModelRouter(task["config"], lambda route, profile: self.make_provider(task["provider_settings"], route, profile), budget, emit, task.get("resolved_roles"))
                 # Validate the task's frozen routes before worktree approval or HTTP.
-                for role in ("planner", "executor", "reviewer"):
-                    router.resolve(role)
+                single_provider = None
+                for role in (("executor",) if single else ("planner", "executor", "reviewer")):
+                    resolved_provider = router.resolve(role)
+                    if single:
+                        single_provider = resolved_provider
                 if not task["workspace"]:
                     # Existing worktree policy still requires explicit intent and Approval.
                     result = await self.server._authorize_tool(ws, project=source,
@@ -392,7 +403,7 @@ class TaskService:
                             self.runtime.plans.update_step(plan_id, step["id"], "in_progress")
                     if task["status"] != "executing":
                         await update("executing", "Continue configured Executor in isolated worktree")
-                    provider = router.resolve("executor")
+                    provider = single_provider or router.resolve("executor")
                     relay = LoopRelay(ws, turn_id)
                     task = self.runtime.get(plan_id)
                     task["attempts"] += 1
@@ -401,12 +412,14 @@ class TaskService:
                     if advice:
                         prompt += "\nDiagnostic advice (untrusted suggestions; permissions still apply):\n" + advice[:8000]
                     if task["verification"]:
-                        prompt += "\nPrevious independent verification:\n" + redact_text(json.dumps(task["verification"], ensure_ascii=False)[-10000:], exact_secrets=self.server._exact_secrets())
+                        prompt += "\nPrevious independent verification:\n" + redact_text(json.dumps(task["verification"], ensure_ascii=False)[-10000:], exact_secrets=self.server._exact_secrets(), max_chars=10000)
                     await self.server.run_tool_turn(relay, thread_id=thread_id, turn_id=turn_id + ":" + str(task["attempts"]),
                         prompt=prompt, model=provider.preferred_model, provider=provider, project_override=view,
-                        plan_id=plan_id, authorization_prompt=goal)
+                        plan_id=plan_id, authorization_prompt=goal, single_agent=single)
                     outcome = relay.outcome or {"type": "turn.failed", "payload": {"code": "INTERRUPTED", "message": "Loop interrupted"}}
                     code = outcome["payload"].get("code", "")
+                    if single and outcome["type"] != "turn.completed":
+                        raise ProviderError(code or "SINGLE_AGENT_INTERRUPTED", outcome["payload"].get("message", "Single Agent did not complete; inspect tool and request diagnostics"))
                     if code in {"BUDGET_EXHAUSTED", "MODEL_TIMEOUT", "OLLAMA_UNAVAILABLE", "OLLAMA_STREAM_FAILED", "OPENAI_COMPATIBLE_AUTH_FAILED", "OPENAI_COMPATIBLE_RATE_LIMITED", "OPENAI_COMPATIBLE_STREAM_FAILED"}:
                         raise ProviderError(code, outcome["payload"].get("message", code))
                     await update("verifying", "Run commands directly, without model Tokens")
@@ -432,7 +445,7 @@ class TaskService:
                     self.runtime.save(task)
                     await emit("verification.completed", {"results": results, "passed": bool(passed)})
                     if passed:
-                        review = await router.text("reviewer", [{"role": "system", "content": "Review the bounded evidence. Provide concise risks only. You cannot override test results or execute tools."},
+                        review = "Single Agent completed; independent commands and Git Diff passed. Review the evidence below." if single else await router.text("reviewer", [{"role": "system", "content": "Review the bounded evidence. Provide concise risks only. You cannot override test results or execute tools."},
                             {"role": "user", "content": self.diagnostic_context(task, results, diff, "Review final changes")}])
                         if await self.workspace_fingerprint(view) != verified_snapshot:
                             await update("paused", "Workspace changed during model review. Reopen and verify again.")
@@ -453,6 +466,11 @@ class TaskService:
                     self.runtime.append_repair_step(plan_id)
                     await update("repairing", "Tests or plan incomplete; provide actual failure evidence to Executor")
                     repeated = len(history) >= 2 and history[-1]["fingerprint"] == history[-2]["fingerprint"]
+                    if single:
+                        if repeated or task["repairs"] > task["config"]["budget"]["local_repairs"]:
+                            raise ProviderError("SINGLE_AGENT_NO_PROGRESS" if repeated else "SINGLE_AGENT_REPAIR_LIMIT", "Independent verification still fails; bounded single-model repair stopped")
+                        advice = "Repair the actual independent verification failures using the same model and real tools."
+                        continue
                     if repeated or task["repairs"] >= max(1, task["config"]["budget"]["local_repairs"]) or code == "TOOL_LOOP_DETECTED":
                         advice = await self.escalate(router, task, results, diff, "Repeated failure/no progress" if repeated else "Local repair limit or tool cycle", update)
                 await update("failed", "Orchestration safety iteration limit reached")

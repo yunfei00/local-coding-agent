@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from agent.core.context import ContextBudgetManager, estimate_message_tokens
+from agent.llm.base import ProviderError
 
 
 class ContextBudgetManagerTests(unittest.TestCase):
@@ -127,6 +128,16 @@ class ContextBudgetManagerTests(unittest.TestCase):
             }
         )
         self.assertGreater(with_tool, plain)
+
+    def test_oversized_tool_exchange_never_orphans_results(self) -> None:
+        manager = ContextBudgetManager(context_window_tokens=1024)
+        messages = [{"role": "system", "content": "system"}, {"role": "user", "content": "task"},
+                    {"role": "assistant", "content": "", "tool_calls": [{"id": "large", "type": "function",
+                     "function": {"name": "write_file", "arguments": {"content": "x" * 100000}}}]},
+                    {"role": "tool", "tool_call_id": "large", "content": "ok"}]
+        with self.assertRaises(ProviderError) as raised:
+            manager.fit_runtime(messages, history_messages_total=0)
+        self.assertEqual(raised.exception.code, "MODEL_CONTEXT_LIMIT")
 
 
 if __name__ == "__main__":

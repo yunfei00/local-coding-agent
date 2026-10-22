@@ -86,7 +86,8 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
       <h3>Role Routing</h3>
       {Object.entries(config.roles).map(([role, binding]) => <label className="settings-field" key={role}>{role} Model<select aria-label={role + " profile"} value={binding.model_profile_id ?? ""} onChange={e => setConfig({...config, roles:{...config.roles, [role]:{...binding, model_profile_id:e.target.value}}})}><option value="">Legacy / not configured</option>{catalog.profiles.map(p => <option key={p.model_profile_id} value={p.model_profile_id}>{modelLabel(catalog,p)}</option>)}</select></label>)}
       <h3>Execution Policy</h3>
-      <select aria-label="Default execution policy" value={config.strategy} onChange={e => setConfig({...config, strategy:e.target.value})}><option value="local-first">Local-first</option><option value="local-only">Local-only</option><option value="api-only">API-only</option></select>
+      <select aria-label="Default execution policy" value={config.strategy} onChange={e => setConfig({...config, strategy:e.target.value})}><option value="single-agent">Single Agent (online)</option><option value="local-first">Local-first</option><option value="local-only">Local-only</option><option value="api-only">API-only</option></select>
+      <p>Single Agent requires only one online Executor profile. It calls tools directly, without a separate Planner, Reviewer or escalation model.</p>
       <p>Local-only and API-only reject incompatible bindings. No silent fallback. Local-first defaults to local planning, execution and review with API escalation.</p>
       <h3>API Budget</h3>
       <p>0 in api_calls or api_tokens explicitly disables API calls; changing strategy preserves these values. Global limits include earlier tasks across restarts. New tasks use saved Settings; existing tasks retain their snapshots.</p>

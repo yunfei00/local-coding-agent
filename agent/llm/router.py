@@ -12,7 +12,7 @@ from agent.llm.base import ProviderChunk, ProviderError, ToolCall
 from agent.llm.planning import PLAN_TOOL, validate_plan
 
 ROLES = ("planner", "executor", "reviewer", "escalation")
-STRATEGIES = ("local-first", "local-only", "api-only")
+STRATEGIES = ("local-first", "local-only", "api-only", "single-agent")
 
 
 def apply_config_overrides(saved: dict, overrides: dict) -> dict:
@@ -100,13 +100,13 @@ class ModelRouter:
         strategy = self.config["strategy"]
         if profile.get("_connection"):
             route = "local" if profile["_connection"]["provider_type"] == "ollama" else "api"
-            if (strategy == "local-only" and route != "local") or (strategy == "api-only" and route != "api"):
+            if (strategy == "local-only" and route != "local") or (strategy in {"api-only", "single-agent"} and route != "api"):
                 error = ProviderError("MODEL_POLICY_MISMATCH", f"{role} binding conflicts with {strategy}; select a compatible profile")
                 error.role = role
                 raise error
         else:
             # Legacy snapshots retain their original strategy semantics.
-            route = "local" if strategy == "local-only" else "api" if strategy == "api-only" else profile["route"]
+            route = "local" if strategy == "local-only" else "api" if strategy in {"api-only", "single-agent"} else profile["route"]
         provider = self.factory(route, profile)
         model = profile["model"] or provider.preferred_model
         if not model:

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from agent.llm.base import ProviderError
+
 
 DEFAULT_RESERVED_OUTPUT_TOKENS = 4_096
 DEFAULT_CHARS_PER_TOKEN = 4
@@ -320,6 +322,8 @@ class ContextBudgetManager:
         budget: int,
     ) -> list[dict[str, Any]]:
         if budget <= 0:
+            if any(item.get("tool_calls") for item in group):
+                raise ProviderError("MODEL_CONTEXT_LIMIT", "No context space remains for the latest tool exchange")
             return []
         fitted = [dict(item) for item in group]
         if self._messages_tokens(fitted) <= budget:
@@ -335,6 +339,11 @@ class ContextBudgetManager:
                 )
                 if self._messages_tokens(fitted) <= budget:
                     return fitted
+
+        if any(item.get("tool_calls") for item in fitted):
+            # Dropping an assistant call header leaves orphan tool results and
+            # breaks the next OpenAI request. Stop with an actionable diagnosis.
+            raise ProviderError("MODEL_CONTEXT_LIMIT", "Latest tool exchange cannot fit the context window; increase the configured window")
 
         while len(fitted) > 1 and self._messages_tokens(fitted) > budget:
             fitted.pop(0)

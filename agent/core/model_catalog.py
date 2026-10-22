@@ -94,6 +94,8 @@ class ModelCatalog:
         if config["strategy"] == "api-only":
             for binding in config["roles"].values():
                 binding["route"] = "api"
+        elif config["strategy"] == "single-agent":
+            config["roles"]["executor"]["route"] = "api"
         settings = asdict(self.defaults)
         catalog = {"connections": [], "profiles": []}
         for route, provider, prefix in (("local", "ollama", "ollama"), ("api", "openai_compatible", "openai")):
@@ -137,6 +139,9 @@ class ModelCatalog:
         catalog = catalog if catalog is not None else self.load()
         result = deepcopy(config)
         for role, binding in result["roles"].items():
+            # Unused legacy roles must not prevent a single online agent starting.
+            if config["strategy"] == "single-agent" and role != "executor":
+                continue
             pid = binding.get("model_profile_id")
             if not pid:  # Existing task/config compatibility; no rewriting historical tasks.
                 continue
