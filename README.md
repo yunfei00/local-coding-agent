@@ -2,9 +2,9 @@
 
 Local Coding Agent 是一个面向 Windows 本地开发环境的桌面 Coding Agent。目标是提供类似 Codex Desktop 的核心开发体验，同时让模型、Agent、工具链、数据和权限边界保持在用户自己的环境中。
 
-> 当前代码版本：**v0.4.0 候选版**（`feature/v0.4-local-first-agent`）
+> 当前代码版本：**v0.4.0**
 >
-> 最近正式发布：[**v0.3.0**](https://github.com/yunfei00/local-coding-agent/releases/tag/v0.3.0)
+> 最近正式发布：[**v0.4.0**](https://github.com/yunfei00/local-coding-agent/releases/tag/v0.4.0)
 
 v0.3 增加 MCP stdio/HTTP、Repository Map、Pinned Context、Git Stage/Unstage 与 Worktree、持久化任务计划和执行统计。桌面支持项目树独立展开、会话改名、Markdown/代码复制、浅深主题，以及不遮挡输入框的右侧面板。人工验收已通过；自动化证据与主线集成记录见 [最终验收记录](docs/v0.3-final-validation.md)。
 
@@ -144,7 +144,7 @@ Desktop 与 Python Agent 使用独立于产品版本的语义协议版本。
 启动：
 
 ```powershell
-git switch feature/v0.4-local-first-agent
+git switch main
 git pull
 .\scripts\dev\start.ps1
 ```
@@ -174,18 +174,18 @@ npm --prefix desktop run build
 当前正式版本：
 
 ```text
-v0.3.0
+v0.4.0
 ```
 
 正式发布包含：
 
-- `Local-Coding-Agent-0.3.0-x64-Setup.exe`
-- `Local-Coding-Agent-0.3.0-x64-Portable.exe`
+- `Local-Coding-Agent-0.4.0-x64-Setup.exe`
+- `Local-Coding-Agent-0.4.0-x64-Portable.exe`
 - `SHA256SUMS.txt`
 
 Release：
 
-https://github.com/yunfei00/local-coding-agent/releases/tag/v0.3.0
+https://github.com/yunfei00/local-coding-agent/releases/tag/v0.4.0
 
 ## v0.3 方向
 
@@ -260,8 +260,8 @@ Python Agent Server
 
 ## 分支策略
 
-- `main`：已验收并正式发布的 v0.3.0。
-- `feature/v0.4-local-first-agent`：v0.4 候选开发分支，尚未合并主线。
+- `main`：已验收并正式发布的 v0.4.0。
+- `feature/v0.4-local-first-agent`：保留 v0.4 开发历史，已通过 PR #3 合并主线。
 - 后续开发在功能分支进行，验收通过后再进入主线。
 
 ## License

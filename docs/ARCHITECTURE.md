@@ -760,4 +760,6 @@ Tool backend 抽象后可以增加 SSH / container。
 
 ModelRouter 在每次请求前调用 BudgetGuard 原子预留预算，角色 Provider 使用既有 Ollama/OpenAI 兼容实现。VerificationEngine 通过统一 `_authorize_tool` 调用原 Shell，不经过模型。TaskRuntimeStore 保存状态、时间、配置快照和请求账本；进程重启将活动状态转为 paused，原计划证据和不确定预算仍保留。UI 经允许列表 IPC 请求任务快照，以 revision 防止迟到响应倒退状态。
 
+混合模型配置通过 ModelCatalog 分离 Connection、Model Profile 与 Role Binding，角色沿配置 ID 解析到各连接客户端；普通聊天的活动 Provider 不改变任务绑定。新任务冻结解析后的角色/连接及任务和全局预算，已有任务不被迁移回写。密钥引用沿用 safeStorage/session，实际连接与模型身份写入原 model_requests 账本。详见 [模型路由](v0.4/model-routing.md)。
+
 详细实现、使用与验收边界见 [v0.4 设计](v0.4/design.md) 和 [v0.4 验收](v0.4/acceptance.md)。

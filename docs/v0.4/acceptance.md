@@ -2,7 +2,7 @@
 
 日期：2026-10-22。延续 feature/v0.4-local-first-agent，保留全部已有 v0.4 历史，合入 main 的 v0.3 正式发布文档；没有重建分支或清理用户文件。
 
-当前状态：修复已实现，完整 Windows 打包正在最终验证；尚未合并 main、创建 v0.4.0 Tag 或正式发布。最终门禁以本页后续构建记录为准。
+交付状态：全部门禁通过，[PR #3](https://github.com/yunfei00/local-coding-agent/pull/3) 已以 merge 方式合并 main，提交 `1424f99a746bfa7736554a20bacc4be007902ba8`。`v0.4.0` Tag 指向该提交；[正式 Release](https://github.com/yunfei00/local-coding-agent/releases/tag/v0.4.0) 已于 2026-10-22 发布并设为 Latest，非 Draft、非 Prerelease。
 
 ## 根因与交付
 
@@ -18,11 +18,24 @@
 | --- | --- |
 | 修改前基线 | 197 Python、32 Desktop，类型检查和构建通过，运行 20261022-103939-436505 |
 | 中间完整回归 | 212 Python、32 Desktop，通过，运行 20261022-105008-630003 |
-| 混合 HTTP 专项 | 18 项通过，validation-reports/mixed-provider-tests-release.log；包含人工全局追加额度后共 19 项，由完整构建核验 |
+| 混合 HTTP 专项 | 19 项通过，validation-reports/mixed-provider-final-budget.log；已包括人工追加全局额度和单字段隔离回归 |
 | Windows Electron | 18 项通过、0 跳过，validation-reports/mixed-provider-ui-final.log |
 | 本机 Windows 完整构建 | 216 Python、32 Desktop、18 UI，11/11 阶段通过，.codex-v04-mixed-package-final.log（运行代码 0809369） |
+| 最终运行代码 CI | f3a71dd；[Windows / Ubuntu CI](https://github.com/yunfei00/local-coding-agent/actions/runs/39715042904) 全通过 |
+| 最终 Windows 候选包 | [39715039804](https://github.com/yunfei00/local-coding-agent/actions/runs/39715039804)，全部构建/启动检查通过，产物已上传 |
+| 合并前最终文档提交 CI | 61d3172；[39715216855](https://github.com/yunfei00/local-coding-agent/actions/runs/39715216855) 与 [39715213073](https://github.com/yunfei00/local-coding-agent/actions/runs/39715213073) 全通过 |
+| 正式发布构建 | [Release Windows 39715636791](https://github.com/yunfei00/local-coding-agent/actions/runs/39715636791)，216 Python、32 Desktop、18 UI，安装版/Portable 检查及发布成功 |
 
-本机已验证解包版、Portable、Setup 静默安装后启动及清理、SHA256 复算。随后将全局额度的单字段更新收窄为仅修改显式传入字段，运行代码 f3a71dd；最终远端 CI / Windows Candidate 仍需检查通过才合并。新增字段更新回归包含在同一 19 项专项中。
+本机已验证解包版、Portable、Setup 静默安装后启动及清理、SHA256 复算。随后将全局额度的单字段更新收窄为仅修改显式传入字段，最终代码 f3a71dd 的专项、远端 CI、Windows Candidate 及正式发布构建全部通过。合并前已确认最终文档提交与该代码在运行文件、测试和构建配置上没有差异。
+
+## 正式发布文件
+
+| 文件 | 字节数 | SHA256 |
+| --- | ---: | --- |
+| Local-Coding-Agent-0.4.0-x64-Setup.exe | 114128920 | 93c9610a1e6af50a9d4fce2ad86f14f0dcd0bd013bdf4a4bb498669a9a1a1352 |
+| Local-Coding-Agent-0.4.0-x64-Portable.exe | 113898909 | 69e55c730b3846a275d8f70680e70e89423c97d5777d20a6eeca280d233d23dd |
+
+另有 `SHA256SUMS.txt`。三个 GitHub assets 的 state 均为 uploaded；已下载校验文件并逐项与 GitHub 上传摘要比对一致，Latest API 确认 v0.4.0。本机早先构建与正式远端构建的二进制不要求字节一致，以正式 Release 校验文件为准。
 
 核心新增测试在 tests/test_mixed_provider.py，使用四个真正监听 HTTP 的独立 Mock 连接与原客户端，包含两个 Ollama、两个 API，同名模型、四角色独立解析、指定 API Reviewer、指定 Escalation、诊断后回到本地、真实文件修改和独立 unittest、Local-only、API-only、零调用、Token 不足、429、超时、不可用服务、LAN 分类、迁移幂等/损坏保留、共享模型参数保留、运行中修改 Settings 和 Checkpoint 恢复。
 
