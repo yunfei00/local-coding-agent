@@ -115,6 +115,10 @@ class TaskRuntimeStore:
             self.db.execute("INSERT INTO task_plan_steps(id,plan_id,position,description) VALUES(?,?,?,?)",
                             (str(uuid.uuid4()), plan_id, len(steps), "Repair the latest independent verification failure; inspect current files before changing them"))
 
+    def calls(self, plan_id: str) -> list[dict]:
+        rows = self.db.execute("SELECT * FROM model_requests WHERE plan_id=? ORDER BY created_at DESC LIMIT 1000", (plan_id,)).fetchall()
+        return [{**dict(row), "usage": json.loads(row["usage_json"])} for row in reversed(rows)]
+
     def usage(self, plan_id: str | None = None) -> dict[str, Any]:
         rows = self.db.execute("SELECT * FROM model_requests" + (" WHERE plan_id=?" if plan_id else ""),
                                (plan_id,) if plan_id else ()).fetchall()

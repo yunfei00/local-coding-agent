@@ -28,8 +28,10 @@ def validate_config(raw: dict | None = None) -> dict:
         profile = {"route": "api" if role == "escalation" else "local", "model": "",
                    "context_window": None, "output_limit": 1024, "tool_mode": "auto",
                    "input_price": None, "output_price": None, **supplied.get(role, {})}
-        if set(profile) != {"route", "model", "context_window", "output_limit", "tool_mode", "input_price", "output_price"}:
+        if set(profile) - {"route", "model", "context_window", "output_limit", "tool_mode", "input_price", "output_price", "model_profile_id"}:
             raise ValueError("Unknown role profile field")
+        if "model_profile_id" in profile and (not isinstance(profile["model_profile_id"], str) or len(profile["model_profile_id"]) > 100):
+            raise ValueError("Invalid model profile binding")
         if profile["route"] not in ("local", "api") or profile["tool_mode"] not in ("auto", "native", "json"):
             raise ValueError("Invalid route or tool mode")
         if not isinstance(profile["model"], str) or len(profile["model"]) > 200:
@@ -68,13 +70,20 @@ def json_object(text: str) -> dict:
 
 
 class ModelRouter:
-    def __init__(self, config: dict, provider_factory, budget, notify):
+    def __init__(self, config: dict, provider_factory, budget, notify, resolved_roles=None):
         self.config, self.factory, self.budget, self.notify = config, provider_factory, budget, notify
+        self.resolved_roles = resolved_roles or config["roles"]
 
     def resolve(self, role: str):
-        profile = dict(self.config["roles"][role])
+        profile = dict(self.resolved_roles[role])
         strategy = self.config["strategy"]
-        route = "local" if strategy == "local-only" else "api" if strategy == "api-only" else profile["route"]
+        if profile.get("_connection"):
+            route = "local" if profile["_connection"]["provider_type"] == "ollama" else "api"
+            if (strategy == "local-only" and route != "local") or (strategy == "api-only" and route != "api"):
+                raise ProviderError("MODEL_POLICY_MISMATCH", f"{role} binding conflicts with {strategy}; select a compatible profile")
+        else:
+            # Legacy snapshots retain their original strategy semantics.
+            route = "local" if strategy == "local-only" else "api" if strategy == "api-only" else profile["route"]
         provider = self.factory(route, profile)
         model = profile["model"] or provider.preferred_model
         if not model:
@@ -118,7 +127,12 @@ class RoutedProvider:
         usage = {"estimated": True, "actual_cost": None}
         status, text = "uncertain", ""
         try:
-            await self.router.notify("model.active", {"role": self.role, "route": self.route, "model": model})
+            connection = self.profile.get("_connection", {})
+            identity = {"connection_id": connection.get("connection_id"), "provider": connection.get("display_name", self.provider_name),
+                        "provider_type": connection.get("provider_type", self.provider_name), "model_profile_id": self.profile.get("model_profile_id")}
+            # Extend the existing budget journal; do not create a second request ledger.
+            self.router.budget.annotate(request_id, identity)
+            await self.router.notify("model.active", {"request_id": request_id, "role": self.role, "route": self.route, "model": model, **identity})
             async with asyncio.timeout(self.router.config["budget"]["request_seconds"]):
                 async with aclosing(self.provider.stream_chat(model=model, messages=messages, tools=None if fallback else tools)) as stream:
                     async for chunk in stream:

@@ -89,6 +89,12 @@ class BudgetGuard:
             raise
         return request_id
 
+    def annotate(self, request_id: str, identity: dict) -> None:
+        with self.db:
+            row = self.db.execute("SELECT usage_json FROM model_requests WHERE id=? AND plan_id=?", (request_id, self.plan_id)).fetchone()
+            if row:
+                self.db.execute("UPDATE model_requests SET usage_json=? WHERE id=?", (json.dumps({**json.loads(row[0]), **identity}), request_id))
+
     def finish(self, request_id: str, status: str, usage: dict) -> None:
         # Settlement is idempotent. Reservations remain charged after restart/cancellation.
         with self.db:

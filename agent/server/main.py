@@ -1444,6 +1444,7 @@ class AgentServer:
             secret
             for secret in (
                 self.openai_api_key,
+                *self.tasks.credentials.values(),
                 *self.mcp_runtime.exact_secrets(),
                 *(value for key, value in os.environ.items()
                   if re.search(r"API.?KEY|TOKEN|PASSWORD|SECRET|CREDENTIAL|AUTHORIZATION", key, re.I) and len(value) >= 4),

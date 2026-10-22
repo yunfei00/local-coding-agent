@@ -13,6 +13,9 @@ import time
 from agent.core.budget import BudgetExceeded, BudgetGuard, validate_limits
 from agent.core.diagnostics import redact_text
 from agent.core.settings import RuntimeSettings
+from agent.core.model_catalog import ModelCatalog, validate_catalog, KEY as CATALOG_KEY
+from agent.llm.ollama import OllamaProvider
+from agent.llm.openai_compatible import OpenAICompatibleProvider
 from agent.core.verification import VerificationEngine, discover_commands, failure_fingerprint
 from agent.llm.base import ProviderError, ToolCall
 from agent.llm.router import ModelRouter, json_object, validate_config
@@ -51,14 +54,19 @@ class TaskService:
         self.running: dict[str, str] = {}
         self.stop_reasons: dict[str, str] = {}
         self.provider_factory_override = None  # Dependency injection for deterministic tests.
+        self.credentials = {}  # Memory only; Electron safeStorage owns persistence.
+
+    def catalog(self):
+        return ModelCatalog(self.server.store, self.server.settings)
 
     def settings(self) -> dict:
+        self.catalog().load()  # Idempotent migration before reading role defaults.
         raw = self.server.store.get_setting("orchestration.config")
         return validate_config(json.loads(raw) if raw else None)
 
     def public(self, task: dict) -> dict:
         return {**task, "usage": self.runtime.usage(task["id"]),
-                "plan": self.runtime.plans.get(task["id"]),
+                "calls": self.runtime.calls(task["id"]), "plan": self.runtime.plans.get(task["id"]),
                 "checkpoint": self.runtime.plans.latest_checkpoint(task["id"])}
 
     async def handle(self, ws, data: dict, owned_turns: set):
@@ -67,23 +75,52 @@ class TaskService:
         thread_id = str(data.get("thread_id") or payload.get("thread_id") or "")
         project = self.server.projects.active
         try:
-            if kind == "task.settings.get":
+            if kind == "task.credentials.update":
+                values = payload.get("credentials")
+                if not isinstance(values, dict) or any(not isinstance(k, str) or not k.startswith("connection-") or not isinstance(v, str) or len(v) > 16000 for k, v in values.items()):
+                    raise ValueError("Invalid provider credentials")
+                if self.server.active_turns:
+                    raise ValueError("Pause active execution before changing credentials")
+                self.credentials = dict(values)
+                result = {"configured": list(values)}
+            elif kind == "task.catalog.get":
+                result = {"catalog": self.catalog().load(), "config": self.settings()}
+            elif kind == "task.catalog.update":
+                catalog = validate_catalog(payload.get("catalog"))
+                config = validate_config(payload.get("config") or self.settings())
+                self.catalog().resolve(config, catalog)  # Reject dangling/disabled role bindings.
+                with self.server.store.connection:
+                    for key, value in ((CATALOG_KEY, catalog), ("orchestration.config", config)):
+                        self.server.store.connection.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, json.dumps(value)))
+                result = {"catalog": catalog, "config": config}
+            elif kind == "task.settings.get":
                 result = {"config": self.settings(), "global_usage": self.runtime.usage()}
             elif kind == "task.settings.update":
                 if self.server.active_turns:
                     raise ValueError("Pause active execution before changing task settings")
                 config = validate_config(payload.get("config"))
+                self.catalog().resolve(config)
                 self.server.store.set_setting("orchestration.config", json.dumps(config))
                 result = {"config": config, "global_usage": self.runtime.usage()}
             elif kind == "task.connection.test":
-                route = payload.get("route")
-                if route not in {"local", "api"}:
-                    raise ValueError("Connection route must be local or api")
-                provider = self.make_provider(asdict(self.server.settings), route, {})
+                cid = payload.get("connection_id")
+                if cid:
+                    connection = next((c for c in self.catalog().load()["connections"] if c["connection_id"] == cid), None)
+                    if not connection or not connection["enabled"]:
+                        raise ValueError("Provider connection missing or disabled")
+                    route = "local" if connection["provider_type"] == "ollama" else "api"
+                    provider = self.make_provider({}, route, {"_connection": connection})
+                else:
+                    route = payload.get("route")
+                    if route not in {"local", "api"}:
+                        raise ValueError("Connection route must be local or api")
+                    provider = self.make_provider(asdict(self.server.settings), route, {})
                 result = await provider.get_status()
                 if hasattr(provider, "capabilities") and provider.preferred_model:
                     result["capabilities"] = await provider.capabilities(provider.preferred_model)
                 result["generates_tokens"] = False
+                if isinstance(result.get("error"), dict):
+                    result["error"]["message"] = redact_text(str(result["error"].get("message", "")), exact_secrets=self.server._exact_secrets(), max_chars=2000)
             else:
                 if not project or not project.state.get_thread(thread_id):
                     raise ValueError("Open a valid project and thread")
@@ -96,12 +133,15 @@ class TaskService:
                     if not 1 <= len(goal) <= 16000:
                         raise ValueError("Task goal must contain 1..16000 characters")
                     config = validate_config(payload.get("config") or self.settings())
+                    resolved = self.catalog().resolve(config)
                     if any(p for p in self.runtime.plans.list_for_thread(thread_id)
                            if self.runtime.plans.active_step(p["id"]) and not self.runtime.db.execute(
                                "SELECT 1 FROM autonomous_tasks WHERE plan_id=?", (p["id"],)).fetchone()):
                         raise ValueError("Finish or use a new thread for the existing manual plan")
                     task = self.runtime.create(thread_id, goal, config, str(project.workspace.root))
                     task["provider_settings"] = asdict(self.server.settings)  # No keys in settings.
+                    task["resolved_roles"] = resolved["roles"]
+                    task["global_budget"] = self.settings()["budget"]
                     self.runtime.save(task)
                     result = {"task": self.public(task)}
                     await ws.send_json(envelope("task.loaded", result, request_id=request_id, thread_id=thread_id))
@@ -151,6 +191,7 @@ class TaskService:
                         if task["status"] != "paused":
                             raise ValueError("Pause task before explicitly changing its configuration")
                         task["config"] = validate_config(payload.get("config"))
+                        task["resolved_roles"] = self.catalog().resolve(task["config"])["roles"]
                         task["provider_settings"] = asdict(self.server.settings)
                         task.pop("resolved_verification_commands", None)
                         self.runtime.save(task)
@@ -167,12 +208,22 @@ class TaskService:
                         raise ValueError("Unsupported task operation")
                     result = {"task": self.public(self.runtime.get(plan_id))}
             await ws.send_json(envelope("task.loaded", result, request_id=request_id, thread_id=thread_id or None))
-        except (ValueError, TypeError, KeyError, OSError) as exc:
-            await self.server.send_error(ws, "TASK_INVALID", str(exc), request_id=request_id, thread_id=thread_id or None)
+        except (ValueError, TypeError, KeyError, OSError, ProviderError) as exc:
+            await self.server.send_error(ws, "TASK_INVALID", redact_text(str(exc), exact_secrets=self.server._exact_secrets()), request_id=request_id, thread_id=thread_id or None)
 
     def make_provider(self, snapshot, route, profile):
         if self.provider_factory_override:
             return self.provider_factory_override(route, profile)
+        connection = profile.get("_connection")
+        if connection:
+            kwargs = {"base_url": connection["base_url"], "preferred_model": profile.get("model", ""),
+                      "context_window": profile.get("context_window") or 32768,
+                      "temperature": profile.get("temperature") if profile.get("temperature") is not None else 0.2}
+            if connection["provider_type"] == "ollama":
+                return OllamaProvider(**kwargs)
+            ref = connection["credential_reference"]
+            key = self.server.openai_api_key if ref == "legacy-openai" else self.credentials.get(ref, "")
+            return OpenAICompatibleProvider(**kwargs, api_key=key or "")
         settings = RuntimeSettings.validate({**snapshot, "provider": "ollama" if route == "local" else "openai_compatible"})
         return settings.create_provider(openai_api_key=self.server.openai_api_key)
 
@@ -258,8 +309,8 @@ class TaskService:
                     task["resolved_verification_commands"] = discover_commands(view.workspace.root, task["config"]["verification_commands"])
                     self.runtime.save(task)
                 commands = task["resolved_verification_commands"]
-                budget = BudgetGuard(self.runtime, plan_id, self.settings()["budget"])
-                router = ModelRouter(task["config"], lambda route, profile: self.make_provider(task["provider_settings"], route, profile), budget, emit)
+                budget = BudgetGuard(self.runtime, plan_id, task["global_budget"] if "global_budget" in task else self.settings()["budget"])
+                router = ModelRouter(task["config"], lambda route, profile: self.make_provider(task["provider_settings"], route, profile), budget, emit, task.get("resolved_roles"))
                 async def execute(name, arguments, on_raw_output=None, environment=None):
                     return await self.server._authorize_tool(ws, project=view, call=ToolCall(name, arguments),
                         call_id=new_id("verification"), thread_id=thread_id, turn_id=turn_id,
@@ -373,10 +424,10 @@ class TaskService:
             raise
         except (ProviderError, TimeoutError) as exc:
             with suppress(Exception):
-                await update("paused", str(exc))
+                await update("paused", redact_text(str(exc), exact_secrets=self.server._exact_secrets()))
         except Exception as exc:
             with suppress(Exception):
-                await update("failed", str(exc))
+                await update("failed", redact_text(str(exc), exact_secrets=self.server._exact_secrets()))
         finally:
             self.server.approvals.finish_turn(turn_id)
             self.running.pop(plan_id, None)
@@ -393,7 +444,7 @@ class TaskService:
         text = json.dumps({"question": question, "goal": task["goal"][:3000], "diff": diff[:6000],
             "failures": [{"command": r["command"], "category": r["category"], "summary": r.get("summary", "")[-1200:]} for r in results[:6]],
             "attempts": task["attempt_history"][-4:]}, ensure_ascii=False)
-        return redact_text(text[:16000], exact_secrets=self.server._exact_secrets())
+        return redact_text(text[:16000], exact_secrets=self.server._exact_secrets(), max_chars=16000)
 
     async def escalate(self, router, task, results, diff, reason, update):
         if task["config"]["strategy"] == "local-only":
