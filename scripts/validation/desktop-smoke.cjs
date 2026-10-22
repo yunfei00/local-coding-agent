@@ -60,6 +60,16 @@ const provider = http.createServer((req, res) => {
     }
     const prompt = payload.messages?.filter(m => m.role === "user").at(-1)?.content ?? "";
     res.writeHead(200, {"Content-Type": "text/event-stream"});
+    if (payload.model === "api-reviewer") {
+      let delta = {content:"Review verified tests and Diff."};
+      if (payload.tools?.some(t => t.function.name === "submit_plan")) delta = {content:JSON.stringify({steps:[{description:"Fix calculator addition and run independent tests"}]})};
+      else if (payload.tools?.some(t => t.function.name === "apply_patch")) {
+        if (!payload.messages.some(m => m.role === "tool")) delta = {tool_calls:[{index:0,id:"api-patch",type:"function",function:{name:"apply_patch",arguments:JSON.stringify({path:"calculator.py",old_text:"return a - b",new_text:"return a + b"})}}]};
+        else delta = {content:"Calculator implementation complete."};
+      }
+      res.write("data: " + JSON.stringify({choices:[{delta,finish_reason:delta.tool_calls ? "tool_calls" : "stop"}],usage:{prompt_tokens:100,completion_tokens:20}}) + "\n\n");
+      return res.end("data: [DONE]\n\n");
+    }
     const send = (text, finish = null) => res.write("data: " + JSON.stringify({choices: [{index: 0, delta: {content: text}, finish_reason: finish}]}) + "\n\n");
     const wantedTool = prompt.includes("mcp-smoke-stdio") ? "mcp__smoke_stdio__echo" : prompt.includes("mcp-smoke-http") ? "mcp__smoke_http__echo" : prompt.includes("read-real-fixture") ? "read_file" : null;
     if (wantedTool && payload.messages.at(-1)?.role !== "tool") {
@@ -346,6 +356,59 @@ async function main() {
     assert(await diagnosticPanel.getByRole("button",{name:"Copy diagnostics JSON",exact:true}).isEnabled());
     assert(await diagnosticPanel.getByRole("button",{name:"Copy diagnostics Markdown",exact:true}).isEnabled());
     checks.push("Sticky Task Cancel stops a blocked Planning request; persisted sanitized JSON/Markdown diagnostics are accessible");
+
+    // Exercise ordinary Settings navigation first (App closes the Task panel).
+    // Then update saved defaults through RPC while the zero-budget panel stays
+    // mounted, covering stale caches from other configuration clients as well.
+    const defaultsBeforeBudgetCheck = await page.evaluate(async () => (await window.localAgent.taskRequest("","task.settings.get")).payload.config);
+    const saveOnlineDefaults = async calls => {
+      await page.getByRole("button",{name:"Settings",exact:true}).click();
+      await page.getByRole("button",{name:"Models & Routing",exact:true}).click();
+      await page.getByLabel("Default execution policy",{exact:true}).selectOption("api-only");
+      for (const role of ["planner","executor","reviewer"]) await page.getByLabel(role + " profile",{exact:true}).selectOption(profileIds["api-reviewer"]);
+      await page.getByLabel("Default api_calls",{exact:true}).fill(String(calls));
+      await page.getByLabel("Default api_tokens",{exact:true}).fill("30000");
+      await page.getByRole("button",{name:"Save model configuration",exact:true}).click();
+      await page.getByText("Model configuration saved. Running task snapshots are unchanged.").waitFor();
+      await page.getByRole("button",{name:"Settings",exact:true}).click();
+    };
+    await saveOnlineDefaults(0);
+    await page.getByRole("button",{name:"Task",exact:true}).click();
+    const requestsBeforeBlock = modelRequests.length;
+    await page.getByLabel("Autonomous task goal").fill("Show exact zero-budget preflight rejection");
+    await page.getByRole("button",{name:"Start autonomous task",exact:true}).click();
+    await page.getByRole("button",{name:"Allow once",exact:true}).click();
+    const budgetDetail = page.getByLabel("Budget rejection details",{exact:true});
+    await budgetDetail.waitFor();
+    assert((await budgetDetail.innerText()).includes("task / api_calls"));
+    assert((await budgetDetail.innerText()).includes("Limit 0 · Used/reserved 0 · This request 1"));
+    assert.equal(modelRequests.length,requestsBeforeBlock);
+    await page.evaluate(async () => {
+      const {config} = (await window.localAgent.taskRequest("","task.settings.get")).payload;
+      config.budget.api_calls = 6;
+      await window.localAgent.taskRequest("","task.settings.update",{config});
+    });
+    await page.getByLabel("Autonomous task goal").fill("Use fresh Settings for API Planner and fix calculator");
+    await page.getByRole("button",{name:"Start autonomous task",exact:true}).click();
+    await page.getByRole("button",{name:"Allow once",exact:true}).click();
+    await page.locator('[data-task-status="awaiting_approval"]').waitFor({timeout:60000});
+    const latestBudgetTask = await page.evaluate(async () => {
+      const session = await window.localAgent.getProject();
+      return (await window.localAgent.taskRequest(session.payload.active_thread.id,"task.list")).payload.tasks;
+    });
+    const freshTask = latestBudgetTask.find(t => t.goal === "Use fresh Settings for API Planner and fix calculator");
+    const blockedTask = latestBudgetTask.find(t => t.goal === "Show exact zero-budget preflight rejection");
+    assert.equal(freshTask.config.strategy,"api-only");
+    assert.equal(freshTask.config.budget.api_calls,6);
+    assert.equal(blockedTask.config.budget.api_calls,0);
+    assert.equal(freshTask.resolved_roles.planner.model,"api-reviewer");
+    assert.equal(freshTask.usage.api_calls,4);
+    assert.equal(freshTask.usage.reserved_tokens,480);
+    assert(freshTask.verification.every(v => v.ok));
+    assert(fs.readFileSync(path.join(freshTask.workspace,"calculator.py"),"utf8").includes("a + b"));
+    assert(freshTask.report.diff.includes("+    return a + b"));
+    checks.push("Mounted Task panel uses latest Settings for API-only Planner; zero budget gives field-level rejection without HTTP; fresh budget runs real Mock API patch/unittest/Diff and preserves old snapshot");
+    await page.evaluate(config => window.localAgent.taskRequest("","task.settings.update",{config}), defaultsBeforeBudgetCheck);
     await page.getByRole("button", {name:"Task", exact:true}).click();
 
     for (const panel of ["Task", "Context", "Git", "Plan", "Diagnostics"]) {

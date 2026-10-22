@@ -1,12 +1,13 @@
 import {useEffect, useState} from "react";
 import {mergeTaskSnapshot, TaskSnapshot, taskIsActive} from "../lib/autonomousTask";
-import {TaskConfig as Config, ModelCatalog, modelLabel} from "../lib/modelCatalog";
+import {TaskConfig as Config, ModelCatalog, modelLabel, taskConfigOverrides} from "../lib/modelCatalog";
 
 export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
   threadId: string; running: boolean; onClose: () => void; onSettings: () => void;
 }) {
   const [tasks, setTasks] = useState<TaskSnapshot[]>([]);
   const [config, setConfig] = useState<Config | null>(null);
+  const [savedConfig, setSavedConfig] = useState<Config | null>(null);
   const [catalog, setCatalog] = useState<ModelCatalog>({connections:[], profiles:[]});
   const [goal, setGoal] = useState("");
   const [commands, setCommands] = useState("");
@@ -40,7 +41,7 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
       if (!alive) return;
       const next = event.payload?.config as Config;
       setCatalog(event.payload?.catalog as ModelCatalog);
-      setConfig(next); setCommands(next.verification_commands.join("\n"));
+      setConfig(next); setSavedConfig(next); setCommands(next.verification_commands.join("\n"));
       setAdvanced(JSON.stringify(next, null, 2));
       setGlobalUsage(event.payload?.global_usage as Record<string, unknown> ?? {});
     }).catch(cause => {if (alive) setError(String(cause));});
@@ -54,6 +55,17 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
     return () => {alive = false; unsubscribe();};
   }, [threadId]);
   const currentConfig = () => config && ({...config, verification_commands: commands.split("\n").map(c => c.trim()).filter(Boolean)});
+  const start = async () => {
+    const edited = currentConfig();
+    if (!savedConfig || !edited) return;
+    const event = await request("task.start", {goal, config_overrides:taskConfigOverrides(savedConfig, edited)});
+    const effective = (event?.payload?.task as {config?:Config} | undefined)?.config;
+    if (effective) {
+      setConfig(effective); setSavedConfig(event?.payload?.defaults as Config);
+      setCatalog(event?.payload?.catalog as ModelCatalog); setGlobalUsage(event?.payload?.global_usage as Record<string, unknown>);
+      setCommands(effective.verification_commands.join("\n"));
+    }
+  };
   const activeTask = tasks.find(taskIsActive);
   const interrupt = async (operation:string) => {
     if (!activeTask || stopping) return;
@@ -78,10 +90,11 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
           <option value="local-first">Local-first</option><option value="local-only">Local-only</option><option value="api-only">API-only</option>
         </select></label>
         <p>Strategy validates the saved role bindings; it does not replace models. For API-only, choose API profiles for Planner, Executor and Reviewer in Models and budget. Existing tasks keep their configuration snapshot.</p>
+        <p>New tasks read the latest saved Settings, plus field changes made here. Existing tasks keep their snapshots; switching strategy preserves explicit zero budgets.</p>
         <p>Tasks edit an isolated Git worktree after approval. Source changes are preserved. No automatic commit, push or merge.</p>
         <textarea aria-label="Autonomous task goal" placeholder="Describe a coding task…" value={goal} onChange={e => setGoal(e.target.value)} />
         <label>Verification commands (one per line; empty = project discovery)<textarea aria-label="Verification commands" value={commands} onChange={e => setCommands(e.target.value)} /></label>
-        <button disabled={busy || running || !goal.trim()} onClick={() => void request("task.start", {goal, config:currentConfig()})}>Start autonomous task</button>
+        <button disabled={busy || running || !goal.trim()} onClick={() => void start()}>Start autonomous task</button>
         <details><summary>Models and budget</summary>
           <button onClick={onSettings}>Provider addresses and secure API key</button>
           {(["local", "api"] as const).map(route => <button key={route} disabled={busy} onClick={() => void request("task.connection.test", {route}).then(event => {if (event) setNotice(JSON.stringify(event.payload, null, 2));})}>Test {route} connection</button>)}
@@ -91,12 +104,12 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
           {Object.entries(config.budget).map(([key, value]) => <label key={key}>{key}<input aria-label={key} type="number" min="0" value={value ?? ""} placeholder="No cost cap" onChange={e => setConfig({...config, budget:{...config.budget, [key]:e.target.value === "" ? null : Number(e.target.value)}})} /></label>)}
           <p>Global usage is cumulative across tasks and restarts: API {String(globalUsage.api_calls ?? 0)}, reserved Tokens {String(globalUsage.reserved_tokens ?? 0)}.</p>
           <p>Token and cost caps use conservative reservations, output limits and timeouts. Provider tokenization/billing may differ. Unknown requests retain reservations. Prices are per million Tokens in your chosen billing currency.</p>
-          <button disabled={busy || running} onClick={() => void request("task.settings.update", {config:currentConfig()}).then(event => {if (event) setNotice("Task defaults saved. Active task snapshots remain unchanged.");})}>Save task defaults</button>
+          <button disabled={busy || running} onClick={() => void request("task.settings.update", {config:currentConfig()}).then(event => {if (event) {setSavedConfig(event.payload?.config as Config); setNotice("Task defaults saved. Active task snapshots remain unchanged.");}})}>Save task defaults</button>
           <details><summary>Advanced role limits, tool compatibility and prices</summary>
             <button onClick={() => setAdvanced(JSON.stringify(currentConfig(), null, 2))}>Load current configuration</button>
             <textarea aria-label="Advanced task configuration" className="task-json" value={advanced} onChange={e => setAdvanced(e.target.value)} />
             <button disabled={busy || running} onClick={() => {
-              try {const next = JSON.parse(advanced) as Config; void request("task.settings.update", {config:next}).then(event => {if (event) {setConfig(event.payload?.config as Config); setCommands(next.verification_commands.join("\n"));}});} catch (cause) {setError(String(cause));}
+              try {const next = JSON.parse(advanced) as Config; void request("task.settings.update", {config:next}).then(event => {if (event) {setConfig(event.payload?.config as Config); setSavedConfig(event.payload?.config as Config); setCommands(next.verification_commands.join("\n"));}});} catch (cause) {setError(String(cause));}
             }}>Validate and save configuration</button>
           </details>
         </details>
@@ -104,6 +117,7 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
       {tasks.map(task => <section className="context-section" key={task.id}>
         <h3>{task.goal}</h3><strong data-task-status={task.status}>{task.status}</strong><p>{task.reason}</p>
         {task.last_error ? <p role="alert">{task.last_error.code} — open Task diagnostics for the request and parsing details.</p> : null}
+        {task.last_error?.budget ? <div role="alert" aria-label="Budget rejection details"><strong>{task.last_error.budget.scope} / {task.last_error.budget.field}</strong><p>Limit {task.last_error.budget.limit} · Used/reserved {task.last_error.budget.used} · This request {task.last_error.budget.required} · Remaining {task.last_error.budget.remaining}</p><p>Request Token estimate: input {task.last_error.budget.input_token_estimate} + output limit {task.last_error.budget.output_limit} = {task.last_error.budget.request_token_reservation}. No API request sent. Global usage includes other tasks.</p><p>Review the named field in Settings → Models and budget and the model output limit. Saved Settings apply to new tasks. To change this paused snapshot, review the configuration above and explicitly apply it. Usage is retained.</p><button onClick={onSettings}>Review saved model and budget settings</button></div> : null}
         <p>Planning attempts {task.planning_attempts ?? 0} / {task.config?.budget.planning_attempts ?? 4}</p>
         <button onClick={() => void window.localAgent.taskRequest(threadId, "task.diagnostics", {task_id:task.id}).then(event => setDiagnostic(event.payload?.diagnostics as typeof diagnostic)).catch(cause => setError(String(cause)))}>Task diagnostics {task.id.slice(0,8)}</button>
         <p>Attempts {task.attempts} · Repairs {task.repairs} · Escalations {task.escalations} · {Math.round(task.elapsed_seconds)}s</p>

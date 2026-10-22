@@ -18,7 +18,7 @@ from agent.llm.ollama import OllamaProvider
 from agent.llm.openai_compatible import OpenAICompatibleProvider
 from agent.core.verification import VerificationEngine, discover_commands, failure_fingerprint
 from agent.llm.base import ProviderError, ToolCall
-from agent.llm.router import ModelRouter, json_object, validate_config
+from agent.llm.router import ModelRouter, json_object, validate_config, apply_config_overrides
 from agent.llm.planning import PLAN_PROMPT, PLAN_SCHEMA
 from agent.server.protocol import envelope, new_id
 from agent.tools.registry import ToolRegistry
@@ -133,7 +133,15 @@ class TaskService:
                     goal = str(payload.get("goal") or "").strip()
                     if not 1 <= len(goal) <= 16000:
                         raise ValueError("Task goal must contain 1..16000 characters")
-                    config = validate_config(payload.get("config") or self.settings())
+                    saved = self.settings()
+                    if "config" in payload and "config_overrides" in payload:
+                        raise ValueError("Specify configuration or overrides, not both")
+                    if "config_overrides" in payload:
+                        config = apply_config_overrides(saved, payload["config_overrides"])
+                        config_source = "saved-settings-with-overrides" if payload["config_overrides"] else "saved-settings"
+                    else:
+                        config = validate_config(payload["config"] if "config" in payload else saved)
+                        config_source = "explicit-config" if "config" in payload else "saved-settings"
                     resolved = self.catalog().resolve(config)
                     if any(p for p in self.runtime.plans.list_for_thread(thread_id)
                            if self.runtime.plans.active_step(p["id"]) and not self.runtime.db.execute(
@@ -142,9 +150,11 @@ class TaskService:
                     task = self.runtime.create(thread_id, goal, config, str(project.workspace.root))
                     task["provider_settings"] = asdict(self.server.settings)  # No keys in settings.
                     task["resolved_roles"] = resolved["roles"]
-                    task["global_budget"] = self.settings()["budget"]
+                    task["global_budget"] = saved["budget"]
+                    task["config_source"] = config_source
+                    task["config_snapshot_at"] = time.time()
                     self.runtime.save(task)
-                    result = {"task": self.public(task)}
+                    result = {"task": self.public(task), "defaults":saved, "catalog":self.catalog().load(), "global_usage":self.runtime.usage()}
                     await ws.send_json(envelope("task.loaded", result, request_id=request_id, thread_id=thread_id))
                     self.launch(ws, task, project, owned_turns)
                     return
@@ -189,6 +199,8 @@ class TaskService:
                             raise ValueError("Pause task before explicitly changing its budget")
                         budget = validate_limits({**task["config"]["budget"], **payload.get("budget", {})})
                         task["config"]["budget"] = budget
+                        task["config_source"] = "paused-task-budget-update"
+                        task["config_snapshot_at"] = time.time()
                         if any(k.startswith("global_") for k in payload.get("budget", {})):
                             task["global_budget"] = {**task.get("global_budget", budget),
                                 **{k: budget[k] for k in payload["budget"] if k.startswith("global_")}}
@@ -204,6 +216,8 @@ class TaskService:
                         task["resolved_roles"] = self.catalog().resolve(task["config"])["roles"]
                         task["global_budget"] = self.settings()["budget"]
                         task["provider_settings"] = asdict(self.server.settings)
+                        task["config_source"] = "paused-task-configuration"
+                        task["config_snapshot_at"] = time.time()
                         task.pop("resolved_verification_commands", None)
                         self.runtime.save(task)
                     elif kind == "task.approve":
@@ -453,6 +467,8 @@ class TaskService:
         except (ProviderError, TimeoutError) as exc:
             current = self.runtime.get(plan_id)
             current["last_error"] = {"code":getattr(exc, "code", "TASK_TIMEOUT"), "role":getattr(exc, "role", None), "phase":current["status"]}
+            if isinstance(exc, BudgetExceeded) and exc.details:
+                current["last_error"]["budget"] = exc.details
             self.runtime.save(current)
             with suppress(Exception):
                 await update("paused", redact_text(str(exc), exact_secrets=self.server._exact_secrets()))
