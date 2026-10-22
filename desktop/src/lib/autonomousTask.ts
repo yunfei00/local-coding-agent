@@ -7,7 +7,7 @@ export type TaskSnapshot = {
   verification: Array<{command: string; ok: boolean; category: string; exit_code: number | null; duration_ms: number; summary: string; log_path?: string}>;
   report: {review?: string; diff?: string; git_approval?: string};
   config?: {budget: Record<string, number | null>};
-  planning_attempts?: number; last_error?: {code:string};
+  planning_attempts?: number; last_error?: {code:string; budget?: {scope:string; field:string; limit:number; used:number; required:number; remaining:number; input_token_estimate:number; output_limit:number; request_token_reservation:number; api_calls:number; reserved_tokens:number; rule:string}};
   calls?: Array<{id:string; created_at:number; role:string; model:string; route:string; status:string; usage:{provider?:string; connection_id?:string; model_profile_id?:string; phase?:string; sequence?:number; error_code?:string; http_status?:number; schema_valid?:boolean; next_state?:string}}>;
 };
 

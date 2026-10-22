@@ -24,7 +24,10 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
     blocker = (error or (task.get("planning_failures") or [{}])[-1].get("code") or "PLANNING_IN_PROGRESS") if not task["planned"] else None
     report = {"schema_version":1, "task_id":task_id, "status":task["status"], "planned":task["planned"],
         "why_not_executing":blocker, "last_error_code":error,
-        "last_error":{k:v for k,v in task.get("last_error", {}).items() if k in {"code","role","phase","exception_type"}},
+        "last_error":{k:v for k,v in task.get("last_error", {}).items() if k in {"code","role","phase","exception_type","budget"}},
+        "config_source":task.get("config_source", "legacy-snapshot"), "config_snapshot_at":task.get("config_snapshot_at"),
+        "task_limits":task["config"]["budget"], "global_limits":task.get("global_budget"),
+        "global_usage":runtime.usage(),
         "planning_attempts":task.get("planning_attempts", 0), "planning_limit":task["config"]["budget"].get("planning_attempts", 4),
         "strategy":task["config"]["strategy"], "usage":runtime.usage(task_id),
         "calls":calls, "transitions":task.get("transitions", []),

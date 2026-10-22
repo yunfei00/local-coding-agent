@@ -15,6 +15,24 @@ ROLES = ("planner", "executor", "reviewer", "escalation")
 STRATEGIES = ("local-first", "local-only", "api-only")
 
 
+def apply_config_overrides(saved: dict, overrides: dict) -> dict:
+    """Apply only deliberate Task edits to the latest saved Settings, preserving zeros."""
+    if not isinstance(overrides, dict) or set(overrides) - set(saved):
+        raise ValueError("Invalid task configuration overrides")
+    result = {**saved, **overrides}
+    for key in ("budget", "roles"):
+        if key in overrides:
+            patch = overrides[key]
+            if not isinstance(patch, dict):
+                raise ValueError(f"Invalid {key} overrides")
+            result[key] = {**saved[key], **patch}
+            if key == "roles":
+                if set(patch) - set(ROLES) or any(not isinstance(p, dict) for p in patch.values()):
+                    raise ValueError("Invalid role overrides")
+                result[key] = {**saved[key], **{role:{**saved[key][role], **p} for role,p in patch.items()}}
+    return validate_config(result)
+
+
 def validate_config(raw: dict | None = None) -> dict:
     raw = raw or {}
     if set(raw) - {"strategy", "roles", "budget", "verification_commands"}:

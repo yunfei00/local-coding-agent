@@ -37,8 +37,10 @@ def validate_limits(raw: dict | None) -> dict:
 
 
 class BudgetExceeded(ProviderError):
-    def __init__(self, message: str):
+    def __init__(self, message: str, details: dict | None = None):
         super().__init__("BUDGET_EXHAUSTED", message)
+        self.details = details
+        self.role = details.get("role") if details else None
 
 
 class BudgetGuard:
@@ -73,15 +75,34 @@ class BudgetGuard:
         self.db.execute("BEGIN IMMEDIATE")
         try:
             if route == "api":
-                for task_id, call_cap, token_cap, cost_cap in (
-                    (self.plan_id, limits["api_calls"], limits["api_tokens"], limits["api_cost"]),
-                    (None, self.global_limits["global_api_calls"], self.global_limits["global_api_tokens"], self.global_limits["global_api_cost"]),
+                for scope, task_id, caps in (
+                    ("task", self.plan_id, limits),
+                    ("global", None, self.global_limits),
                 ):
                     used = self.runtime.usage(task_id)
-                    if used["api_calls"] + 1 > call_cap or used["reserved_tokens"] + tokens > token_cap:
-                        raise BudgetExceeded("API call or Token reservation limit reached; choose local-only, pause, or explicitly add budget")
-                    if cost_cap is not None and used["reserved_cost"] + cost > cost_cap:
-                        raise BudgetExceeded("API cost reservation limit reached")
+                    prefix = "global_" if scope == "global" else ""
+                    for field, usage_key, required in (("api_calls", "api_calls", 1),
+                            ("api_tokens", "reserved_tokens", tokens), ("api_cost", "reserved_cost", cost)):
+                        key = prefix + field
+                        cap = caps[key]
+                        if cap is not None and used[usage_key] + required > cap:
+                            details = {"task_id":self.plan_id, "attempt_id":request_id, "phase":task["status"],
+                                "role":role, "model":model, "route":route, "scope":scope, "field":key,
+                                "rule":"used_plus_request_exceeds_limit", "limit":cap, "used":used[usage_key],
+                                "required":required, "remaining":max(0, cap - used[usage_key]),
+                                "api_calls":used["api_calls"], "reserved_tokens":used["reserved_tokens"],
+                                "in_flight_tokens":used["in_flight_tokens"], "reserved_cost":used["reserved_cost"],
+                                "input_tokens":used["input_tokens"], "output_tokens":used["output_tokens"],
+                                "cached_tokens":used["cached_tokens"], "usage_estimated":used["estimated"],
+                                "input_token_estimate":input_estimate, "output_limit":output_limit,
+                                "request_token_reservation":tokens, "request_cost_reservation":cost,
+                                "task_limits":limits, "global_limits":self.global_limits,
+                                "request_sent":False, "checked_at":time.time()}
+                            raise BudgetExceeded(
+                                f"{scope} budget {key}: used/reserved {used[usage_key]} + request {required} > limit {cap}. "
+                                "No API request sent. Review Models and budget and the model output limit; "
+                                "new tasks use saved Settings, existing tasks retain snapshots. "
+                                "For a paused task, explicitly apply the reviewed configuration or continue local-only.", details)
             self.db.execute("INSERT INTO model_requests VALUES(?,?,?,?,?,?,?,?,?,?)",
                             (request_id, self.plan_id, route, role, model, tokens if route == "api" else 0,
                              cost if route == "api" else 0, "reserved", json.dumps({"estimated": True,
