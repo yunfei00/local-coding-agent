@@ -16,7 +16,7 @@
 | v0.4 编排（含最终恢复修复） | 23 PASS、0 FAIL | planning-orchestration-final.log |
 | Electron desktop-smoke | 24 检查通过、0 跳过，含 Planning 阻塞取消和报告访问 | planning-desktop-final.log |
 
-日志位于本机忽略的 validation-reports；公开文档只记录无敏感内容的结论。后续最终代码还将由 Windows/Ubuntu CI 运行完整套件。报告中解析/Schema 为 null 表示未进入该检查，不冒充成功或验证失败。中断恢复时遗留 reserved 调用标为 interrupted，保留占用与 ID，并记录 TASK_INTERRUPTED/MODEL_INTERRUPTED。
+日志位于本机忽略的 validation-reports；公开文档只记录无敏感内容的结论。最终代码双平台 CI 状态见 [PR #10 检查](https://github.com/yunfei00/local-coding-agent/pull/10/checks)，合并门禁要求全部成功。报告中解析/Schema 为 null 表示未进入该检查，不冒充成功或验证失败。中断恢复时遗留 reserved 调用标为 interrupted，保留占用与 ID，并记录 TASK_INTERRUPTED/MODEL_INTERRUPTED。
 
 ## A–J 与关键附加覆盖
 
@@ -50,7 +50,7 @@ uv run python scripts/validation/check.py
 node scripts/validation/desktop-smoke.cjs
 ```
 
-桌面自动化已实际验证 Planning 阻塞时顶部取消按钮可见、可以终止请求，随后从 Task 打开 JSON/Markdown 诊断。回归继续覆盖模型配置、会话、聊天、审批、Worktree、Stop 和原 UI 行为。
+桌面自动化已实际验证 Planning 阻塞时顶部取消按钮可见、可以终止请求，随后从 Task 打开 JSON/Markdown 诊断。暂停、失败及待审批任务也可直接 Cancel task，无需先恢复；取消保留 Worktree、历史和预算。回归继续覆盖模型配置、会话、聊天、审批、Worktree、Stop 和原 UI 行为。
 
 ## 公司电脑更新与口述验证
 

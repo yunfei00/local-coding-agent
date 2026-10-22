@@ -114,6 +114,7 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
         <p>Reserved cost {task.usage.reserved_cost.toFixed(6)} · Actual {task.usage.actual_cost_known ? task.usage.actual_cost.toFixed(6) : "unavailable"}</p>
         <details><summary>Usage precision</summary><p>{task.usage.precision}</p></details>
         {taskIsActive(task) ? <><button disabled={busy} onClick={() => void request("task.pause", {task_id:task.id})}>Pause task</button><button disabled={busy} onClick={() => void request("task.cancel", {task_id:task.id})}>Stop task</button></> : <>
+          {["paused","failed","awaiting_approval"].includes(task.status) ? <button disabled={busy} onClick={() => void request("task.cancel", {task_id:task.id})}>Cancel task</button> : null}
           <button disabled={busy || running} onClick={() => void resume(task)}>Reopen / continue</button>
           <button disabled={busy || running} onClick={() => void resume(task, true)}>Continue local-only</button>
         </>}
