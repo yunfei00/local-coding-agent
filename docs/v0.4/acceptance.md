@@ -89,3 +89,16 @@ node scripts/validation/desktop-smoke.cjs
 新增 7 项后端测试覆盖创建目录、名称合法性、同名保护、活动任务阻止、Git 失败保留目录与非当前项目改名。Electron 实测字体计算值、居中弹框、Enter/Escape、目录冲突、Git 初始化、重启恢复、900/1180px 工具栏/Settings 布局，保留既有模型路由、审批、Worktree 和聊天回归。Windows CI 曾发现测试将短路径与完整路径直接比较，已改为比较真实文件系统路径后通过，没有放宽目录保护。
 
 安装包沿用原签名状态，未增加企业签名。新建空 Git 仓库不会自动创建初始提交；自主 Worktree 任务仍要求已有初始提交。真实付费 API 和公司环境模型能力的验收边界与前文相同，本补丁不新增这类验证声明。
+
+## v0.4.2 聊天模型同步补丁
+
+修复旧会话保存 API 模型名、界面已显示本地模型，但发送仍使用旧值的问题。请求现在携带 Chat model，后端验证后保存并执行；不可用模型明确显示并阻止发送，不自动替换其他模型。设置页说明普通聊天与自主 Task 四角色的区别。详见 [聊天模型同步修复](chat-model-sync.md)。
+
+- [PR #8](https://github.com/yunfei00/local-coding-agent/pull/8) 合并提交 `3d2dfba27df7bd8f2a64f57a408cdd6f968aa194`，Tag `v0.4.2`。
+- [最终 Windows/Ubuntu CI](https://github.com/yunfei00/local-coding-agent/actions/runs/39724393215) 通过：229 Python、32 Desktop，类型检查与构建通过；Windows 23 项 Electron 检查通过，0 跳过，包含实际原生剪贴板内容。
+- 本机 `.codex-v042-package.log`：Windows 完整构建 11 阶段通过，Portable、Setup 安装/启动/卸载和 SHA256 校验通过。打包后模型同步、不可用提示/发送门禁和重启恢复均通过；本机剪贴板回读不可用明确记录环境跳过，没有用按钮确认冒充实际内容验证。
+- 正式构建/上传：[Release Windows](https://github.com/yunfei00/local-coding-agent/actions/runs/39724808534)；正式文件及 SHA256SUMS：[v0.4.2 Release](https://github.com/yunfei00/local-coding-agent/releases/tag/v0.4.2)。
+
+新增六项服务端专项通过原 Agent Loop 调用 Mock，验证所选模型实际参数、旧客户端、失败不回退、会话及历史持久化。Electron 通过真实 IPC/HTTP，先保存 DeepSeek API 会话，再切换 Ollama 并重启；发送必须只请求本地 `gpt-oss:20b`，随后验证保存与重启。首轮 Windows CI 的标签子串冲突已改为精确定位后通过，未降低断言。
+
+本补丁不需要清空配置、删除旧 Thread 或重填密钥；不改变自主任务路由、预算快照、Checkpoint、权限、审批和 Git 流程。没有调用真实付费 API；示例模型名不是实际 GPT-OSS 20B 编程能力的验收声明。

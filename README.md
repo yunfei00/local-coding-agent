@@ -4,7 +4,7 @@ Local Coding Agent 是一个面向 Windows 本地开发环境的桌面 Coding Ag
 
 > 当前代码版本：**v0.4.2**
 >
-> 最近正式发布：[**v0.4.1**](https://github.com/yunfei00/local-coding-agent/releases/tag/v0.4.1)
+> 最近正式发布：[**v0.4.2**](https://github.com/yunfei00/local-coding-agent/releases/tag/v0.4.2)
 
 v0.3 增加 MCP stdio/HTTP、Repository Map、Pinned Context、Git Stage/Unstage 与 Worktree、持久化任务计划和执行统计。桌面支持项目树独立展开、会话改名、Markdown/代码复制、浅深主题，以及不遮挡输入框的右侧面板。人工验收已通过；自动化证据与主线集成记录见 [最终验收记录](docs/v0.3-final-validation.md)。
 
