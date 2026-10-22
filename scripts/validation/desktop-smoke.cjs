@@ -24,24 +24,27 @@ for (const args of [["config","user.name","Smoke"],["config","user.email","smoke
 let rejectModels = false;
 let protectedCredentialSeen = false;
 let mcpProcess;
+const modelRequests = [];
 const checks = [];
 const skipped = [];
 const errors = [];
 const provider = http.createServer((req, res) => {
-  if (req.url === "/api/tags") {res.writeHead(200, {"Content-Type":"application/json"}); return res.end(JSON.stringify({models:[{name:"task-executor"}]}));}
+  if (req.url === "/api/tags") {res.writeHead(200, {"Content-Type":"application/json"}); return res.end(JSON.stringify({models:[{name:"gpt-oss:20b"},{name:"task-executor"}]}));}
   if (req.url.endsWith("/models")) {
     if (req.headers.authorization === "Bearer mock-only-not-a-real-key") protectedCredentialSeen = true;
     res.writeHead(rejectModels ? 503 : 200, {"Content-Type": "application/json"});
-    return res.end(JSON.stringify(rejectModels ? {error: {message: "Intentional startup failure"}} : {data: [{id: "smoke-coder"}]}));
+    return res.end(JSON.stringify(rejectModels ? {error: {message: "Intentional startup failure"}} : {data: [{id: "smoke-coder"},{id:"DeepSeek-V4-Flash-SaaS"}]}));
   }
   let body = "";
   req.on("data", chunk => body += chunk);
   req.on("end", () => {
     const payload = JSON.parse(body || "{}");
+    if (req.url.endsWith("/chat") || req.url.endsWith("/chat/completions")) modelRequests.push({url:req.url,model:payload.model});
     if (req.url === "/api/show") {res.writeHead(200, {"Content-Type":"application/json"}); return res.end(JSON.stringify({capabilities:["tools"]}));}
     if (req.url === "/api/chat") {
       let message = {content:"Task implementation complete"};
-      if (payload.model === "task-planner") message.content = JSON.stringify({steps:[{description:"Fix calculator using actual tools"}]});
+      if (payload.model === "gpt-oss:20b") message.content = "Selected local model received the chat.";
+      else if (payload.model === "task-planner") message.content = JSON.stringify({steps:[{description:"Fix calculator using actual tools"}]});
       else if (payload.model === "task-reviewer") message.content = "Tests passed; review isolated Diff before Git actions.";
       else if (!payload.messages.some(m => m.role === "tool" && (m.name === "apply_patch" || m.tool_name === "apply_patch"))) message = {content:"", tool_calls:[{function:{name:"apply_patch", arguments:{path:"calculator.py", old_text:"return a - b", new_text:"return a + b"}}}]};
       res.writeHead(200, {"Content-Type":"application/x-ndjson"});
@@ -151,6 +154,44 @@ async function main() {
     assert.equal(fs.realpathSync.native(newSession.payload.project.path), fs.realpathSync.native(path.join(data,"ui-created-project")));
     await page.getByRole("button",{name:"Open project",exact:true}).click();
     checks.push("Centered New project dialog: cancellation, location picker, collision protection, Git init and registry open");
+
+    // Reproduce a persisted API model in a thread after switching chat to Ollama.
+    // Startup shows the valid local default, but used to send the old API name.
+    const previousSettings = await page.evaluate(async () => {
+      const settings = {...(await window.localAgent.getSettings()).event.payload};
+      delete settings.api_key_configured;
+      const session = await window.localAgent.getProject();
+      await window.localAgent.selectModel(session.payload.active_thread.id, "DeepSeek-V4-Flash-SaaS");
+      await window.localAgent.applySettings({...settings,provider:"ollama",ollama_model:"gpt-oss:20b"});
+      return settings;
+    });
+    await application.close();
+    page = await launch();
+    await page.waitForFunction(() => document.querySelector('.model-select')?.value === "gpt-oss:20b");
+    assert.equal((await page.evaluate(() => window.localAgent.getProject())).payload.active_thread.active_model, "DeepSeek-V4-Flash-SaaS");
+    const requestsBeforeChat = modelRequests.length;
+    await page.locator(".composer textarea").fill("Check restored local chat model");
+    await page.locator(".composer textarea").press("Enter");
+    await page.locator(".execution-summary").waitFor();
+    await page.locator(".send-button").waitFor({state:"visible"});
+    assert.deepEqual(modelRequests.slice(requestsBeforeChat), [{url:"/api/chat",model:"gpt-oss:20b"}]);
+    assert.equal((await page.evaluate(() => window.localAgent.getProject())).payload.active_thread.active_model, "gpt-oss:20b");
+    await application.close();
+    page = await launch();
+    await page.waitForFunction(() => document.querySelector('.model-select')?.value === "gpt-oss:20b");
+    assert.equal((await page.evaluate(() => window.localAgent.getProject())).payload.active_thread.active_model, "gpt-oss:20b");
+    await page.evaluate(settings => window.localAgent.applySettings(settings), previousSettings);
+    await application.close();
+    page = await launch();
+    await page.waitForFunction(() => document.querySelector('.model-select')?.value === "smoke-coder");
+    checks.push("Restored API model switches to displayed Ollama model in actual HTTP request; selected model and chat history survive restart");
+    await page.locator(".thread-item.active").click();
+    await page.waitForFunction(() => document.querySelector('.model-select')?.value === "gpt-oss:20b");
+    assert((await page.getByLabel("Chat model",{exact:true}).locator("option:checked").innerText()).includes("unavailable"));
+    assert(await page.locator(".send-button").isDisabled());
+    await page.getByLabel("Chat model",{exact:true}).selectOption("smoke-coder");
+    await page.waitForFunction(() => !document.querySelector('.composer textarea').disabled);
+    checks.push("Unavailable saved model is shown explicitly and blocks Send until a valid model is selected");
 
     const hostPython = path.join(root, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
     const fixture = path.join(root, "tests", "fixtures", "mcp_test_server.py");

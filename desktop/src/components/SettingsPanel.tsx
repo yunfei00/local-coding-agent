@@ -617,6 +617,7 @@ export function SettingsPanel({
           {tab === "provider" ? (
             <div className="settings-section">
               <h2>Provider</h2>
+              <p>Controls ordinary chat and the model selector below the message box. Autonomous Task roles are configured separately in Models &amp; Routing.</p>
               <label className="settings-field">
                 <span>Provider</span>
                 <select

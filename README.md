@@ -2,7 +2,7 @@
 
 Local Coding Agent 是一个面向 Windows 本地开发环境的桌面 Coding Agent。目标是提供类似 Codex Desktop 的核心开发体验，同时让模型、Agent、工具链、数据和权限边界保持在用户自己的环境中。
 
-> 当前代码版本：**v0.4.1**
+> 当前代码版本：**v0.4.2**
 >
 > 最近正式发布：[**v0.4.1**](https://github.com/yunfei00/local-coding-agent/releases/tag/v0.4.1)
 
@@ -21,6 +21,8 @@ uv run python scripts/validation/check.py
 Task 面板按需启动自主任务：默认 Local-first，规划/执行/审查使用本地模型，有限升级调用 API；支持 Local-only、API-only、四角色配置、持久化阶段、暂停/取消/恢复、请求前任务/全局预算、独立验证和完成报告。实际执行复用 v0.3 Agent Loop、权限、Approval、计划、Checkpoint、Shell 与受管理 Worktree，不自动提交、推送或合并。
 
 Settings → Models & Routing 同时配置多个 Ollama/API 连接和模型，四角色独立跨连接绑定；任务冻结解析快照，API 预检按实际连接类型计费。旧配置自动迁移，原 API Key 保留安全存储。普通聊天的 Provider 选择不改变自主任务角色。
+
+v0.4.2 修复旧会话模型与底部显示不一致：发送请求携带当前 Chat model，后端验证后保存并执行，不再误用上一个 Provider 的模型名。不可用的旧模型会明确标注并阻止发送。见 [聊天模型同步修复](docs/v0.4/chat-model-sync.md)。
 
 真实 CPU Ollama 已验证新路由、规划与实际工具调用，但小模型未完成修复；真实付费 API 尚未验收。跨 Provider、升级回交、Usage、预算和恢复通过实际 HTTP Mock 验证，不能将其视为真实付费消费或公司模型能力证明。构建和发布状态见 [验收记录](docs/v0.4/acceptance.md)。
 

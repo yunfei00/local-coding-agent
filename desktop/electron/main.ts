@@ -1421,11 +1421,11 @@ ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
     { threadId }
   );
 });
-ipcMain.handle("agent:turn-start", async (_event, threadId: string, prompt: string) => {
+ipcMain.handle("agent:turn-start", async (_event, threadId: string, prompt: string, model?: string) => {
   return sendRequest(
     "turn.start",
     "turn.started",
-    { prompt },
+    { prompt, model },
     { threadId }
   );
 });

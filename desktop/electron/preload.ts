@@ -134,8 +134,8 @@ contextBridge.exposeInMainWorld("localAgent", {
     ipcRenderer.invoke("agent:plan-request", threadId, operation, payload),
   renameThread: (threadId: string, title: string, projectId?: string) => ipcRenderer.invoke("agent:thread-rename", threadId, title, projectId),
   getThread: (threadId: string) => ipcRenderer.invoke("agent:thread-get", threadId),
-  startTurn: (threadId: string, prompt: string) =>
-    ipcRenderer.invoke("agent:turn-start", threadId, prompt),
+  startTurn: (threadId: string, prompt: string, model?: string) =>
+    ipcRenderer.invoke("agent:turn-start", threadId, prompt, model),
   cancelTurn: (turnId: string) => ipcRenderer.invoke("agent:turn-cancel", turnId),
   onAgentEvent: (handler: AgentEventHandler) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => handler(payload);
