@@ -16,7 +16,7 @@
 
 ## 验证
 
-`tests/test_chat_model_selection.py` 六项专项已通过：真实 Agent Loop 使用 Mock Provider，覆盖覆盖旧模型、实际调用参数、会话及消息重启恢复、旧客户端兼容、无效模型不回退、空值/类型校验、Provider 离线和活动请求阻止。
+`tests/test_chat_model_selection.py` 六项专项已通过：真实 Agent Loop 使用 Mock Provider，覆盖替换旧模型、实际调用参数、会话及消息重启恢复、旧客户端兼容、无效模型不回退、空值/类型校验、Provider 离线和活动请求阻止。
 
 Electron 回归增加实际 HTTP Mock：先保存 API DeepSeek 会话，再切换 Ollama 并重启；确认底部 GPT-OSS 与旧会话值不同，发送后唯一推理请求为 Ollama `/api/chat` 的 `gpt-oss:20b`，随后重启验证模型持久化。另检查加载不可用模型时的明确提示与发送门禁。
 
@@ -28,4 +28,6 @@ uv run python scripts/validation/check.py
 node scripts/validation/desktop-smoke.cjs
 ```
 
-最终打包与发布结果见 [验收记录](acceptance.md)。Mock 使用示例模型名验证传递与路由，不代表本机安装了真实 GPT-OSS 20B 或验收了该模型编程能力。
+完整回归 229 项 Python、32 项桌面单元测试通过，类型检查和构建通过。[Windows/Linux CI](https://github.com/yunfei00/local-coding-agent/actions/runs/39724393215) 通过，其中 23 项真实 Electron 检查通过、0 跳过。本机完整打包、Portable 和 Setup 安装/启动/卸载通过；本机原生剪贴板回读不可用记录为环境跳过，远端已通过实际剪贴板内容检查。模型相关检查无跳过。
+
+正式构建与发布：[Release Windows](https://github.com/yunfei00/local-coding-agent/actions/runs/39724808534)，源代码为合并提交 `3d2dfba27df7bd8f2a64f57a408cdd6f968aa194`，Tag `v0.4.2`。下载与验收边界见 [验收记录](acceptance.md)。Mock 使用示例模型名验证传递与路由，不代表本机安装了真实 GPT-OSS 20B 或验收了该模型编程能力。
