@@ -59,10 +59,23 @@ const provider = http.createServer((req, res) => {
       return res.end(JSON.stringify({message, done:true, prompt_eval_count:120, eval_count:30}) + "\n");
     }
     const prompt = payload.messages?.filter(m => m.role === "user").at(-1)?.content ?? "";
+    for (const message of payload.messages ?? []) for (const item of message.tool_calls ?? []) assert.equal(typeof item.function.arguments, "string", "OpenAI wire tool arguments must be JSON strings");
     res.writeHead(200, {"Content-Type": "text/event-stream"});
     if (payload.model === "api-reviewer") {
       let delta = {content:"Review verified tests and Diff."};
-      if (payload.tools?.some(t => t.function.name === "submit_plan")) delta = {content:JSON.stringify({steps:[{description:"Fix calculator addition and run independent tests"}]})};
+      if (prompt.includes("M1 Single Agent")) {
+        const results = payload.messages.filter(m => m.role === "tool");
+        const seen = name => results.filter(m => m.name === name);
+        let name, args;
+        if (!seen("read_file").length) {name="read_file"; args={path:"calculator.py"};}
+        else if (!seen("run_command").length) {name="run_command"; args={command:"uv run --no-project python -m unittest discover -s tests -v"};}
+        else if (!seen("apply_patch").length) {name="apply_patch"; args={path:"calculator.py",old_text:"return a - b",new_text:"return a + b  # M1 fix"};}
+        else if (seen("run_command").length < 2) {name="run_command"; args={command:"uv run --no-project python -m unittest discover -s tests -v"};}
+        else if (!seen("git_diff").length) {name="git_diff"; args={};}
+        if (name) delta={tool_calls:[{index:0,id:`m1-call-${results.length}`,type:"function",function:{name,arguments:JSON.stringify(args)}}]};
+        else delta={content:"M1 Single Agent repaired calculator after actual failing tests, reran tests and inspected Diff."};
+      }
+      else if (payload.tools?.some(t => t.function.name === "submit_plan")) delta = {content:JSON.stringify({steps:[{description:"Fix calculator addition and run independent tests"}]})};
       else if (payload.tools?.some(t => t.function.name === "apply_patch")) {
         if (!payload.messages.some(m => m.role === "tool")) delta = {tool_calls:[{index:0,id:"api-patch",type:"function",function:{name:"apply_patch",arguments:JSON.stringify({path:"calculator.py",old_text:"return a - b",new_text:"return a + b"})}}]};
         else delta = {content:"Calculator implementation complete."};
@@ -335,7 +348,8 @@ async function main() {
     const cancel = page.getByRole("button",{name:"Cancel active task",exact:true});
     await cancel.waitFor();
     assert(await cancel.isEnabled());
-    await page.waitForTimeout(500);
+    const planningDeadline = Date.now() + 10000;
+    while (!planningRequests && Date.now() < planningDeadline) await new Promise(resolve => setTimeout(resolve,100));
     assert.equal(planningRequests, 1);
     const taskPanel = page.locator(".task-panel");
     await taskPanel.evaluate(el => el.scrollTop = el.scrollHeight);
@@ -409,6 +423,43 @@ async function main() {
     assert(freshTask.report.diff.includes("+    return a + b"));
     checks.push("Mounted Task panel uses latest Settings for API-only Planner; zero budget gives field-level rejection without HTTP; fresh budget runs real Mock API patch/unittest/Diff and preserves old snapshot");
     await page.evaluate(config => window.localAgent.taskRequest("","task.settings.update",{config}), defaultsBeforeBudgetCheck);
+    await page.getByRole("button", {name:"Task", exact:true}).click();
+    await page.getByRole("button", {name:"Task", exact:true}).click();
+    await page.waitForFunction(() => document.querySelector('[aria-label="Task strategy"]')?.value === "local-first");
+    // Select Single Agent using the actual Task UI. Other role bindings remain local.
+    await page.getByLabel("Task strategy",{exact:true}).selectOption("single-agent");
+    await page.getByText("Models and budget",{exact:true}).click();
+    await page.getByLabel("executor task profile",{exact:true}).selectOption(profileIds["api-reviewer"]);
+    await page.getByLabel("api_calls",{exact:true}).fill("12");
+    await page.getByLabel("api_tokens",{exact:true}).fill("250000");
+    assert.equal(await page.getByLabel("planner task profile",{exact:true}).count(),0);
+    const m1Start = modelRequests.length;
+    await page.getByLabel("Autonomous task goal").fill("M1 Single Agent: inspect calculator, run failing tests, fix, retest and inspect diff");
+    await page.getByRole("button",{name:"Start autonomous task",exact:true}).click();
+    await page.getByRole("button",{name:"Allow once",exact:true}).click();
+    let m1Task;
+    const m1Deadline = Date.now() + 60000;
+    while (Date.now() < m1Deadline) {
+      m1Task = await page.evaluate(async () => {
+        const session = await window.localAgent.getProject();
+        return (await window.localAgent.taskRequest(session.payload.active_thread.id,"task.list")).payload.tasks.find(t => t.goal.startsWith("M1 Single Agent"));
+      });
+      if (m1Task && ["awaiting_approval","paused","failed"].includes(m1Task.status)) break;
+      await new Promise(resolve => setTimeout(resolve,200));
+    }
+    assert.equal(m1Task.status,"awaiting_approval",m1Task.reason);
+    assert.equal(m1Task.config.strategy,"single-agent");
+    assert.equal(m1Task.planning_attempts ?? 0,0);
+    assert.equal(m1Task.escalations,0);
+    assert.equal(modelRequests.length-m1Start,6);
+    assert(modelRequests.slice(m1Start).every(r => r.model === "api-reviewer" && r.url.endsWith("/chat/completions")));
+    assert(m1Task.calls.every(c => c.role === "executor"));
+    assert(m1Task.verification.every(r => r.ok));
+    assert(fs.readFileSync(path.join(m1Task.workspace,"calculator.py"),"utf8").includes("a + b  # M1 fix"));
+    assert(fs.readFileSync(path.join(project,"calculator.py"),"utf8").includes("a - b"));
+    assert(m1Task.report.diff.includes("M1 fix"));
+    await screenshot("desktop-m1-single-agent.png");
+    checks.push("M1 Single Agent UI: one online Executor, six model rounds, real failing tests/patch/retest/Diff, no Planner/Reviewer/escalation requests");
     await page.getByRole("button", {name:"Task", exact:true}).click();
 
     for (const panel of ["Task", "Context", "Git", "Plan", "Diagnostics"]) {

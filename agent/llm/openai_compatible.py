@@ -62,17 +62,18 @@ def _finalize_tool_calls(
         state = states[index]
         name = state.get("name", "").strip()
         if not name:
-            continue
+            raise OpenAICompatibleProviderError("MODEL_INVALID_TOOL_CALL", "Tool call has no function name")
 
         raw_arguments = state.get("arguments", "")
         arguments: dict[str, Any] = {}
         if raw_arguments:
             try:
                 parsed = json.loads(raw_arguments)
-            except json.JSONDecodeError:
-                parsed = {}
-            if isinstance(parsed, dict):
-                arguments = parsed
+            except json.JSONDecodeError as exc:
+                raise OpenAICompatibleProviderError("MODEL_INVALID_TOOL_CALL", "Tool arguments must be valid JSON; no tool was executed") from exc
+            if not isinstance(parsed, dict):
+                raise OpenAICompatibleProviderError("MODEL_INVALID_TOOL_CALL", "Tool arguments must be a JSON object; no tool was executed")
+            arguments = parsed
 
         result.append(
             ToolCall(
@@ -195,7 +196,7 @@ class OpenAICompatibleProvider:
         )
         request_body: dict[str, Any] = {
             "model": model,
-            "messages": messages,
+            "messages": self._wire_messages(messages),
             "stream": True,
             "temperature": self.temperature,
         }
@@ -347,6 +348,22 @@ class OpenAICompatibleProvider:
             ) from exc
         finally:
             self.response_metadata["http_ended_at"] = time.time()
+
+    @staticmethod
+    def _wire_messages(messages):
+        """Keep internal/Ollama arguments as objects; OpenAI requires JSON strings."""
+        result = []
+        for raw in messages:
+            message = {k: v for k, v in raw.items() if k != "tool_name"}
+            if raw.get("tool_calls"):
+                message["tool_calls"] = []
+                for call in raw["tool_calls"]:
+                    function = dict(call["function"])
+                    if isinstance(function.get("arguments"), dict):
+                        function["arguments"] = json.dumps(function["arguments"], ensure_ascii=False)
+                    message["tool_calls"].append({**call, "function": function})
+            result.append(message)
+        return result
 
     async def _chat_payloads(self, response):
         """aiohttp's line reader reassembles TCP/UTF-8 fragments before SSE parsing."""

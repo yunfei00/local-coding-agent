@@ -16,6 +16,12 @@ npm.cmd --prefix desktop ci
 uv run python scripts/validation/check.py
 ```
 
+## M1 单在线模型 Agent 闭环（源码）
+
+Task → Task strategy 选择 **Single Agent (online)**，在 Models and budget 中绑定一个 OpenAI Compatible 的 **executor task profile**，填写目标后启动。模型直接读取文件、执行终端、修改代码、接收真实工具结果并继续调用工具；无需配置 Planner、Reviewer 或本地模型。任务仍在受管理 Worktree 中执行，完成后由真实命令独立验证并展示 Diff；支持暂停、取消、检查后恢复。
+
+沿用已有 API 调用上限；多轮工具任务需要足够的调用次数，默认 3 次可能提前停止。切换模式不修改用户显式预算。Key 继续使用桌面安全存储，不写入任务配置。详见 [M1 能力与架构审计](docs/m1/architecture-audit.md)、[验收记录](docs/m1/acceptance.md)、[M2–M5 接口规划](docs/m1/roadmap.md)。本阶段不创建 Tag、Release 或安装包。
+
 ## v0.4 Local-first Autonomous Coding
 
 Task 面板按需启动自主任务：默认 Local-first，规划/执行/审查使用本地模型，有限升级调用 API；支持 Local-only、API-only、四角色配置、持久化阶段、暂停/取消/恢复、请求前任务/全局预算、独立验证和完成报告。实际执行复用 v0.3 Agent Loop、权限、Approval、计划、Checkpoint、Shell 与受管理 Worktree，不自动提交、推送或合并。

@@ -1,5 +1,7 @@
 # 系统架构
 
+M1 新增 `strategy=single-agent`，直接复用 `AgentServer.run_tool_turn` 与现有工具，不发出独立规划/审查/升级请求。Task Runtime 的单条目标步骤仅用于持久化工具证据；`pending → executing` 后进入在线模型与真实工具的多轮循环，随后 `verifying → awaiting_approval`。独立验证失败时只回到同一 Executor，并在重复失败或修复上限处暂停。原 Local-first/Local-only/API-only 行为保留。完整代码证据、能力边界与后续接口见 [M1 架构审计](m1/architecture-audit.md) 和 [M2–M5 规划](m1/roadmap.md)。
+
 ## 1. 总体架构
 
 Local Coding Agent 采用 **Desktop UI 与 Agent Core 分离** 的架构。

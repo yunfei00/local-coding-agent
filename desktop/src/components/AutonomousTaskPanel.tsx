@@ -80,16 +80,16 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
   };
   return <aside className="context-overlay" aria-label="Autonomous task">
     <div className="context-panel task-panel">
-      <header className="context-panel-header"><div><span className="eyebrow">LOCAL-FIRST AUTONOMOUS CODING</span><h2>Task</h2></div><button className="panel-close" onClick={onClose}>Close</button></header>
+      <header className="context-panel-header"><div><span className="eyebrow">AUTONOMOUS CODING</span><h2>Task</h2></div><button className="panel-close" onClick={onClose}>Close</button></header>
       {activeTask ? <div className="task-live-controls" role="status"><strong>{activeTask.status}</strong><span>Task {activeTask.id.slice(0,12)}</span><button disabled={stopping} onClick={() => void interrupt("task.pause")}>Pause active task</button><button className="stop-button" disabled={stopping} onClick={() => void interrupt("task.cancel")}>{stopping ? "Stopping…" : "Cancel active task"}</button></div> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <p role="status">{notice}</p> : null}
       {model ? <p className="task-model" role="status">{model}</p> : null}
       {config ? <section className="context-section">
         <label>Task strategy<select aria-label="Task strategy" value={config.strategy} disabled={running} onChange={e => setConfig({...config, strategy:e.target.value})}>
-          <option value="local-first">Local-first</option><option value="local-only">Local-only</option><option value="api-only">API-only</option>
+          <option value="single-agent">Single Agent (online)</option><option value="local-first">Local-first</option><option value="local-only">Local-only</option><option value="api-only">API-only</option>
         </select></label>
-        <p>Strategy validates the saved role bindings; it does not replace models. For API-only, choose API profiles for Planner, Executor and Reviewer in Models and budget. Existing tasks keep their configuration snapshot.</p>
+        <p>{config.strategy === "single-agent" ? "Single Agent uses only the online Executor profile for reasoning and tools. No separate Planner, Reviewer, local model or escalation is required. Choose an API Executor below; allow enough API calls for multiple tool rounds." : "Strategy validates the saved role bindings. For API-only, choose API profiles for Planner, Executor and Reviewer. Existing tasks keep their configuration snapshot."}</p>
         <p>New tasks read the latest saved Settings, plus field changes made here. Existing tasks keep their snapshots; switching strategy preserves explicit zero budgets.</p>
         <p>Tasks edit an isolated Git worktree after approval. Source changes are preserved. No automatic commit, push or merge.</p>
         <textarea aria-label="Autonomous task goal" placeholder="Describe a coding task…" value={goal} onChange={e => setGoal(e.target.value)} />
@@ -98,7 +98,7 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
         <details><summary>Models and budget</summary>
           <button onClick={onSettings}>Provider addresses and secure API key</button>
           {(["local", "api"] as const).map(route => <button key={route} disabled={busy} onClick={() => void request("task.connection.test", {route}).then(event => {if (event) setNotice(JSON.stringify(event.payload, null, 2));})}>Test {route} connection</button>)}
-          {Object.entries(config.roles).map(([role, profile]) => <div className="task-role" key={role}>
+          {Object.entries(config.roles).filter(([role]) => config.strategy !== "single-agent" || role === "executor").map(([role, profile]) => <div className="task-role" key={role}>
             <label>{role}<select aria-label={role + " task profile"} value={profile.model_profile_id ?? ""} onChange={e => setConfig({...config, roles:{...config.roles, [role]:{...profile, model_profile_id:e.target.value}}})}><option value="">Legacy: {profile.model || "Not configured"}</option>{catalog.profiles.map(p => <option key={p.model_profile_id} value={p.model_profile_id}>{modelLabel(catalog,p)}</option>)}</select></label>
           </div>)}
           {Object.entries(config.budget).map(([key, value]) => <label key={key}>{key}<input aria-label={key} type="number" min="0" value={value ?? ""} placeholder="No cost cap" onChange={e => setConfig({...config, budget:{...config.budget, [key]:e.target.value === "" ? null : Number(e.target.value)}})} /></label>)}
@@ -118,7 +118,7 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
         <h3>{task.goal}</h3><strong data-task-status={task.status}>{task.status}</strong><p>{task.reason}</p>
         {task.last_error ? <p role="alert">{task.last_error.code} — open Task diagnostics for the request and parsing details.</p> : null}
         {task.last_error?.budget ? <div role="alert" aria-label="Budget rejection details"><strong>{task.last_error.budget.scope} / {task.last_error.budget.field}</strong><p>Limit {task.last_error.budget.limit} · Used/reserved {task.last_error.budget.used} · This request {task.last_error.budget.required} · Remaining {task.last_error.budget.remaining}</p><p>Request Token estimate: input {task.last_error.budget.input_token_estimate} + output limit {task.last_error.budget.output_limit} = {task.last_error.budget.request_token_reservation}. No API request sent. Global usage includes other tasks.</p><p>Review the named field in Settings → Models and budget and the model output limit. Saved Settings apply to new tasks. To change this paused snapshot, review the configuration above and explicitly apply it. Usage is retained.</p><button onClick={onSettings}>Review saved model and budget settings</button></div> : null}
-        <p>Planning attempts {task.planning_attempts ?? 0} / {task.config?.budget.planning_attempts ?? 4}</p>
+        <p>{task.config?.strategy === "single-agent" ? "Single Agent · online Executor · no separate planning request" : `Planning attempts ${task.planning_attempts ?? 0} / ${task.config?.budget.planning_attempts ?? 4}`}</p>
         <button onClick={() => void window.localAgent.taskRequest(threadId, "task.diagnostics", {task_id:task.id}).then(event => setDiagnostic(event.payload?.diagnostics as typeof diagnostic)).catch(cause => setError(String(cause)))}>Task diagnostics {task.id.slice(0,8)}</button>
         <p>Attempts {task.attempts} · Repairs {task.repairs} · Escalations {task.escalations} · {Math.round(task.elapsed_seconds)}s</p>
         <p>API {task.usage.api_calls} · Local {task.usage.local_calls} · Reserved Tokens {task.usage.reserved_tokens}</p>
@@ -130,7 +130,7 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
         {taskIsActive(task) ? <><button disabled={busy} onClick={() => void request("task.pause", {task_id:task.id})}>Pause task</button><button disabled={busy} onClick={() => void request("task.cancel", {task_id:task.id})}>Stop task</button></> : <>
           {["paused","failed","awaiting_approval"].includes(task.status) ? <button disabled={busy} onClick={() => void request("task.cancel", {task_id:task.id})}>Cancel task</button> : null}
           <button disabled={busy || running} onClick={() => void resume(task)}>Reopen / continue</button>
-          <button disabled={busy || running} onClick={() => void resume(task, true)}>Continue local-only</button>
+          {task.config?.strategy !== "single-agent" ? <button disabled={busy || running} onClick={() => void resume(task, true)}>Continue local-only</button> : null}
         </>}
         {task.status === "paused" ? <><button disabled={busy} onClick={() => {
           const raw = window.prompt('Explicit task budget update, e.g. {"api_calls":4,"api_tokens":40000}');
