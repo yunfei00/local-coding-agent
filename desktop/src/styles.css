@@ -1312,6 +1312,7 @@ body,
 }
 
 .settings-header button,
+.model-settings button,
 .settings-footer button,
 .settings-inline-actions button,
 .settings-bottom-actions button {
@@ -1323,6 +1324,7 @@ body,
 }
 
 .settings-header button:hover,
+.model-settings button:hover:not(:disabled),
 .settings-footer button:hover:not(:disabled),
 .settings-inline-actions button:hover:not(:disabled),
 .settings-bottom-actions button:hover:not(:disabled) {
@@ -1330,6 +1332,7 @@ body,
 }
 
 .settings-header button:disabled,
+.model-settings button:disabled,
 .settings-footer button:disabled,
 .settings-inline-actions button:disabled,
 .settings-bottom-actions button:disabled {
@@ -1422,6 +1425,11 @@ body,
   white-space: nowrap;
 }
 
+.model-settings fieldset { min-width: 0; border: 0; padding: 0; display: grid; gap: 12px; }
+.model-settings legend { font-size: 15px; font-weight: 600; margin: 20px 0 10px; }
+.model-settings li { overflow-wrap: anywhere; margin-bottom: 8px; }
+.model-settings [role="status"] { white-space: pre-wrap; overflow-wrap: anywhere; }
+.model-settings button { justify-self: start; padding: 7px 12px; }
 .settings-field,
 .settings-rule-card {
   display: flex;

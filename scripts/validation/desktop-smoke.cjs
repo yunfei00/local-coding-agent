@@ -22,6 +22,7 @@ fs.mkdirSync(path.join(project, "tests"));
 fs.writeFileSync(path.join(project, "tests/test_calc.py"), "import unittest\nfrom calculator import add\nclass Calc(unittest.TestCase):\n def test_add(self): self.assertEqual(add(2,3),5)\n");
 for (const args of [["config","user.name","Smoke"],["config","user.email","smoke@example.test"],["add","."],["commit","-qm","fixture"]]) execFileSync("git", args, {cwd:project});
 let rejectModels = false;
+let protectedCredentialSeen = false;
 let mcpProcess;
 const checks = [];
 const skipped = [];
@@ -29,6 +30,7 @@ const errors = [];
 const provider = http.createServer((req, res) => {
   if (req.url === "/api/tags") {res.writeHead(200, {"Content-Type":"application/json"}); return res.end(JSON.stringify({models:[{name:"task-executor"}]}));}
   if (req.url.endsWith("/models")) {
+    if (req.headers.authorization === "Bearer mock-only-not-a-real-key") protectedCredentialSeen = true;
     res.writeHead(rejectModels ? 503 : 200, {"Content-Type": "application/json"});
     return res.end(JSON.stringify(rejectModels ? {error: {message: "Intentional startup failure"}} : {data: [{id: "smoke-coder"}]}));
   }
@@ -144,6 +146,59 @@ async function main() {
     }
     checks.push("Real file read and MCP stdio/HTTP calls through the Agent loop");
 
+    // Exercise the actual Settings form, not only the IPC configuration endpoint.
+    await page.getByRole("button", {name:"Settings", exact:true}).click();
+    await page.getByRole("button", {name:"Models & Routing", exact:true}).click();
+    await page.getByLabel("Model connection", {exact:true}).waitFor();
+    const profileIds = {};
+    for (const [kind, name, models] of [["ollama","Company Ollama",["task-planner","task-executor"]],["openai_compatible","Company API",["api-reviewer","api-escalation"]]]) {
+      await page.getByRole("button", {name:"Add connection", exact:true}).click();
+      await page.getByLabel("Connection name", {exact:true}).fill(name);
+      await page.getByLabel("Connection provider type", {exact:true}).selectOption(kind);
+      await page.getByLabel("Connection base URL", {exact:true}).fill(`http://127.0.0.1:${provider.address().port}${kind === "ollama" ? "" : "/v1"}`);
+      if (kind === "openai_compatible") {
+        await page.getByLabel("Connection API key", {exact:true}).fill("mock-only-not-a-real-key");
+        await page.getByRole("button", {name:"Save / clear connection key", exact:true}).click();
+        await page.getByText(/Credential updated:/).waitFor();
+      }
+      for (const model of models) {
+        await page.getByRole("button", {name:"Manually add model", exact:true}).click();
+        await page.getByLabel("Profile model ID", {exact:true}).fill(model);
+        await page.getByLabel("Profile display name", {exact:true}).fill(model);
+        await page.getByLabel("Profile context window", {exact:true}).fill("65536");
+        profileIds[model] = await page.getByLabel("Edit model profile", {exact:true}).inputValue();
+      }
+    }
+    const roleChoices = {planner:"task-planner",executor:"task-executor",reviewer:"api-reviewer",escalation:"api-escalation"};
+    for (const [role,name] of Object.entries(roleChoices)) await page.getByLabel(role + " profile", {exact:true}).selectOption(profileIds[name]);
+    await page.getByRole("button", {name:"Save model configuration", exact:true}).click();
+    await page.getByText("Model configuration saved. Running task snapshots are unchanged.").waitFor();
+    await page.getByRole("button", {name:"Test connection / fetch models", exact:true}).click();
+    await page.getByRole("button", {name:"Add model: smoke-coder", exact:true}).waitFor();
+    await screenshot("desktop-mixed-provider-settings.png");
+    const persistedRouting = await page.evaluate(async () => (await window.localAgent.taskRequest("", "task.catalog.get")).payload);
+    assert.equal(new Set(Object.values(persistedRouting.config.roles).map(p => p.model_profile_id)).size, 4);
+    checks.push("Settings creates local/API connections, four model profiles, distinct role bindings and protected key");
+    await application.close();
+    page = await launch();
+    await page.getByRole("button", {name:"Settings", exact:true}).click();
+    await page.getByRole("button", {name:"Models & Routing", exact:true}).click();
+    for (const [role,name] of Object.entries(roleChoices)) {
+      await page.getByLabel(role + " profile", {exact:true}).waitFor();
+      assert.equal(await page.getByLabel(role + " profile", {exact:true}).inputValue(), profileIds[name]);
+    }
+    await page.getByLabel("Model connection", {exact:true}).selectOption({label:"Company API · openai_compatible"});
+    protectedCredentialSeen = false;
+    await page.getByRole("button", {name:"Test connection / fetch models", exact:true}).click();
+    await page.getByRole("button", {name:"Add model: smoke-coder", exact:true}).waitFor();
+    const keyStorage = await page.evaluate(async () => (await window.localAgent.taskRequest("", "task.credential.status")).payload.mode);
+    if (keyStorage === "os_protected") {
+      assert(protectedCredentialSeen, "Restart lost the protected per-connection key");
+      assert(!fs.readFileSync(path.join(data,"desktop","model-secrets.json"),"utf8").includes("mock-only-not-a-real-key"));
+    } else skipped.push("OS protected model credentials unavailable; key is session-only as shown in Settings");
+    checks.push("Restart restores four distinct role bindings; protected credential reaches the selected API connection");
+    await page.getByRole("button", {name:"Settings", exact:true}).click();
+
     await page.evaluate(async () => {
       const session = await window.localAgent.getProject();
       const thread = session.payload.active_thread.id;
@@ -151,7 +206,8 @@ async function main() {
       const config = loaded.payload.config;
       config.budget.api_calls = 0;
       config.verification_commands = ["uv run --no-project python -m unittest discover -s tests -v", "git diff --check"];
-      for (const [role, profile] of Object.entries(config.roles)) {profile.model = "task-" + role; profile.context_window = 65536;}
+      // Use the local Executor also as Reviewer for the zero-API success scenario.
+      config.roles.reviewer.model_profile_id = config.roles.executor.model_profile_id;
       await window.localAgent.taskRequest(thread, "task.settings.update", {config});
     });
     await page.getByRole("button", {name:"Task", exact:true}).click();
@@ -258,6 +314,15 @@ async function main() {
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "light");
     assert(await page.locator(".message.agent h3").count() > 0);
     checks.push("Restart restores thread, message history, expansion and theme");
+    await page.getByRole("button", {name:"Settings", exact:true}).click();
+    await page.getByRole("button", {name:"Models & Routing", exact:true}).click();
+    await page.getByLabel("executor profile", {exact:true}).waitFor();
+    assert.equal(await page.getByLabel("executor profile", {exact:true}).inputValue(), profileIds["task-executor"]);
+    assert.equal(await page.getByLabel("escalation profile", {exact:true}).inputValue(), profileIds["api-escalation"]);
+    const afterRestart = await page.evaluate(async () => (await window.localAgent.taskRequest("", "task.catalog.get")).payload.catalog);
+    assert.deepEqual(afterRestart, persistedRouting.catalog);
+    checks.push("Restart restores multiple connections, model identities and role routing");
+    await page.getByRole("button", {name:"Settings", exact:true}).click();
     await page.locator(".project-tree-header.active").click();
     await application.close();
     page = await launch();

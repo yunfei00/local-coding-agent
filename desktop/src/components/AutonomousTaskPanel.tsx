@@ -1,14 +1,13 @@
 import {useEffect, useState} from "react";
 import {mergeTaskSnapshot, TaskSnapshot, taskIsActive} from "../lib/autonomousTask";
-
-type Role = {route: string; model: string; context_window: number | null; output_limit: number; tool_mode: string; input_price: number | null; output_price: number | null};
-type Config = {strategy: string; roles: Record<string, Role>; budget: Record<string, number | null>; verification_commands: string[]};
+import {TaskConfig as Config, ModelCatalog, modelLabel} from "../lib/modelCatalog";
 
 export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
   threadId: string; running: boolean; onClose: () => void; onSettings: () => void;
 }) {
   const [tasks, setTasks] = useState<TaskSnapshot[]>([]);
   const [config, setConfig] = useState<Config | null>(null);
+  const [catalog, setCatalog] = useState<ModelCatalog>({connections:[], profiles:[]});
   const [goal, setGoal] = useState("");
   const [commands, setCommands] = useState("");
   const [busy, setBusy] = useState(false);
@@ -35,9 +34,10 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
   useEffect(() => {
     let alive = true;
     setTasks([]); setNotice(""); setModel("");
-    void window.localAgent.taskRequest(threadId, "task.settings.get").then(event => {
+    void window.localAgent.taskRequest(threadId, "task.catalog.get").then(event => {
       if (!alive) return;
       const next = event.payload?.config as Config;
+      setCatalog(event.payload?.catalog as ModelCatalog);
       setConfig(next); setCommands(next.verification_commands.join("\n"));
       setAdvanced(JSON.stringify(next, null, 2));
       setGlobalUsage(event.payload?.global_usage as Record<string, unknown> ?? {});
@@ -46,7 +46,7 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
     const unsubscribe = window.localAgent.onAgentEvent(event => {
       if (event.thread_id !== threadId || !alive) return;
       if (event.type === "task.updated") apply(event);
-      if (event.type === "model.active") setModel(String(event.payload?.role) + " · " + String(event.payload?.model) + " · " + String(event.payload?.route));
+      if (event.type === "model.active") setModel(String(event.payload?.role) + " · " + String(event.payload?.provider ?? event.payload?.route) + " / " + String(event.payload?.model));
       if (event.type === "model.compatibility") setNotice(String(event.payload?.message));
     });
     return () => {alive = false; unsubscribe();};
@@ -74,8 +74,7 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
           <button onClick={onSettings}>Provider addresses and secure API key</button>
           {(["local", "api"] as const).map(route => <button key={route} disabled={busy} onClick={() => void request("task.connection.test", {route}).then(event => {if (event) setNotice(JSON.stringify(event.payload, null, 2));})}>Test {route} connection</button>)}
           {Object.entries(config.roles).map(([role, profile]) => <div className="task-role" key={role}>
-            <label>{role}<input aria-label={role + " model"} placeholder="Use configured Provider model" value={profile.model} onChange={e => setConfig({...config, roles:{...config.roles, [role]:{...profile, model:e.target.value}}})} /></label>
-            <select aria-label={role + " route"} value={profile.route} onChange={e => setConfig({...config, roles:{...config.roles, [role]:{...profile, route:e.target.value}}})}><option value="local">Local</option><option value="api">API</option></select>
+            <label>{role}<select aria-label={role + " task profile"} value={profile.model_profile_id ?? ""} onChange={e => setConfig({...config, roles:{...config.roles, [role]:{...profile, model_profile_id:e.target.value}}})}><option value="">Legacy: {profile.model || "Not configured"}</option>{catalog.profiles.map(p => <option key={p.model_profile_id} value={p.model_profile_id}>{modelLabel(catalog,p)}</option>)}</select></label>
           </div>)}
           {Object.entries(config.budget).map(([key, value]) => <label key={key}>{key}<input aria-label={key} type="number" min="0" value={value ?? ""} placeholder="No cost cap" onChange={e => setConfig({...config, budget:{...config.budget, [key]:e.target.value === "" ? null : Number(e.target.value)}})} /></label>)}
           <p>Global usage is cumulative across tasks and restarts: API {String(globalUsage.api_calls ?? 0)}, reserved Tokens {String(globalUsage.reserved_tokens ?? 0)}.</p>
@@ -94,6 +93,8 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
         <h3>{task.goal}</h3><strong data-task-status={task.status}>{task.status}</strong><p>{task.reason}</p>
         <p>Attempts {task.attempts} · Repairs {task.repairs} · Escalations {task.escalations} · {Math.round(task.elapsed_seconds)}s</p>
         <p>API {task.usage.api_calls} · Local {task.usage.local_calls} · Reserved Tokens {task.usage.reserved_tokens}</p>
+        {task.config ? <p>API calls: {task.usage.api_calls} / {task.config.budget.api_calls} · API tokens reserved: {task.usage.reserved_tokens} / {task.config.budget.api_tokens} · Remaining {Math.max(0, Number(task.config.budget.api_tokens) - task.usage.reserved_tokens)}</p> : null}
+        {task.calls?.length ? <details><summary>Model call journal</summary>{task.calls.map(call => <p key={call.id}>[{new Date(call.created_at * 1000).toLocaleTimeString()}] {call.role} · {call.usage.provider || call.route} / {call.model} · {call.status}</p>)}</details> : null}
         <p>API input {task.usage.input_tokens} · Output {task.usage.output_tokens} · Cached {task.usage.cached_tokens} {task.usage.estimated ? "(estimated)" : "(reported)"}</p>
         <p>Reserved cost {task.usage.reserved_cost.toFixed(6)} · Actual {task.usage.actual_cost_known ? task.usage.actual_cost.toFixed(6) : "unavailable"}</p>
         <details><summary>Usage precision</summary><p>{task.usage.precision}</p></details>

@@ -51,6 +51,16 @@ async def run(args) -> int:
                                "tool_mode": "json" if route == "local" else "native"} for r in ("planner", "executor", "reviewer", "escalation")},
                 "budget": {"api_calls": 3, "api_tokens": 30000, "task_seconds": args.seconds, "request_seconds": min(args.seconds, 120), "local_repairs": 1},
                 "verification_commands": ["uv run --no-project python -m unittest discover -s tests -v", "git diff --check"]})
+            # Exercise the new connection/profile resolution, not the legacy fallback.
+            from agent.core.model_catalog import KEY, validate_catalog
+            catalog = server.tasks.catalog().load()
+            cid = "legacy-ollama" if route == "local" else "legacy-openai"
+            catalog["profiles"] = [p for p in catalog["profiles"] if (p["connection_id"], p["model_id"]) != (cid, args.model)]
+            catalog["profiles"].append({"model_profile_id":"fixture-model", "connection_id":cid,
+                "model_id":args.model, "display_name":args.model, "context_window":args.context,
+                "max_output_tokens":1024,"tool_mode":"json" if route == "local" else "native"})
+            server.store.set_setting(KEY, json.dumps(validate_catalog(catalog)))
+            for role in config["roles"].values(): role["model_profile_id"] = "fixture-model"
             await server.tasks.handle(ws, {"type": "task.start", "thread_id": thread.id,
                 "payload": {"goal": "Read calculator.py. Fix add(a,b) so it returns a+b instead of a-b. Use actual tools. Keep the tests unchanged. Inspect the Diff.", "config": config}}, set())
             await asyncio.gather(*list(server.active_turns.values()))

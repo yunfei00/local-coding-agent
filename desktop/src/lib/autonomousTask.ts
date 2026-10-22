@@ -6,6 +6,8 @@ export type TaskSnapshot = {
   plan: {steps: Array<{id: string; description: string; state: string}>};
   verification: Array<{command: string; ok: boolean; category: string; exit_code: number | null; duration_ms: number; summary: string; log_path?: string}>;
   report: {review?: string; diff?: string; git_approval?: string};
+  config?: {budget: Record<string, number | null>};
+  calls?: Array<{id:string; created_at:number; role:string; model:string; route:string; status:string; usage:{provider?:string; connection_id?:string; model_profile_id?:string}}>;
 };
 
 export function mergeTaskSnapshot(current: TaskSnapshot[], next: TaskSnapshot, threadId: string): TaskSnapshot[] {
