@@ -1587,6 +1587,9 @@ class AgentServer:
             "prompt_rules": prompt_rules,
             "mcp": self.mcp_runtime.diagnostic_payload(),
             "agent_state": {"running": bool(self.active_turns), "active_turns": len(self.active_turns)},
+            "autonomous_tasks": [{"task_id":t["id"], "status":t["status"], "last_error":t.get("last_error"),
+                "planning_attempts":t.get("planning_attempts",0), "usage":self.store.task_runtime.usage(t["id"])}
+                for t in self.store.task_runtime.list(project.active_thread_id)][:10] if project and project.active_thread_id else [],
             "repository_map": project.ensure_repository_map().payload() if project else None,
             "worktree": await self._worktree_health(project),
             "last_turn_trace": self.last_turn_trace,

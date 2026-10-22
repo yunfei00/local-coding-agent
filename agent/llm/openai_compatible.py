@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -39,7 +40,7 @@ def choose_default_model(models: list[ModelInfo], preferred: str) -> str | None:
 
 
 def _optional_int(value: Any) -> int | None:
-    return value if isinstance(value, int) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
 def _error_message(payload: dict[str, Any], fallback: str) -> str:
@@ -188,7 +189,7 @@ class OpenAICompatibleProvider:
         tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[ProviderChunk]:
         timeout = aiohttp.ClientTimeout(
-            total=None,
+            total=getattr(self, "request_timeout", None),
             connect=10,
             sock_read=600,
         )
@@ -211,16 +212,21 @@ class OpenAICompatibleProvider:
         actual_cost: float | None = None
         tool_states: dict[int, dict[str, str]] = {}
         emitted_done = False
+        self.response_metadata = {"http_status":None, "response_type":None, "request_sent":False}
 
         try:
             async with aiohttp.ClientSession(
                 timeout=timeout,
                 headers=self._headers(),
             ) as session:
+                self.response_metadata["request_sent"] = True
+                self.response_metadata["http_started_at"] = time.time()
                 async with session.post(
                     self.base_url + "/chat/completions",
                     json=request_body,
                 ) as response:
+                    self.response_metadata.update(http_status=response.status,
+                        response_type=response.headers.get("Content-Type", "").split(";")[0][:100])
                     if response.status >= 400:
                         payload = await self._read_json_response(response)
                         raise self._http_error(
@@ -229,15 +235,8 @@ class OpenAICompatibleProvider:
                             "OpenAI-compatible chat request failed.",
                         )
 
-                    async for raw_line in response.content:
-                        line = raw_line.decode("utf-8").strip()
-                        if not line or line.startswith(":"):
-                            continue
-                        if not line.startswith("data:"):
-                            continue
-
-                        data = line[5:].strip()
-                        if data == "[DONE]":
+                    async for payload in self._chat_payloads(response):
+                        if payload is None:
                             yield ProviderChunk(
                                 tool_calls=_finalize_tool_calls(tool_states),
                                 done=True,
@@ -249,16 +248,9 @@ class OpenAICompatibleProvider:
                             emitted_done = True
                             break
 
-                        try:
-                            payload = json.loads(data)
-                        except json.JSONDecodeError as exc:
-                            raise OpenAICompatibleProviderError(
-                                "OPENAI_COMPATIBLE_INVALID_STREAM",
-                                "The OpenAI-compatible provider returned invalid SSE JSON.",
-                            ) from exc
-
                         if not isinstance(payload, dict):
-                            continue
+                            raise OpenAICompatibleProviderError("OPENAI_COMPATIBLE_INVALID_RESPONSE", "Chat event must be an object")
+                        self.response_metadata["parse_success"] = True
 
                         usage = payload.get("usage")
                         if isinstance(usage, dict):
@@ -286,10 +278,13 @@ class OpenAICompatibleProvider:
                         raw_finish_reason = choice.get("finish_reason")
                         if isinstance(raw_finish_reason, str):
                             finish_reason = raw_finish_reason
+                            self.response_metadata["finish_reason"] = finish_reason[:100]
 
-                        delta = choice.get("delta")
+                        delta = choice.get("delta", choice.get("message"))
                         if not isinstance(delta, dict):
                             delta = {}
+                        if delta.get("refusal"):
+                            raise OpenAICompatibleProviderError("MODEL_REFUSED", "Provider refused the requested response")
 
                         content = delta.get("content")
                         if not isinstance(content, str):
@@ -328,6 +323,8 @@ class OpenAICompatibleProvider:
                             yield ProviderChunk(content=content)
 
             if not emitted_done:
+                if finish_reason is None:
+                    raise OpenAICompatibleProviderError("OPENAI_COMPATIBLE_INCOMPLETE_STREAM", "Stream ended without a completion marker or finish_reason")
                 yield ProviderChunk(
                     tool_calls=_finalize_tool_calls(tool_states),
                     done=True,
@@ -340,12 +337,58 @@ class OpenAICompatibleProvider:
             raise
         except asyncio.CancelledError:
             raise
-        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+        except asyncio.TimeoutError as exc:
+            raise OpenAICompatibleProviderError("MODEL_TIMEOUT", "OpenAI-compatible request timed out; usage is uncertain", transient=False) from exc
+        except aiohttp.ClientError as exc:
             raise OpenAICompatibleProviderError(
                 "OPENAI_COMPATIBLE_STREAM_FAILED",
                 "The OpenAI-compatible connection was interrupted while generating.",
                 transient=True,
             ) from exc
+        finally:
+            self.response_metadata["http_ended_at"] = time.time()
+
+    async def _chat_payloads(self, response):
+        """aiohttp's line reader reassembles TCP/UTF-8 fragments before SSE parsing."""
+        if "application/json" in response.headers.get("Content-Type", ""):
+            raw = bytearray()
+            async for chunk in response.content.iter_chunked(65536):
+                raw.extend(chunk)
+                if len(raw) > 8 * 1024 * 1024:
+                    raise OpenAICompatibleProviderError("MODEL_OUTPUT_LIMIT", "JSON response exceeds 8 MiB")
+            try:
+                value = json.loads(raw)
+            except (ValueError, UnicodeError) as exc:
+                raise OpenAICompatibleProviderError("OPENAI_COMPATIBLE_INVALID_RESPONSE", "Invalid JSON chat response") from exc
+            if not isinstance(value, dict) or not isinstance(value.get("choices"), list) or not value["choices"]:
+                raise OpenAICompatibleProviderError("OPENAI_COMPATIBLE_INVALID_RESPONSE", "JSON chat response has no choices")
+            yield value
+            return
+        seen = False
+        total = 0
+        async for raw_line in response.content:
+            total += len(raw_line)
+            if total > 8 * 1024 * 1024:
+                raise OpenAICompatibleProviderError("MODEL_OUTPUT_LIMIT", "SSE response exceeds 8 MiB")
+            try:
+                line = raw_line.decode("utf-8").strip()
+            except UnicodeError as exc:
+                raise OpenAICompatibleProviderError("OPENAI_COMPATIBLE_INVALID_STREAM", "Invalid UTF-8 in stream") from exc
+            if not line or line.startswith(":") or line.startswith(("event:", "id:", "retry:")):
+                continue
+            if not line.startswith("data:"):
+                raise OpenAICompatibleProviderError("OPENAI_COMPATIBLE_INVALID_RESPONSE", "Expected SSE data or an application/json chat response")
+            seen = True
+            data = line[5:].strip()
+            if data == "[DONE]":
+                yield None
+                return
+            try:
+                yield json.loads(data)
+            except ValueError as exc:
+                raise OpenAICompatibleProviderError("OPENAI_COMPATIBLE_INVALID_STREAM", "Invalid SSE JSON") from exc
+        if not seen:
+            raise OpenAICompatibleProviderError("OPENAI_COMPATIBLE_EMPTY_RESPONSE", "Provider returned no chat events")
 
     async def _read_json_response(
         self,
@@ -389,7 +432,9 @@ class OpenAICompatibleProvider:
 
         return OpenAICompatibleProviderError(
             code,
-            _error_message(payload, fallback + f" HTTP {status}."),
+            # Gateways may echo the full request in their error message. Keep
+            # diagnostics actionable without persisting that sensitive body.
+            fallback + f" HTTP {status} ({code}).",
             recoverable=True,
             transient=status == 429 or status >= 500,
         )

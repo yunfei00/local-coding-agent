@@ -19,6 +19,7 @@ from agent.llm.openai_compatible import OpenAICompatibleProvider
 from agent.core.verification import VerificationEngine, discover_commands, failure_fingerprint
 from agent.llm.base import ProviderError, ToolCall
 from agent.llm.router import ModelRouter, json_object, validate_config
+from agent.llm.planning import PLAN_PROMPT, PLAN_SCHEMA
 from agent.server.protocol import envelope, new_id
 from agent.tools.registry import ToolRegistry
 from agent.tools.workspace import Workspace
@@ -84,7 +85,7 @@ class TaskService:
                 self.credentials = dict(values)
                 result = {"configured": list(values)}
             elif kind == "task.catalog.get":
-                result = {"catalog": self.catalog().load(), "config": self.settings()}
+                result = {"catalog": self.catalog().load(), "config": self.settings(), "global_usage":self.runtime.usage()}
             elif kind == "task.catalog.update":
                 catalog = validate_catalog(payload.get("catalog"))
                 config = validate_config(payload.get("config") or self.settings())
@@ -166,6 +167,8 @@ class TaskService:
                             self.stop_reasons.pop(plan_id, None)
                             self.running.pop(plan_id, None)
                         else:
+                            task["last_error"] = {"code":"TASK_PAUSED" if kind == "task.pause" else "TASK_CANCELLED"}
+                            self.runtime.save(task)
                             self.runtime.transition(plan_id, "paused" if kind == "task.pause" else "cancelled", "User requested")
                     elif kind == "task.resume":
                         if any(not t.done() for t in self.server.active_turns.values()):
@@ -190,6 +193,10 @@ class TaskService:
                             task["global_budget"] = {**task.get("global_budget", budget),
                                 **{k: budget[k] for k in payload["budget"] if k.startswith("global_")}}
                         self.runtime.save(task)
+                    elif kind == "task.diagnostics":
+                        result = self.diagnostics(plan_id)
+                        await ws.send_json(envelope("task.loaded", result, request_id=request_id, thread_id=thread_id))
+                        return
                     elif kind == "task.configure":
                         if task["status"] != "paused":
                             raise ValueError("Pause task before explicitly changing its configuration")
@@ -275,6 +282,8 @@ class TaskService:
 
     async def run(self, ws, plan_id, source, turn_id):
         task = self.runtime.get(plan_id)
+        task.pop("last_error", None)
+        self.runtime.save(task)
         thread_id, goal = task["thread_id"], task["goal"]
         async def emit(kind, payload):
             await ws.send_json(envelope(kind, payload, thread_id=thread_id, turn_id=turn_id))
@@ -288,6 +297,11 @@ class TaskService:
                 raise BudgetExceeded("Task execution time exhausted; explicitly add time before recovery")
             async with asyncio.timeout(remaining):
                 await update("planning" if not task["planned"] else "executing", "Inspect workspace before resuming; completed mutations are not replayed", report={})
+                budget = BudgetGuard(self.runtime, plan_id, task["global_budget"] if "global_budget" in task else self.settings()["budget"])
+                router = ModelRouter(task["config"], lambda route, profile: self.make_provider(task["provider_settings"], route, profile), budget, emit, task.get("resolved_roles"))
+                # Validate the task's frozen routes before worktree approval or HTTP.
+                for role in ("planner", "executor", "reviewer"):
+                    router.resolve(role)
                 if not task["workspace"]:
                     # Existing worktree policy still requires explicit intent and Approval.
                     result = await self.server._authorize_tool(ws, project=source,
@@ -313,8 +327,6 @@ class TaskService:
                     task["resolved_verification_commands"] = discover_commands(view.workspace.root, task["config"]["verification_commands"])
                     self.runtime.save(task)
                 commands = task["resolved_verification_commands"]
-                budget = BudgetGuard(self.runtime, plan_id, task["global_budget"] if "global_budget" in task else self.settings()["budget"])
-                router = ModelRouter(task["config"], lambda route, profile: self.make_provider(task["provider_settings"], route, profile), budget, emit, task.get("resolved_roles"))
                 async def execute(name, arguments, on_raw_output=None, environment=None):
                     return await self.server._authorize_tool(ws, project=view, call=ToolCall(name, arguments),
                         call_id=new_id("verification"), thread_id=thread_id, turn_id=turn_id,
@@ -325,31 +337,39 @@ class TaskService:
                 for _ in range(200):
                     task = self.runtime.get(plan_id)
                     if not task["planned"]:
+                        limit = task["config"]["budget"].get("planning_attempts", 4)
+                        if task.get("planning_attempts", 0) >= limit:
+                            raise ProviderError("PLAN_RETRY_LIMIT", "Planning attempt limit reached; inspect Task diagnostics before changing the paused task configuration")
+                        task["planning_attempts"] = task.get("planning_attempts", 0) + 1
+                        self.runtime.save(task)
                         try:
-                            raw = await router.text("planner", [{"role": "system", "content": 'Return ONLY JSON {"steps":[{"description":"...","verification":"..."}]}. Plan concrete workspace inspection, implementation, tests and Diff review. Do not perform actions.'},
-                                {"role": "user", "content": goal + ("\nDiagnostic advice: " + advice if advice else "")}])
-                            try:
-                                steps = json_object(raw).get("steps", [])
-                                if not isinstance(steps, list):
-                                    raise ValueError("steps must be an array")
-                                self.runtime.replace_unstarted_steps(plan_id, steps)
-                            except (ValueError, TypeError, KeyError) as exc:
-                                raise ProviderError("MODEL_INVALID_RESULT", str(exc)) from exc
+                            steps = await router.plan([{"role":"system", "content":PLAN_PROMPT},
+                                {"role":"user", "content":goal + ("\nPrevious plan error / diagnostic advice: " + advice if advice else "")}])
+                            self.runtime.replace_unstarted_steps(plan_id, steps)
                             task = self.runtime.get(plan_id)
                             task["planned"] = True
                             self.runtime.save(task)
                         except ProviderError as exc:
-                            if exc.code not in {"MODEL_INVALID_RESULT"}:
+                            if exc.code not in {"MODEL_INVALID_RESULT", "PLAN_JSON_INVALID", "PLAN_SCHEMA_INVALID", "PLAN_EMPTY", "PLAN_TRUNCATED", "PLAN_UNEXPECTED_TOOL"}:
                                 raise
                             task = self.runtime.get(plan_id)
-                            task["repairs"] += 1
+                            calls = self.runtime.calls(plan_id)
+                            last = next((c["usage"] for c in reversed(calls) if c["id"] == getattr(router, "last_plan_call_id", None)), {})
+                            previous = task.get("planning_failures", [])
+                            current = {"code":exc.code, "fingerprint":last.get("response_fingerprint"), "call_id":getattr(router, "last_plan_call_id", None)}
+                            task["planning_failures"] = [*previous, current][-10:]
                             self.runtime.save(task)
+                            if previous and current["fingerprint"] and current["fingerprint"] == previous[-1].get("fingerprint"):
+                                raise ProviderError("PLAN_NO_PROGRESS", "Planner repeated the same invalid plan; stopped before another request")
+                            if task["planning_attempts"] >= limit:
+                                raise ProviderError("PLAN_RETRY_LIMIT", "Planner exhausted its persistent attempt limit; no further automatic requests")
                             await update("repairing", exc.message)
-                            if task["repairs"] < max(1, task["config"]["budget"]["local_repairs"]):
-                                await update("planning", "Retry structured plan locally")
-                                continue
-                            advice = await self.escalate(router, task, [], "", "Repeated invalid structured plans", update)
-                            await update("planning", "Return planning control to configured Planner")
+                            advice = exc.message
+                            if task["config"]["strategy"] == "local-first" and not task.get("planning_escalations") and task["planning_attempts"] >= max(1, task["config"]["budget"]["local_repairs"]):
+                                task["planning_escalations"] = 1
+                                self.runtime.save(task)
+                                advice += "\n" + await self.escalate(router, task, [], "", "Invalid plans; one bounded planning diagnosis", update)
+                            await update("planning", "Retry configured Planner with schema feedback; persistent attempt " + str(task["planning_attempts"] + 1) + "/" + str(limit))
                             continue
                     task = self.runtime.get(plan_id)
                     # Only failed/unstarted steps are eligible for repair. Preserve completed evidence.
@@ -424,15 +444,27 @@ class TaskService:
                 await update("failed", "Orchestration safety iteration limit reached")
         except asyncio.CancelledError:
             with suppress(Exception):
-                await update(self.stop_reasons.pop(plan_id, "cancelled"), "Execution interrupted; checkpoint and API reservations retained")
+                target = self.stop_reasons.pop(plan_id, "cancelled")
+                current = self.runtime.get(plan_id)
+                current["last_error"] = {"code":"TASK_PAUSED" if target == "paused" else "TASK_CANCELLED"}
+                self.runtime.save(current)
+                await update(target, "Execution interrupted; checkpoint and uncertain API reservations retained")
             raise
         except (ProviderError, TimeoutError) as exc:
+            current = self.runtime.get(plan_id)
+            current["last_error"] = {"code":getattr(exc, "code", "TASK_TIMEOUT"), "role":getattr(exc, "role", None), "phase":current["status"]}
+            self.runtime.save(current)
             with suppress(Exception):
                 await update("paused", redact_text(str(exc), exact_secrets=self.server._exact_secrets()))
         except Exception as exc:
+            current = self.runtime.get(plan_id)
+            current["last_error"] = {"code":"TASK_INTERNAL_ERROR", "exception_type":type(exc).__name__}
+            self.runtime.save(current)
             with suppress(Exception):
                 await update("failed", redact_text(str(exc), exact_secrets=self.server._exact_secrets()))
         finally:
+            with suppress(Exception):
+                self.diagnostics(plan_id)
             self.server.approvals.finish_turn(turn_id)
             self.running.pop(plan_id, None)
             with suppress(Exception):
@@ -443,11 +475,16 @@ class TaskService:
                                    "verification": {"complete": status == "awaiting_approval"}})
                 await emit("task.updated", {"task": self.public(self.runtime.get(plan_id))})
 
+    def diagnostics(self, plan_id):
+        from agent.core.task_diagnostics import export_diagnostics
+        return export_diagnostics(self.runtime, plan_id, self.server.store.data_dir / "task-diagnostics", self.server._exact_secrets())
+
     def diagnostic_context(self, task, results, diff, question):
         # Explicit byte/character bounds and redaction; no repository dump or full logs.
         text = json.dumps({"question": question, "goal": task["goal"][:3000], "diff": diff[:6000],
             "failures": [{"command": r["command"], "category": r["category"], "summary": r.get("summary", "")[-1200:]} for r in results[:6]],
-            "attempts": task["attempt_history"][-4:]}, ensure_ascii=False)
+            "attempts": task["attempt_history"][-4:], "planning_failures":task.get("planning_failures", [])[-3:],
+            "plan_schema":PLAN_SCHEMA if not task["planned"] else None}, ensure_ascii=False)
         return redact_text(text[:16000], exact_secrets=self.server._exact_secrets(), max_chars=16000)
 
     async def escalate(self, router, task, results, diff, reason, update):

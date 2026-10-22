@@ -81,6 +81,17 @@ class TaskRuntimeStore:
             task["elapsed_seconds"] += max(0, now - task["active_since"])
         task.update(updates)
         task.update(status=status, reason=reason[:2000], active_since=now if status in ACTIVE else None)
+        history = task.get("transitions", [])
+        previous_status = history[-1]["to"] if history else "pending"
+        last = self.db.execute("SELECT id,usage_json FROM model_requests WHERE plan_id=? ORDER BY created_at DESC LIMIT 1", (plan_id,)).fetchone()
+        if last:
+            meta = json.loads(last["usage_json"])
+            if not meta.get("transition_recorded"):
+                meta.update(next_state=status, transition_recorded=True, transition_at=now)
+                with self.db:
+                    self.db.execute("UPDATE model_requests SET usage_json=? WHERE id=?", (json.dumps(meta), last["id"]))
+        task["transitions"] = [*history, {"at":now, "from":previous_status, "to":status,
+            "call_id":last["id"] if last else None, "error_code":task.get("last_error", {}).get("code")}][-300:]
         self.save(task)
         self.plans.checkpoint(plan_id, "task_" + status, blockers=[reason] if reason else [])
         return task
@@ -89,7 +100,15 @@ class TaskRuntimeStore:
         ids = [row[0] for row in self.db.execute("SELECT plan_id FROM autonomous_tasks")]
         for plan_id in ids:
             if self.get(plan_id)["status"] in ACTIVE:
+                task = self.get(plan_id)
+                task["last_error"] = {"code":"TASK_INTERRUPTED", "phase":task["status"]}
+                self.save(task)
                 self.transition(plan_id, "paused", "Agent restarted; review workspace before resuming. Uncertain API reservations retained.")
+                with self.db:
+                    for row in self.db.execute("SELECT id,usage_json FROM model_requests WHERE plan_id=? AND status='reserved'", (plan_id,)).fetchall():
+                        meta = json.loads(row["usage_json"])
+                        meta.update(error_code="MODEL_INTERRUPTED", failure_reason="agent_restarted", recovered_at=time.time(), settlement="crash_retained")
+                        self.db.execute("UPDATE model_requests SET status='interrupted',usage_json=? WHERE id=?", (json.dumps(meta),row["id"]))
 
     def replace_unstarted_steps(self, plan_id: str, steps: list[dict]) -> None:
         # Validate through the existing plan contract before changing anything.
@@ -115,16 +134,16 @@ class TaskRuntimeStore:
             self.db.execute("INSERT INTO task_plan_steps(id,plan_id,position,description) VALUES(?,?,?,?)",
                             (str(uuid.uuid4()), plan_id, len(steps), "Repair the latest independent verification failure; inspect current files before changing them"))
 
-    def calls(self, plan_id: str) -> list[dict]:
-        rows = self.db.execute("SELECT * FROM model_requests WHERE plan_id=? ORDER BY created_at DESC LIMIT 1000", (plan_id,)).fetchall()
+    def calls(self, plan_id: str, *, all_calls=False) -> list[dict]:
+        rows = self.db.execute("SELECT * FROM model_requests WHERE plan_id=? ORDER BY created_at DESC" + ("" if all_calls else " LIMIT 1000"), (plan_id,)).fetchall()
         return [{**dict(row), "usage": json.loads(row["usage_json"])} for row in reversed(rows)]
 
     def usage(self, plan_id: str | None = None) -> dict[str, Any]:
         rows = self.db.execute("SELECT * FROM model_requests" + (" WHERE plan_id=?" if plan_id else ""),
                                (plan_id,) if plan_id else ()).fetchall()
-        api = [r for r in rows if r["route"] == "api"]
+        api = [r for r in rows if r["route"] == "api" and r["status"] != "not_sent"]
         usage = [json.loads(r["usage_json"]) for r in api]
-        return {"api_calls": len(api), "local_calls": len(rows) - len(api),
+        return {"api_calls": len(api), "local_calls": sum(r["route"] == "local" and r["status"] != "not_sent" for r in rows),
                 "reserved_tokens": sum(r["reserved_tokens"] for r in api),
                 "reserved_cost": sum(r["reserved_cost"] for r in api),
                 "input_tokens": sum(u.get("input_tokens", 0) or 0 for u in usage),
@@ -133,4 +152,6 @@ class TaskRuntimeStore:
                 "actual_cost": sum(u.get("actual_cost", 0) or 0 for u in usage),
                 "actual_cost_known": bool(api) and all(u.get("actual_cost") is not None for u in usage),
                 "estimated": any(u.get("estimated", True) for u in usage),
-                "precision": "Conservative reservation; provider tokenizer/billing may differ. Unknown requests retain full reservation."}
+                "released_tokens":sum(u.get("released_tokens", 0) for u in usage),
+                "in_flight_tokens":sum(r["reserved_tokens"] for r in api if r["status"] in {"reserved","interrupted"}),
+                "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."}
