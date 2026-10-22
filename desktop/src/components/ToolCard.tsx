@@ -61,6 +61,7 @@ export type DiffReviewMeta = {
 export type ToolView = {
   id: string;
   name: string;
+  desktopData?: Record<string, unknown>;
   arguments: Record<string, unknown>;
   status:
     | "requested"
@@ -466,6 +467,14 @@ export function ToolCard({ tool }: { tool: ToolView }) {
 }
 
 function ToolDetails({ tool }: { tool: ToolView }) {
+  if (tool.name.startsWith("desktop_")) {
+    return <div className={"tool-card tool-" + tool.status}>
+      <div className="tool-card-header"><strong>WINDOWS DESKTOP · {tool.name}</strong><span>{statusLabel(tool)}</span></div>
+      <pre>{JSON.stringify(tool.arguments, null, 2)}</pre>
+      {tool.desktopData ? <pre aria-label="Desktop execution result">{JSON.stringify(tool.desktopData, null, 2)}</pre> : null}
+      {tool.summary ? <div className="tool-summary">{tool.summary}</div> : null}
+    </div>;
+  }
   if (["run_command", "start_process", "read_process", "stop_process"].includes(tool.name)) {
     return <TerminalCard tool={tool} />;
   }

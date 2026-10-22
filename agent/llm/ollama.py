@@ -121,6 +121,20 @@ def _parse_tool_calls(message: dict[str, Any]) -> tuple[ToolCall, ...]:
 class OllamaProvider:
     provider_name = "ollama"
 
+    @staticmethod
+    def _wire_messages(messages):
+        result = []
+        for raw in messages:
+            message = dict(raw)
+            if isinstance(message.get('content'), list):
+                parts = message['content']
+                message['content'] = '\n'.join(p.get('text','') for p in parts if p.get('type') == 'text')
+                images = [p['image_url']['url'].split(',',1)[1] for p in parts if p.get('type') == 'image_url' and p.get('image_url',{}).get('url','').startswith('data:image/')]
+                if images:
+                    message['images'] = images
+            result.append(message)
+        return result
+
     def __init__(
         self,
         *,
@@ -220,7 +234,7 @@ class OllamaProvider:
         )
         request_body: dict[str, Any] = {
             "model": model,
-            "messages": messages,
+            "messages": self._wire_messages(messages),
             "stream": True,
             "keep_alive": "10m",
             "options": {

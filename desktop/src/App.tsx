@@ -723,7 +723,7 @@ function App() {
             const rawError = resultObject(rawResult.error);
             const errorCode = String(rawError.code ?? "");
             const streamData = resultObject(data.stream);
-            const timedOut = errorCode === "COMMAND_TIMEOUT" || data.state === "timed_out";
+            const timedOut = ["COMMAND_TIMEOUT", "DESKTOP_TIMEOUT", "DESKTOP_WAIT_TIMEOUT"].includes(errorCode) || data.state === "timed_out";
 
             return {
               ...item,
@@ -740,6 +740,7 @@ function App() {
                     : "failed",
                 summary,
                 processId: typeof data.process_id === "string" ? data.process_id : item.tool.processId,
+                desktopData: item.tool.name.startsWith("desktop_") ? data : undefined,
                 logPath: typeof data.log_path === "string" ? data.log_path : item.tool.logPath,
                 shell: typeof data.shell === "string" ? data.shell : item.tool.shell,
                 chunks,
