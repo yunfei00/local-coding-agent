@@ -1345,6 +1345,16 @@ ipcMain.handle("agent:project-open", async (_event, model?: string) => {
   );
   return { canceled: false, event };
 });
+ipcMain.handle("agent:project-create-defaults", () => ({parent_path: app.getPath("documents")}));
+ipcMain.handle("agent:project-choose-parent", async (_event, defaultPath?: string) => {
+  const selected = await dialog.showOpenDialog({
+    title:"Choose project location", properties:["openDirectory", "createDirectory"],
+    defaultPath: typeof defaultPath === "string" ? defaultPath : app.getPath("documents")
+  });
+  return {canceled:selected.canceled, path:selected.filePaths[0]};
+});
+ipcMain.handle("agent:project-create", async (_event, options: Record<string, unknown>) =>
+  sendRequest("project.create", "project.opened", options, {}, 30000));
 ipcMain.handle("agent:project-get", async () => {
   return sendRequest("project.get", "project.loaded");
 });
@@ -1400,8 +1410,8 @@ ipcMain.handle("agent:plan-request", async (_event, threadId: string, operation:
   return sendRequest(operation, operation === "plan.resume" ? "plan.resumable" : "plan.loaded",
     { ...payload, thread_id: threadId }, { threadId });
 });
-ipcMain.handle("agent:thread-rename", async (_event, threadId: string, title: string) => {
-  return sendRequest("thread.rename", "thread.updated", { title }, { threadId });
+ipcMain.handle("agent:thread-rename", async (_event, threadId: string, title: string, projectId?: string) => {
+  return sendRequest("thread.rename", "thread.updated", { title, project_id:projectId }, { threadId });
 });
 ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
   return sendRequest(

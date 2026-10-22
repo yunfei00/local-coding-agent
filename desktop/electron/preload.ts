@@ -116,6 +116,9 @@ contextBridge.exposeInMainWorld("localAgent", {
       turnId
     ),
   openProject: (model?: string) => ipcRenderer.invoke("agent:project-open", model),
+  projectCreationDefaults: () => ipcRenderer.invoke("agent:project-create-defaults"),
+  chooseProjectParent: (defaultPath?: string) => ipcRenderer.invoke("agent:project-choose-parent", defaultPath),
+  createProject: (options: {name:string; parent_path:string; initialize_git:boolean; model?:string}) => ipcRenderer.invoke("agent:project-create", options),
   getProject: () => ipcRenderer.invoke("agent:project-get"),
   listProjects: () => ipcRenderer.invoke("agent:project-list"),
   selectProject: (projectId: string, model?: string) =>
@@ -129,7 +132,7 @@ contextBridge.exposeInMainWorld("localAgent", {
     ipcRenderer.invoke("agent:task-request", threadId, operation, payload),
   planRequest: (threadId: string, operation: string, payload: Record<string, unknown> = {}) =>
     ipcRenderer.invoke("agent:plan-request", threadId, operation, payload),
-  renameThread: (threadId: string, title: string) => ipcRenderer.invoke("agent:thread-rename", threadId, title),
+  renameThread: (threadId: string, title: string, projectId?: string) => ipcRenderer.invoke("agent:thread-rename", threadId, title, projectId),
   getThread: (threadId: string) => ipcRenderer.invoke("agent:thread-get", threadId),
   startTurn: (threadId: string, prompt: string) =>
     ipcRenderer.invoke("agent:turn-start", threadId, prompt),

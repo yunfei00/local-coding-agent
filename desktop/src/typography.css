@@ -1,0 +1,75 @@
+/* Shared desktop scale, matching Codex's 16 / 14 / 12 px text hierarchy. */
+:root {
+  --font-size-body: 16px;
+  --font-size-ui: 14px;
+  --font-size-caption: 12px;
+  font-size: var(--font-size-ui);
+  line-height: 1.5;
+}
+input, select, textarea { font-family: inherit; font-size: var(--font-size-ui); }
+.workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(60px, auto) minmax(0, 1fr) auto; }
+.workspace > .topbar { grid-area: 1 / 1; }
+.workspace > .conversation-shell { grid-area: 2 / 1; }
+.workspace > .composer { grid-area: 3 / 1; }
+/* Follow the real header row when larger controls wrap; no fixed 52px overlay. */
+.workspace > .settings-panel { position: relative; inset: auto; grid-area: 2 / 1 / 4 / 2; }
+.topbar { min-height: 60px; padding-top: 8px; padding-bottom: 8px; }
+.topbar-title { min-width: 0; flex: 0 1 200px; }
+.topbar-actions { flex: 1 1 auto; flex-wrap: wrap; justify-content: flex-end; max-width: none; overflow: visible; gap: 6px; }
+.app-shell { grid-template-columns: 280px minmax(0, 1fr); }
+.new-project, .open-project, .new-thread {
+  display: flex; align-items: center; gap: 9px; width: 100%; min-height: 38px;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+  color: var(--ink); background: transparent; text-align: left; font-size: var(--font-size-ui);
+}
+.new-project:hover:not(:disabled), .open-project:hover:not(:disabled), .new-thread:hover:not(:disabled) { background: var(--surface); }
+.project-tree-header, .project-tree-thread { min-height: 38px; }
+.project-tree-name, .project-tree-thread-name { font-size: var(--font-size-ui); }
+.thread-row { position: relative; min-width: 0; }
+.thread-row .thread-item { padding-right: 35px; }
+.thread-actions-button {
+  position: absolute; right: 3px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px;
+  padding: 0; border: 0; border-radius: 6px; color: var(--ink); background: transparent;
+  font-size: 20px; opacity: 0;
+}
+.thread-row:hover .thread-actions-button, .thread-row:focus-within .thread-actions-button,
+.thread-actions-button[aria-expanded="true"] { opacity: 1; }
+.thread-actions-button:hover { background: var(--surface); }
+.thread-context-menu {
+  position: fixed; z-index: 1000; width: 180px; padding: 5px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--canvas); color: var(--ink); box-shadow: 0 8px 28px #0004;
+}
+.thread-context-menu button { width: 100%; min-height: 36px; padding: 7px 12px; text-align: left; border: 0; border-radius: 6px; color: inherit; background: transparent; font-size: var(--font-size-ui); }
+.thread-context-menu button:hover, .thread-context-menu button:focus { background: var(--surface); }
+.settings-field input, .settings-field select, .settings-field textarea,
+.mcp-editor .settings-field textarea { font-size: var(--font-size-ui); min-height: 36px; }
+.settings-tabs button, .topbar button { min-height: 34px; }
+.message, .composer textarea { font-size: var(--font-size-body); }
+.message-content code, .terminal-output, .terminal-command, .diff-line { font-size: var(--font-size-ui); }
+
+.app-modal {
+  width: min(460px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow: auto;
+  padding: 24px; margin: auto; border: 1px solid var(--border); border-radius: 16px;
+  color: var(--ink); background: var(--canvas); box-shadow: 0 20px 80px #0006;
+  font-size: var(--font-size-ui);
+}
+.app-modal::backdrop { background: #0008; backdrop-filter: blur(2px); }
+.modal-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+.modal-header h2 { margin: 0; font-size: 20px; font-weight: 600; }
+.modal-header button { width: 30px; height: 30px; padding: 0; border: 0; border-radius: 6px; color: var(--muted); background: transparent; font-size: 22px; }
+.modal-header button:hover { background: var(--surface); }
+.modal-form { display: grid; gap: 14px; }
+.modal-form label { display: grid; gap: 8px; color: var(--ink); }
+.modal-form input:not([type="checkbox"]) { width: 100%; min-width: 0; height: 40px; padding: 8px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; }
+.modal-description, .project-location-preview { margin: 0 0 16px; color: var(--muted); font-size: var(--font-size-ui); line-height: 1.6; }
+.project-location-preview { margin: -3px 0 0; overflow-wrap: anywhere; font-size: var(--font-size-caption); }
+.project-location-row { display: flex; gap: 8px; }
+.project-location-row input { flex: 1; text-overflow: ellipsis; }
+.modal-form .modal-checkbox { display: flex; align-items: center; gap: 8px; }
+.modal-checkbox input { width: 16px; height: 16px; margin: 0; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.modal-actions button, .project-location-row button { min-height: 36px; padding: 7px 14px; white-space: nowrap; border: 1px solid var(--border); border-radius: 8px; color: var(--ink); background: var(--surface); }
+.modal-actions .primary-action { background: var(--ink); color: var(--canvas); border-color: transparent; font-weight: 600; }
+.app-modal .error-banner { margin: 0; }
+@media (max-width: 1100px) { .app-shell { grid-template-columns: 240px minmax(0, 1fr); } }
+@media (max-width: 800px) { .app-shell { grid-template-columns: 190px minmax(0, 1fr); } }

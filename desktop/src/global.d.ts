@@ -178,6 +178,9 @@ declare global {
         turnId?: string
       ) => Promise<AgentEnvelope>;
       openProject: (model?: string) => Promise<{ canceled: boolean; event?: AgentEnvelope }>;
+      projectCreationDefaults: () => Promise<{parent_path:string}>;
+      chooseProjectParent: (defaultPath?:string) => Promise<{canceled:boolean; path?:string}>;
+      createProject: (options: {name:string; parent_path:string; initialize_git:boolean; model?:string}) => Promise<AgentEnvelope>;
       getProject: () => Promise<AgentEnvelope>;
       listProjects: () => Promise<AgentEnvelope>;
       selectProject: (projectId: string, model?: string) => Promise<AgentEnvelope>;
@@ -185,7 +188,7 @@ declare global {
       selectModel: (threadId: string, model: string) => Promise<AgentEnvelope>;
       createThread: (model?: string) => Promise<AgentEnvelope>;
       listThreads: () => Promise<AgentEnvelope>;
-      renameThread: (threadId: string, title: string) => Promise<AgentEnvelope>;
+      renameThread: (threadId: string, title: string, projectId?:string) => Promise<AgentEnvelope>;
       getThread: (threadId: string) => Promise<AgentEnvelope>;
       taskRequest: (threadId: string, operation: string, payload?: Record<string, unknown>) => Promise<AgentEnvelope>;
       planRequest: (threadId: string, operation: string, payload?: Record<string, unknown>) => Promise<AgentEnvelope>;
