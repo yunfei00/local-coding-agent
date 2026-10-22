@@ -1,6 +1,12 @@
 # 公司电脑部署与使用
 
-详细配置及可复现工程见 [公司验证流程](company-validation.md)。代码版本 0.4.0；正式发布结果以 [验收记录](acceptance.md) 和 README 的 Release 链接为准。
+详细配置及可复现工程见 [公司验证流程](company-validation.md)。代码版本 0.4.1；正式发布结果以 [验收记录](acceptance.md) 和 README 的 Release 链接为准。
+
+## 项目和会话
+
+侧栏 New project 打开居中弹框，填写项目名称并用 Choose… 选择父目录，默认位置为 Windows 文档目录。Create project 创建新文件夹并打开；默认初始化空 Git 仓库，不自动提交或发布。已有同名文件夹不会被覆盖，需要使用 Open project。自主 Worktree 任务需要先在项目中准备文件和初始提交。
+
+会话右侧悬停显示 `…`，或右键会话 → Rename，在居中弹框中修改名称。Enter 保存、Escape 取消；修改其他项目的会话名不会切换当前项目。正文和聊天输入为 16px，常规控件为 14px。完整说明见 [桌面交互更新](desktop-usability.md)。
 
 ## 配置模型
 

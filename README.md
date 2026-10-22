@@ -2,7 +2,7 @@
 
 Local Coding Agent 是一个面向 Windows 本地开发环境的桌面 Coding Agent。目标是提供类似 Codex Desktop 的核心开发体验，同时让模型、Agent、工具链、数据和权限边界保持在用户自己的环境中。
 
-> 当前代码版本：**v0.4.0**
+> 当前代码版本：**v0.4.1**
 >
 > 最近正式发布：[**v0.4.0**](https://github.com/yunfei00/local-coding-agent/releases/tag/v0.4.0)
 
@@ -30,6 +30,8 @@ Settings → Models & Routing 同时配置多个 Ollama/API 连接和模型，�
 - [混合 Provider 审计](docs/v0.4/mixed-provider-audit.md) / [公司环境完整验证流程](docs/v0.4/company-validation.md)
 
 ## 当前能力
+
+v0.4.1 调整桌面字体和控件尺寸：正文/输入框 16px、常规界面 14px、辅助文字 12px。会话右侧 `…` 或右键菜单 → Rename，在居中弹框中改名；侧栏 New project 在居中弹框中选择名称、位置与是否初始化 Git。详见 [桌面交互更新](docs/v0.4/desktop-usability.md)。
 
 v0.2.0 已经完成可用的单 Agent 本地开发闭环：
 

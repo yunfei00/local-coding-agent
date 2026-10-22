@@ -108,11 +108,49 @@ async function main() {
   };
   try {
     let page = await launch();
-    await application.evaluate(({dialog}, folder) => { dialog.showOpenDialog = async () => ({canceled: false, filePaths: [folder]}); }, project);
+    await application.evaluate(({dialog}, {folder,parent}) => {
+      dialog.showOpenDialog = async options => ({canceled:false, filePaths:[options.title === "Choose project location" ? parent : folder]});
+    }, {folder:project, parent:data});
     await page.evaluate(() => window.localAgent.openProject("smoke-coder"));
     await page.locator(".composer textarea").waitFor({state: "visible"});
     await page.waitForFunction(() => !document.querySelector(".composer textarea").disabled);
     checks.push("Renderer connects to isolated Python Agent and opens project");
+
+    assert.equal(await page.locator(".composer textarea").evaluate(e => getComputedStyle(e).fontSize), "16px");
+    assert.equal(await page.locator(".project-tree-name").first().evaluate(e => getComputedStyle(e).fontSize), "14px");
+    assert.equal(await page.getByRole("button",{name:"Settings",exact:true}).evaluate(e => getComputedStyle(e).fontSize), "14px");
+    checks.push("Readable shared typography: 16px composer, 14px sidebar and controls");
+    await page.getByRole("button", {name:"New project",exact:true}).click();
+    let projectDialog = page.getByRole("dialog",{name:"New project",exact:true});
+    await projectDialog.waitFor();
+    await page.getByLabel("Project name",{exact:true}).fill("do-not-create");
+    await page.getByLabel("Project name",{exact:true}).press("Escape");
+    await projectDialog.waitFor({state:"hidden"});
+    assert(!fs.existsSync(path.join(data,"do-not-create")));
+    await page.getByRole("button", {name:"New project",exact:true}).click();
+    projectDialog = page.getByRole("dialog",{name:"New project",exact:true});
+    await page.getByLabel("Project name",{exact:true}).fill("calculator-project");
+    await projectDialog.getByRole("button",{name:"Choose…",exact:true}).click();
+    await page.getByLabel("Project location",{exact:true}).waitFor();
+    await page.waitForFunction(parent => document.querySelector('[aria-label="Project location"]').value === parent, data);
+    await projectDialog.getByRole("button",{name:"Create project",exact:true}).click();
+    await projectDialog.getByRole("alert").waitFor();
+    assert((await projectDialog.getByRole("alert").innerText()).includes("already exists"));
+    assert(fs.readFileSync(path.join(project,"calculator.py"),"utf8").includes("a - b"));
+    await page.getByLabel("Project name",{exact:true}).fill("ui-created-project");
+    const projectBounds = await projectDialog.boundingBox();
+    const viewport = await page.evaluate(() => ({width:innerWidth,height:innerHeight}));
+    assert(Math.abs(projectBounds.x + projectBounds.width/2 - viewport.width/2) < 3);
+    assert(Math.abs(projectBounds.y + projectBounds.height/2 - viewport.height/2) < 3);
+    await screenshot("desktop-v041-new-project.png");
+    await projectDialog.getByRole("button",{name:"Create project",exact:true}).click();
+    await projectDialog.waitFor({state:"hidden"});
+    await page.getByRole("button",{name:/ui-created-project/}).first().waitFor();
+    assert(fs.existsSync(path.join(data,"ui-created-project",".git")));
+    const newSession = await page.evaluate(() => window.localAgent.getProject());
+    assert.equal(path.resolve(newSession.payload.project.path), path.join(data,"ui-created-project"));
+    await page.getByRole("button",{name:"Open project",exact:true}).click();
+    checks.push("Centered New project dialog: cancellation, location picker, collision protection, Git init and registry open");
 
     const hostPython = path.join(root, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
     const fixture = path.join(root, "tests", "fixtures", "mcp_test_server.py");
@@ -284,16 +322,31 @@ async function main() {
     await page.locator(".send-button").waitFor({state: "visible"});
     checks.push("Stop cancels an active provider stream");
 
-    await page.getByRole("button", {name: "New thread", exact: true}).click();
+    await page.locator(".sidebar-actions").getByRole("button", {name: "New thread", exact: true}).click();
     await page.locator(".composer textarea").fill("A fresh thread can send messages");
     await page.locator(".composer textarea").press("Enter");
     await page.locator(".message.agent h3").waitFor();
     await page.locator(".send-button").waitFor({state: "visible"});
     await page.locator(".thread-item.active").click({button: "right"});
+    await page.getByRole("menuitem",{name:"Rename",exact:true}).click();
+    const renameDialog = page.getByRole("dialog",{name:"Rename thread",exact:true});
+    await renameDialog.waitFor();
+    const renameBounds = await renameDialog.boundingBox();
+    const renameViewport = await page.evaluate(() => ({width:innerWidth,height:innerHeight}));
+    assert(Math.abs(renameBounds.x + renameBounds.width/2 - renameViewport.width/2) < 3);
+    assert(Math.abs(renameBounds.y + renameBounds.height/2 - renameViewport.height/2) < 3);
+    assert.equal(await renameDialog.evaluate(e => e.closest(".sidebar")), null);
+    await screenshot("desktop-v041-rename.png");
     await page.locator("#thread-rename-input").fill("验收会话");
     await page.locator("#thread-rename-input").press("Enter");
     await page.getByRole("button", {name: "验收会话", exact: true}).waitFor();
-    checks.push("New thread sends; right-click rename persists");
+    await page.locator(".thread-row").filter({has:page.locator(".thread-item.active")}).getByRole("button",{name:"More actions for 验收会话",exact:true}).click();
+    await page.getByRole("menuitem",{name:"Rename",exact:true}).click();
+    await page.locator("#thread-rename-input").fill("Cancel this rename");
+    await page.locator("#thread-rename-input").press("Escape");
+    await page.getByRole("dialog",{name:"Rename thread",exact:true}).waitFor({state:"hidden"});
+    await page.getByRole("button", {name: "验收会话", exact: true}).waitFor();
+    checks.push("New thread sends; context/ellipsis menu opens centered rename, Enter saves and Escape cancels");
 
     await screenshot("desktop-dark.png");
     await page.getByRole("button", {name: "Toggle color theme"}).click();
@@ -304,8 +357,16 @@ async function main() {
       await page.locator(".context-overlay").waitFor({state: "visible"});
       await screenshot(`desktop-context-${width}.png`);
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Horizontal page overflow");
+      assert(await page.locator(".topbar-actions").evaluate(e => e.scrollWidth <= e.clientWidth + 1), "Header controls should wrap instead of requiring horizontal scrolling");
       await page.getByRole("button", {name: "Context", exact: true}).click();
       await page.locator(".context-overlay").waitFor({state: "hidden"});
+      await page.getByRole("button",{name:"Settings",exact:true}).click();
+      await page.getByRole("button",{name:"Models & Routing",exact:true}).click();
+      await page.getByLabel("Connection name",{exact:true}).waitFor();
+      assert.equal(await page.getByLabel("Connection name",{exact:true}).evaluate(e => getComputedStyle(e).fontSize),"14px");
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Settings page overflow");
+      await screenshot(`desktop-v041-settings-${width}.png`);
+      await page.getByRole("button",{name:"Settings",exact:true}).click();
     }
     checks.push("Light/dark themes, 1180/900px window sizes and panel layout");
     await application.close();
@@ -314,6 +375,8 @@ async function main() {
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "light");
     assert(await page.locator(".message.agent h3").count() > 0);
     checks.push("Restart restores thread, message history, expansion and theme");
+    assert(await page.locator(".project-tree-name").filter({hasText:"ui-created-project"}).count() === 1);
+    checks.push("Restart restores the project created through the dialog");
     await page.getByRole("button", {name:"Settings", exact:true}).click();
     await page.getByRole("button", {name:"Models & Routing", exact:true}).click();
     await page.getByLabel("executor profile", {exact:true}).waitFor();
