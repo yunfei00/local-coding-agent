@@ -962,7 +962,8 @@ function App() {
     return usedLabel + " / " + windowLabel;
   }, [provider, contextUsage]);
 
-  const providerReady = Boolean(provider?.online && selectedModel);
+  const modelAvailable = Boolean(selectedModel && provider?.models.some(model => model.name === selectedModel));
+  const providerReady = Boolean(provider?.online && modelAvailable);
 
   const openProject = async () => {
     if (runningTurnId) {
@@ -1179,7 +1180,8 @@ function App() {
     try {
       const started = await window.localAgent.startTurn(
         activeThread.id,
-        prompt
+        prompt,
+        selectedModel
       );
       if (started.turn_id) {
         setRunningTurnId(started.turn_id);
@@ -1572,6 +1574,8 @@ function App() {
                 ? "Open a project first."
                 : !provider?.online
                   ? "Provider is offline."
+                  : !modelAvailable
+                    ? "Choose an available chat model below."
                   : "Ask the Agent to inspect, test or modify this project…"
             }
           />
@@ -1596,6 +1600,8 @@ function App() {
               </select>
               <select
                 className="model-select"
+                aria-label="Chat model"
+                title="Ordinary chat model. Autonomous Task roles are configured in Models & Routing."
                 value={selectedModel}
                 disabled={
                   !provider?.online ||
@@ -1604,6 +1610,7 @@ function App() {
                 }
                 onChange={(event) => void changeModel(event.target.value)}
               >
+                {selectedModel && !modelAvailable ? <option value={selectedModel} disabled>{selectedModel} (unavailable — choose a model)</option> : null}
                 {provider?.models.length ? (
                   provider.models.map((model) => (
                     <option key={model.name} value={model.name}>

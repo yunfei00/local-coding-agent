@@ -1342,9 +1342,20 @@ class AgentServer:
                         return
                     self.confirmed_plan_resumes.discard(confirmation)
 
-            model = thread.active_model or self.default_model or self.provider.preferred_model
+            requested_model = payload.get("model")
+            if requested_model is not None and (not isinstance(requested_model, str) or not requested_model.strip()):
+                await self.send_error(ws, "MODEL_REQUIRED", "Select an available chat model before sending.", request_id=request_id, thread_id=thread_id)
+                return
+            model = requested_model.strip() if requested_model is not None else (thread.active_model or self.default_model or self.provider.preferred_model)
             if not await self.ensure_model_available(ws, model, request_id=request_id, thread_id=thread_id):
                 return
+
+            # Persist only after validation, in the same request that starts this turn.
+            # The renderer may have refreshed to a different provider's model list
+            # while this restored thread still stores a model from the old provider.
+            if model != thread.active_model:
+                updated = project.state.set_thread_model(thread_id, model)
+                await ws.send_json(envelope("model.selected", {"model":model, "thread":updated.to_dict()}, thread_id=thread_id))
 
             renamed_thread = project.state.summarize_thread_title(thread_id, prompt)
             if renamed_thread:
@@ -1691,7 +1702,7 @@ class AgentServer:
             await self.send_error(
                 ws,
                 "MODEL_NOT_FOUND",
-                f"Model is not available from {self.provider.provider_name}: {model}",
+                f"Model '{model}' is not available from {self.provider.provider_name}. Select an available chat model or refresh the model list.",
                 request_id=request_id,
                 thread_id=thread_id,
             )
