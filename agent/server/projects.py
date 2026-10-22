@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,26 @@ from agent.server.protocol import new_id
 from agent.server.state import InMemoryState, ThreadRecord
 from agent.tools.registry import ToolRegistry
 from agent.tools.workspace import Workspace
+from agent.tools.base import ToolError
+
+
+def create_project_folder(parent_path: str, name: str) -> Path:
+    """Create one new directory only; never reuse/overwrite an existing workspace."""
+    if not isinstance(name, str) or not 1 <= len(name) <= 100 or name != name.strip() or name.endswith("."):
+        raise ToolError("INVALID_PROJECT_NAME", "Use a project name of 1–100 characters without leading/trailing spaces or dots.")
+    if name in {".", ".."} or re.search(r'[<>:"/\\|?*\x00-\x1f]', name) or re.fullmatch(r"(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", name, re.I):
+        raise ToolError("INVALID_PROJECT_NAME", "Project name contains a reserved name or invalid path characters.")
+    if not isinstance(parent_path, str) or not parent_path.strip() or not Path(parent_path).is_absolute():
+        raise ToolError("INVALID_PROJECT_LOCATION", "Choose an existing absolute parent folder.")
+    parent = Path(parent_path).resolve(strict=True)
+    if not parent.is_dir():
+        raise ToolError("INVALID_PROJECT_LOCATION", "Project location must be an existing directory.")
+    target = parent / name
+    try:
+        target.mkdir()  # Exclusive, nonrecursive; rejects files, directories and symlinks.
+    except FileExistsError as exc:
+        raise ToolError("PROJECT_EXISTS", "That folder already exists. Choose another name or use Open project.") from exc
+    return target
 
 
 def now_iso() -> str:

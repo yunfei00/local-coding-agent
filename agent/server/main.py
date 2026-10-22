@@ -52,7 +52,7 @@ from agent.task_plans import automatic_steps, mutation_fingerprint
 from agent.persistence.store import SQLiteStore
 from agent.permissions.policy import PermissionMode, PermissionPolicy, READ_ONLY_TOOLS
 from agent.core.prompt_rules import PromptRuleManager
-from agent.server.projects import ProjectRegistry
+from agent.server.projects import ProjectRegistry, create_project_folder
 from agent.server.protocol import envelope, new_id, validate_client_message
 from agent.tools.base import ToolError
 
@@ -965,10 +965,10 @@ class AgentServer:
             )
             return
 
-        if message_type == "project.open":
-            raw_path = str(payload.get("path") or "").strip()
+        if message_type in {"project.open", "project.create"}:
+            raw_path = str(payload.get("path") or "").strip() if message_type == "project.open" else ""
             requested_model = str(payload.get("model") or "").strip() or None
-            if not raw_path:
+            if message_type == "project.open" and not raw_path:
                 await self.send_error(
                     ws,
                     "WORKSPACE_REQUIRED",
@@ -985,6 +985,22 @@ class AgentServer:
                 )
                 return
             try:
+                warning = None
+                if message_type == "project.create":
+                    initialize_git = payload.get("initialize_git", True)
+                    if not isinstance(initialize_git, bool):
+                        raise ToolError("INVALID_PROJECT_OPTIONS", "Initialize Git must be a boolean.")
+                    root = create_project_folder(payload.get("parent_path"), payload.get("name"))
+                    raw_path = str(root)
+                    if initialize_git:
+                        from agent.tools.git import _git
+                        from agent.tools.workspace import Workspace
+                        try:
+                            code, _, _ = await _git(Workspace(root), "init", "--initial-branch=main", timeout=10)
+                            if code:
+                                warning = "Project folder created, but Git initialization failed. No commit was created."
+                        except ToolError as exc:
+                            warning = f"Project folder created, but Git initialization failed ({exc.code}). No commit was created."
                 project, thread, created = self.projects.open(
                     raw_path,
                     active_model=(
@@ -995,6 +1011,8 @@ class AgentServer:
                 )
             except (ToolError, OSError) as exc:
                 message = exc.message if isinstance(exc, ToolError) else str(exc)
+                if message_type == "project.create" and raw_path:
+                    message += f" Folder retained at {raw_path}; no files were removed."
                 await self.send_error(
                     ws,
                     "WORKSPACE_OPEN_FAILED",
@@ -1009,6 +1027,8 @@ class AgentServer:
             self.mcp_runtime.apply_to_project(project)
             response_payload = self.projects.project_payload(project)
             response_payload["created"] = created
+            if warning:
+                response_payload["warning"] = warning
             await ws.send_json(
                 envelope(
                     "project.opened",
@@ -1161,7 +1181,8 @@ class AgentServer:
             return
 
         if message_type == "thread.rename":
-            project = self.projects.active
+            project_id = payload.get("project_id")
+            project = self.projects.get(str(project_id)) if project_id else self.projects.active
             thread_id = str(data.get("thread_id") or payload.get("thread_id") or "")
             title = str(payload.get("title") or "")
             if not project or not project.state.get_thread(thread_id):
