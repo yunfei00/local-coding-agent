@@ -1,5 +1,7 @@
 # 系统架构
 
+M2 的前台命令、开发服务器和 Git 子进程统一由 `agent/tools/processes.py::ProcessManager` 管理；工具仍走同一个 Agent Loop/Registry/权限链。后台句柄属于当前工作区和执行轮次，结束、失败或取消会清理；Windows 使用暂停创建后纳入 Job、POSIX 使用进程组。实现、日志、边界与 M3 准备情况见 [M2 设计](m2/implementation.md)。
+
 M1 新增 `strategy=single-agent`，直接复用 `AgentServer.run_tool_turn` 与现有工具，不发出独立规划/审查/升级请求。Task Runtime 的单条目标步骤仅用于持久化工具证据；`pending → executing` 后进入在线模型与真实工具的多轮循环，随后 `verifying → awaiting_approval`。独立验证失败时只回到同一 Executor，并在重复失败或修复上限处暂停。原 Local-first/Local-only/API-only 行为保留。完整代码证据、能力边界与后续接口见 [M1 架构审计](m1/architecture-audit.md) 和 [M2–M5 规划](m1/roadmap.md)。
 
 ## 1. 总体架构

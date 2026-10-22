@@ -1,22 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import os
-import shutil
-import signal
-import subprocess
-import time
-from contextlib import suppress
-from typing import Any
 
-from agent.tools.base import BaseTool, ToolError, ToolResult
-from agent.tools.stream import ToolStreamState
-from agent.tools.workspace import Workspace
-from agent.tools.windows_job import WindowsJob
-
-
-MAX_OUTPUT_CHARS = 200_000
-GRACEFUL_KILL_SECONDS = 1.5
+from agent.tools.base import BaseTool, ToolError
+from agent.tools.processes import ProcessManager, MAX_OUTPUT_CHARS, shell_command, terminate_process_tree
 
 
 def validate_command(command: str) -> None:
@@ -24,287 +11,78 @@ def validate_command(command: str) -> None:
         raise ToolError("EMPTY_COMMAND", "Command cannot be empty.")
 
 
-def shell_command() -> tuple[str, list[str]]:
-    if os.name == "nt":
-        return "powershell.exe", ["-NoProfile", "-NonInteractive", "-Command"]
-
-    pwsh = shutil.which("pwsh")
-    if pwsh:
-        return pwsh, ["-NoProfile", "-NonInteractive", "-Command"]
-
-    return "/bin/bash", ["-lc"]
-
-
-async def terminate_process_tree(
-    process: asyncio.subprocess.Process,
-) -> str:
-    if process.returncode is not None:
-        return "already_exited"
-
-    if os.name == "nt":
-        method = "taskkill"
-        try:
-            killer = await asyncio.create_subprocess_exec(
-                "taskkill",
-                "/PID",
-                str(process.pid),
-                "/T",
-                "/F",
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            with suppress(asyncio.TimeoutError):
-                await asyncio.wait_for(killer.wait(), timeout=5)
-        except (FileNotFoundError, ProcessLookupError, PermissionError):
-            method = "kill"
-            with suppress(ProcessLookupError):
-                process.kill()
-
-        with suppress(asyncio.TimeoutError, ProcessLookupError):
-            await asyncio.wait_for(process.wait(), timeout=3)
-        return method
-
-    try:
-        group_id = os.getpgid(process.pid)
-    except ProcessLookupError:
-        return "already_exited"
-
-    with suppress(ProcessLookupError):
-        os.killpg(group_id, signal.SIGTERM)
-
-    try:
-        await asyncio.wait_for(process.wait(), timeout=GRACEFUL_KILL_SECONDS)
-        return "sigterm"
-    except asyncio.TimeoutError:
-        pass
-
-    with suppress(ProcessLookupError):
-        os.killpg(group_id, signal.SIGKILL)
-    with suppress(asyncio.TimeoutError, ProcessLookupError):
-        await asyncio.wait_for(process.wait(), timeout=3)
-    return "sigkill"
-
-
 class RunCommandTool(BaseTool):
     name = "run_command"
     description = (
-        "Run a development command and return live stdout/stderr, exit code and duration. "
-        "Stopping the Turn terminates the command process tree. "
-        "The permission policy may require explicit approval for destructive, "
-        "publishing, system-level or out-of-workspace operations."
+        "Run a foreground development command with live stdout/stderr, actual exit code and retained logs. "
+        "shell=auto uses PowerShell on Windows and Bash elsewhere; cmd is also supported on Windows. "
+        "For a development server use start_process, read_process and stop_process. "
+        "Timeout/cancellation cleans up the owned process tree. Existing permissions and approvals apply."
     )
-    parameters = {
-        "type": "object",
-        "properties": {
-            "command": {
-                "type": "string",
-                "description": "Command line to execute in the workspace shell.",
-            },
-            "cwd": {
-                "type": "string",
-                "description": (
-                    "Working directory. Use a workspace-relative path normally. "
-                    "An absolute path outside the workspace requires Full Access and approval."
-                ),
-            },
-            "timeout_seconds": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 600,
-                "description": "Timeout in seconds. Defaults to 120.",
-            },
-        },
-        "required": ["command"],
-    }
+    parameters = {"type": "object", "properties": {
+        "command": {"type": "string", "description": "Command text in the selected shell."},
+        "cwd": {"type": "string", "description": "Workspace-relative working directory; external paths require approval."},
+        "shell": {"type": "string", "enum": ["auto", "powershell", "cmd", "bash"], "default": "auto"},
+        "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 86400, "default": 120},
+    }, "required": ["command"]}
 
-    def __init__(self, workspace: Workspace) -> None:
-        self.workspace = workspace
+    def __init__(self, workspace, manager=None):
+        self.manager = manager or ProcessManager(workspace)
 
-    async def execute(self, arguments: dict[str, Any], *, on_output=None, on_raw_output=None, environment=None) -> ToolResult:
-        command = str(arguments["command"])
-        validate_command(command)
+    async def execute(self, arguments, *, on_output=None, on_raw_output=None, environment=None, owner_id=""):
+        validate_command(str(arguments.get("command", "")))
+        return await self.manager.run(arguments, owner=owner_id, on_output=on_output,
+                                      on_raw_output=on_raw_output, environment=environment)
 
-        cwd = self.workspace.resolve(
-            str(arguments.get("cwd") or "."),
-            must_exist=True,
-        )
-        if not cwd.is_dir():
-            raise ToolError("NOT_DIRECTORY", "Command cwd must be a directory.")
 
-        timeout = min(max(int(arguments.get("timeout_seconds") or 120), 1), 600)
-        executable, prefix = shell_command()
-        started = time.perf_counter()
-        stream_state = ToolStreamState()
+class StartProcessTool(RunCommandTool):
+    name = "start_process"
+    description = (
+        "Start a long-running development server in an owned process tree and return an opaque process_id. "
+        "Read readiness/output using read_process; starting alone does not prove readiness. "
+        "Use stop_process when finished. Processes are stopped when the current Agent turn ends, "
+        "fails or is cancelled, and at timeout_seconds (default 120, maximum 86400). "
+        "This is not an untracked detached process. Permissions match run_command."
+    )
 
-        spawn_kwargs: dict[str, Any] = {
-            "cwd": str(cwd),
-            "stdout": asyncio.subprocess.PIPE,
-            "stderr": asyncio.subprocess.PIPE,
-            "env": os.environ.copy(),
-        }
-        if environment:
-            if set(environment) - {"PYTHONPYCACHEPREFIX", "PYTHONDONTWRITEBYTECODE"}:
-                raise ToolError("INVALID_COMMAND_ENVIRONMENT", "Only internal Python verification cache controls are supported")
-            spawn_kwargs["env"].update(environment)
-        if os.name == "nt":
-            spawn_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-        else:
-            spawn_kwargs["start_new_session"] = True
+    async def execute(self, arguments, *, on_output=None, owner_id=""):
+        session = await self.manager.launch(arguments, owner=owner_id, on_output=on_output)
+        await asyncio.sleep(0)
+        return session.result()
 
-        process = await asyncio.create_subprocess_exec(
-            executable,
-            *prefix,
-            command,
-            **spawn_kwargs,
-        )
 
-        try:
-            job = WindowsJob(process.pid)
-        except OSError:
-            await terminate_process_tree(process)
-            await process.communicate()
-            raise ToolError("PROCESS_ISOLATION_FAILED", "Could not safely own the command process tree.")
+class ReadProcessTool(BaseTool):
+    name = "read_process"
+    description = (
+        "Read state, exit code and stdout/stderr of a process owned by this Agent turn. "
+        "Use next_cursor from the previous result as cursor for new chunks. wait_seconds waits for new output "
+        "or exit (maximum 10). Old output can be truncated; bounded full logs are retained separately."
+    )
+    parameters = {"type": "object", "properties": {
+        "process_id": {"type": "string"}, "cursor": {"type": "integer", "minimum": 0},
+        "wait_seconds": {"type": "number", "minimum": 0, "maximum": 10},
+    }, "required": ["process_id"]}
 
-        stdout_parts: list[str] = []
-        stderr_parts: list[str] = []
+    def __init__(self, manager):
+        self.manager = manager
 
-        async def consume(stream, target: list[str], label: str) -> None:
-            while True:
-                chunk = await stream.read(4096)
-                if not chunk:
-                    break
-                text = chunk.decode("utf-8", errors="replace")
-                if on_raw_output:
-                    await on_raw_output(label, text)
-                target.append(text)
-                while sum(map(len, target)) > MAX_OUTPUT_CHARS:
-                    target.pop(0)
-                if on_output:
-                    for event in stream_state.output(label, text):
-                        await on_output(event)
+    async def execute(self, arguments, *, on_output=None, owner_id=""):
+        session = self.manager.get(arguments.get("process_id"), owner_id)
+        cursor, wait = arguments.get("cursor", 0), arguments.get("wait_seconds", 1)
+        if isinstance(cursor, bool) or not isinstance(cursor, int) or cursor < 0:
+            raise ToolError("INVALID_CURSOR", "cursor must be a nonnegative integer")
+        if isinstance(wait, bool) or not isinstance(wait, (int, float)) or not 0 <= wait <= 10:
+            raise ToolError("INVALID_PROCESS_WAIT", "wait_seconds must be 0..10")
+        deadline = asyncio.get_running_loop().time() + wait
+        while not session.task.done() and session.cursor <= cursor and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(.05)
+        return session.result(cursor=cursor)
 
-        stdout_task = asyncio.create_task(
-            consume(process.stdout, stdout_parts, "stdout")
-        )
-        stderr_task = asyncio.create_task(
-            consume(process.stderr, stderr_parts, "stderr")
-        )
 
-        try:
-            if on_output:
-                await on_output(stream_state.meta(
-                    "process_started", pid=process.pid, command=command,
-                    cwd=self.workspace.display(cwd), timeout_seconds=timeout,
-                ))
-            await asyncio.wait_for(process.wait(), timeout=timeout)
-            job.terminate()
-            await asyncio.gather(stdout_task, stderr_task)
-        except asyncio.TimeoutError as exc:
-            if on_output:
-                await on_output(
-                    stream_state.meta(
-                        "process_terminating",
-                        pid=process.pid,
-                        reason="timeout",
-                    )
-                )
-            job.terminate()
-            method = await terminate_process_tree(process)
-            await asyncio.gather(
-                stdout_task,
-                stderr_task,
-                return_exceptions=True,
-            )
-            if on_output:
-                await on_output(
-                    stream_state.meta(
-                        "process_terminated",
-                        pid=process.pid,
-                        reason="timeout",
-                        method=method,
-                        duration_ms=int((time.perf_counter() - started) * 1000),
-                    )
-                )
-            raise ToolError(
-                "COMMAND_TIMEOUT",
-                f"Command exceeded timeout of {timeout} seconds and its process tree was terminated.",
-            ) from exc
-        except asyncio.CancelledError:
-            if on_output:
-                with suppress(Exception):
-                    await on_output(
-                        stream_state.meta(
-                            "process_terminating",
-                            pid=process.pid,
-                            reason="user_cancelled",
-                        )
-                    )
-            job.terminate()
-            method = await terminate_process_tree(process)
-            await asyncio.gather(
-                stdout_task,
-                stderr_task,
-                return_exceptions=True,
-            )
-            if on_output:
-                with suppress(Exception):
-                    await on_output(
-                        stream_state.meta(
-                            "process_terminated",
-                            pid=process.pid,
-                            reason="user_cancelled",
-                            method=method,
-                            duration_ms=int((time.perf_counter() - started) * 1000),
-                        )
-                    )
-            raise
-        finally:
-            if process.returncode is None:
-                job.terminate()
-                await terminate_process_tree(process)
-            # Also kill detached descendants when the root shell exits normally.
-            job.close()
-            for reader in (stdout_task, stderr_task):
-                if not reader.done():
-                    reader.cancel()
-            await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
-            # asyncio's Proactor transport otherwise closes pipes only during GC,
-            # after the test loop and temporary working directory have gone away.
-            process._transport.close()
-            await asyncio.sleep(0)
+class StopProcessTool(ReadProcessTool):
+    name = "stop_process"
+    description = "Stop a process owned by this Agent turn, clean up descendants and return final output. Never accepts arbitrary PIDs."
+    parameters = {"type": "object", "properties": {"process_id": {"type": "string"}}, "required": ["process_id"]}
 
-        stdout = "".join(stdout_parts)
-        stderr = "".join(stderr_parts)
-        if len(stdout) > MAX_OUTPUT_CHARS:
-            stdout = stdout[-MAX_OUTPUT_CHARS:]
-        if len(stderr) > MAX_OUTPUT_CHARS:
-            stderr = stderr[-MAX_OUTPUT_CHARS:]
-
-        duration_ms = int((time.perf_counter() - started) * 1000)
-        code = int(process.returncode or 0)
-
-        if on_output:
-            await on_output(
-                stream_state.meta(
-                    "process_exited",
-                    pid=process.pid,
-                    exit_code=code,
-                    duration_ms=duration_ms,
-                    **stream_state.snapshot(),
-                )
-            )
-
-        return ToolResult(
-            ok=code == 0,
-            summary=f"Command exited with code {code} in {duration_ms} ms.",
-            stdout=stdout,
-            stderr=stderr,
-            exit_code=code,
-            duration_ms=duration_ms,
-            data={
-                "command": command,
-                "cwd": self.workspace.display(cwd),
-                "pid": process.pid,
-                "stream": stream_state.snapshot(),
-            },
-        )
+    async def execute(self, arguments, *, on_output=None, owner_id=""):
+        return await self.manager.stop(arguments.get("process_id"), owner=owner_id)

@@ -46,8 +46,11 @@ class WorkspaceTests(unittest.TestCase):
                     "git_worktree_remove",
                     "list_directory",
                     "read_file",
+                    "read_process",
                     "run_command",
                     "search_files",
+                    "start_process",
+                    "stop_process",
                     "write_file",
                 ],
             )

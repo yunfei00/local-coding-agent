@@ -66,7 +66,7 @@ class ProjectDetection:
         return "\n".join(lines)
 
 
-DETECTION_ORDER = ("android", "python", "node", "cmake")
+DETECTION_ORDER = ("android", "python", "node", "react", "typescript", "electron", "cmake")
 
 
 def _existing(root: Path, names: tuple[str, ...]) -> tuple[str, ...]:
@@ -75,7 +75,7 @@ def _existing(root: Path, names: tuple[str, ...]) -> tuple[str, ...]:
 
 def _read_package_json(root: Path) -> dict[str, Any]:
     path = root / "package.json"
-    if not path.is_file():
+    if not path.is_file() or not path.resolve().is_relative_to(root) or path.stat().st_size > 262144:
         return {}
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -174,6 +174,18 @@ def detect_project(root: str | Path) -> ProjectDetection:
             "CTestConfig.cmake",
         ),
     )
+    package = _read_package_json(path)
+    dependencies = {}
+    for key in ("dependencies", "devDependencies"):
+        if isinstance(package.get(key), dict):
+            dependencies.update(package[key])
+    for kind, packages in (("react", ("react", "react-dom")), ("typescript", ("typescript",)), ("electron", ("electron",))):
+        markers[kind] = tuple("package.json:" + dep for dep in packages if dep in dependencies)
+    if (path / "tsconfig.json").is_file():
+        markers["typescript"] += ("tsconfig.json",)
+    tests = path / "tests"
+    if not markers["python"] and tests.is_dir() and tests.resolve().is_relative_to(path) and next(tests.glob("test*.py"), None):
+        markers["python"] = ("tests/test*.py",)
 
     detected = tuple(
         kind
@@ -184,15 +196,15 @@ def detect_project(root: str | Path) -> ProjectDetection:
     suggestions: list[CommandSuggestion] = []
 
     if markers["python"]:
-        has_pytest_hint = any(
-            marker in {"pytest.ini", "tox.ini", "pyproject.toml"}
-            for marker in markers["python"]
-        )
+        pyproject = path / "pyproject.toml"
+        has_pytest_hint = (path / "pytest.ini").is_file()
+        if pyproject.is_file() and pyproject.resolve().is_relative_to(path) and pyproject.stat().st_size <= 262144:
+            has_pytest_hint |= "pytest" in pyproject.read_text(encoding="utf-8", errors="replace")
         if has_pytest_hint:
             suggestions.append(
                 CommandSuggestion(
                     purpose="test",
-                    command="python -m pytest",
+                    command="uv run python -m pytest",
                     reason="Python test configuration or pyproject marker detected.",
                 )
             )
@@ -200,14 +212,14 @@ def detect_project(root: str | Path) -> ProjectDetection:
             suggestions.append(
                 CommandSuggestion(
                     purpose="test",
-                    command="python -m unittest discover",
+                    command="uv run python -m unittest discover -s tests -v",
                     reason="Python project with a tests directory detected.",
                 )
             )
         suggestions.append(
             CommandSuggestion(
                 purpose="check",
-                command="python -m compileall .",
+                command="uv run python -m compileall .",
                 reason="Safe syntax/import bytecode compilation check for Python sources.",
             )
         )
@@ -234,6 +246,10 @@ def detect_project(root: str | Path) -> ProjectDetection:
                     reason=f"package.json defines a build script; package manager is {manager}.",
                 )
             )
+        for name, purpose in (("typecheck", "check"), ("dev", "serve"), ("start", "start")):
+            if isinstance(scripts.get(name), str):
+                suggestions.append(CommandSuggestion(purpose=purpose, command=_node_script_command(manager, name),
+                    reason="Project script hint; use start_process for a long-running server and stop_process after testing.", safe=False))
 
     if markers["android"]:
         gradle, gradle_windows = _gradle_commands(path)

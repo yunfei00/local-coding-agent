@@ -71,7 +71,7 @@ def failure_fingerprint(results: list[dict], diff: str) -> str:
         text = re.sub(r"\b\d+(?:\.\d+)?(?=\s*(?:ms|s|seconds?)\b)", "#", text)
         return re.sub(r"\b\d+(?:\.\d+)?\b", "#", text)
     failures = [{"command": r["command"], "category": r["category"], "exit_code": r.get("exit_code"),
-                 "summary": normalized(r.get("summary", ""))} for r in results]
+                 "summary": normalized(r.get("summary", ""))} for r in results if not r.get("ok")]
     return hashlib.sha256((json.dumps(failures, sort_keys=True) + diff).encode()).hexdigest()
 
 
@@ -108,9 +108,13 @@ class VerificationEngine:
                 category = "configuration"
             if truncated:
                 category = "configuration"
+            if (result.get("data") or {}).get("log_truncated"):
+                category = "configuration"
             results.append({"command": command, "ok": category == "passed", "category": category,
                             "exit_code": result.get("exit_code"), "duration_ms": round((time.perf_counter() - started) * 1000),
                             "stdout": str(result.get("stdout", ""))[-4000:], "stderr": str(result.get("stderr", ""))[-4000:],
                             "summary": (output.strip() or str(result.get("summary", "")))[-5000:],
-                            "log_path": str(log_path), "log_truncated": truncated})
+                            "log_path": str(log_path), "log_truncated": truncated,
+                            "execution": {k:v for k,v in (result.get("data") or {}).items() if k in {"process_id", "pid", "shell", "state", "log_path", "metadata_path"}},
+                            "error_code": (result.get("error") or {}).get("code")})
         return results

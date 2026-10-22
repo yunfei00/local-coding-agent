@@ -30,7 +30,7 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
         "global_usage":runtime.usage(),
         "planning_attempts":task.get("planning_attempts", 0), "planning_limit":task["config"]["budget"].get("planning_attempts", 4),
         "strategy":task["config"]["strategy"], "usage":runtime.usage(task_id),
-        "calls":calls, "transitions":task.get("transitions", []),
+        "calls":calls, "transitions":task.get("transitions", []), "executions":runtime.plans.executions(task_id),
         "privacy":"No prompts, response bodies, user files, headers, credentials, goals or Diffs are included."}
     # Redact credential values even if a configured model/display name contains one.
     def clean(value):

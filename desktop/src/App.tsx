@@ -516,11 +516,11 @@ function App() {
               status: "requested",
               chunks: [],
               command:
-                name === "run_command"
+                ["run_command", "start_process"].includes(name)
                   ? String(args.command ?? "")
                   : undefined,
               cwd:
-                name === "run_command"
+                ["run_command", "start_process"].includes(name)
                   ? String(args.cwd ?? ".")
                   : undefined
             }
@@ -720,7 +720,7 @@ function App() {
             const rawError = resultObject(rawResult.error);
             const errorCode = String(rawError.code ?? "");
             const streamData = resultObject(data.stream);
-            const timedOut = errorCode === "COMMAND_TIMEOUT";
+            const timedOut = errorCode === "COMMAND_TIMEOUT" || data.state === "timed_out";
 
             return {
               ...item,
@@ -728,10 +728,17 @@ function App() {
                 ...item.tool,
                 status: timedOut
                   ? "timed_out"
+                  : data.state === "stopped"
+                    ? "cancelled"
+                  : item.tool.name === "start_process" && data.state === "running"
+                    ? "running"
                   : ok
                     ? "completed"
                     : "failed",
                 summary,
+                processId: typeof data.process_id === "string" ? data.process_id : item.tool.processId,
+                logPath: typeof data.log_path === "string" ? data.log_path : item.tool.logPath,
+                shell: typeof data.shell === "string" ? data.shell : item.tool.shell,
                 chunks,
                 exitCode:
                   typeof rawResult.exit_code === "number"

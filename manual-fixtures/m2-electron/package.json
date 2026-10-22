@@ -1,0 +1,5 @@
+{
+  "name":"m2-electron-fixture", "version":"1.0.0", "private":true, "main":"main.cjs",
+  "scripts":{"test":"node --test test/math.test.cjs", "start":"node launch.cjs"},
+  "devDependencies":{"electron":"38.8.6"}
+}

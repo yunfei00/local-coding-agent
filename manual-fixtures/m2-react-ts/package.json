@@ -1,0 +1,6 @@
+{
+  "name": "m2-react-ts-fixture", "version": "1.0.0", "private": true, "type": "module",
+  "scripts": {"typecheck": "tsc -p tsconfig.json", "test": "npm run typecheck && node --test test/math.test.mjs", "build": "npm run typecheck && vite build", "dev": "node dev.cjs", "probe": "node probe.cjs"},
+  "dependencies": {"react": "19.3.1", "react-dom": "19.3.1"},
+  "devDependencies": {"typescript": "5.9.3", "vite": "7.3.7", "@types/react": "19.3.0", "@types/react-dom": "19.3.0"}
+}

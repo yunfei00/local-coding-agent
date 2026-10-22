@@ -73,6 +73,9 @@ export type ToolView = {
   summary?: string;
   chunks: ToolChunk[];
   pid?: number;
+  processId?: string;
+  logPath?: string;
+  shell?: string;
   cwd?: string;
   command?: string;
   exitCode?: number;
@@ -141,6 +144,7 @@ function TerminalCard({ tool }: { tool: ToolView }) {
         </div>
         <div className="tool-meta">
           {tool.pid ? <span>PID {tool.pid}</span> : null}
+          {tool.shell ? <span>{tool.shell}</span> : null}
           {tool.streamTruncated ? <span>Output limited</span> : null}
           {tool.durationMs !== undefined ? (
             <span>{formatDuration(tool.durationMs)}</span>
@@ -154,6 +158,8 @@ function TerminalCard({ tool }: { tool: ToolView }) {
       </div>
 
       {tool.cwd ? <div className="terminal-cwd">{tool.cwd}</div> : null}
+      {tool.processId ? <div className="terminal-cwd">Process {tool.processId}</div> : null}
+      {tool.logPath ? <div className="terminal-cwd">Output log: {tool.logPath}</div> : null}
 
       {tool.chunks.length ? (
         <pre ref={outputRef} className="terminal-output">
@@ -460,7 +466,7 @@ export function ToolCard({ tool }: { tool: ToolView }) {
 }
 
 function ToolDetails({ tool }: { tool: ToolView }) {
-  if (tool.name === "run_command") {
+  if (["run_command", "start_process", "read_process", "stop_process"].includes(tool.name)) {
     return <TerminalCard tool={tool} />;
   }
   if (tool.name === "git_diff" && tool.diffFiles) {

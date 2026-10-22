@@ -34,6 +34,9 @@ WORKSPACE_TOOLS = READ_ONLY_TOOLS | {
     "write_file",
     "apply_patch",
     "run_command",
+    "start_process",
+    "read_process",
+    "stop_process",
     "git_stage",
     "git_unstage",
     "git_commit",
@@ -43,6 +46,7 @@ WORKSPACE_TOOLS = READ_ONLY_TOOLS | {
 
 
 RISKY_COMMAND_PATTERNS: list[tuple[str, str, str]] = [
+    ("publish", r"(?i)\b(?:npm|pnpm|yarn)\s+(?:publish|deploy)\b", "Publishing or deployment requires approval."),
     (
         "delete",
         r"(?i)(?:^|[;&|]\s*)(?:remove-item|del|erase|rmdir)\b|\brd\s+/s\b|\brm\s+-",
@@ -139,13 +143,49 @@ def command_risk(command: str) -> tuple[str, str] | None:
     return None
 
 
+def project_command_risk(workspace, command, cwd=".", seen=None):
+    """Check the npm script and pre/post hooks as well as the visible command.
+
+    This is an approval heuristic, not a shell sandbox or complete interpreter.
+    """
+    direct = command_risk(command)
+    if direct:
+        return direct
+    matches = re.findall(r"\b(?:npm(?:\.cmd)?|pnpm|yarn)\s+(?:run\s+)?([\w:-]+)", command, re.I)
+    if not matches:
+        return None
+    try:
+        package = workspace.resolve(cwd, must_exist=True) / "package.json"
+        if not workspace.contains(package) or package.stat().st_size > 262144:
+            return ("project_script", "Review project scripts before execution: package.json is external or too large.")
+        scripts = json.loads(package.read_text(encoding="utf-8")).get("scripts", {})
+        if not isinstance(scripts, dict):
+            raise ValueError("Invalid scripts")
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        return ("project_script", "Project scripts could not be inspected; review before execution.")
+    seen = set() if seen is None else seen
+    for name in matches:
+        for hook in ("pre" + name, name, "post" + name):
+            if hook in seen:
+                continue
+            seen.add(hook)
+            script = scripts.get(hook)
+            if isinstance(script, str):
+                risk = project_command_risk(workspace, script, cwd, seen)
+                if risk:
+                    return (risk[0], f"package.json script {hook}: {risk[1]}")
+    return None
+
+
 def _path_argument(name: str, arguments: dict[str, Any]) -> str | None:
     if name in {"file_exists", "list_directory", "read_file", "write_file", "apply_patch"}:
         value = arguments.get("path")
         return str(value) if value is not None else "."
     if name == "search_files":
         return str(arguments.get("path") or ".")
-    if name == "run_command":
+    if name in {"run_command", "start_process"}:
         return str(arguments.get("cwd") or ".")
     if name == "git_diff" and arguments.get("path"):
         return str(arguments["path"])
@@ -408,7 +448,7 @@ class PermissionPolicy:
                 risk="outside_workspace",
             )
 
-        if tool_name == "run_command":
+        if tool_name in {"run_command", "start_process"}:
             command = str(arguments.get("command") or "")
             external_reason = command_external_reference(workspace, command)
             if external_reason:
@@ -429,7 +469,7 @@ class PermissionPolicy:
                     risk="outside_workspace",
                 )
 
-            risky = command_risk(command)
+            risky = project_command_risk(workspace, command, str(arguments.get("cwd") or "."))
             if risky:
                 risk, reason = risky
                 if risk == "git_commit" and not explicit_git_intent(
