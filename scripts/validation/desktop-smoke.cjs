@@ -148,7 +148,7 @@ async function main() {
     await page.getByRole("button",{name:/ui-created-project/}).first().waitFor();
     assert(fs.existsSync(path.join(data,"ui-created-project",".git")));
     const newSession = await page.evaluate(() => window.localAgent.getProject());
-    assert.equal(path.resolve(newSession.payload.project.path), path.join(data,"ui-created-project"));
+    assert.equal(fs.realpathSync.native(newSession.payload.project.path), fs.realpathSync.native(path.join(data,"ui-created-project")));
     await page.getByRole("button",{name:"Open project",exact:true}).click();
     checks.push("Centered New project dialog: cancellation, location picker, collision protection, Git init and registry open");
 
