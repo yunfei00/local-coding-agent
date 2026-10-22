@@ -187,9 +187,9 @@ async function main() {
     checks.push("Restored API model switches to displayed Ollama model in actual HTTP request; selected model and chat history survive restart");
     await page.locator(".thread-item.active").click();
     await page.waitForFunction(() => document.querySelector('.model-select')?.value === "gpt-oss:20b");
-    assert((await page.getByLabel("Chat model").locator("option:checked").innerText()).includes("unavailable"));
+    assert((await page.getByLabel("Chat model",{exact:true}).locator("option:checked").innerText()).includes("unavailable"));
     assert(await page.locator(".send-button").isDisabled());
-    await page.getByLabel("Chat model").selectOption("smoke-coder");
+    await page.getByLabel("Chat model",{exact:true}).selectOption("smoke-coder");
     await page.waitForFunction(() => !document.querySelector('.composer textarea').disabled);
     checks.push("Unavailable saved model is shown explicitly and blocks Send until a valid model is selected");
 
