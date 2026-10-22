@@ -24,6 +24,8 @@ for (const args of [["config","user.name","Smoke"],["config","user.email","smoke
 let rejectModels = false;
 let protectedCredentialSeen = false;
 let mcpProcess;
+let blockPlanning = false;
+let planningRequests = 0;
 const modelRequests = [];
 const checks = [];
 const skipped = [];
@@ -42,6 +44,12 @@ const provider = http.createServer((req, res) => {
     if (req.url.endsWith("/chat") || req.url.endsWith("/chat/completions")) modelRequests.push({url:req.url,model:payload.model});
     if (req.url === "/api/show") {res.writeHead(200, {"Content-Type":"application/json"}); return res.end(JSON.stringify({capabilities:["tools"]}));}
     if (req.url === "/api/chat") {
+      if (payload.model === "task-planner" && blockPlanning) {
+        planningRequests++;
+        res.writeHead(200, {"Content-Type":"application/x-ndjson"});
+        res.write(JSON.stringify({message:{content:""},done:false}) + "\n");
+        return;
+      }
       let message = {content:"Task implementation complete"};
       if (payload.model === "gpt-oss:20b") message.content = "Selected local model received the chat.";
       else if (payload.model === "task-planner") message.content = JSON.stringify({steps:[{description:"Fix calculator using actual tools"}]});
@@ -309,6 +317,35 @@ async function main() {
     await page.getByRole("button", {name:"Accept verified report", exact:true}).click();
     await page.locator('[data-task-status="completed"]').waitFor();
     checks.push("Autonomous task uses Mock Ollama, actual worktree/tools/tests, zero API and verified report approval");
+    blockPlanning = true;
+    await page.getByLabel("Autonomous task goal").fill("Cancel a blocked Planning request");
+    await page.getByRole("button",{name:"Start autonomous task",exact:true}).click();
+    await page.getByRole("button",{name:"Allow once",exact:true}).click();
+    await page.waitForFunction(() => !!document.querySelector('.task-live-controls'));
+    const cancel = page.getByRole("button",{name:"Cancel active task",exact:true});
+    await cancel.waitFor();
+    assert(await cancel.isEnabled());
+    await page.waitForTimeout(500);
+    assert.equal(planningRequests, 1);
+    const taskPanel = page.locator(".task-panel");
+    await taskPanel.evaluate(el => el.scrollTop = el.scrollHeight);
+    const cancelRect = await cancel.boundingBox();
+    const taskRect = await taskPanel.boundingBox();
+    assert(cancelRect.y >= taskRect.y && cancelRect.y + cancelRect.height <= taskRect.y + taskRect.height);
+    await cancel.click();
+    await page.locator('[data-task-status="cancelled"]').waitFor();
+    blockPlanning = false;
+    const cancelledTask = await page.evaluate(async () => {
+      const session = await window.localAgent.getProject();
+      return (await window.localAgent.taskRequest(session.payload.active_thread.id,"task.list")).payload.tasks[0];
+    });
+    await page.getByRole("button",{name:"Task diagnostics " + cancelledTask.id.slice(0,8),exact:true}).click();
+    const diagnosticPanel = page.getByLabel("Task diagnostics report",{exact:true});
+    await diagnosticPanel.waitFor();
+    assert((await diagnosticPanel.innerText()).includes("TASK_CANCELLED"));
+    assert(await diagnosticPanel.getByRole("button",{name:"Copy diagnostics JSON",exact:true}).isEnabled());
+    assert(await diagnosticPanel.getByRole("button",{name:"Copy diagnostics Markdown",exact:true}).isEnabled());
+    checks.push("Sticky Task Cancel stops a blocked Planning request; persisted sanitized JSON/Markdown diagnostics are accessible");
     await page.getByRole("button", {name:"Task", exact:true}).click();
 
     for (const panel of ["Task", "Context", "Git", "Plan", "Diagnostics"]) {

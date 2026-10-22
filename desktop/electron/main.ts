@@ -1400,7 +1400,7 @@ ipcMain.handle("agent:task-request", async (_event, threadId: string, operation:
     storeModelCredentials(values);
     return {type:"task.loaded", payload:{mode:safeStorage.isEncryptionAvailable() ? "os_protected" : "session_only", configured:!!key}};
   }
-  const allowed = new Set(["task.catalog.get", "task.catalog.update", "task.settings.get", "task.settings.update", "task.connection.test", "task.list", "task.start", "task.resume", "task.pause", "task.cancel", "task.budget.add", "task.configure", "task.approve"]);
+  const allowed = new Set(["task.catalog.get", "task.catalog.update", "task.settings.get", "task.settings.update", "task.connection.test", "task.list", "task.start", "task.resume", "task.pause", "task.cancel", "task.budget.add", "task.configure", "task.approve", "task.diagnostics"]);
   if (!allowed.has(operation)) throw new Error("Unsupported task operation");
   return sendRequest(operation, "task.loaded", payload, {threadId}, operation === "task.connection.test" ? 30000 : 15000);
 });

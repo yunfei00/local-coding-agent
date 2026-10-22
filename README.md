@@ -24,6 +24,8 @@ Settings → Models & Routing 同时配置多个 Ollama/API 连接和模型，�
 
 v0.4.2 修复旧会话模型与底部显示不一致：发送请求携带当前 Chat model，后端验证后保存并执行，不再误用上一个 Provider 的模型名。不可用的旧模型会明确标注并阻止发送。见 [聊天模型同步修复](docs/v0.4/chat-model-sync.md)。
 
+main 另包含 Planning 重试与诊断修复（尚未发布安装包）：独立持久化规划上限、JSON/工具计划兼容、真实 Usage 结算和 Task 顶部取消入口。见 [根因与调用链](docs/validation/planning-api-root-cause.md) / [测试与公司源码更新](docs/validation/planning-api-test-results.md)。本轮真实 API 按用户要求 NOT RUN。
+
 真实 CPU Ollama 已验证新路由、规划与实际工具调用，但小模型未完成修复；真实付费 API 尚未验收。跨 Provider、升级回交、Usage、预算和恢复通过实际 HTTP Mock 验证，不能将其视为真实付费消费或公司模型能力证明。构建和发布状态见 [验收记录](docs/v0.4/acceptance.md)。
 
 - [架构审计](docs/v0.4/architecture-audit.md) / [设计](docs/v0.4/design.md)

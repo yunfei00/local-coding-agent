@@ -2,6 +2,14 @@
 
 本流程使用现有 manual-fixtures/v04-local-first，不要求自己编写工程。真实模型能力与路由框架验收分开记录；没有付费 API 凭据时使用下面的 HTTP Mock 自动化。
 
+## Planning 修复的本轮验证约定
+
+本轮按用户后续要求只使用 Mock，真实 DeepSeek API 为 **NOT RUN**；公司使用已有配置实测并口述结果。无需提供 Key、截图或自行查日志。更新源码与复现步骤见 [Planning 测试结果](../validation/planning-api-test-results.md)。
+
+已有 API-only 模型配置可新建任务运行下文 calculator fixture。重点观察 Planning 是否进入 Executing；失败时 Task 直接显示错误码，Task diagnostics 可展开关联 Call ID、HTTP、解析、Schema、预算结算与状态转换。顶部 Pause active task / Cancel active task 在 Planning 等待时也可使用。无需删除历史任务、清空预算或重新填写凭据。
+
+策略只验证角色绑定，不自动替换模型。API-only 与本地 Planner 冲突时会在调用模型和创建 Worktree 前明确暂停并记录 MODEL_POLICY_MISMATCH。旧任务使用原快照；新任务使用当前配置，显式 Apply configuration to paused task 才更新旧快照。
+
 ## 安装与服务
 
 安装发布页的 x64 Setup，或直接运行 Portable。发布地址见 README；公司电脑需允许 Ollama 服务与批准的 API 网关访问。安装包内置 Agent；工程验证命令仍需 Git、uv 和项目所用工具。
