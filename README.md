@@ -20,11 +20,14 @@ uv run python scripts/validation/check.py
 
 Task 面板按需启动自主任务：默认 Local-first，规划/执行/审查使用本地模型，有限升级调用 API；支持 Local-only、API-only、四角色配置、持久化阶段、暂停/取消/恢复、请求前任务/全局预算、独立验证和完成报告。实际执行复用 v0.3 Agent Loop、权限、Approval、计划、Checkpoint、Shell 与受管理 Worktree，不自动提交、推送或合并。
 
-当前真实 CPU Ollama 已验证连接、计划和实际读取文件，但未完成修复；真实付费 API 尚未验收。不能把 Mock 成功视作真实模型验收通过。合并/正式发布仍受 [验收与阻断记录](docs/v0.4/acceptance.md) 约束。
+Settings → Models & Routing 同时配置多个 Ollama/API 连接和模型，四角色独立跨连接绑定；任务冻结解析快照，API 预检按实际连接类型计费。旧配置自动迁移，原 API Key 保留安全存储。普通聊天的 Provider 选择不改变自主任务角色。
+
+真实 CPU Ollama 已验证新路由、规划与实际工具调用，但小模型未完成修复；真实付费 API 尚未验收。跨 Provider、升级回交、Usage、预算和恢复通过实际 HTTP Mock 验证，不能将其视为真实付费消费或公司模型能力证明。构建和发布状态见 [验收记录](docs/v0.4/acceptance.md)。
 
 - [架构审计](docs/v0.4/architecture-audit.md) / [设计](docs/v0.4/design.md)
 - [模型路由](docs/v0.4/model-routing.md) / [预算](docs/v0.4/budget-control.md)
 - [独立验证](docs/v0.4/verification.md) / [公司部署与使用](docs/v0.4/user-guide.md)
+- [混合 Provider 审计](docs/v0.4/mixed-provider-audit.md) / [公司环境完整验证流程](docs/v0.4/company-validation.md)
 
 ## 当前能力
 

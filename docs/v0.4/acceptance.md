@@ -1,88 +1,65 @@
-# v0.4 验收与阻断记录
+# v0.4 混合模型协同验收
 
-日期：2026-10-22。开发分支：`feature/v0.4-local-first-agent`，基于已验收的 v0.3 main `9c73179`。本页区分 Mock、真实工具、真实模型，不以 Mock 替代真实环境结果。
+日期：2026-10-22。延续 feature/v0.4-local-first-agent，保留全部已有 v0.4 历史，合入 main 的 v0.3 正式发布文档；没有重建分支或清理用户文件。
 
-交付结论：v0.4 候选实现、自动化和 Windows 产物已完成；真实本地修复场景未通过、真实 API 尚未验收，因此保留 [Draft PR #3](https://github.com/yunfei00/local-coding-agent/pull/3)，不合并 main、不创建 Tag/Release。
+当前状态：修复已实现，完整 Windows 打包正在最终验证；尚未合并 main、创建 v0.4.0 Tag 或正式发布。最终门禁以本页后续构建记录为准。
 
-## 最终自动化与产物
+## 根因与交付
 
-运行代码提交：`9cf3186ef040a5179b4f87f48a5295d5cd20be24`。其后的验收文档提交不改变运行代码。
+原 RuntimeSettings 同时保存两类服务参数，但 Settings/model.list 只使用活动 Provider；角色只包含 local/api + model 字符串，无法表达多个同类型端点。并非只需更改下拉框。
 
-| 门禁 | 最终结果 | 证据 |
-| --- | --- | --- |
-| Python 回归 | 197 通过，0 失败 | 本地 `.codex-v04-package-verified.log`；含原 174 项与新增 23 项 |
-| Desktop 单元测试 | 32 通过，0 失败 | 同一打包运行；原 29 项与新增 3 项 |
-| TypeScript / Build | 全部通过 | 同一运行 |
-| Windows / Ubuntu CI | 全部通过 | [PR CI](https://github.com/yunfei00/local-coding-agent/actions/runs/39649623066)、[分支 CI](https://github.com/yunfei00/local-coding-agent/actions/runs/39649615892) |
-| 实际 Electron UI | 15 项通过，远端 0 跳过 | 上述 Windows CI，包括实际系统剪贴板内容回读 |
-| Windows 候选打包 | 全部通过 | [Windows Package Candidate](https://github.com/yunfei00/local-coding-agent/actions/runs/39649615667)，Setup 安装启动/卸载、Portable、打包桌面和哈希复算 |
-| 本地 Windows 打包 | 11 阶段通过 | `.codex-v04-package-verified.log`；本地剪贴板探针环境限制仍单列 skipped |
+现已分离 Connections / Profiles / Role Bindings，通过原 Router 与原 Provider 客户端真实调用。模型配置 ID 和连接 ID 消除同名冲突；默认 Local-first，可跨服务绑定四角色；Local-only/API-only 请求前校验类型，不静默替换收费模型。任务冻结解析后的角色、地址、模型参数和任务/全局预算；显式暂停配置或追加额度才更新快照，Usage 不清零。
 
-本地产物位于 `desktop/release`，来自上述运行代码，非正式 Release：
+复用 v0.3 Agent Loop、Task Plans、Checkpoints、Execution Journal、Approval、PermissionPolicy、Git Worktree、工具执行和进程树终止，复用 v0.4 BudgetGuard 与 VerificationEngine。新目录是配置扩展，没有第二套循环或状态机。
 
-| 文件 | 字节数 | SHA256 |
-| --- | ---: | --- |
-| Local-Coding-Agent-0.4.0-x64-Setup.exe | 114107533 | 8ca91740e4f7b7d5b437704d40647b5d0b08590d9b688c1c6c3fb36c5640ccac |
-| Local-Coding-Agent-0.4.0-x64-Portable.exe | 113877442 | e7896eaaffcc12f72876a75140bb89f636b07a5926412d06f6a8d382b59a4c46 |
+## 测试证据
 
-`SHA256SUMS.txt` 已生成并复算一致。远端独立构建的哈希不要求与本机字节一致。最后复核 main 仍为 `9c73179`，工作区干净；开发提交已推送功能分支。没有 v0.4.0 Tag 或 GitHub Release。
+| 检查 | 已取得结果 |
+| --- | --- |
+| 修改前基线 | 197 Python、32 Desktop，类型检查和构建通过，运行 20261022-103939-436505 |
+| 中间完整回归 | 212 Python、32 Desktop，通过，运行 20261022-105008-630003 |
+| 混合 HTTP 专项 | 18 项通过，validation-reports/mixed-provider-tests-release.log；包含人工全局追加额度后共 19 项，由完整构建核验 |
+| Windows Electron | 18 项通过、0 跳过，validation-reports/mixed-provider-ui-final.log |
+| 本机 Windows 完整构建 | 216 Python、32 Desktop、18 UI，11/11 阶段通过，.codex-v04-mixed-package-final.log（运行代码 0809369） |
 
-## 可复制的自动化命令
+本机已验证解包版、Portable、Setup 静默安装后启动及清理、SHA256 复算。随后将全局额度的单字段更新收窄为仅修改显式传入字段，运行代码 f3a71dd；最终远端 CI / Windows Candidate 仍需检查通过才合并。新增字段更新回归包含在同一 19 项专项中。
 
-```powershell
+核心新增测试在 tests/test_mixed_provider.py，使用四个真正监听 HTTP 的独立 Mock 连接与原客户端，包含两个 Ollama、两个 API，同名模型、四角色独立解析、指定 API Reviewer、指定 Escalation、诊断后回到本地、真实文件修改和独立 unittest、Local-only、API-only、零调用、Token 不足、429、超时、不可用服务、LAN 分类、迁移幂等/损坏保留、共享模型参数保留、运行中修改 Settings 和 Checkpoint 恢复。
+
+原回归继续验证 Git Worktree 不覆盖源文件、审批与权限、执行去重、多文件计划、Stop 终止真实后代进程。新增人工追加全局额度测试验证快照显式更新且账本不重置。
+
+Windows UI 自动化实际打开 Settings，添加连接、手动添加两个本地与两个 API 模型、四个不同角色选择、保存安全凭据、重启、重新测试 API Authorization。之后本地任务零 API 完成真实 Patch/验证/报告审批，Git/Context/Plan/Diagnostics 打开时仍可发送，Stop、主题、会话、剪贴板及重启检查通过。截图：validation-reports/desktop-mixed-provider-settings.png。
+
+## 真实模型与 API 边界
+
+实际执行：
+
+~~~powershell
+uv run python scripts/validation/v04_model_smoke.py --mode ollama --model qwen2.5-coder:1.5b --seconds 120
+~~~
+
+报告：validation-reports/v04-ollama-20261022-105120/result.json。本机 CPU 模型通过新 Profile → Connection 解析完成规划与实际工具调用；本地请求 3 次、API 0 次，但未修复 calculator，独立测试失败后按 Local-only 限制暂停。脚本返回失败，没有把任务标 completed。基础连通性及路由有效，不代表小模型复杂编程能力通过。
+
+真实付费 API 未调用，未验收实际网关计费、认证、公司代理与业务模型能力。HTTP Mock 验证实际客户端、端点、Authorization、输入/输出/缓存 Usage 与预算预留；这些数字不冒充真实消费。按本次任务要求，自动化无需真实收费 API，CPU 小模型只承担基础连通性验证。公司实际业务能力需按 [公司验证流程](company-validation.md) 单独记录。
+
+## 代码审查与限制
+
+已检查连接/模型/角色解析、目录幂等迁移、密钥引用及诊断脱敏、请求前预算、策略拒绝、快照与恢复、环境失败不升级、模型诊断无工具权限、独立测试完成门禁、原 Git 与审批链路。
+
+审查修复了共享模型迁移时角色输出/上下文/价格差异的保留，以及人工增加全局预算后旧快照仍受原限额的问题。模型与预算身份均来自服务端账本，UI 不伪造调用记录。页面显示最近 1000 次实际调用；完整请求记录仍在 SQLite。
+
+限制：Provider Tokenizer/计费可能与保守预留不同；费用上限需用户配置真实价格，供应商不遵守输出限制时仍需网关侧限额。错误类别为启发式。OS 安全存储不可用时密钥仅会话有效，无法解密旧密文会明确报错并保留文件。公司模型质量、代理、真实计费不在无凭据的本机验收范围内。
+
+本地产物 Authenticode 状态为 NotSigned，未提供企业签名证书；公司部署需按实际软件安装策略处理，不能宣称已具备企业代码签名。
+
+## 可复制验证
+
+~~~powershell
 uv sync --locked
 npm.cmd --prefix desktop ci
 uv run python scripts/validation/check.py
 node scripts/validation/desktop-smoke.cjs
-.\scripts\build\package-windows.ps1
-```
+.\scripts\build\package-windows.ps1 -ReuseDependencies
+~~~
 
-新增测试使用 Mock Provider 和真实临时 Git 工程、原工具、原权限、独立 Worktree 与实际 unittest。覆盖本地成功零 API、失败后升级并回交本地、零调用/Token 不足/费用和全局限制、API 超时/429/断网、本地不可用、重复失败、失败不完成、取消恢复、真实后代进程终止、原工作区保留、重启账本和前端快照。
-
-A：`manual-fixtures/v04-local-first` 的 Python 加法 Bug，Mock + 真实工具和独立测试验证完整成功路径。真实本地模型结果见下方。
-
-B：`test_failure_escalation_advice_returns_to_local`：错误修改导致实际 unittest 失败，Mock API 仅返回建议，本地模型继续实际修改，独立验证通过。
-
-C：`test_multifile_plan_checkpoint_and_git_review`、`test_cancelled_task_resume_does_not_replay_completed_mutation` 与 `test_pause_verification_kills_real_descendant_and_retains_checkpoint`：多文件计划、检查点、恢复去重、终止树与审批门禁。旧 fixtures 路径未改变。
-
-## 真实 Ollama
-
-执行：
-
-```powershell
-uv run python scripts/validation/v04_model_smoke.py --mode ollama --model qwen2.5-coder:1.5b
-```
-
-本机 CPU、8192 上下文：已连接，生成了结构化计划，通过 JSON 兼容实际调用 `read_file`，但没有完成文件修复。独立 unittest 两项断言失败，达到本地限制后 paused；本地请求 3 次，API 0 次。未标记 completed。报告在本地 `validation-reports/v04-ollama-20261022-014150/result.json`。
-
-这证明连接、计划、兼容调用、真实验证和停止条件工作，但不能证明该小模型能自主完成场景 A，更不能宣称真实本地修复验收通过。
-
-## 本地自动化证据
-
-- 基线：174 Python、29 Desktop 测试通过。
-- 验收运行 `20261022-015127-798572`：192 Python、32 Desktop 测试通过，TypeScript/Build 通过，0 失败。之后审查修复由最终运行和远端 CI 继续核对。
-- 实际 Electron：15 项检查完成，包括自主任务 Mock Ollama → Worktree 审批 → 真实 Patch → 真实测试 → 报告确认，以及 v0.3 MCP、面板发送、Stop、改名、主题与重启。
-- 当前本机 Windows 会话的系统剪贴板写入已知探针后也读回空值，本地原生回读单列 skipped；远端 Windows CI 已独立验证真实剪贴板内容，0 跳过。本机环境限制不被描述成已通过。
-
-## 最终代码审查
-
-已检查任务状态转换、账本幂等与恢复、API 前置预检、审批路径、源工作区保护、模型回交、验证日志与上下文边界。修复 Read Only 早期 Git 特例、任务快照迟到响应、测试后未跟踪文件变化、费用估算数值溢出、验证发现阶段的外部符号链接读取，并对模型接收的验证摘要脱敏。验证日志完整流保存在本地，不发送完整日志到升级模型。
-
-当前明确限制：Provider Tokenizer/价格精度需用户配置且不能替代供应商侧限额；错误分类为启发式；验证/快照有有界大小；任意自然语言计划验证条件仍需实际输出审查。任务接受报告不自动产生 Git commit，后续 Git 操作保留原显式授权与审批。
-
-## 可选真实 API（可能收费）
-
-没有可用真实 API 凭据时不运行、不猜测密钥。需要在公司允许的终端配置环境变量并显式同意费用：
-
-```powershell
-$env:LCA_OPENAI_BASE_URL = "https://your-approved-host/v1"
-$env:LCA_OPENAI_MODEL = "your-approved-model"
-# 使用会话环境或安全凭据注入 LCA_OPENAI_API_KEY，不写入脚本或 Git。
-uv run python scripts/validation/v04_model_smoke.py --mode api --model $env:LCA_OPENAI_MODEL --context 32768 --allow-paid-api
-```
-
-该命令是 API-only 真实调用，可能收费，限制为 3 次/30000 Token。未提供 `--allow-paid-api` 会在任何网络生成请求前拒绝。当前真实付费 API 集成尚未验收；Mock 的成功不改变此结论。
-
-## 合并和发布门禁
-
-新增/回归测试、实际 UI、Windows 产物和最终审查已完成。按任务要求，还需满足真实环境验收后，才合并 main、创建 v0.4.0 Tag 并走现有 Release Windows 流程。当前真实本地场景 A 未通过、真实 API 未验收，保留功能分支，不创建正式 Tag/Release。
+固定场景 A 使用 manual-fixtures/v04-local-first；B 由混合 HTTP 专项复现；C 由 test_v04_orchestration.py 覆盖多文件、恢复与 Git 审批。没有更改旧 manual-fixtures 路径或测试约定。
