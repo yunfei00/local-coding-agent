@@ -595,6 +595,9 @@ function App() {
                 tool: {
                   ...item.tool,
                   status: nextStatus,
+                  summary: item.tool.name === "start_process" && ["process_exited", "process_terminated"].includes(eventName)
+                    ? `Process ${String(event.payload?.process_id ?? item.tool.processId ?? "")}: ${nextStatus}; exit=${String(exitValue ?? "unknown")}`
+                    : item.tool.summary,
                   pid:
                     typeof pidValue === "number"
                       ? pidValue
