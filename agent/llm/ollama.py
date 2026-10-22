@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -232,20 +233,21 @@ class OllamaProvider:
         if tools:
             request_body["tools"] = tools
 
+        self.response_metadata = {"http_status":None, "response_type":None, "request_sent":False}
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
+                self.response_metadata.update(request_sent=True, http_started_at=time.time())
                 async with session.post(
                     self.base_url + "/api/chat",
                     json=request_body,
                 ) as response:
+                    self.response_metadata.update(http_status=response.status,
+                        response_type=response.headers.get("Content-Type", "").split(";")[0][:100])
                     if response.status >= 400:
                         payload = await self._read_json_response(response)
                         raise OllamaProviderError(
                             "OLLAMA_CHAT_FAILED",
-                            str(
-                                payload.get("error")
-                                or f"Ollama returned HTTP {response.status}."
-                            ),
+                            f"Ollama returned HTTP {response.status}; inspect the selected connection and model.",
                         )
 
                     async for raw_line in response.content:
@@ -264,8 +266,9 @@ class OllamaProvider:
                         if payload.get("error"):
                             raise OllamaProviderError(
                                 "OLLAMA_CHAT_FAILED",
-                                str(payload["error"]),
+                                "Ollama reported a generation error; inspect the selected connection and model.",
                             )
+                        self.response_metadata["parse_success"] = True
 
                         message = payload.get("message")
                         content = ""
@@ -298,6 +301,8 @@ class OllamaProvider:
                 "OLLAMA_STREAM_FAILED",
                 "Ollama connection was interrupted while generating.",
             ) from exc
+        finally:
+            self.response_metadata["http_ended_at"] = time.time()
 
     async def _read_json_response(
         self,

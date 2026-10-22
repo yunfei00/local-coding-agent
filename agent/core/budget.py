@@ -12,6 +12,7 @@ DEFAULT_LIMITS = {"api_calls": 3, "api_tokens": 30000, "api_cost": None,
                   "local_repairs": 3, "task_seconds": 1800, "request_seconds": 120,
                   "verification_seconds": 120, "global_api_calls": 30,
                   "global_api_tokens": 300000, "global_api_cost": None}
+DEFAULT_LIMITS["planning_attempts"] = 4
 
 
 def validate_limits(raw: dict | None) -> dict:
@@ -30,6 +31,8 @@ def validate_limits(raw: dict | None) -> dict:
             raise ValueError(f"{key} must be 1..86400")
     if values["local_repairs"] > 20:
         raise ValueError("local_repairs must be 0..20")
+    if not 1 <= values["planning_attempts"] <= 10:
+        raise ValueError("planning_attempts must be 1..10")
     return values
 
 
@@ -82,7 +85,11 @@ class BudgetGuard:
             self.db.execute("INSERT INTO model_requests VALUES(?,?,?,?,?,?,?,?,?,?)",
                             (request_id, self.plan_id, route, role, model, tokens if route == "api" else 0,
                              cost if route == "api" else 0, "reserved", json.dumps({"estimated": True,
-                             "input_tokens": input_estimate, "output_tokens": output_limit}), time.time()))
+                             "input_tokens": input_estimate, "output_tokens": output_limit,
+                             "initial_reserved_tokens":tokens if route == "api" else 0,
+                             "task_id":self.plan_id, "call_id":request_id, "sequence":self.db.execute("SELECT COUNT(*) FROM model_requests WHERE plan_id=?", (self.plan_id,)).fetchone()[0] + 1,
+                             "phase":task["status"], "retry":max(0, task.get("planning_attempts", 1) - 1) if role == "planner" else 0,
+                             "started_at":time.time(), "parse_success":None, "schema_valid":None}), time.time()))
             self.db.commit()
         except BaseException:
             self.db.rollback()
@@ -96,15 +103,23 @@ class BudgetGuard:
                 self.db.execute("UPDATE model_requests SET usage_json=? WHERE id=?", (json.dumps({**json.loads(row[0]), **identity}), request_id))
 
     def finish(self, request_id: str, status: str, usage: dict) -> None:
-        # Settlement is idempotent. Reservations remain charged after restart/cancellation.
+        # Settlement is idempotent. Only authoritative, complete usage releases excess.
         with self.db:
-            row = self.db.execute("SELECT * FROM model_requests WHERE id=? AND plan_id=? AND status='reserved'", (request_id, self.plan_id)).fetchone()
+            row = self.db.execute("SELECT * FROM model_requests WHERE id=? AND plan_id=? AND status IN ('reserved','interrupted')", (request_id, self.plan_id)).fetchone()
             if row is None:
                 return
             values = {**json.loads(row["usage_json"]), **{k: v for k, v in usage.items() if v is not None}}
             if usage.get("input_tokens") is None or usage.get("output_tokens") is None:
                 values["estimated"] = True
-            tokens = max(row["reserved_tokens"], (values.get("input_tokens", 0) + values.get("output_tokens", 0)) if row["route"] == "api" else 0)
+            actual = (values.get("input_tokens", 0) + values.get("output_tokens", 0)) if row["route"] == "api" else 0
+            known = status in {"completed", "failed"} and usage.get("estimated") is False and all(
+                isinstance(usage.get(k), int) and not isinstance(usage[k], bool) and usage[k] >= 0 for k in ("input_tokens", "output_tokens"))
+            tokens = actual if known else max(row["reserved_tokens"], actual)
             cost = max(row["reserved_cost"], values.get("actual_cost", 0) or 0)
-            self.db.execute("UPDATE model_requests SET status=?,usage_json=?,reserved_tokens=?,reserved_cost=? WHERE id=? AND plan_id=? AND status='reserved'",
+            if status == "not_sent":
+                tokens, cost = 0, 0
+                values.update(input_tokens=0, output_tokens=0, estimated=True)
+            values.update(ended_at=time.time(), released_tokens=max(0, row["reserved_tokens"] - tokens),
+                          settlement="not_sent_released" if status == "not_sent" else "provider_usage" if known else "conservative_retained")
+            self.db.execute("UPDATE model_requests SET status=?,usage_json=?,reserved_tokens=?,reserved_cost=? WHERE id=? AND plan_id=? AND status IN ('reserved','interrupted')",
                             (status, json.dumps(values), tokens, cost, request_id, self.plan_id))

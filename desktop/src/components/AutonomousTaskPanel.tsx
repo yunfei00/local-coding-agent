@@ -11,6 +11,8 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
   const [goal, setGoal] = useState("");
   const [commands, setCommands] = useState("");
   const [busy, setBusy] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const [diagnostic, setDiagnostic] = useState<{json:Record<string,unknown>; markdown:string} | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [model, setModel] = useState("");
@@ -33,7 +35,7 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
   };
   useEffect(() => {
     let alive = true;
-    setTasks([]); setNotice(""); setModel("");
+    setTasks([]); setNotice(""); setModel(""); setDiagnostic(null);
     void window.localAgent.taskRequest(threadId, "task.catalog.get").then(event => {
       if (!alive) return;
       const next = event.payload?.config as Config;
@@ -52,6 +54,14 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
     return () => {alive = false; unsubscribe();};
   }, [threadId]);
   const currentConfig = () => config && ({...config, verification_commands: commands.split("\n").map(c => c.trim()).filter(Boolean)});
+  const activeTask = tasks.find(taskIsActive);
+  const interrupt = async (operation:string) => {
+    if (!activeTask || stopping) return;
+    setStopping(true); setError("");
+    try {apply(await window.localAgent.taskRequest(threadId, operation, {task_id:activeTask.id}));}
+    catch (cause) {setError(String(cause));}
+    finally {setStopping(false);}
+  };
   const resume = async (task: TaskSnapshot, localOnly = false) => {
     if (!window.confirm("Review the task worktree, Diff and checkpoint before resuming. Completed operations are retained; uncertain API reservations remain charged. Continue?")) return;
     await request("task.resume", {task_id:task.id, confirm_workspace:true, local_only:localOnly});
@@ -59,6 +69,7 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
   return <aside className="context-overlay" aria-label="Autonomous task">
     <div className="context-panel task-panel">
       <header className="context-panel-header"><div><span className="eyebrow">LOCAL-FIRST AUTONOMOUS CODING</span><h2>Task</h2></div><button className="panel-close" onClick={onClose}>Close</button></header>
+      {activeTask ? <div className="task-live-controls" role="status"><strong>{activeTask.status}</strong><span>Task {activeTask.id.slice(0,12)}</span><button disabled={stopping} onClick={() => void interrupt("task.pause")}>Pause active task</button><button className="stop-button" disabled={stopping} onClick={() => void interrupt("task.cancel")}>{stopping ? "Stopping…" : "Cancel active task"}</button></div> : null}
       {error ? <div className="error-banner">{error}</div> : null}
       {notice ? <p role="status">{notice}</p> : null}
       {model ? <p className="task-model" role="status">{model}</p> : null}
@@ -66,6 +77,7 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
         <label>Task strategy<select aria-label="Task strategy" value={config.strategy} disabled={running} onChange={e => setConfig({...config, strategy:e.target.value})}>
           <option value="local-first">Local-first</option><option value="local-only">Local-only</option><option value="api-only">API-only</option>
         </select></label>
+        <p>Strategy validates the saved role bindings; it does not replace models. For API-only, choose API profiles for Planner, Executor and Reviewer in Models and budget. Existing tasks keep their configuration snapshot.</p>
         <p>Tasks edit an isolated Git worktree after approval. Source changes are preserved. No automatic commit, push or merge.</p>
         <textarea aria-label="Autonomous task goal" placeholder="Describe a coding task…" value={goal} onChange={e => setGoal(e.target.value)} />
         <label>Verification commands (one per line; empty = project discovery)<textarea aria-label="Verification commands" value={commands} onChange={e => setCommands(e.target.value)} /></label>
@@ -91,14 +103,18 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
       </section> : <p>Loading task configuration…</p>}
       {tasks.map(task => <section className="context-section" key={task.id}>
         <h3>{task.goal}</h3><strong data-task-status={task.status}>{task.status}</strong><p>{task.reason}</p>
+        {task.last_error ? <p role="alert">{task.last_error.code} — open Task diagnostics for the request and parsing details.</p> : null}
+        <p>Planning attempts {task.planning_attempts ?? 0} / {task.config?.budget.planning_attempts ?? 4}</p>
+        <button onClick={() => void window.localAgent.taskRequest(threadId, "task.diagnostics", {task_id:task.id}).then(event => setDiagnostic(event.payload?.diagnostics as typeof diagnostic)).catch(cause => setError(String(cause)))}>Task diagnostics {task.id.slice(0,8)}</button>
         <p>Attempts {task.attempts} · Repairs {task.repairs} · Escalations {task.escalations} · {Math.round(task.elapsed_seconds)}s</p>
         <p>API {task.usage.api_calls} · Local {task.usage.local_calls} · Reserved Tokens {task.usage.reserved_tokens}</p>
         {task.config ? <p>API calls: {task.usage.api_calls} / {task.config.budget.api_calls} · API tokens reserved: {task.usage.reserved_tokens} / {task.config.budget.api_tokens} · Remaining {Math.max(0, Number(task.config.budget.api_tokens) - task.usage.reserved_tokens)}</p> : null}
-        {task.calls?.length ? <details><summary>Model call journal</summary>{task.calls.map(call => <p key={call.id}>[{new Date(call.created_at * 1000).toLocaleTimeString()}] {call.role} · {call.usage.provider || call.route} / {call.model} · {call.status}</p>)}</details> : null}
+        {task.calls?.length ? <details><summary>Model call journal</summary>{task.calls.map(call => <p key={call.id}>[{new Date(call.created_at * 1000).toLocaleTimeString()}] #{call.usage.sequence} · {call.id.slice(0,8)} · {call.usage.phase} / {call.role} · {call.usage.provider || call.route} / {call.model} · {call.status} {call.usage.http_status ? `HTTP ${call.usage.http_status}` : ""} {call.usage.error_code || ""} {call.usage.schema_valid !== undefined && call.usage.schema_valid !== null ? `Schema ${call.usage.schema_valid ? "PASS" : "FAIL"}` : ""} {call.usage.next_state ? `→ ${call.usage.next_state}` : ""}</p>)}</details> : null}
         <p>API input {task.usage.input_tokens} · Output {task.usage.output_tokens} · Cached {task.usage.cached_tokens} {task.usage.estimated ? "(estimated)" : "(reported)"}</p>
         <p>Reserved cost {task.usage.reserved_cost.toFixed(6)} · Actual {task.usage.actual_cost_known ? task.usage.actual_cost.toFixed(6) : "unavailable"}</p>
         <details><summary>Usage precision</summary><p>{task.usage.precision}</p></details>
         {taskIsActive(task) ? <><button disabled={busy} onClick={() => void request("task.pause", {task_id:task.id})}>Pause task</button><button disabled={busy} onClick={() => void request("task.cancel", {task_id:task.id})}>Stop task</button></> : <>
+          {["paused","failed","awaiting_approval"].includes(task.status) ? <button disabled={busy} onClick={() => void request("task.cancel", {task_id:task.id})}>Cancel task</button> : null}
           <button disabled={busy || running} onClick={() => void resume(task)}>Reopen / continue</button>
           <button disabled={busy || running} onClick={() => void resume(task, true)}>Continue local-only</button>
         </>}
@@ -114,6 +130,7 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
         {task.report.review ? <details><summary>Completion report and Git review</summary><p>{task.report.review}</p><p>{task.report.git_approval}</p><pre>{task.report.diff || "No tracked Diff"}</pre><button onClick={() => void window.localAgent.copyText(JSON.stringify(task, null, 2))}>Copy task report</button></details> : null}
         {task.status === "awaiting_approval" ? <button disabled={busy || running} onClick={() => void request("task.approve", {task_id:task.id})}>Accept verified report</button> : null}
       </section>)}
+      {diagnostic ? <section className="context-section" aria-label="Task diagnostics report"><h3>Task diagnostics</h3><p>Prompts, user file contents and credentials are excluded. Reports are also retained in the application data directory.</p><button onClick={() => void window.localAgent.copyText(JSON.stringify(diagnostic.json, null, 2))}>Copy diagnostics JSON</button><button onClick={() => void window.localAgent.copyText(diagnostic.markdown)}>Copy diagnostics Markdown</button><pre className="task-json">{JSON.stringify(diagnostic.json, null, 2)}</pre></section> : null}
     </div>
   </aside>;
 }
