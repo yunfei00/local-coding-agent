@@ -33,15 +33,24 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --locked
 
+      - name: Electron headless test display
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if ! command -v xvfb-run >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y xvfb
+          fi
+
       - name: Python compile check
         shell: bash
         if: runner.os != 'Windows'
-        run: .venv/bin/python -m compileall agent
+        run: uv run python -m compileall agent
 
       - name: Python compile check
         shell: pwsh
         if: runner.os == 'Windows'
-        run: .\.venv\Scripts\python.exe -m compileall agent
+        run: uv run python -m compileall agent
 
       - name: PowerShell script syntax
         if: runner.os == 'Windows'
@@ -70,12 +79,12 @@ jobs:
       - name: Python tests
         shell: bash
         if: runner.os != 'Windows'
-        run: .venv/bin/python -m unittest discover -s tests -v
+        run: uv run python -m unittest discover -s tests -v
 
       - name: Python tests
         shell: pwsh
         if: runner.os == 'Windows'
-        run: .\.venv\Scripts\python.exe -m unittest discover -s tests -v
+        run: uv run python -m unittest discover -s tests -v
 
       - name: Install desktop dependencies
         working-directory: desktop
@@ -96,3 +105,11 @@ jobs:
       - name: Actual desktop task and regression smoke
         if: runner.os == 'Windows'
         run: node scripts/validation/desktop-smoke.cjs
+
+      - name: Retain M2 project execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m2-project-evidence-${{ matrix.os }}
+          path: validation-reports/m2-project-*.json
+          if-no-files-found: ignore

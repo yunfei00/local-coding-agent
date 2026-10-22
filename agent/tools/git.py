@@ -12,6 +12,7 @@ from agent.persistence.store import default_data_dir
 from agent.tools.base import BaseTool, ToolError, ToolResult
 from agent.tools.diff import parse_unified_diff, synthesize_untracked_file
 from agent.tools.workspace import DEFAULT_IGNORED_DIRS, Workspace
+from agent.tools.processes import ProcessManager
 
 
 async def _git(
@@ -19,32 +20,22 @@ async def _git(
     *args: str,
     timeout: int = 30,
 ) -> tuple[int, str, str]:
+    manager = ProcessManager(workspace)
     try:
-        process = await asyncio.create_subprocess_exec(
-            "git",
-            *args,
-            cwd=str(workspace.root),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-    except FileNotFoundError as exc:
-        raise ToolError("GIT_NOT_FOUND", "git executable was not found.") from exc
-
-    try:
-        stdout_b, stderr_b = await asyncio.wait_for(
-            process.communicate(),
-            timeout=timeout,
-        )
-    except asyncio.TimeoutError as exc:
-        process.kill()
-        await process.wait()
-        raise ToolError("GIT_TIMEOUT", "git command timed out.") from exc
-
-    return (
-        int(process.returncode or 0),
-        stdout_b.decode("utf-8", errors="replace"),
-        stderr_b.decode("utf-8", errors="replace"),
-    )
+        # Direct argv preserves Git paths/quoting while sharing process ownership,
+        # timeout and cancellation cleanup with shell commands (including hooks).
+        result = await manager.run({"command":"git", "timeout_seconds":timeout}, argv=["git", *args])
+        if result.data.get("output_truncated"):
+            raise ToolError("GIT_OUTPUT_LIMIT", "Git output exceeded the bounded capture limit; no partial Diff accepted")
+        return int(result.exit_code or 0), result.stdout, result.stderr
+    except ToolError as exc:
+        if exc.code == "COMMAND_TIMEOUT":
+            raise ToolError("GIT_TIMEOUT", "git command timed out; process tree terminated", details=exc.details) from exc
+        if exc.code == "PROCESS_START_FAILED":
+            raise ToolError("GIT_NOT_FOUND", "git executable could not be started") from exc
+        raise
+    finally:
+        await manager.close()
 
 
 class GitStatusTool(BaseTool):

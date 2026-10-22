@@ -17,13 +17,14 @@ class ProjectDetectionTests(unittest.TestCase):
                 "[project]\nname='demo'\n",
                 encoding="utf-8",
             )
+            (path / "tests").mkdir()
             detection = detect_project(path)
 
             self.assertEqual(detection.primary, "python")
             self.assertIn("python", detection.detected)
             commands = [item.command for item in detection.suggestions]
-            self.assertIn("python -m pytest", commands)
-            self.assertIn("python -m compileall .", commands)
+            self.assertIn("uv run python -m unittest discover -s tests -v", commands)
+            self.assertIn("uv run python -m compileall .", commands)
             self.assertTrue(all(item.safe for item in detection.suggestions))
 
     def test_detects_node_scripts_and_package_manager(self) -> None:
@@ -137,7 +138,7 @@ class ProjectDetectionTests(unittest.TestCase):
                 item["command"]
                 for item in detection["suggestions"]
             ]
-            self.assertIn("python -m pytest", commands)
+            self.assertIn("uv run python -m pytest", commands)
 
     def test_prompt_text_marks_detected_commands_as_hints_only(self) -> None:
         with tempfile.TemporaryDirectory() as root:

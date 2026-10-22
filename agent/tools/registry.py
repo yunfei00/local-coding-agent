@@ -25,7 +25,8 @@ from agent.tools.git import (
     GitWorktreeListTool,
     GitWorktreeRemoveTool,
 )
-from agent.tools.shell import RunCommandTool
+from agent.tools.shell import RunCommandTool, StartProcessTool, ReadProcessTool, StopProcessTool
+from agent.tools.processes import ProcessManager
 from agent.tools.workspace import Workspace
 
 
@@ -36,6 +37,7 @@ class ToolRegistry:
         *,
         extra_tools: Iterable[BaseTool] = (),
     ) -> None:
+        self.processes = ProcessManager(workspace)
         tools: list[BaseTool] = [
             FileExistsTool(workspace),
             ListDirectoryTool(workspace),
@@ -43,7 +45,10 @@ class ToolRegistry:
             SearchFilesTool(workspace),
             WriteFileTool(workspace),
             ApplyPatchTool(workspace),
-            RunCommandTool(workspace),
+            RunCommandTool(workspace, self.processes),
+            StartProcessTool(workspace, self.processes),
+            ReadProcessTool(self.processes),
+            StopProcessTool(self.processes),
             GitStatusTool(workspace),
             GitDiffTool(workspace),
             GitLogTool(workspace),
@@ -119,10 +124,13 @@ class ToolRegistry:
         on_output: OutputCallback | None = None,
         on_raw_output=None,
         environment=None,
+        owner_id="",
     ) -> ToolResult:
         tool = self._tools.get(name)
         if not tool:
             raise ToolError("TOOL_NOT_FOUND", f"Unknown tool: {name}")
-        if name == "run_command" and (on_raw_output is not None or environment is not None):
-            return await tool.execute(arguments, on_output=on_output, on_raw_output=on_raw_output, environment=environment)
+        if name == "run_command":
+            return await tool.execute(arguments, on_output=on_output, on_raw_output=on_raw_output, environment=environment, owner_id=owner_id)
+        if name in {"start_process", "read_process", "stop_process"}:
+            return await tool.execute(arguments, on_output=on_output, owner_id=owner_id)
         return await tool.execute(arguments, on_output=on_output)

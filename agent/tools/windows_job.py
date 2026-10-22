@@ -52,6 +52,47 @@ class WindowsJob:
             if process:
                 kernel.CloseHandle(process)
 
+    def resume(self, pid: int) -> None:
+        """Resume a CREATE_SUSPENDED child only after it belongs to this Job."""
+        if not self.handle:
+            return
+        kernel = self.kernel
+        class ThreadEntry(ctypes.Structure):
+            _fields_ = [("size", wintypes.DWORD), ("usage", wintypes.DWORD),
+                        ("tid", wintypes.DWORD), ("pid", wintypes.DWORD),
+                        ("priority", wintypes.LONG), ("delta", wintypes.LONG), ("flags", wintypes.DWORD)]
+        kernel.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+        kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+        kernel.Thread32First.argtypes = kernel.Thread32Next.argtypes = [wintypes.HANDLE, ctypes.POINTER(ThreadEntry)]
+        kernel.OpenThread.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenThread.restype = wintypes.HANDLE
+        kernel.ResumeThread.argtypes = [wintypes.HANDLE]
+        kernel.ResumeThread.restype = wintypes.DWORD
+        snapshot = kernel.CreateToolhelp32Snapshot(4, 0)
+        if snapshot in (None, ctypes.c_void_p(-1).value):
+            raise ctypes.WinError(ctypes.get_last_error())
+        resumed = False
+        try:
+            entry = ThreadEntry()
+            entry.size = ctypes.sizeof(entry)
+            more = kernel.Thread32First(snapshot, ctypes.byref(entry))
+            while more:
+                if entry.pid == pid:
+                    thread = kernel.OpenThread(2, False, entry.tid)
+                    if not thread:
+                        raise ctypes.WinError(ctypes.get_last_error())
+                    try:
+                        if kernel.ResumeThread(thread) == 0xFFFFFFFF:
+                            raise ctypes.WinError(ctypes.get_last_error())
+                        resumed = True
+                    finally:
+                        kernel.CloseHandle(thread)
+                more = kernel.Thread32Next(snapshot, ctypes.byref(entry))
+        finally:
+            kernel.CloseHandle(snapshot)
+        if not resumed:
+            raise OSError("Suspended process has no resumable thread")
+
     def terminate(self) -> None:
         if self.handle:
             if not self.kernel.TerminateJobObject(self.handle, 1):

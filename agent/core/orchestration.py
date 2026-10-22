@@ -30,7 +30,7 @@ def autonomous_git_block(name: str, arguments: dict) -> str:
         return "Task Git metadata is protected; use the explicit Git workflow."
     if name in {"git_commit", "git_worktree_remove", "git_worktree_create"}:
         return "Autonomous execution stops at Git review; use the explicit Git workflow after reviewing tests and Diff."
-    command = str(arguments.get("command", "")) if name == "run_command" else ""
+    command = str(arguments.get("command", "")) if name in {"run_command", "start_process"} else ""
     if re.search(r"\bgit\b[^\r\n;&|]*\b(?:commit|push|merge|rebase|reset|clean|checkout|switch|worktree)\b", command, re.I):
         return "Git history, publishing and workspace switching require the explicit Git workflow."
     return ""

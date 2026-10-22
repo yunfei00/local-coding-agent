@@ -142,6 +142,8 @@ def compact_tool_payload(
 
     data = payload.get("data")
     if data:
+        if isinstance(data, dict):
+            minimal["data"] = {k: data[k] for k in ("process_id", "pid", "next_cursor", "state", "log_path", "log_truncated") if k in data}
         data_text = json.dumps(data, ensure_ascii=False, default=str)
         minimal["data_excerpt"] = data_text[-6_000:]
 
@@ -184,7 +186,9 @@ class ToolLoopGuard:
         self.recent_fingerprints = self.recent_fingerprints[-12:]
         self.last_block_reason = None
 
-        if count > self.max_identical_calls:
+        # Polling an owned server also has a process TTL and model-step bound.
+        limit = self.max_identical_calls * 10 if name == "read_process" else self.max_identical_calls
+        if count > limit:
             self.blocked_repeats += 1
             self.last_block_reason = "identical"
             return False, count, fingerprint

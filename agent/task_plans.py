@@ -32,7 +32,9 @@ def automatic_steps(prompt: str) -> list[dict[str, str]]:
 
 
 def mutation_fingerprint(tool: str, arguments: dict[str, Any], read_only: bool = False) -> str:
-    if read_only:
+    # Process handles expire at scope cleanup; starting a new process after an
+    # explicit task resume is not replaying a completed file mutation.
+    if read_only or tool in {"start_process", "read_process", "stop_process"}:
         return ""
     if tool == "run_command" and re.match(r"^(?:uv\s+run\s+)?(?:python(?:3)?\s+-m\s+(?:unittest|pytest|compileall)\b|npm(?:\.cmd)?\s+(?:run\s+)?(?:test|typecheck|build)\b)", str(arguments.get("command", "")).strip(), re.I):
         return ""
@@ -91,20 +93,31 @@ class TaskPlanStore:
         """)
         if "fingerprint" not in {row[1] for row in self.db.execute("PRAGMA table_info(task_plan_executions)")}:
             self.db.execute("ALTER TABLE task_plan_executions ADD COLUMN fingerprint TEXT NOT NULL DEFAULT ''")
+        if "metadata_json" not in {row[1] for row in self.db.execute("PRAGMA table_info(task_plan_executions)")}:
+            self.db.execute("ALTER TABLE task_plan_executions ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'")
         self.db.commit()
 
     def record_execution(self, plan_id: str, step_id: str, call_id: str, turn_id: str,
                          tool: str, result: dict[str, Any] | None = None, fingerprint: str = "") -> None:
         """Store only execution metadata, never arguments, output, or model reasoning."""
         with self.db:
+            data = (result or {}).get("data") or {}
+            metadata = {k: data[k] for k in ("process_id", "pid", "shell", "state", "log_path", "metadata_path", "log_truncated") if k in data}
+            if result:
+                metadata.update(duration_ms=result.get("duration_ms"), error_code=(result.get("error") or {}).get("code") or data.get("error_code"))
             self.db.execute(
-                "INSERT INTO task_plan_executions VALUES(?,?,?,?,?,?,?,?,?) "
-                "ON CONFLICT(call_id) DO UPDATE SET status=excluded.status,exit_code=excluded.exit_code,changed_paths=excluded.changed_paths",
+                "INSERT INTO task_plan_executions(call_id,plan_id,step_id,turn_id,tool,status,exit_code,changed_paths,fingerprint,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(call_id) DO UPDATE SET status=excluded.status,exit_code=excluded.exit_code,changed_paths=excluded.changed_paths,metadata_json=excluded.metadata_json",
                 (call_id, plan_id, step_id, turn_id, tool,
                  "running" if result is None else "succeeded" if result.get("ok") else "failed",
                  result.get("exit_code") if result else None,
-                 json.dumps(list((result or {}).get("changed_paths") or [])[:100]), fingerprint),
+                 json.dumps(list((result or {}).get("changed_paths") or [])[:100]), fingerprint, json.dumps(metadata)),
             )
+
+    def executions(self, plan_id):
+        return [{"call_id": r["call_id"], "tool": r["tool"], "status": r["status"], "exit_code": r["exit_code"],
+                 "metadata": json.loads(r["metadata_json"])} for r in self.db.execute(
+                     "SELECT * FROM task_plan_executions WHERE plan_id=? ORDER BY rowid", (plan_id,))]
 
     def previously_applied(self, plan_id: str, fingerprint: str) -> bool:
         return bool(fingerprint and self.db.execute(

@@ -2169,9 +2169,11 @@ class AgentServer:
                     fingerprint = mutation_fingerprint(call.name, call.arguments,
                         read_only=call.name in READ_ONLY_TOOLS or bool(metadata.get("trusted") and metadata.get("read_only")))
                     replay = active_plan and self.store.task_plans.previously_applied(active_plan["id"], fingerprint)
+                    journal_step_id = active_step_id or (active_plan["steps"][-1]["id"] if active_plan else None)
                     if active_plan and active_step_id:
                         self.store.task_plans.update_step(active_plan["id"], active_step_id, "in_progress")
-                        self.store.task_plans.record_execution(active_plan["id"], active_step_id,
+                    if active_plan and journal_step_id:
+                        self.store.task_plans.record_execution(active_plan["id"], journal_step_id,
                             call_id, turn_id, call.name, fingerprint=fingerprint)
                     if replay:
                         payload = {"ok": False, "summary": "This plan already applied this operation. Inspect the workspace instead of replaying it.",
@@ -2222,8 +2224,8 @@ class AgentServer:
                         )
 
                     metrics.record_tool(round((perf_counter() - tool_started) * 1000), ok=bool(payload.get("ok")))
-                    if active_plan and active_step_id:
-                        self.store.task_plans.record_execution(active_plan["id"], active_step_id,
+                    if active_plan and journal_step_id:
+                        self.store.task_plans.record_execution(active_plan["id"], journal_step_id,
                             call_id, turn_id, call.name, payload)
                     if active_plan and payload.get("ok"):
                         # Do not silently skip a blocked step, even after a
@@ -2461,6 +2463,10 @@ class AgentServer:
         except (ConnectionResetError, RuntimeError):
             return
         finally:
+            cleanup = await tools.processes.close_owner(turn_id)
+            if cleanup:
+                with suppress(ConnectionResetError, RuntimeError):
+                    await ws.send_json(envelope("process.cleanup", {"processes": cleanup}, thread_id=thread_id, turn_id=turn_id))
             if active_plan and self.store.task_plans.latest_checkpoint(active_plan["id"]) == previous_checkpoint:
                 await self._checkpoint_thread_plans(thread_id, "turn_interrupted", sorted(plan_files_changed), plan_commands_run, project_override=project)
             self.approvals.finish_turn(turn_id)
@@ -2530,6 +2536,7 @@ class AgentServer:
                 call.name,
                 call.arguments,
                 on_output=on_output,
+                owner_id=turn_id,
                 **extra,
             )
             return result.to_dict()
@@ -2540,6 +2547,7 @@ class AgentServer:
                 source="tool:" + call.name,
             )
             return {
+                **exc.details,
                 "ok": False,
                 "summary": exc.message,
                 "error": {
@@ -2565,6 +2573,8 @@ class AgentServer:
             }
 
     async def close_async(self) -> None:
+        for project in self.projects._projects.values():
+            await project.tools.processes.close()
         await self.mcp_runtime.close()
 
     def close(self) -> None:

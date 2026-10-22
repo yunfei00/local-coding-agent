@@ -18,6 +18,8 @@ uv run python scripts/validation/check.py
 
 ## M1 单在线模型 Agent 闭环（源码）
 
+M2 增加统一终端与受管理进程工具 `start_process` / `read_process` / `stop_process`，支持 PowerShell、CMD、Bash、持续输出、超时和进程树清理，并提供 Python、React/TypeScript、真实 Electron 的工程回归。见 [M2 实施与能力矩阵](docs/m2/implementation.md) / [自动验收](docs/m2/acceptance.md)。本阶段不包含 M3 桌面截图、鼠标和键盘自动化。
+
 Task → Task strategy 选择 **Single Agent (online)**，在 Models and budget 中绑定一个 OpenAI Compatible 的 **executor task profile**，填写目标后启动。模型直接读取文件、执行终端、修改代码、接收真实工具结果并继续调用工具；无需配置 Planner、Reviewer 或本地模型。任务仍在受管理 Worktree 中执行，完成后由真实命令独立验证并展示 Diff；支持暂停、取消、检查后恢复。
 
 沿用已有 API 调用上限；多轮工具任务需要足够的调用次数，默认 3 次可能提前停止。切换模式不修改用户显式预算。Key 继续使用桌面安全存储，不写入任务配置。详见 [M1 能力与架构审计](docs/m1/architecture-audit.md)、[验收记录](docs/m1/acceptance.md)、[M2–M5 接口规划](docs/m1/roadmap.md)。本阶段不创建 Tag、Release 或安装包。
