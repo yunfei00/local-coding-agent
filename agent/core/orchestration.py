@@ -188,7 +188,7 @@ class TaskService:
                         task["config"]["budget"] = budget
                         if any(k.startswith("global_") for k in payload.get("budget", {})):
                             task["global_budget"] = {**task.get("global_budget", budget),
-                                **{k: v for k, v in budget.items() if k.startswith("global_")}}
+                                **{k: budget[k] for k in payload["budget"] if k.startswith("global_")}}
                         self.runtime.save(task)
                     elif kind == "task.configure":
                         if task["status"] != "paused":

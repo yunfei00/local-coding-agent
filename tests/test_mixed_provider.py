@@ -301,3 +301,9 @@ class MixedProviderTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(changed["global_budget"]["global_api_calls"],40)
         self.assertEqual(changed["config"]["budget"]["api_calls"],4)
         self.assertEqual(self.server.tasks.runtime.usage(task["id"]),previous)
+        # Updating one global ceiling must not copy unrelated stale defaults.
+        changed["global_budget"]["global_api_calls"] = 45
+        self.server.tasks.runtime.save(changed)
+        await self.server.tasks.handle(self.ws, {"type":"task.budget.add","thread_id":self.thread.id,
+            "payload":{"task_id":task["id"],"budget":{"global_api_tokens":500000}}}, set())
+        self.assertEqual(self.server.tasks.runtime.get(task["id"])["global_budget"]["global_api_calls"],45)
