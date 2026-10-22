@@ -186,12 +186,16 @@ class TaskService:
                             raise ValueError("Pause task before explicitly changing its budget")
                         budget = validate_limits({**task["config"]["budget"], **payload.get("budget", {})})
                         task["config"]["budget"] = budget
+                        if any(k.startswith("global_") for k in payload.get("budget", {})):
+                            task["global_budget"] = {**task.get("global_budget", budget),
+                                **{k: v for k, v in budget.items() if k.startswith("global_")}}
                         self.runtime.save(task)
                     elif kind == "task.configure":
                         if task["status"] != "paused":
                             raise ValueError("Pause task before explicitly changing its configuration")
                         task["config"] = validate_config(payload.get("config"))
                         task["resolved_roles"] = self.catalog().resolve(task["config"])["roles"]
+                        task["global_budget"] = self.settings()["budget"]
                         task["provider_settings"] = asdict(self.server.settings)
                         task.pop("resolved_verification_commands", None)
                         self.runtime.save(task)

@@ -289,3 +289,15 @@ class MixedProviderTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(migrated["roles"]["planner"]["output_limit"],1024)
         self.assertEqual(migrated["roles"]["executor"]["output_limit"],2048)
         self.assertEqual(self.server.tasks.runtime.get(old_task["id"]),old_task)
+
+    async def test_explicit_paused_budget_add_updates_global_snapshot(self):
+        await self.setup_catalog(failure=True, broken=True)
+        task = await self.start()
+        self.assertEqual(task["status"],"paused")
+        previous = self.server.tasks.runtime.usage(task["id"])
+        await self.server.tasks.handle(self.ws, {"type":"task.budget.add","thread_id":self.thread.id,
+            "payload":{"task_id":task["id"],"budget":{"global_api_calls":40,"global_api_tokens":400000,"api_calls":4}}}, set())
+        changed = self.server.tasks.runtime.get(task["id"])
+        self.assertEqual(changed["global_budget"]["global_api_calls"],40)
+        self.assertEqual(changed["config"]["budget"]["api_calls"],4)
+        self.assertEqual(self.server.tasks.runtime.usage(task["id"]),previous)
