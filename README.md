@@ -26,6 +26,8 @@ v0.4.2 修复旧会话模型与底部显示不一致：发送请求携带当前 
 
 main 另包含 Planning 重试与诊断修复（尚未发布安装包）：独立持久化规划上限、JSON/工具计划兼容、真实 Usage 结算和 Task 顶部取消入口。见 [根因与调用链](docs/validation/planning-api-root-cause.md) / [测试与公司源码更新](docs/validation/planning-api-test-results.md)。本轮真实 API 按用户要求 NOT RUN。
 
+Task 启动预算检查也已补充具体任务/全局字段、限额、已用/预留、本次所需及模型输出上限；新任务读取最新 Settings，仅覆盖 Task 面板中主动编辑的字段，旧任务保留快照。见 [预算启动审计](docs/validation/task-start-budget-root-cause.md) / [测试记录](docs/validation/task-start-budget-test-results.md)。此修复同样只在源码 main，旧 v0.4.2 安装包不含修复。
+
 真实 CPU Ollama 已验证新路由、规划与实际工具调用，但小模型未完成修复；真实付费 API 尚未验收。跨 Provider、升级回交、Usage、预算和恢复通过实际 HTTP Mock 验证，不能将其视为真实付费消费或公司模型能力证明。构建和发布状态见 [验收记录](docs/v0.4/acceptance.md)。
 
 - [架构审计](docs/v0.4/architecture-audit.md) / [设计](docs/v0.4/design.md)

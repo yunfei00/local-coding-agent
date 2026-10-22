@@ -12,6 +12,27 @@
 
 ## 安装与服务
 
+### Task 启动即 Paused、API 计数为零的修复
+
+本轮只更新源码，旧 v0.4.2 安装包不包含此修复；不创建新 Release/Tag/安装包。详细原因见 [预算启动审计](../validation/task-start-budget-root-cause.md)，自动化结果见 [测试记录](../validation/task-start-budget-test-results.md)。
+
+先退出正在运行的源码开发版，在仓库目录执行（有本地未提交修改时先保留，不执行 reset/clean）：
+
+```powershell
+git status -sb
+git switch main
+git pull --ff-only origin main
+uv sync --locked
+npm --prefix desktop ci --no-audit --no-fund
+npm run dev
+```
+
+运行中的 Electron 和 Agent 必须退出重开才能加载更新。已有保存配置和凭据无需重新填写。Settings → Models & Routing 中确认 API-only 的 Planner/Executor/Reviewer 使用 API Profile，保存后新建 Task，直接使用下文已有 calculator fixture 和验证命令。观察实际 Planning → Executing → verifying；未通过测试不可接受报告。
+
+新 Task 启动时读取最新保存 Settings，保留 Task 面板内主动编辑的字段。旧 Paused Task 仍保留原快照，直接 Resume 不会采用新默认值；可新建 Task，或重新打开 Task 面板，检查配置后明确 Apply configuration to paused task，再恢复。旧账本不会清零。
+
+若再次在零调用时阻止，Task 将直接显示具体任务/全局字段、上限、已用/已预留、本次需要及估算输入与输出上限。`api_calls=0` 或 `api_tokens=0` 表示明确禁止；全局上限包含别的任务；首次预留还包含模型最大输出。依据显示字段检查配置及模型输出限制，不应笼统追加预算。只需口述字段和阶段即可，无需截图、上传日志或提供 Key。
+
 安装发布页的 x64 Setup，或直接运行 Portable。发布地址见 README；公司电脑需允许 Ollama 服务与批准的 API 网关访问。安装包内置 Agent；工程验证命令仍需 Git、uv 和项目所用工具。
 
 先执行 `Get-Command git, uv, ollama` 检查环境。缺少 uv 时，按 [uv 官方安装说明](https://docs.astral.sh/uv/getting-started/installation/) 可执行：
