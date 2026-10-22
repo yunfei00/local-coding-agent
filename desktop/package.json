@@ -1,6 +1,6 @@
 {
   "name": "local-coding-agent-desktop",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "description": "Local-first desktop coding agent with Ollama and OpenAI-compatible providers",
   "main": "dist-electron/main.js",

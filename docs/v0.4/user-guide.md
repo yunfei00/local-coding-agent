@@ -1,6 +1,6 @@
 # 公司电脑部署与使用
 
-详细配置及可复现工程见 [公司验证流程](company-validation.md)。代码版本 0.4.1；正式发布结果以 [验收记录](acceptance.md) 和 README 的 Release 链接为准。
+详细配置及可复现工程见 [公司验证流程](company-validation.md)。代码版本 0.4.2；正式发布结果以 [验收记录](acceptance.md) 和 README 的 Release 链接为准。
 
 ## 项目和会话
 
@@ -17,6 +17,8 @@ Role Routing 中分别选择 Planner、Executor、Reviewer、Escalation。默认
 API Key 用密码框和 Save / clear connection key 保存，随后保存模型配置引用。Windows safeStorage 保护密文；不可用时仅本会话有效。原有单 API Key 保留在原存储，迁移不会复制到 SQLite。换电脑重新配置凭据。
 
 Local-only 保证自主任务不发送 API 请求；绑定冲突会在请求前报错。API-only 需绑定相应 API 模型，所有调用均计入预算。公司 LAN Ollama 按 Ollama 类型视为本地服务。
+
+普通聊天使用 Settings → Provider 的服务和输入框底部 Chat model，不使用 Task 的四角色绑定。v0.4.2 起发送会携带当前可见的模型并同步保存到会话；旧会话模型不在当前服务列表时显示 unavailable，需重新选择。无需删除历史、清空配置或重新填写 API Key。排查细节见 [聊天模型同步修复](chat-model-sync.md)。
 
 ## 开始任务与恢复
 
