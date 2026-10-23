@@ -8,6 +8,8 @@
 
 真实 Electron 用例发现 Chromium UIA SetValue 可绕过 React 输入事件并回滚。Chrome_WidgetWin 的精确 Edit 改用经过 UIA ValuePattern、非只读、非敏感、精确 RuntimeId 焦点和前台身份校验的单批 Unicode SendInput；所有按键平衡释放，之后通过 ValuePattern 验证，不使用剪贴板或盲打回退。原生 Edit 仍使用 SetValue。输入仍脱敏，不写入日志。
 
+Windows CI 进一步暴露 DESKTOP_VALUE_MISMATCH。聚焦已在前台的窗口时不再先向 Chromium 根 Document 发送异步 SetFocus，避免覆盖子 Edit 的焦点；ValuePattern 等待连续两次稳定值，Chromium 最长 3 秒、原生 Edit 最长 0.5 秒。失败只输出字符数，不输出文本，也不重放输入。仍需最新 CI 验证，不能将本机通过代替远端通过。
+
 成功桌面操作后仅允许刷新只读观察计数；不重置动作次数、短循环或总体请求/时间限制，避免第三次必要 inspect 被当成无进展循环。相关守卫测试同时确认重复点击仍受限制。
 
 Save 不降低危险操作规则；GUI 契约和 Mock 决策显式请求 confirm_risk，并由原 Approval 获得一次授权。

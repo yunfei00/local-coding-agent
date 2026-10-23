@@ -329,7 +329,11 @@ def focus(binding, control=None):
     except Exception:
         pass  # The authoritative foreground check below remains fail-closed.
     window = root(binding)
-    window.set_focus()
+    active=gui.GetForegroundWindow()
+    # Do not asynchronously focus the Chromium document when its window is
+    # already active, just before requesting focus on the exact child Edit.
+    if not active or gui.GetAncestor(active,2)!=hwnd:
+        window.set_focus()
     if control is not None:
         control.set_focus()
     for _ in range(15):
@@ -566,14 +570,20 @@ def execute(request):
             except Exception:
                 fail('DESKTOP_UIA_PATTERN_UNAVAILABLE','ValuePattern unavailable; no blind typing fallback')
         verified=False
-        for _ in range(25):
+        stable_reads=0
+        observed_length=0
+        deadline=time.monotonic()+(3 if chromium else .5)
+        while time.monotonic()<deadline:
             check(binding)
-            if value_pattern.CurrentValue == text:
+            retained=value_pattern.CurrentValue
+            observed_length=len(retained)
+            stable_reads=stable_reads+1 if retained==text else 0
+            if stable_reads>=2:
                 verified=True
                 break
-            time.sleep(.02)
+            time.sleep(.05)
         if not verified:
-            fail('DESKTOP_VALUE_MISMATCH','The control did not retain the requested ordinary text; no value was logged')
+            fail('DESKTOP_VALUE_MISMATCH',f'Edit value did not stabilize: requested {len(text)} characters, observed {observed_length}; no text logged or input replayed')
         return {'entered':True,'characters':len(text),'value_verified':True,'input_logged':False,
                 'method':'uia_edit_unicode_input' if chromium else 'uia_value'}
     if op == 'desktop_keypress':
