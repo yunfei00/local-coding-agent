@@ -118,7 +118,7 @@ const provider = http.createServer((req, res) => {
 
 async function main() {
   await new Promise(resolve => provider.listen(0, "127.0.0.1", resolve));
-  const env = {...process.env, ELECTRON_RUN_AS_NODE: undefined, LCA_HEADLESS_SMOKE: "1",
+  const env = {...process.env, ELECTRON_RUN_AS_NODE: undefined, LCA_HEADLESS_SMOKE: process.platform === "win32" ? "0" : "1",
     LCA_DATA_DIR: path.join(data, "agent"), LCA_DESKTOP_DATA_DIR: path.join(data, "desktop"),
     LCA_OLLAMA_URL: `http://127.0.0.1:${provider.address().port}`, LCA_OLLAMA_MODEL: "task-executor",
     LCA_PROVIDER: "openai_compatible", LCA_OPENAI_BASE_URL: `http://127.0.0.1:${provider.address().port}/v1`,
@@ -168,6 +168,16 @@ async function main() {
     assert.equal(await page.locator(".project-tree-name").first().evaluate(e => getComputedStyle(e).fontSize), "14px");
     assert.equal(await page.getByRole("button",{name:"Settings",exact:true}).evaluate(e => getComputedStyle(e).fontSize), "14px");
     checks.push("Readable shared typography: 16px composer, 14px sidebar and controls");
+    if (process.platform === "win32") {
+      const captureTitle="LCA M4 controlled Electron capture";
+      const beforeCaptureBounds=await application.evaluate(({BrowserWindow,screen},title)=>{const w=BrowserWindow.getAllWindows()[0];const bounds=w.getBounds();const min=w.getMinimumSize();const area=screen.getPrimaryDisplay().workArea;w.setMinimumSize(0,0);w.setTitle(title);w.setBounds({x:area.x+20,y:area.y+20,width:Math.min(1000,area.width-40),height:Math.min(650,area.height-40)});w.setAlwaysOnTop(true);w.show();w.focus();return {bounds,min};},captureTitle);
+      const captured=JSON.parse(execFileSync("uv",["run","python","scripts/validation/desktop_window_probe.py","--title",captureTitle,"--authorized","--focus","--report","m4-electron-window.json"],{cwd:root,env:{...process.env,LCA_DATA_DIR:path.join(data,"agent")},encoding:"utf8",timeout:45000}).trim());
+      assert(captured.real_windows_api && captured.raw_capture_valid);
+      assert(captured.width>0 && captured.height>0);
+      assert(["PrintWindow_client","foreground_visible_client"].includes(captured.capture_method));
+      await application.evaluate(({BrowserWindow},{bounds,min})=>{const w=BrowserWindow.getAllWindows()[0];w.setAlwaysOnTop(false);w.setBounds(bounds);w.setMinimumSize(...min);},beforeCaptureBounds);
+      checks.push("Real Electron HWND/UIA screenshot through product Windows capture with valid dimensions, privacy masking and method diagnostics");
+    }
     await page.getByRole("button", {name:"New project",exact:true}).click();
     let projectDialog = page.getByRole("dialog",{name:"New project",exact:true});
     await projectDialog.waitFor();

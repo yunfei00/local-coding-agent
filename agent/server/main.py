@@ -1783,7 +1783,7 @@ class AgentServer:
         provider.request_timeout = self.tasks.settings()['budget']['request_seconds']
         provider.chat_identity = {'chat_profile_id':profile['model_profile_id'], 'connection_id':profile['_connection']['connection_id'],
                                  'model_id':profile['model'], 'supports_vision':profile.get('supports_vision',False)}
-        provider.chat_identity['vision_test_status'] = json.loads(self.store.get_setting('model.test.'+profile['model_profile_id']) or '{}').get('vision','NOT_RUN')
+        provider.chat_identity['vision_test_status'] = self.tasks.catalog().test_result(profile['model_profile_id']).get('vision','NOT_RUN')
         return provider, profile['model']
 
     async def chat_model_status(self):
@@ -2131,6 +2131,16 @@ class AgentServer:
                                     finish_reason = chunk.finish_reason
                                     prompt_eval_count = chunk.prompt_eval_count
                                     eval_count = chunk.eval_count
+                                    if capture:
+                                        raw = getattr(provider,'provider',provider)
+                                        transport = getattr(raw,'response_metadata',{})
+                                        attachment = {**tools.desktop.image_metadata.get(turn_id,{}),
+                                            'model_id':model, 'http_status':transport.get('http_status'),
+                                            'request_sent':transport.get('request_sent'),
+                                            'http_image_accepted':bool(transport.get('request_sent') and 200 <= (transport.get('http_status') or 0) < 300)}
+                                        execution.data['last_attachment'] = attachment
+                                        execution.save()
+                                        await ws.send_json(envelope('model.attachment',attachment,thread_id=thread_id,turn_id=turn_id))
                         break
                     except ProviderError as exc:
                         can_retry = (

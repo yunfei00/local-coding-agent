@@ -144,3 +144,32 @@ class UnifiedChatTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.server.tasks.vision_binding(changed))
         with self.assertRaises(ValueError):
             self.server.tasks.vision_binding(validate_config({**config,'strategy':'local-only'}))
+
+    async def test_task_observer_actual_http_is_charged_to_original_task_budget(self):
+        await self.setup_models()
+        image,_=synthetic_image()  # Protocol fixture, never claimed as Windows capture.
+        original=self.server.run_tool_turn
+        async def capture_then_run(ws,**kwargs):
+            kwargs['project_override'].tools.desktop.images[kwargs['turn_id']]={'type':'image_url','image_url':{'url':image}}
+            await original(ws,**kwargs)
+        self.server.run_tool_turn=capture_then_run
+        config=validate_config({**self.config,'roles':{'executor':{'model_profile_id':'deepseek-same'}},
+            'vision_profile_id':'qwen-same','budget':{'api_calls':2,'api_tokens':30000},
+            'verification_commands':['uv run --no-project python -m unittest discover -s tests -v']})
+        await self.server.tasks.handle(self.ws,{'type':'task.start','thread_id':self.thread.id,'payload':{'goal':'Fix calculator','config':config}},set())
+        await asyncio.wait_for(asyncio.gather(*list(self.server.active_turns.values())),30)
+        task=self.server.tasks.runtime.list(self.thread.id)[0]
+        self.assertEqual([r[0] for r in self.requests],['qwen','deepseek'])
+        self.assertEqual(task['status'],'paused')
+        calls=self.server.tasks.runtime.calls(task['id'])
+        self.assertEqual([c['role'] for c in calls],['vision-observer','executor'])
+        self.assertEqual(self.server.tasks.runtime.usage(task['id'])['api_calls'],2)
+        self.assertNotEqual(task['status'],'completed')
+
+    async def test_saved_vision_test_becomes_stale_when_profile_changes(self):
+        await self.setup_models()
+        self.server.store.set_setting('model.test.qwen-same',json.dumps({'vision':'PASS','config_fingerprint':self.server.tasks.catalog().fingerprint('qwen-same')}))
+        self.assertEqual(self.server.tasks.catalog().test_result('qwen-same')['vision'],'PASS')
+        self.catalog['profiles'][1]['supports_vision']=False
+        await self.save()
+        self.assertEqual(self.server.tasks.catalog().test_result('qwen-same')['vision'],'STALE')

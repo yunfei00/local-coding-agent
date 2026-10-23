@@ -90,6 +90,18 @@ class ModelCatalog:
         """Resolve an explicit identity through the existing role resolver, never a model-name guess."""
         return self.resolve(validate_config({'strategy':'single-agent', 'roles':{'executor':{'model_profile_id':profile_id}}}))['roles']['executor']
 
+    def fingerprint(self, profile_id):
+        catalog=self.load()
+        profile=next(p for p in catalog['profiles'] if p['model_profile_id']==profile_id)
+        connection=next(c for c in catalog['connections'] if c['connection_id']==profile['connection_id'])
+        return hashlib.sha256(json.dumps([profile,connection],sort_keys=True).encode()).hexdigest()
+
+    def test_result(self, profile_id):
+        result=json.loads(self.store.get_setting('model.test.'+profile_id) or '{}')
+        if result and result.get('config_fingerprint') != self.fingerprint(profile_id):
+            result={**result,'vision':'STALE','configuration':'STALE'}
+        return result
+
     def import_legacy_models(self, models):
         catalog = self.load()
         cid = 'legacy-ollama' if self.defaults.provider == 'ollama' else 'legacy-openai'

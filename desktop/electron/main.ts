@@ -5,6 +5,7 @@ import {
   dialog,
   ipcMain,
   safeStorage,
+  screen,
   shell
 } from "electron";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
@@ -890,12 +891,13 @@ async function stopAgent(): Promise<void> {
 
 function createWindow(): void {
   rendererReady = false;
+  const workArea = screen.getPrimaryDisplay().workArea;
   mainWindow = new BrowserWindow({
     show: process.env.LCA_HEADLESS_SMOKE !== "1",
-    width: 1180,
-    height: 780,
-    minWidth: 900,
-    minHeight: 600,
+    width: Math.min(1180, workArea.width),
+    height: Math.min(780, workArea.height),
+    minWidth: Math.min(900, workArea.width),
+    minHeight: Math.min(600, workArea.height),
     backgroundColor: "#111111",
     webPreferences: {
       offscreen: process.env.LCA_HEADLESS_SMOKE === "1",

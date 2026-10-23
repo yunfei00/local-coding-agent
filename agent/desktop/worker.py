@@ -159,8 +159,9 @@ def _capture_visible_client_only(hwnd):
     if x < desktop[0] or y < desktop[1] or x+w > desktop[0]+desktop[2] or y+h > desktop[1]+desktop[3]:
         fail('DESKTOP_CAPTURE_OCCLUDED', 'Authorized client must be fully visible on screen')
     blocked = False
+    blocking_class = 'unknown'
     def visit(other, unused):
-        nonlocal blocked
+        nonlocal blocked, blocking_class
         if other == hwnd:
             return False
         if not gui.IsWindowVisible(other) or gui.IsIconic(other):
@@ -168,12 +169,13 @@ def _capture_visible_client_only(hwnd):
         l, t, r, b = gui.GetWindowRect(other)
         if max(l, x) < min(r, x+w) and max(t, y) < min(b, y+h):
             blocked = True
+            blocking_class = gui.GetClassName(other) if hasattr(gui,'GetClassName') else 'unknown'
             return False
         return True
     gui.EnumWindows(visit, None)
     if blocked:
         fail('DESKTOP_CAPTURE_OCCLUDED',
-             'Another visible window overlaps the authorized client; no screen pixels captured')
+             'Another visible window (' + blocking_class + ') overlaps the authorized client; no screen pixels captured')
     image = ImageGrab.grab(bbox=(x, y, x+w, y+h), all_screens=True).convert('RGB')
     if image.size != (w, h) or _capture_looks_blank(image):
         fail('DESKTOP_CAPTURE_EMPTY', 'Screen fallback did not capture usable window pixels')

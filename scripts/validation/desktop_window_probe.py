@@ -12,6 +12,8 @@ async def run(args):
         listed=await runtime.execute('desktop_list_windows',{},owner=owner,authorized=args.authorized)
         windows=[w for w in listed.data['windows'] if w['title']==args.title]
         if len(windows)!=1: raise ValueError('Exact authorized window must be unique; no capture performed')
+        if args.focus:
+            await runtime.execute('desktop_focus_window',{'window_id':windows[0]['window_id']},owner=owner,authorized=args.authorized)
         result=await runtime.execute('desktop_screenshot',{'window_id':windows[0]['window_id']},owner=owner,authorized=args.authorized)
         report={'real_windows_api':True,'upload':False,**result.data}
         target=Path('validation-reports')/args.report
@@ -26,5 +28,6 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--title',required=True)
     parser.add_argument('--authorized',action='store_true',help='Explicit consent to capture only the named window, locally')
+    parser.add_argument('--focus',action='store_true',help='Explicitly focus this authorized window before capture')
     parser.add_argument('--report',default='controlled-window-capture.json')
     asyncio.run(run(parser.parse_args()))

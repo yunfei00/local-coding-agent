@@ -983,6 +983,14 @@ function App() {
   const selectedLabel = selectedProfile ? `${selectedProfile.connection_name || ""} / ${selectedProfile.display_name || selectedProfile.model_id || selectedProfile.name}` : selectedModel;
   const modelAvailable = Boolean(selectedModel && selectedProfile && selectedProfile.enabled !== false);
   const providerReady = Boolean(provider?.online && modelAvailable);
+  useEffect(() => {
+    if (!selectedModel || selectedModel.startsWith("profile:")) return;
+    const migrated = provider?.models.find(m=>m.legacy_alias===selectedModel);
+    if (migrated) {
+      setSelectedModel(migrated.name);
+      if (activeThread) void window.localAgent.selectModel(activeThread.id,migrated.name).catch(cause=>setUiError(String(cause)));
+    }
+  },[selectedModel,provider,activeThread?.id]);
 
   const openProject = async () => {
     if (runningTurnId) {

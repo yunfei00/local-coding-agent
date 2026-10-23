@@ -102,7 +102,7 @@ class TaskService:
                 result = {"catalog": self.catalog().load(), "config": self.settings(), "global_usage":self.runtime.usage(),
                           "chat_default":self.server.store.get_setting('chat.default_profile_id') or '',
                           "chat_vision":self.server.store.get_setting('chat.vision_profile_id') or ''}
-                result['model_tests'] = {p['model_profile_id']:json.loads(self.server.store.get_setting('model.test.'+p['model_profile_id']) or '{}') for p in result['catalog']['profiles']}
+                result['model_tests'] = {p['model_profile_id']:self.catalog().test_result(p['model_profile_id']) for p in result['catalog']['profiles']}
             elif kind == "task.catalog.update":
                 catalog = validate_catalog(payload.get("catalog"))
                 config = validate_config(payload.get("config") or self.settings())
@@ -152,6 +152,8 @@ class TaskService:
                 provider = self.make_provider(asdict(self.server.settings), 'api', {'_connection': connection, 'model': profile['model_id'], 'context_window': profile['context_window'], 'temperature': profile['temperature']})
                 result = await self.model_diagnostics.run(provider, connection, profile, live=payload.get('live') is True, vision=payload.get('vision', True))
                 result['executor_bound'] = self.settings()['roles']['executor'].get('model_profile_id') == profile['model_profile_id']
+                result['model_profile_id'] = profile['model_profile_id']
+                result['config_fingerprint'] = self.catalog().fingerprint(profile['model_profile_id'])
                 self.server.store.set_setting('model.test.'+profile['model_profile_id'], json.dumps(result))
             elif kind == "task.connection.test":
                 cid = payload.get("connection_id")
