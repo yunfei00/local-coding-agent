@@ -314,7 +314,7 @@ def input_batch(events):
     for kind, value, flags in events:
         item = Input(type=kind)
         if kind == 1:
-            item.ki = Keyboard(wVk=value, dwFlags=flags)
+            item.ki = Keyboard(wScan=value, dwFlags=flags) if flags & 0x0004 else Keyboard(wVk=value, dwFlags=flags)
         else:
             item.mi = Mouse(mouseData=value & 0xffffffff, dwFlags=flags)
         values.append(item)
