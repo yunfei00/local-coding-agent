@@ -19,6 +19,8 @@
 
 最终代码包含晚于首次完整回归的增强，不把旧完整回归冒充最终结果。最终提交由 Windows/Ubuntu CI 在干净环境重新运行全部测试，合并记录附最终检查结果。
 
+最终门禁已完成：head 9e5fd20，本机 check.py Errors=0（354 Python：352 通过、2 平台跳过；44 Vitest；类型检查和源码构建通过），报告 20261023-232447-811400；desktop-smoke 30 通过、0 跳过，包含原生截图与本地预览 IPC。Windows/Ubuntu [CI 39978469791](https://github.com/yunfei00/local-coding-agent/actions/runs/39978469791) 均成功，PR #20 合并 main 921fdd950da368d6d5f587e31071ec3641389844。
+
 ## 本轮真实模型边界
 
 无付费调用授权，没有读取或索取 Key。真实在线模型推理 **NOT RUN**。百炼 qwen3.8-flash Configuration/Connection/Text/Vision/Tools PASS 与 executor_bound=true 仅为用户历史结果。

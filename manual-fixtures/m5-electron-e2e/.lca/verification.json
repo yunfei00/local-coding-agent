@@ -1,0 +1,1 @@
+{"commands":["npm run typecheck","npm test","npm run build","git diff --check"]}

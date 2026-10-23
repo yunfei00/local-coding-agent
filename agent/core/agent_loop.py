@@ -230,6 +230,12 @@ class ToolLoopGuard:
         if ok:
             self.consecutive_failures = 0
             self.last_failure_code = None
+            if name in {'desktop_click','desktop_type_text','desktop_keypress','desktop_scroll'}:
+                # Re-inspection is necessary after a scoped UI action. Do not
+                # reset action counts or cycle detection: repeated clicks and
+                # inspection-only loops must remain bounded.
+                self.call_counts={key:value for key,value in self.call_counts.items()
+                                  if not key.startswith(('desktop_inspect:','desktop_screenshot:'))}
         else:
             self.consecutive_failures += 1
             self.max_observed_consecutive_failures = max(

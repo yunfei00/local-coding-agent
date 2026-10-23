@@ -29,7 +29,10 @@ def acceptance_snapshot(root: Path) -> dict:
             if path.stat().st_size > 262144 or not path.resolve().is_relative_to(root.resolve()):
                 raise ValueError('Acceptance manifest outside workspace or too large')
             scripts = json.loads(path.read_text(encoding='utf-8')).get('scripts',{})
-            snapshot[str(relative)] = {'scripts':{k:v for k,v in scripts.items() if k in ('test','typecheck','build','pretest','posttest','prebuild','postbuild')}}
+            # Missing hooks are frozen too: adding prestart/pretest must not
+            # silently replace the trusted execution path. Old snapshots keep
+            # their original subset comparison for compatibility.
+            snapshot[str(relative)] = {'scripts':{k:scripts.get(k) for k in ('test','typecheck','build','pretest','posttest','prebuild','postbuild','start','prestart','poststart')}}
         elif (is_test or config) and path.suffix not in ('.pyc','.pyo'):
             if not path.resolve().is_relative_to(root.resolve()) or path.stat().st_size > 2*1024*1024 or len(snapshot) >= 2000:
                 raise ValueError('Acceptance baseline exceeds bounded safe discovery')

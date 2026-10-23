@@ -771,3 +771,6 @@ ModelRouter 在每次请求前调用 BudgetGuard 原子预留预算，角色 Pro
 混合模型配置通过 ModelCatalog 分离 Connection、Model Profile 与 Role Binding，角色沿配置 ID 解析到各连接客户端；普通聊天的活动 Provider 不改变任务绑定。新任务冻结解析后的角色/连接及任务和全局预算，已有任务不被迁移回写。密钥引用沿用 safeStorage/session，实际连接与模型身份写入原 model_requests 账本。详见 [模型路由](v0.4/model-routing.md)。
 
 详细实现、使用与验收边界见 [v0.4 设计](v0.4/design.md) 和 [v0.4 验收](v0.4/acceptance.md)。
+## M5 补充
+
+M5 继续复用 M1～M4 执行链，固定 Electron/React/TS 工程进行真实多轮 GUI 修复、HTTP JPEG、Stop/Resume/重启和验收反篡改验证。Task Timeline/产物直接读取原持久化快照，截图通过受限本地 IPC 预览，不增加数据库或执行器。参见 [M5 架构](m5/architecture.md) 与 [独立验收](m5/end-to-end-acceptance.md)。

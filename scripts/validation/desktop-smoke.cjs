@@ -382,6 +382,11 @@ async function main() {
     await page.getByRole("button", {name:"Start autonomous task", exact:true}).click();
     await page.getByRole("button", {name:"Allow once", exact:true}).click();
     await page.locator('[data-task-status="awaiting_approval"]').waitFor({timeout:60000});
+    const timeline=page.locator('summary').filter({hasText:/^Task timeline/}).first();
+    await timeline.click();
+    await page.getByText('Independent verification #1: PASS',{exact:false}).waitFor();
+    assert.equal(await page.locator('.composer textarea').isEnabled(),true);
+    checks.push("Task timeline shows persisted independent verification and state transitions while Composer remains usable");
     await page.locator(".send-button").waitFor();
     const taskBefore = await page.evaluate(async () => {
       const session = await window.localAgent.getProject();

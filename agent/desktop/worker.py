@@ -357,7 +357,8 @@ def input_batch(events):
     for kind, value, flags in events:
         item = Input(type=kind)
         if kind == 1:
-            item.ki = Keyboard(wVk=value, dwFlags=flags)
+            item.ki = Keyboard(wVk=0 if flags & 4 else value,
+                               wScan=value if flags & 4 else 0, dwFlags=flags)
         else:
             item.mi = Mouse(mouseData=value & 0xffffffff, dwFlags=flags)
         values.append(item)
@@ -526,13 +527,55 @@ def execute(request):
                 'Inspect again and select an exact Edit runtime_id or automation_id. '
                 'No input was entered.')
         try:
-            control.iface_value.SetValue(text)
-            verified = control.iface_value.CurrentValue == text
+            value_pattern=control.iface_value
+            if value_pattern.CurrentIsReadOnly:
+                fail('DESKTOP_CONTROL_UNAVAILABLE','Selected Edit is read-only; no input sent')
+        except DesktopError:
+            raise
         except Exception:
             fail('DESKTOP_UIA_PATTERN_UNAVAILABLE','ValuePattern unavailable; no blind typing fallback')
+        chromium=gui.GetClassName(hwnd).startswith('Chrome_WidgetWin')
+        if chromium:
+            # Chromium SetValue can bypass React's input event and be reverted.
+            # This is an explicit Edit input path, never a fallback on an
+            # unknown control. Verify focus and identity before one balanced
+            # Unicode SendInput batch; neither clipboard nor key scripts used.
+            from pywinauto.uia_defines import IUIA
+            focus(binding,control)
+            focused_exact=False
+            for _ in range(40):
+                check(binding)
+                focused=IUIA().iuia.GetFocusedElement()
+                if tuple(focused.GetRuntimeId())==tuple(control.element_info.runtime_id):
+                    focused_exact=True
+                    break
+                time.sleep(.02)
+            if not focused_exact or sensitive(control):
+                fail('DESKTOP_FOCUS_FAILED','Exact Edit did not receive focus; no input sent')
+            check(binding)
+            if gui.GetForegroundWindow()!=hwnd:
+                fail('DESKTOP_FOCUS_FAILED','Window lost focus; no input sent')
+            encoded=text.encode('utf-16-le')
+            units=[int.from_bytes(encoded[i:i+2],'little') for i in range(0,len(encoded),2)]
+            events=[(1,17,0),(1,65,0),(1,65,2),(1,17,2),(1,8,0),(1,8,2)]
+            events.extend(event for unit in units for event in ((1,unit,4),(1,unit,6)))
+            input_batch(events)
+        else:
+            try:
+                value_pattern.SetValue(text)
+            except Exception:
+                fail('DESKTOP_UIA_PATTERN_UNAVAILABLE','ValuePattern unavailable; no blind typing fallback')
+        verified=False
+        for _ in range(25):
+            check(binding)
+            if value_pattern.CurrentValue == text:
+                verified=True
+                break
+            time.sleep(.02)
         if not verified:
             fail('DESKTOP_VALUE_MISMATCH','The control did not retain the requested ordinary text; no value was logged')
-        return {'entered':True,'characters':len(text),'value_verified':True,'input_logged':False}
+        return {'entered':True,'characters':len(text),'value_verified':True,'input_logged':False,
+                'method':'uia_edit_unicode_input' if chromium else 'uia_value'}
     if op == 'desktop_keypress':
         keys = a.get('keys','').upper().split('+')
         names = {'CTRL':17,'ALT':18,'SHIFT':16,'TAB':9,'ENTER':13,'ESC':27,'ESCAPE':27,'SPACE':32,'BACKSPACE':8,'DELETE':46,'HOME':36,'END':35,'UP':38,'DOWN':40,'LEFT':37,'RIGHT':39,'PAGEUP':33,'PAGEDOWN':34}
