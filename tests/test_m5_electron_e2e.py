@@ -126,7 +126,10 @@ class ElectronE2ETests(unittest.IsolatedAsyncioTestCase):
         return tool('desktop_inspect',window_id=self.window)
 
     def list_windows(self,messages,_model):
-        return tool('desktop_list_windows')
+        lines=last_result(messages).get('stdout','').splitlines()
+        ready=next((line.split('M5_ELECTRON_READY ',1)[1] for line in lines if 'M5_ELECTRON_READY ' in line),None)
+        self.assertIsNotNone(ready,'Missing actual process readiness metadata')
+        return tool('desktop_list_windows',pid=json.loads(ready)['pid'])
 
     def stop(self,messages,_model):return tool('stop_process',process_id=process_id(messages))
 
@@ -139,6 +142,7 @@ class ElectronE2ETests(unittest.IsolatedAsyncioTestCase):
         task=await self.start([command('npm ci --no-audit --no-fund'),tool('search_files',query='disabled',path='src'),tool('read_file',path='src/App.tsx'),
             tool('apply_patch',path='src/App.tsx',old_text='disabled={true}',new_text='disabled={false}'),*checks,
             tool('start_process',command='npm start',timeout_seconds=240),poll_ready,self.list_windows,self.select,
+            self.action('desktop_wait',selector={'name':'Settings','control_type':'Button'},state='visible',seconds=5),
             self.action('desktop_click',selector={'name':'Settings','control_type':'Button'}),self.action('desktop_inspect'),
             self.action('desktop_type_text',selector={'control_type':'Edit'},text='M5 initial check'),
             self.action('desktop_click',selector={'name':'Save','control_type':'Button'},confirm_risk=True),self.action('desktop_inspect'),

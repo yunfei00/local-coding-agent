@@ -332,7 +332,7 @@ def focus(binding, control=None):
     active=gui.GetForegroundWindow()
     # Do not asynchronously focus the Chromium document when its window is
     # already active, just before requesting focus on the exact child Edit.
-    if not active or gui.GetAncestor(active,2)!=hwnd:
+    if not gui.GetClassName(hwnd).startswith('Chrome_WidgetWin') or not active or gui.GetAncestor(active,2)!=hwnd:
         window.set_focus()
     if control is not None:
         control.set_focus()
@@ -578,7 +578,7 @@ def execute(request):
             retained=value_pattern.CurrentValue
             observed_length=len(retained)
             stable_reads=stable_reads+1 if retained==text else 0
-            if stable_reads>=2:
+            if stable_reads>=(2 if chromium else 1):
                 verified=True
                 break
             time.sleep(.05)

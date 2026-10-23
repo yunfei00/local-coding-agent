@@ -79,6 +79,13 @@ jobs:
             }
           }
 
+      - name: Focused M5 real Electron acceptance
+        shell: pwsh
+        if: runner.os == 'Windows'
+        env:
+          LCA_REQUIRE_INTERACTIVE_DESKTOP: "1"
+        run: uv run python -m unittest discover -s tests -p test_m5_electron_e2e.py -v
+
       - name: Python tests
         shell: bash
         if: runner.os != 'Windows'

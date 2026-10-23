@@ -4,6 +4,17 @@
   "timeout_seconds": 150,
   "steps": [
     {
+      "tool": "desktop_wait",
+      "arguments": {
+        "selector": {
+          "name": "Settings",
+          "control_type": "Button"
+        },
+        "state": "visible",
+        "seconds": 5
+      }
+    },
+    {
       "tool": "desktop_focus_window",
       "arguments": {}
     },
