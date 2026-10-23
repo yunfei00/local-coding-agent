@@ -24,6 +24,8 @@ import { checkProtocolCompatibility } from "./protocol";
 import { checkForUpdates } from "./updateCheck";
 
 const APP_ID = "com.yunfei.localcodingagent";
+// Expose the renderer's semantic controls to Windows UI Automation.
+app.commandLine.appendSwitch("force-renderer-accessibility");
 if (process.env.LCA_DESKTOP_DATA_DIR) {
   app.setPath("userData", path.resolve(process.env.LCA_DESKTOP_DATA_DIR));
 }

@@ -41,6 +41,7 @@ type Status = {
 
 type ModelInfo = {
   name: string;
+  model_id?:string; display_name?:string; connection_id?:string; connection_name?:string; enabled?:boolean; supports_vision?:boolean; legacy_alias?:string;
   size?: number | null;
   family?: string | null;
   parameter_size?: string | null;
@@ -221,6 +222,8 @@ function App() {
   const [projectThreadCache, setProjectThreadCache] = useState<Record<string, ThreadRecord[]>>({});
   const [workspace, setWorkspace] = useState<ProjectInfo | null>(null);
   const [selectedModel, setSelectedModel] = useState("");
+  const [modelSearch,setModelSearch] = useState("");
+  const [modelIdentity,setModelIdentity] = useState("");
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
   const [activeThread, setActiveThread] = useState<ThreadRecord | null>(null);
   const [items, setItems] = useState<ChatItem[]>([]);
@@ -447,6 +450,9 @@ function App() {
         return;
       }
 
+      if (event.type === "model.identity" || event.type === "vision.observed") {
+        setModelIdentity(`${event.type === "vision.observed" ? "Vision" : "Active"}: ${String(event.payload?.connection_id || "Task")} / ${String(event.payload?.model_id || "")} · image ${event.payload?.image_attached ? "attached" : "none"}`);
+      }
       if (event.type === "model.selected") {
         const thread = readThread(event);
         if (thread) {
@@ -932,10 +938,10 @@ function App() {
           setProvider(providerStatus);
           const modelNames = providerStatus.models.map((item) => item.name);
           setSelectedModel((current) => {
-            if (current && modelNames.includes(current)) {
-              return current;
+            if (current) {
+              return providerStatus.models.find(m=>m.legacy_alias===current)?.name || current;
             }
-            return providerStatus.default_model ?? modelNames[0] ?? "";
+            return providerStatus.default_model ?? "";
           });
         }
       } catch (error) {
@@ -973,7 +979,9 @@ function App() {
     return usedLabel + " / " + windowLabel;
   }, [provider, contextUsage]);
 
-  const modelAvailable = Boolean(selectedModel && provider?.models.some(model => model.name === selectedModel));
+  const selectedProfile = provider?.models.find(model => model.name === selectedModel);
+  const selectedLabel = selectedProfile ? `${selectedProfile.connection_name || ""} / ${selectedProfile.display_name || selectedProfile.model_id || selectedProfile.name}` : selectedModel;
+  const modelAvailable = Boolean(selectedModel && selectedProfile && selectedProfile.enabled !== false);
   const providerReady = Boolean(provider?.online && modelAvailable);
 
   const openProject = async () => {
@@ -1040,10 +1048,10 @@ function App() {
       setProvider(next);
       const names = next.models.map((item) => item.name);
       setSelectedModel((current) => {
-        if (current && names.includes(current)) {
-          return current;
+        if (current) {
+          return next.models.find(m=>m.legacy_alias===current)?.name || current;
         }
-        return next.default_model ?? names[0] ?? "";
+        return next.default_model ?? "";
       });
     } catch (error) {
       setUiError(String(error));
@@ -1053,7 +1061,7 @@ function App() {
   const createThread = async () => {
     setUiError(null);
     try {
-      await window.localAgent.createThread(selectedModel || undefined);
+      await window.localAgent.createThread();
     } catch (error) {
       setUiError(String(error));
     }
@@ -1326,7 +1334,7 @@ function App() {
                 {provider?.provider ?? "Provider"}
               </span>
               <span className="provider-model">
-                {selectedModel || (provider?.online ? "No model" : "Offline")}
+                {selectedLabel || (provider?.online ? "No model" : "Offline")}
               </span>
             </button>
             <button
@@ -1387,6 +1395,7 @@ function App() {
               className={"settings-button" + (settingsOpen ? " active" : "")}
               onClick={() => {
                 setSettingsOpen((current) => !current);
+                if (settingsOpen) void refreshModels();
                 setPlanOpen(false); setTaskOpen(false);
                 setGitOpen(false);
                 setDiagnosticsOpen(false);
@@ -1430,7 +1439,7 @@ function App() {
                   </div>
                   <div>
                     <span>Model</span>
-                    <strong>{selectedModel || "—"}</strong>
+                    <strong>{selectedLabel || "—"}</strong>
                   </div>
                   <div>
                     <span>Permission</span>
@@ -1609,6 +1618,7 @@ function App() {
                 <option value="workspace">Workspace</option>
                 <option value="full_access">Full Access</option>
               </select>
+              <input aria-label="Search chat models" placeholder="Search models / connections" value={modelSearch} onChange={e=>setModelSearch(e.target.value)} style={{maxWidth:180}} />
               <select
                 className="model-select"
                 aria-label="Chat model"
@@ -1623,16 +1633,13 @@ function App() {
               >
                 {selectedModel && !modelAvailable ? <option value={selectedModel} disabled>{selectedModel} (unavailable — choose a model)</option> : null}
                 {provider?.models.length ? (
-                  provider.models.map((model) => (
-                    <option key={model.name} value={model.name}>
-                      {model.name}
-                    </option>
-                  ))
+                  [...new Set(provider.models.map(m=>m.connection_name || "Migrated provider"))].map(group=><optgroup key={group} label={group}>{provider.models.filter(m=>(m.connection_name || "Migrated provider")===group && (m.name===selectedModel || `${m.display_name} ${m.model_id} ${group}`.toLowerCase().includes(modelSearch.toLowerCase()))).map(m=><option key={m.name} value={m.name} disabled={m.enabled===false}>{m.display_name || m.model_id || m.name}{m.supports_vision ? " · Vision" : ""}</option>)}</optgroup>)
                 ) : (
                   <option value="">No models</option>
                 )}
               </select>
               <span className="composer-hints">
+                {modelIdentity ? <span title={modelIdentity}>{modelIdentity}</span> : null}
                 {contextLabel ? (
                   <span className="context-chip">
                     Context {contextLabel}
@@ -1676,7 +1683,7 @@ function App() {
             threadId={activeThread?.id}
             permissionMode={permissionMode}
             running={runningTurnId !== null}
-            onClose={() => setSettingsOpen(false)}
+            onClose={() => {setSettingsOpen(false); void refreshModels();}}
             onPermissionChanged={(mode) => setPermissionMode(mode)}
             onProviderChanged={(event) => {
               const next = readProvider(event);
@@ -1689,7 +1696,7 @@ function App() {
                 if (current && names.includes(current)) {
                   return current;
                 }
-                return next.default_model ?? names[0] ?? "";
+                return next.default_model ?? "";
               });
             }}
           />

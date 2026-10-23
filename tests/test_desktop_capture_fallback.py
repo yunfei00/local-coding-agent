@@ -12,6 +12,15 @@ from agent.core.agent_loop import ToolLoopGuard
 
 
 class DesktopCaptureFallbackTests(unittest.TestCase):
+    def test_document_editor_mask_does_not_cover_chromium_root_document(self):
+        editable=SimpleNamespace(element_info=SimpleNamespace(control_type='Document',class_name='RichEditD2DPT'))
+        self.assertTrue(worker.private_editor(editable))
+        readonly=SimpleNamespace(element_info=SimpleNamespace(control_type='Document',class_name='Chrome_RenderWidgetHostHWND'),iface_value=SimpleNamespace(CurrentIsReadOnly=True))
+        self.assertFalse(worker.private_editor(readonly))
+        editable.element_info.class_name='GenericDocument'
+        editable.iface_value=SimpleNamespace(CurrentIsReadOnly=False)
+        self.assertTrue(worker.private_editor(editable))
+
     def test_printwindow_black_placeholder_is_blank(self):
         self.assertTrue(worker._capture_looks_blank(Image.new("RGB", (200, 100), (0, 0, 0))))
         self.assertTrue(worker._capture_looks_blank(Image.new("RGB", (200, 100), (2, 2, 3))))

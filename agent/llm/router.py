@@ -17,7 +17,7 @@ STRATEGIES = ("local-first", "local-only", "api-only", "single-agent")
 
 def apply_config_overrides(saved: dict, overrides: dict) -> dict:
     """Apply only deliberate Task edits to the latest saved Settings, preserving zeros."""
-    if not isinstance(overrides, dict) or set(overrides) - (set(saved) | {'gui_verification'}):
+    if not isinstance(overrides, dict) or set(overrides) - (set(saved) | {'gui_verification','vision_profile_id'}):
         raise ValueError("Invalid task configuration overrides")
     result = {**saved, **overrides}
     for key in ("budget", "roles"):
@@ -35,7 +35,7 @@ def apply_config_overrides(saved: dict, overrides: dict) -> dict:
 
 def validate_config(raw: dict | None = None) -> dict:
     raw = raw or {}
-    if set(raw) - {"strategy", "roles", "budget", "verification_commands", "gui_verification"}:
+    if set(raw) - {"strategy", "roles", "budget", "verification_commands", "gui_verification", "vision_profile_id"}:
         raise ValueError("Unknown orchestration configuration")
     strategy = raw.get("strategy", "local-first")
     if strategy not in STRATEGIES:
@@ -74,6 +74,11 @@ def validate_config(raw: dict | None = None) -> dict:
     result = {"strategy": strategy, "roles": roles, "budget": validate_limits(raw.get("budget")), "verification_commands": commands}
     if raw.get('gui_verification') is not None:
         result['gui_verification'] = validate_gui(raw['gui_verification'])
+    if 'vision_profile_id' in raw:
+        pid = raw['vision_profile_id']
+        if pid is not None and (not isinstance(pid,str) or not 1 <= len(pid) <= 100):
+            raise ValueError('Invalid vision observer profile')
+        result['vision_profile_id'] = pid
     return result
 
 

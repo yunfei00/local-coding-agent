@@ -68,7 +68,7 @@ class TaskService:
         return validate_config(json.loads(raw) if raw else None)
 
     def vision_binding(self, config, catalog=None):
-        pid = (config.get('gui_verification') or {}).get('vision_profile_id')
+        pid = config.get('vision_profile_id') if 'vision_profile_id' in config else (config.get('gui_verification') or {}).get('vision_profile_id')
         if not pid:
             return None
         observer = validate_config({'strategy': 'single-agent', 'roles': {'executor': {'model_profile_id': pid}}})
@@ -99,16 +99,33 @@ class TaskService:
                 self.credentials = dict(values)
                 result = {"configured": list(values)}
             elif kind == "task.catalog.get":
-                result = {"catalog": self.catalog().load(), "config": self.settings(), "global_usage":self.runtime.usage()}
+                result = {"catalog": self.catalog().load(), "config": self.settings(), "global_usage":self.runtime.usage(),
+                          "chat_default":self.server.store.get_setting('chat.default_profile_id') or '',
+                          "chat_vision":self.server.store.get_setting('chat.vision_profile_id') or ''}
+                result['model_tests'] = {p['model_profile_id']:json.loads(self.server.store.get_setting('model.test.'+p['model_profile_id']) or '{}') for p in result['catalog']['profiles']}
             elif kind == "task.catalog.update":
                 catalog = validate_catalog(payload.get("catalog"))
                 config = validate_config(payload.get("config") or self.settings())
                 self.catalog().resolve(config, catalog)  # Reject dangling/disabled role bindings.
                 self.vision_binding(config, catalog)
+                for field in ('chat_default','chat_vision'):
+                    if field in payload and payload[field]:
+                        selected = next((p for p in catalog['profiles'] if p['model_profile_id'] == payload[field]), None)
+                        if not selected or not next(c for c in catalog['connections'] if c['connection_id'] == selected['connection_id'])['enabled']:
+                            raise ValueError(field + ': select an enabled saved profile')
+                        if field == 'chat_vision' and not selected.get('supports_vision'):
+                            raise ValueError('Vision Observer must declare image input support')
                 with self.server.store.connection:
                     for key, value in ((CATALOG_KEY, catalog), ("orchestration.config", config)):
                         self.server.store.connection.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, json.dumps(value)))
+                    for field, key in (('chat_default','chat.default_profile_id'),('chat_vision','chat.vision_profile_id')):
+                        if field in payload:
+                            if not isinstance(payload[field],str):
+                                raise ValueError('Invalid ' + field)
+                            self.server.store.connection.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key,payload[field]))
                 result = {"catalog": catalog, "config": config}
+                if 'chat_default' in payload:
+                    self.server.default_model = 'profile:'+payload['chat_default'] if payload['chat_default'] else None
             elif kind == "task.settings.get":
                 result = {"config": self.settings(), "global_usage": self.runtime.usage()}
             elif kind == "task.settings.update":
@@ -135,6 +152,7 @@ class TaskService:
                 provider = self.make_provider(asdict(self.server.settings), 'api', {'_connection': connection, 'model': profile['model_id'], 'context_window': profile['context_window'], 'temperature': profile['temperature']})
                 result = await self.model_diagnostics.run(provider, connection, profile, live=payload.get('live') is True, vision=payload.get('vision', True))
                 result['executor_bound'] = self.settings()['roles']['executor'].get('model_profile_id') == profile['model_profile_id']
+                self.server.store.set_setting('model.test.'+profile['model_profile_id'], json.dumps(result))
             elif kind == "task.connection.test":
                 cid = payload.get("connection_id")
                 if cid:
@@ -476,6 +494,16 @@ class TaskService:
                         await update("executing", "Continue configured Executor in isolated worktree")
                     provider = single_provider or router.resolve("executor")
                     relay = LoopRelay(ws, turn_id)
+                    vision_observer = None
+                    if task.get('resolved_vision'):
+                        from agent.llm.router import RoutedProvider
+                        vision = task['resolved_vision']
+                        raw = self.make_provider(task['provider_settings'], vision['route'], vision)
+                        vision_observer = RoutedProvider(raw, vision['model'], 'vision-observer', vision['route'], vision, router)
+                        vision_observer.max_output_tokens = vision['output_limit']
+                        vision_observer.request_timeout = task['config']['budget']['request_seconds']
+                        vision_observer.chat_identity = {'chat_profile_id':None,'vision_profile_id':vision.get('model_profile_id'),
+                            'connection_id':vision['_connection']['connection_id'],'model_id':vision['model'],'supports_vision':True}
                     task = self.runtime.get(plan_id)
                     task["attempts"] += 1
                     self.runtime.save(task)
@@ -486,7 +514,7 @@ class TaskService:
                         prompt += "\nPrevious independent verification:\n" + redact_text(json.dumps(task["verification"], ensure_ascii=False)[-10000:], exact_secrets=self.server._exact_secrets(), max_chars=10000)
                     await self.server.run_tool_turn(relay, thread_id=thread_id, turn_id=turn_id + ":" + str(task["attempts"]),
                         prompt=prompt, model=provider.preferred_model, provider=provider, project_override=view,
-                        plan_id=plan_id, authorization_prompt=goal, single_agent=single)
+                        plan_id=plan_id, authorization_prompt=goal, single_agent=single, vision_observer=vision_observer)
                     outcome = relay.outcome or {"type": "turn.failed", "payload": {"code": "INTERRUPTED", "message": "Loop interrupted"}}
                     code = outcome["payload"].get("code", "")
                     if single and outcome["type"] != "turn.completed":
