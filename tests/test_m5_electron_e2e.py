@@ -37,6 +37,8 @@ class M5ContractTests(unittest.TestCase):
             self.assertIn('package.json',acceptance_changes(root,baseline))
             value=json.loads((FIXTURE/'package.json').read_text());value['scripts']['prestart']='node fake.cjs';package.write_text(json.dumps(value))
             self.assertIn('package.json',acceptance_changes(root,baseline),'New lifecycle hook must not bypass the frozen GUI launcher')
+            value=json.loads((FIXTURE/'package.json').read_text());value['scripts']['pretypecheck']='node fake.cjs';package.write_text(json.dumps(value))
+            self.assertIn('package.json',acceptance_changes(root,baseline),'Typecheck lifecycle hooks are part of the independent gate')
             package.write_text((FIXTURE/'package.json').read_text())
             old={'package.json':{'scripts':{'test':value['scripts']['test']}}}
             self.assertEqual(acceptance_changes(root,old),[],'Legacy snapshots remain readable')

@@ -32,7 +32,7 @@ def acceptance_snapshot(root: Path) -> dict:
             # Missing hooks are frozen too: adding prestart/pretest must not
             # silently replace the trusted execution path. Old snapshots keep
             # their original subset comparison for compatibility.
-            snapshot[str(relative)] = {'scripts':{k:scripts.get(k) for k in ('test','typecheck','build','pretest','posttest','prebuild','postbuild','start','prestart','poststart')}}
+            snapshot[str(relative)] = {'scripts':{k:scripts.get(k) for k in ('test','typecheck','build','pretest','posttest','pretypecheck','posttypecheck','prebuild','postbuild','start','prestart','poststart')}}
         elif (is_test or config) and path.suffix not in ('.pyc','.pyo'):
             if not path.resolve().is_relative_to(root.resolve()) or path.stat().st_size > 2*1024*1024 or len(snapshot) >= 2000:
                 raise ValueError('Acceptance baseline exceeds bounded safe discovery')
