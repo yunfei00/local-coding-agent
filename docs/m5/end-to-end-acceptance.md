@@ -42,3 +42,13 @@ Windows CI 设置 LCA_REQUIRE_INTERACTIVE_DESKTOP=1，没有交互桌面会失�
 Pause 与 Stop 均核对实际 Electron main 和记录的 renderer/utility 子进程退出；Resume 保留两次 apply_patch，不重放；重启新 Agent 保留项目、Thread 模型、Task、执行记录、角色快照和累计预算。报告 m5-electron-e2e.json 为本机脱敏证据，图片只留本机。
 
 M5 [PR #21](https://github.com/yunfei00/local-coding-agent/pull/21) 的最终 Windows/Ubuntu CI 和完整 check.py/desktop-smoke 仍为合并门禁，不能用此专项代替。真实在线模型推理 NOT RUN。
+
+## 最终门禁与后续复核
+
+后续输入修复与路径身份复核（2026-10-24）：m5-isolated-paced-gate.log，3 项全部通过，272.034 秒；真实 GUI 和 HTTP 协议均执行，非固定图片。原生 WinForms 中文输入也单独重测通过。Windows CI 增加 M5 独立实际 GUI 门禁，再运行全量测试，以覆盖清理后及 M3/M4 运行后的重复执行。
+
+本机已归档完整回归 20261024-001620-481299：check.py Errors=0，358 Python（356 通过、2 平台不适用跳过）、45 产品 Vitest、类型检查、Electron 源码构建全部通过。前一归档 20261023-235747-979545 亦为相同数量且 Errors=0。fixture 自身另有 2 个 Vitest，用例不因重复执行而重复计数。
+
+桌面烟测 m5-final-desktop-smoke.log / desktop-smoke.json：31 项通过、0 跳过，包含真实 Electron HWND 截图、本地预览 IPC、Task Timeline 和 Composer、真实 Task API/文件/unittest/Diff、设置和重启恢复。M3 6 项、M4 5 项、M5 1 项为真实 GUI 操作用例，已计入 Python 总数；另有反篡改和会话守卫，不混算为 GUI 操作。
+
+最终提交在合并前再次运行完整 check.py，日志固定为 validation-reports/m5-final-head-check.log，必须 Errors=0。远端结论以 [PR #21 最新提交检查](https://github.com/yunfei00/local-coding-agent/pull/21/checks) 为准，Windows 与 Ubuntu 全部成功才合并。PR 合并记录保存最终本机报告 ID 与 CI 链接；没有通过这些门禁不算完成。
