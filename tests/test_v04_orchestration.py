@@ -288,7 +288,11 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
         config["verification_commands"] = []
         task, _, api = await self.run_task([PLAN, tool_step("write_file", {"path":".lca/verification.json", "content":'{"commands":["echo passed"]}'}), final_step()], config=config)
         self.assertEqual(task["status"], "paused", task["reason"])
-        self.assertEqual(task["verification"][0]["command"], COMMAND)
+        # The stronger acceptance guard now stops before executing a modified
+        # contract, while the original independently discovered command stays frozen.
+        self.assertEqual(task["verification"][0]["command"], 'acceptance contract')
+        self.assertIn('.lca',task["verification"][0]['summary'])
+        self.assertIn(COMMAND,task['resolved_verification_commands'])
         self.assertFalse(task["verification"][0]["ok"])
         self.assertEqual(api.calls, 0)
 

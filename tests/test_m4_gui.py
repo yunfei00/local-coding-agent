@@ -48,6 +48,8 @@ class GUIContractTests(unittest.TestCase):
 @unittest.skipUnless(sys.platform=='win32','Real Windows interactive GUI required; desktop APIs are never mocked')
 class AutonomousGUIRepairTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        from windows_desktop_support import require_test_desktop
+        require_test_desktop()
         (ROOT/'validation-reports').mkdir(exist_ok=True)
         self.temp=tempfile.TemporaryDirectory(prefix='m4-gui-')
         self.root=Path(self.temp.name)

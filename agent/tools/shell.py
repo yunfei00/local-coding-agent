@@ -46,9 +46,12 @@ class StartProcessTool(RunCommandTool):
     )
 
     async def execute(self, arguments, *, on_output=None, owner_id=""):
-        session = await self.manager.launch(arguments, owner=owner_id, on_output=on_output)
+        previous = set(self.manager.sessions)
+        session = await self.manager.launch(arguments, owner=owner_id, on_output=on_output, reuse_running=True)
         await asyncio.sleep(0)
-        return session.result()
+        result = session.result()
+        result.data['already_running'] = session.id in previous
+        return result
 
 
 class ReadProcessTool(BaseTool):

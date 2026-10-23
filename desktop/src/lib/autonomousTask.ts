@@ -3,7 +3,7 @@ export type TaskSnapshot = {
   workspace: string; branch: string; attempts: number; repairs: number; escalations: number; elapsed_seconds: number;
   usage: {api_calls: number; local_calls: number; reserved_tokens: number; input_tokens: number; output_tokens: number;
     cached_tokens: number; reserved_cost: number; actual_cost: number; actual_cost_known: boolean; estimated: boolean; precision: string};
-  plan: {steps: Array<{id: string; description: string; state: string}>};
+  plan: {steps: Array<{id: string; description: string; state: string; executions?: import("../components/RecentExecutions").ExecutionCall[]}>};
   verification: Array<{command: string; ok: boolean; category: string; exit_code: number | null; duration_ms: number; summary: string; log_path?: string}>;
   report: {review?: string; diff?: string; git_approval?: string; gui_verification?: string};
   verification_history?: Array<{attempt:number; passed:boolean; at:number; results:Array<{command:string; ok:boolean; summary:string}>}>;

@@ -31,6 +31,17 @@ FIXTURE = ROOT/'manual-fixtures/m3-windows-gui/app.ps1'
 
 
 class DesktopContractTests(unittest.IsolatedAsyncioTestCase):
+    @unittest.skipUnless(sys.platform=='win32','Actual Windows session API')
+    async def test_actual_session_guard_denies_locked_session(self):
+        from agent.desktop.session import require_interactive_session
+        try:
+            require_interactive_session()
+        except ToolError as exc:
+            self.assertIn(exc.code,{'DESKTOP_SESSION_LOCKED','DESKTOP_SESSION_UNAVAILABLE'})
+            with self.assertRaises(ToolError) as error:
+                await DesktopRuntime().execute('desktop_list_windows',{},owner='locked-test',authorized=True)
+            self.assertEqual(error.exception.code,exc.code)
+
     async def test_default_deny_and_read_only(self):
         with tempfile.TemporaryDirectory() as directory:
             registry = ToolRegistry(Workspace(directory))
@@ -79,6 +90,8 @@ class DesktopContractTests(unittest.IsolatedAsyncioTestCase):
 @unittest.skipUnless(sys.platform == 'win32', 'Windows GUI requires real Windows desktop APIs')
 class WindowsDesktopTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        from windows_desktop_support import require_test_desktop
+        require_test_desktop()
         self.temp=tempfile.TemporaryDirectory(prefix='m3-gui-')
         self.directory=Path(self.temp.name)
         self.env=patch.dict(os.environ,{'LCA_DATA_DIR':str(self.directory/'data'),'LCA_OPENAI_API_KEY':''})
@@ -202,7 +215,9 @@ class WindowsDesktopTests(unittest.IsolatedAsyncioTestCase):
             subprocess.run(['git',*args],cwd=source,check=True,capture_output=True)
         server=AgentServer('fixture')
         server.permissions.set_mode('full_access')
-        server.max_model_steps=32
+        # Force the same real GUI task across slices; its process, authorization,
+        # handles and observations must survive without replaying UI actions.
+        server.max_model_steps=6
         client=Client(server)
         project,thread,_=server.projects.open(source,active_model='single-executor')
         state=self.directory/'agent-state.json'
@@ -244,6 +259,8 @@ class WindowsDesktopTests(unittest.IsolatedAsyncioTestCase):
             task=server.store.task_runtime.list(thread.id)[0]
             self.assertEqual(task['status'],'awaiting_approval',task.get('last_error') or task.get('reason'))
             self.assertTrue(all(v['ok'] for v in task['verification']))
+            self.assertTrue(any(e['type']=='turn.continuing' for e in client.messages))
+            self.assertEqual(sum(e['type']=='tool.completed' and e['payload']['name']=='start_process' for e in client.messages),1)
             captures=[e['metadata'] for e in server.store.task_plans.executions(task['id']) if e['tool']=='desktop_screenshot']
             self.assertEqual(len(captures),1)
             self.assertEqual(len(captures[0]['sha256']),64)

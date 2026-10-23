@@ -34,11 +34,21 @@ def automatic_steps(prompt: str) -> list[dict[str, str]]:
 def mutation_fingerprint(tool: str, arguments: dict[str, Any], read_only: bool = False) -> str:
     # Process handles expire at scope cleanup; starting a new process after an
     # explicit task resume is not replaying a completed file mutation.
-    if read_only or tool.startswith('desktop_') or tool in {"start_process", "read_process", "stop_process"}:
-        return ""
-    if tool == "run_command" and re.match(r"^(?:uv\s+run\s+)?(?:python(?:3)?\s+-m\s+(?:unittest|pytest|compileall)\b|npm(?:\.cmd)?\s+(?:run\s+)?(?:test|typecheck|build)\b)", str(arguments.get("command", "")).strip(), re.I):
+    if read_only or tool in {'desktop_list_windows','desktop_screenshot','desktop_inspect','desktop_wait','desktop_focus_window',"read_process", "stop_process"}:
         return ""
     return hashlib.sha256((tool + json.dumps(arguments, sort_keys=True, ensure_ascii=False)).encode()).hexdigest()
+
+
+def repeatable_check(tool: str, arguments: dict[str, Any]) -> bool:
+    """Only plain validation invocations may repeat after a successful checkpoint.
+
+    Compound shells and arbitrary scripts remain protected mutations, even if
+    they start with a test command. Interrupted checks still require approval.
+    """
+    command = str(arguments.get('command','')).strip()
+    if tool != 'run_command' or re.search(r'[;&|`$\n\r<>]', command):
+        return False
+    return bool(re.fullmatch(r"(?:uv\s+run\s+(?:--no-project\s+)?)?(?:python(?:3)?\s+-m\s+(?:unittest|pytest|compileall)\b[\w\s./\\:=,+\-\"']*|npm(?:\.cmd)?\s+(?:run\s+)?(?:test|typecheck|build)(?:\s+--[\w\s./\\:=,+\-\"']*)?)",command,re.I))
 
 
 def _now() -> str:
@@ -95,6 +105,9 @@ class TaskPlanStore:
             self.db.execute("ALTER TABLE task_plan_executions ADD COLUMN fingerprint TEXT NOT NULL DEFAULT ''")
         if "metadata_json" not in {row[1] for row in self.db.execute("PRAGMA table_info(task_plan_executions)")}:
             self.db.execute("ALTER TABLE task_plan_executions ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'")
+        if 'recovery_json' not in {row[1] for row in self.db.execute('PRAGMA table_info(task_plan_steps)')}:
+            self.db.execute("ALTER TABLE task_plan_steps ADD COLUMN recovery_json TEXT NOT NULL DEFAULT '{}'")
+        self.db.execute("UPDATE task_plan_executions SET status='interrupted' WHERE status='running'")
         self.db.commit()
 
     def record_execution(self, plan_id: str, step_id: str, call_id: str, turn_id: str,
@@ -105,6 +118,10 @@ class TaskPlanStore:
             metadata = {k: data[k] for k in ("process_id", "pid", "shell", "state", "log_path", "metadata_path", "log_truncated", "artifact_id", "path", "width", "height", "dpi", "vision_feedback", "window_id", "window_generation", "sha256", "captured_at") if k in data}
             if result:
                 metadata.update(duration_ms=result.get("duration_ms"), error_code=(result.get("error") or {}).get("code") or data.get("error_code"))
+                if not result.get('ok'):
+                    from agent.core.execution import failure_diagnosis
+                    metadata['diagnosis'] = failure_diagnosis(tool, metadata['error_code'])
+                    metadata['error_code'] = metadata['diagnosis']['error_code']
             self.db.execute(
                 "INSERT INTO task_plan_executions(call_id,plan_id,step_id,turn_id,tool,status,exit_code,changed_paths,fingerprint,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?) "
                 "ON CONFLICT(call_id) DO UPDATE SET status=excluded.status,exit_code=excluded.exit_code,changed_paths=excluded.changed_paths,metadata_json=excluded.metadata_json",
@@ -113,6 +130,10 @@ class TaskPlanStore:
                  result.get("exit_code") if result else None,
                  json.dumps(list((result or {}).get("changed_paths") or [])[:100]), fingerprint, json.dumps(metadata)),
             )
+            if result and result.get('ok'):
+                current = self.db.execute('SELECT fingerprint FROM task_plan_executions WHERE call_id=?',(call_id,)).fetchone()
+                if current and current[0]:
+                    self.db.execute("UPDATE task_plan_executions SET status='reconciled' WHERE plan_id=? AND fingerprint=? AND status='interrupted'",(plan_id,current[0]))
 
     def executions(self, plan_id):
         return [{"call_id": r["call_id"], "tool": r["tool"], "status": r["status"], "exit_code": r["exit_code"],
@@ -121,7 +142,7 @@ class TaskPlanStore:
 
     def previously_applied(self, plan_id: str, fingerprint: str) -> bool:
         return bool(fingerprint and self.db.execute(
-            "SELECT 1 FROM task_plan_executions WHERE plan_id=? AND fingerprint=? AND status='succeeded' LIMIT 1",
+            "SELECT 1 FROM task_plan_executions WHERE plan_id=? AND fingerprint=? AND status='succeeded' AND tool!='start_process' AND tool NOT LIKE 'desktop_%' LIMIT 1",
             (plan_id, fingerprint)).fetchone())
 
     def execution_evidence(self, plan_id: str, step_id: str,
@@ -168,16 +189,29 @@ class TaskPlanStore:
         steps = self.db.execute(
             "SELECT * FROM task_plan_steps WHERE plan_id=? ORDER BY position", (plan_id,)
         ).fetchall()
-        executions = [dict(row) for row in self.db.execute(
-            "SELECT call_id,step_id,tool,status,exit_code FROM task_plan_executions WHERE plan_id=? ORDER BY rowid DESC LIMIT 100", (plan_id,))]
+        executions = [{**dict(row), 'metadata':json.loads(row['metadata_json'])} for row in self.db.execute(
+            "SELECT call_id,step_id,tool,status,exit_code,metadata_json FROM task_plan_executions WHERE plan_id=? ORDER BY rowid DESC LIMIT 100", (plan_id,))]
+        executions.reverse()  # Keep a chronological bounded tail for Task/Plan UI.
+        run = self.db.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',(plan_id,)).fetchone() if self.db.execute("SELECT 1 FROM sqlite_master WHERE name='agent_execution_runs'").fetchone() else None
         return {
             **dict(plan),
+            'execution':json.loads(run[0]) if run else None,
             "steps": [
-                {**dict(s), "evidence": json.loads(s["evidence_json"]),
+                {**dict(s), 'recovery':json.loads(s['recovery_json']), "evidence": json.loads(s["evidence_json"]),
                  "executions": [item for item in executions if item["step_id"] == s["id"]]}
                 for s in steps
             ],
         }
+
+    def set_recovery(self, plan_id, step_id, tool, code):
+        from agent.core.execution import failure_diagnosis
+        recovery = failure_diagnosis(tool, code)
+        with self.db:
+            self.db.execute('UPDATE task_plan_steps SET recovery_json=? WHERE plan_id=? AND id=?', (json.dumps(recovery),plan_id,step_id))
+        return recovery
+
+    def uncertain_operation(self, plan_id, fingerprint):
+        return bool(fingerprint and self.db.execute("SELECT 1 FROM task_plan_executions WHERE plan_id=? AND fingerprint!='' AND status='interrupted' LIMIT 1",(plan_id,)).fetchone())
 
     def list_for_thread(self, thread_id: str) -> list[dict[str, Any]]:
         ids = self.db.execute(
@@ -264,6 +298,7 @@ class TaskPlanStore:
             "commands_run": commands_run or [],
             "git_status": git_status,
             "blockers": blockers or [],
+            'execution':plan.get('execution'),
         }
         with self.db:
             self.db.execute(

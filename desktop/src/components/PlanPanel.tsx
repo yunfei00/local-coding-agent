@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import {RecentExecutions} from "./RecentExecutions";
 
 type Step = { id: string; description: string; state: string; verification?: string; evidence?: Array<Record<string, unknown>>;
-  executions?: Array<{call_id: string; tool: string; status: string; exit_code?: number | null}> };
-type Plan = { id: string; goal: string; steps: Step[] };
+  recovery?: {category?:string; summary?:string; action?:string};
+  executions?: Array<{call_id: string; tool: string; status: string; exit_code?: number | null; metadata?:{duration_ms?:number;error_code?:string;diagnosis?:{category:string;summary:string;action:string}}}> };
+type Plan = { id: string; goal: string; steps: Step[]; execution?: {calls:number;continuations:number;reserved_tokens:number;elapsed:number;status:string;last_error?:string;limits:{model_calls:number;tokens:number;seconds:number;max_continuations:number}} };
 export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: () => void }) {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [goal, setGoal] = useState("");
@@ -28,14 +30,15 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
   const continuePlan = async (plan: Plan) => {
     const next = plan.steps.find(step => step.state !== "completed" && step.state !== "skipped");
     if (!next) { setError("All plan steps are complete."); return; }
-    if (next.state === "blocked") {
-      setError("This step is blocked. Resolve the failure and change its state to in_progress before continuing.");
-      return;
-    }
     if (!window.confirm("Continue from step: " + next.description +
       "\nReview workspace changes before proceeding. Previously completed steps will not be requested again.")) return;
     setBusy(true); setError("");
     try {
+      const recovered = await window.localAgent.planRequest(threadId, "plan.recover", {plan_id: plan.id});
+      if (recovered.payload?.autonomous_task_id) {
+        await window.localAgent.taskRequest(threadId,"task.resume",{task_id:plan.id,confirm_workspace:true});
+        onClose(); return;
+      }
       await window.localAgent.planRequest(threadId, "plan.resume.confirm", {plan_id: plan.id});
       await window.localAgent.startTurn(threadId,
         "Continue the existing persistent task plan from its first unfinished step: " +
@@ -49,7 +52,7 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
   useEffect(() => {
     setPlans([]); setCheckpoint(null); void request("plan.list");
     return window.localAgent.onAgentEvent((event: AgentEnvelope) => {
-      if (event.thread_id === threadId && ["plan.completed", "plan.step.completed", "turn.completed", "turn.cancelled", "turn.failed"].includes(event.type)) void request("plan.list");
+      if (event.thread_id === threadId && ["plan.completed", "plan.step.completed", "tool.completed", "turn.completed", "turn.cancelled", "turn.failed", "turn.continuing", "execution.updated"].includes(event.type)) void request("plan.list");
     });
   }, [threadId]);
   return <aside className="context-overlay" aria-label="Task plans">
@@ -66,15 +69,19 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
       </section>
       {plans.map(plan => <section className="context-section" key={plan.id}>
         <h3>{plan.goal}</h3>
+        {plan.execution ? <p>累计模型调用 {plan.execution.calls}/{plan.execution.limits.model_calls} · 续跑 {plan.execution.continuations}/{plan.execution.limits.max_continuations} · Token 保守预留 {plan.execution.reserved_tokens}/{plan.execution.limits.tokens}</p> : null}
+        {plan.execution ? <p>活动执行 {plan.execution.elapsed.toFixed(1)}/{plan.execution.limits.seconds} 秒 · {plan.execution.status} {plan.execution.last_error ?? ""}</p> : null}
+        <RecentExecutions calls={plan.steps.flatMap(s => s.executions ?? [])} />
         <div className="context-pin-input">
           <button type="button" disabled={busy} onClick={() => void request("plan.checkpoint", {plan_id: plan.id})}>Checkpoint</button>
           <button type="button" disabled={busy} onClick={() => void request("plan.resume", {plan_id: plan.id})}>Resume info</button>
           <button type="button" disabled={busy} onClick={() => void continuePlan(plan)}>Continue plan</button>
+          {plan.execution ? <button disabled={busy} onClick={() => {if (window.confirm("明确增加累计执行预算：16 次模型调用、500000 Token 保守预留、300 秒和 1 次续跑。既有消耗不会清零；恢复后可能产生在线费用。")) void request("plan.execution.extend",{plan_id:plan.id});}}>增加执行预算</button> : null}
         </div>
         {checkpoint ? <pre style={{whiteSpace:"pre-wrap", overflowWrap:"anywhere"}}>{JSON.stringify(checkpoint, null, 2)}</pre> : null}
         {plan.steps.map((step, index) => <div className="context-file-row" key={step.id}>
           <span>{index + 1}. {step.description} — {step.state}</span>
-          {step.executions?.map(call => <small key={call.call_id} title={call.call_id}>{call.tool} · {call.status}{call.exit_code != null ? ` · exit ${call.exit_code}` : ""}</small>)}
+          {step.state === "blocked" && step.recovery?.summary ? <p role="status">{step.recovery.category}: {step.recovery.summary} 下一步：{step.recovery.action}。使用 Continue plan 安全恢复。</p> : null}
           {step.state === "pending" ? <>
             <button type="button" disabled={busy} onClick={() => {
               const description = window.prompt("Edit step description", step.description);

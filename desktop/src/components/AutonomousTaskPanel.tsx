@@ -1,4 +1,5 @@
 import {useEffect, useState} from "react";
+import {RecentExecutions} from "./RecentExecutions";
 import {mergeTaskSnapshot, TaskSnapshot, taskIsActive} from "../lib/autonomousTask";
 import {TaskConfig as Config, ModelCatalog, modelLabel, taskConfigOverrides} from "../lib/modelCatalog";
 
@@ -49,6 +50,9 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
     const unsubscribe = window.localAgent.onAgentEvent(event => {
       if (event.thread_id !== threadId || !alive) return;
       if (event.type === "task.updated") apply(event);
+      if (["tool.completed","turn.continuing","execution.updated"].includes(event.type)) {
+        void window.localAgent.taskRequest(threadId,"task.list").then(next => {if (alive) apply(next);}).catch(() => {});
+      }
       if (event.type === "model.active") setModel(String(event.payload?.role) + " · " + String(event.payload?.provider ?? event.payload?.route) + " / " + String(event.payload?.model));
       if (event.type === "model.compatibility") setNotice(String(event.payload?.message));
       if (event.type === "verification.progress") setNotice("GUI 验收 · " + String(event.payload?.stage) + " · " + String(event.payload?.state));
@@ -147,6 +151,7 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
           if (window.confirm("Apply the model strategy, verification commands and budget currently shown above to this paused task? Provider addresses also refresh from Settings. Existing usage remains charged.")) void request("task.configure", {task_id:task.id, config:currentConfig()});
         }}>Apply configuration to paused task</button></> : null}
         <details><summary>Task plan and checkpoint</summary><ol>{task.plan.steps.map(step => <li key={step.id}>{step.description} — {step.state}</li>)}</ol><p>Worktree: {task.workspace || "Awaiting isolation approval"}<br />Branch: {task.branch}</p></details>
+        <RecentExecutions calls={task.plan.steps.flatMap(s => s.executions ?? [])} />
         {task.verification.map((test, i) => <details key={i}><summary>{test.ok ? "PASS" : "FAIL"} · {test.command || "Verification not configured"} · {test.category} · exit {test.exit_code ?? "—"} · {test.duration_ms}ms</summary><pre>{test.summary}</pre><p>Full log: {test.log_path}</p></details>)}
         {task.report.review ? <details><summary>Completion report and Git review</summary><p>{task.report.review}</p><p>{task.report.git_approval}</p><pre>{task.report.diff || "No tracked Diff"}</pre><button onClick={() => void window.localAgent.copyText(JSON.stringify(task, null, 2))}>Copy task report</button></details> : null}
         {task.status === "awaiting_approval" ? <button disabled={busy || running} onClick={() => void request("task.approve", {task_id:task.id})}>Accept verified report</button> : null}

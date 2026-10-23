@@ -284,4 +284,6 @@ Python Agent Server
 
 M3 Windows 桌面工具：[架构与能力矩阵](docs/m3/architecture.md)、[工具接口](docs/m3/tools.md)、[权限与安全](docs/m3/security.md)、[自动验收](docs/m3/acceptance.md)、[M4 准备](docs/m3/m4-readiness.md)。
 
+M4 收尾：[长任务续跑、阻塞恢复与能力矩阵](docs/m4/continuation-recovery.md)、[验收记录](docs/m4/closure-acceptance.md)、[离线真实工具/GUI 演示](manual-fixtures/m4-continuation/README.md)。
+
 暂未确定。

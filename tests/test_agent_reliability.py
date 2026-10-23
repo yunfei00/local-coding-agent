@@ -311,6 +311,7 @@ class AgentReliabilityTests(unittest.IsolatedAsyncioTestCase):
                 server = AgentServer("test-token")
                 server.provider = provider
                 server.max_model_steps = 2
+                server.continuation_policy['max_continuations'] = 0
                 project, thread, _ = server.projects.open(
                     repo_root,
                     active_model="fake-model",

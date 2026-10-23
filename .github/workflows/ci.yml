@@ -87,6 +87,8 @@ jobs:
       - name: Python tests
         shell: pwsh
         if: runner.os == 'Windows'
+        env:
+          LCA_REQUIRE_INTERACTIVE_DESKTOP: "1"
         run: uv run python -m unittest discover -s tests -v
 
       - name: Install desktop dependencies
