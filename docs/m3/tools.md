@@ -40,3 +40,8 @@ selector 允许 automation_id/name/control_type/runtime_id，均为精确匹配�
 现改为先判断原始捕获是否为空，再对普通编辑区填充浅灰色不透明占位区域并标注 `EDIT CONTENT REDACTED`，敏感/密码控件仍为黑色。结果附带 `redacted_area_fraction` 与 `redaction_policy`，告知视觉模型实际画面有多少区域被遮盖。**这不是公开记事本文字内容的开关**；即使空白记事本，编辑区也按同一规则处理，图像不能用于判断编辑区内的真实文字。需要验证文本输入时必须使用受控 UI Automation 或独立测试状态断言。
 
 若原始截图确实黑屏，仍触发受限的前台窗口屏幕回退，窗口被遮挡时安全失败，不捕获其他应用；不同 DPI/多显示器/现代记事本版本仍需公司实机复测。截图返回成功不等于所有用户可见内容都已完整呈现。
+
+
+## Tkinter 等非标准 UIA 输入框的定位诊断（2026-10-23）
+
+`DESKTOP_EDIT_REQUIRED` 的含义是 **本次 selector 实际匹配到的控件不是 UIA Edit**，并不证明 UIA 树中不存在可输入的 Edit。错误现在携带选中控件的 `control_type` 和当前窗口内可见、非敏感 Edit 控件数量；不会返回控件文字、输入内容、窗口标题或敏感标识。如果有 Edit 候选，先 `desktop_inspect`，优先使用 inspect 返回的具体 `runtime_id` 或 `automation_id` 精确选择，禁止重复对父窗口/Pane 尝试。若候选为零，不应该盲目发送键盘文字，应记录兼容性缺口并停止，待实现单独授权和可验证的非 UIA 输入方案。
