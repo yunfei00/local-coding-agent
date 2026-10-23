@@ -114,6 +114,62 @@ def geometry(hwnd):
     return {'client_origin':list(gui.ClientToScreen(hwnd,(0,0))), 'client_size':[rect[2],rect[3]], 'dpi':user.GetDpiForWindow(hwnd)}
 
 
+
+def _capture_looks_blank(image):
+    """Detect near-black compositor placeholders, not just identical RGB pixels."""
+    from PIL import ImageStat
+    if image.width == 0 or image.height == 0:
+        return True
+    sample = image.convert("RGB")
+    sample.thumbnail((128, 128))
+    # Most pixels from a failed PrintWindow capture are nearly black.
+    histogram = sample.convert("L").histogram()
+    visible = sum(histogram[24:])
+    return visible < max(1, int(sample.width * sample.height * 0.005))
+
+
+def _capture_visible_client_only(hwnd):
+    """Conservative foreground-only fallback for modern compositor windows.
+
+    ImageGrab reads *screen* pixels, so it is permitted only when the authorized
+    window is foreground, entirely on-screen, and no higher z-order top-level
+    window overlaps its client. Otherwise refuse instead of leaking another app.
+    """
+    from PIL import ImageGrab
+    if gui.GetForegroundWindow() != hwnd or gui.IsIconic(hwnd):
+        fail('DESKTOP_CAPTURE_FOREGROUND_REQUIRED',
+             'Bring the authorized window to the foreground before screenshot retry')
+    info = geometry(hwnd)
+    x, y = info['client_origin']
+    w, h = info['client_size']
+    if min(w, h) <= 0:
+        fail('DESKTOP_CAPTURE_SIZE', 'Client capture has no visible area')
+    desktop = (user.GetSystemMetrics(76), user.GetSystemMetrics(77),
+               user.GetSystemMetrics(78), user.GetSystemMetrics(79))
+    if x < desktop[0] or y < desktop[1] or x+w > desktop[0]+desktop[2] or y+h > desktop[1]+desktop[3]:
+        fail('DESKTOP_CAPTURE_OCCLUDED', 'Authorized client must be fully visible on screen')
+    blocked = False
+    def visit(other, unused):
+        nonlocal blocked
+        if other == hwnd:
+            return False
+        if not gui.IsWindowVisible(other) or gui.IsIconic(other):
+            return True
+        l, t, r, b = gui.GetWindowRect(other)
+        if max(l, x) < min(r, x+w) and max(t, y) < min(b, y+h):
+            blocked = True
+            return False
+        return True
+    gui.EnumWindows(visit, None)
+    if blocked:
+        fail('DESKTOP_CAPTURE_OCCLUDED',
+             'Another visible window overlaps the authorized client; no screen pixels captured')
+    image = ImageGrab.grab(bbox=(x, y, x+w, y+h), all_screens=True).convert('RGB')
+    if image.size != (w, h) or _capture_looks_blank(image):
+        fail('DESKTOP_CAPTURE_EMPTY', 'Screen fallback did not capture usable window pixels')
+    return image
+
+
 def capture_window(hwnd):
     """Print only this window's client DC in the same physical DPI context.
 
@@ -141,7 +197,12 @@ def capture_window(hwnd):
     # GDI-unaware targets paint logical pixels. Explicitly normalize their native
     # client size to the physical UIA coordinate system before masking, never
     # paint into a larger bitmap and mistake black padding for redaction.
-    return image.resize(physical,Image.Resampling.NEAREST) if image.size!=physical else image
+    image = image.resize(physical,Image.Resampling.NEAREST) if image.size!=physical else image
+    if _capture_looks_blank(image):
+        # PrintWindow can report success while returning a near-black bitmap
+        # for modern Windows Notepad/Chromium composition surfaces.
+        return _capture_visible_client_only(hwnd)
+    return image
 
 
 def _print_client(hwnd,width,height):
