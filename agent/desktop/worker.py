@@ -324,6 +324,72 @@ def input_batch(events):
         fail('DESKTOP_INPUT_DENIED', 'Windows blocked input; no privilege bypass was attempted')
 
 
+
+def _unicode_key_events(text):
+    """Build UTF-16 SendInput key events; no clipboard or shell is involved."""
+    events = []
+    raw = text.encode('utf-16-le', 'surrogatepass')
+    for i in range(0, len(raw), 2):
+        codeunit = int.from_bytes(raw[i:i+2], 'little')
+        # KEYEVENTF_UNICODE = 0x0004; KEYEVENTF_KEYUP = 0x0002.
+        events.extend(((1, codeunit, 0x0004), (1, codeunit, 0x0006)))
+    return events
+
+
+def _type_tk_pane(binding, window, control, selector, text, args):
+    """Explicitly approved test-only input to a Tkinter Pane, not UIA ValuePattern."""
+    if not args.get('confirm_risk'):
+        fail('DESKTOP_RISK_APPROVAL_REQUIRED',
+             'Non-Edit Tkinter text input requires confirm_risk=true and fresh approval')
+    if not isinstance(selector, dict) or set(selector) != {'runtime_id'}:
+        fail('DESKTOP_SELECTOR_REQUIRED',
+             'Tkinter Pane input requires an exact runtime_id from desktop_inspect')
+    hwnd = check(binding)
+    if not str(gui.GetClassName(hwnd)).lower().startswith('tk'):
+        fail('DESKTOP_EDIT_REQUIRED', 'Pane text fallback only supports Tkinter windows')
+    if control.element_info.control_type != 'Pane':
+        fail('DESKTOP_EDIT_REQUIRED', 'Pane text fallback requires an inspected Pane')
+    candidates, truncated, _ = controls(window)
+    if truncated or any(c.element_info.control_type == 'Edit' for c in candidates):
+        fail('DESKTOP_EDIT_REQUIRED', 'Use UIA Edit ValuePattern or inspect the complete window tree')
+    if sensitive(control) or not control.is_enabled() or not control.is_visible():
+        fail('DESKTOP_CONTROL_UNAVAILABLE', 'Target must be non-sensitive, visible and enabled')
+    rect = control.rectangle()
+    if rect.width() < 16 or rect.height() < 12:
+        fail('DESKTOP_CONTROL_UNAVAILABLE', 'Target Pane is too small for safe input')
+    origin = geometry(hwnd)
+    x, y = (rect.left + rect.right)//2, (rect.top + rect.bottom)//2
+    ox, oy = origin['client_origin']
+    w, h = origin['client_size']
+    if x < ox or y < oy or x >= ox+w or y >= oy+h:
+        fail('DESKTOP_COORDINATES_INVALID', 'Target Pane is outside authorized client area')
+    focus(binding)
+    if gui.GetAncestor(gui.WindowFromPoint((x,y)), 2) != hwnd:
+        fail('DESKTOP_WINDOW_OCCLUDED', 'Another window covers the requested Pane')
+    # Click the explicitly selected Pane: UIA Tk Entry widgets often lack
+    # Edit/ValuePattern and cannot be focused through the UIA wrapper.
+    api.SetCursorPos((x,y))
+    check(binding)
+    input_batch([(0,0,2),(0,0,4)])
+    from pywinauto.uia_defines import IUIA
+    from pywinauto.uia_element_info import UIAElementInfo
+    from pywinauto.controls.uiawrapper import UIAWrapper
+    focused = UIAWrapper(UIAElementInfo(IUIA().iuia.GetFocusedElement()))
+    if sensitive(focused):
+        fail('DESKTOP_SENSITIVE_CONTROL', 'Focused control is sensitive; no text sent')
+    if gui.GetForegroundWindow() != hwnd:
+        fail('DESKTOP_FOCUS_FAILED', 'Focus changed; no text sent')
+    focused_id = list(focused.element_info.runtime_id)
+    if focused_id != list(control.element_info.runtime_id):
+        fail('DESKTOP_FOCUS_FAILED',
+             'Focused UIA element differs from selected Pane; text not sent')
+    if text:
+        input_batch(_unicode_key_events(text))
+    return {'entered':True, 'characters':len(text), 'value_verified':False,
+            'input_logged':False, 'method':'tk_pane_unicode_input',
+            'verification':'unverified_keystrokes; assert application result separately'}
+
+
 def risk_check(control, arguments):
     if sensitive(control):
         fail('DESKTOP_SENSITIVE_CONTROL', 'Password, token and credential controls cannot be read or operated')
@@ -462,6 +528,8 @@ def execute(request):
         text = a.get('text')
         if not isinstance(text,str) or len(text)>4000 or SECRET.search(text) or re.search(r'\b(?:sk-|ghp_|github_pat_|eyJ)[A-Za-z0-9_-]{12,}',text):
             fail('DESKTOP_SENSITIVE_INPUT','Use ordinary non-secret text only; input was not logged or entered')
+        if control.element_info.control_type == 'Pane' and a.get('confirm_risk'):
+            return _type_tk_pane(binding, window, control, a.get('selector'), text, a)
         if control.element_info.control_type != 'Edit':
             # A model sometimes selects a Tkinter frame/window rather than
             # the child Entry. Report bounded structural hints, never names,
