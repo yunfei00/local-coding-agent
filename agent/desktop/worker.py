@@ -559,11 +559,29 @@ def execute(request):
             check(binding)
             if gui.GetForegroundWindow()!=hwnd:
                 fail('DESKTOP_FOCUS_FAILED','Window lost focus; no input sent')
-            encoded=text.encode('utf-16-le')
-            units=[int.from_bytes(encoded[i:i+2],'little') for i in range(0,len(encoded),2)]
-            events=[(1,17,0),(1,65,0),(1,65,2),(1,17,2),(1,8,0),(1,8,2)]
-            events.extend(event for unit in units for event in ((1,unit,4),(1,unit,6)))
-            input_batch(events)
+            if len(text)*.01+3 > a.get('timeout_seconds',15):
+                fail('DESKTOP_INPUT_LIMIT','Ordinary text requires a larger explicit timeout_seconds (maximum 60); no input sent')
+            input_batch([(1,17,0),(1,65,0),(1,65,2),(1,17,2),(1,8,0),(1,8,2)])
+            clear_deadline=time.monotonic()+2
+            while value_pattern.CurrentValue:
+                check(binding)
+                if time.monotonic()>=clear_deadline:
+                    fail('DESKTOP_VALUE_MISMATCH','Edit did not acknowledge clearing; no text sent or replayed')
+                time.sleep(.02)
+            # A single large clear+Unicode batch can lose the first character
+            # in Chromium under load. Let the clear/input event settle, then
+            # send balanced character batches; never hold modifiers between
+            # batches, use the clipboard, or retry a partially applied write.
+            time.sleep(.05)
+            for character in text:
+                check(binding)
+                focused=IUIA().iuia.GetFocusedElement()
+                if gui.GetForegroundWindow()!=hwnd or tuple(focused.GetRuntimeId())!=tuple(control.element_info.runtime_id):
+                    fail('DESKTOP_FOCUS_FAILED','Edit lost focus during input; no further characters sent')
+                encoded=character.encode('utf-16-le')
+                units=[int.from_bytes(encoded[i:i+2],'little') for i in range(0,len(encoded),2)]
+                input_batch([event for unit in units for event in ((1,unit,4),(1,unit,6))])
+                time.sleep(.01)
         else:
             try:
                 value_pattern.SetValue(text)
