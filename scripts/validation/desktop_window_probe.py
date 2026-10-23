@@ -2,7 +2,12 @@
 import argparse
 import asyncio
 import json
+import sys
 from pathlib import Path
+
+# Direct script execution starts sys.path in scripts/validation, including in a
+# clean uv environment where this dependency-only project is not installed.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from agent.desktop.runtime import DesktopRuntime
 
 

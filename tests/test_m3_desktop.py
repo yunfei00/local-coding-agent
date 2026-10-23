@@ -325,6 +325,11 @@ class WindowsDesktopTests(unittest.IsolatedAsyncioTestCase):
         before=await self.call('desktop_inspect')
         old=next(c for c in before.data['controls'] if c['automation_id']=='SettingsButton')['bounds']
         win32gui.MoveWindow(self.state['hwnd'],180,120,660,680,True)
+        # This test owns the fixture. Keep only its window above unrelated
+        # desktop windows; production coordinate input must still reject cover.
+        import win32con
+        win32gui.SetWindowPos(self.state['hwnd'],win32con.HWND_TOPMOST,0,0,0,0,
+                             win32con.SWP_NOMOVE|win32con.SWP_NOSIZE)
         after=await self.call('desktop_inspect')
         bounds=next(c for c in after.data['controls'] if c['automation_id']=='SettingsButton')['bounds']
         self.assertNotEqual(old,bounds)
