@@ -259,6 +259,7 @@ class TaskService:
                         task["config_snapshot_at"] = time.time()
                         task.pop("resolved_verification_commands", None)
                         task.pop('resolved_gui_verification', None)
+                        task.pop('acceptance_baseline', None)
                         self.runtime.save(task)
                     elif kind == "task.approve":
                         if task["status"] != "awaiting_approval":
@@ -347,6 +348,18 @@ class TaskService:
         async def emit(kind, payload):
             await ws.send_json(envelope(kind, payload, thread_id=thread_id, turn_id=turn_id))
         async def update(status, reason="", **values):
+            if status in {'paused','failed','cancelled'} and 'report' not in values:
+                current = self.runtime.get(plan_id)
+                diff = ''
+                if 'workspace' in current and current['workspace']:
+                    with suppress(Exception):
+                        result = await view.tools.execute('git_diff', {})
+                        diff = redact_text(result.stdout, exact_secrets=self.server._exact_secrets())
+                actual = values.get('verification', current.get('verification',[]))
+                gui_result = next((r for r in actual if r.get('command')=='GUI acceptance'),None)
+                values['report'] = {'goal':goal,'passed':False,'tests':actual,
+                    'gui_verification':('PASS' if gui_result['ok'] else 'FAIL') if gui_result else 'NOT RUN',
+                    'review':'任务未完成：'+reason, 'diff':diff,'unfinished':[reason], 'workspace':current.get('workspace')}
             self.runtime.transition(plan_id, status, reason, **values)
             await emit("task.updated", {"task": self.public(self.runtime.get(plan_id))})
         try:
@@ -394,6 +407,10 @@ class TaskService:
                     task["resolved_verification_commands"] = discover_commands(view.workspace.root, task["config"]["verification_commands"])
                     self.runtime.save(task)
                 commands = task["resolved_verification_commands"]
+                from agent.core.verification import acceptance_snapshot, acceptance_changes
+                if 'acceptance_baseline' not in task:
+                    task['acceptance_baseline'] = acceptance_snapshot(view.workspace.root)
+                    self.runtime.save(task)
                 if 'resolved_gui_verification' not in task:
                     from agent.core.gui_verification import discover_gui
                     gui = discover_gui(view.workspace.root, task['config'].get('gui_verification'))
@@ -451,7 +468,10 @@ class TaskService:
                     # Only failed/unstarted steps are eligible for repair. Preserve completed evidence.
                     for step in self.runtime.plans.get(plan_id)["steps"]:
                         if step["state"] == "blocked":
-                            self.runtime.plans.update_step(plan_id, step["id"], "in_progress")
+                            try:
+                                await self.server.recover_plan(ws, view, plan_id, thread_id)
+                            except ValueError as exc:
+                                raise ProviderError('PLAN_RECOVERY_FAILED',str(exc)) from exc
                     if task["status"] != "executing":
                         await update("executing", "Continue configured Executor in isolated worktree")
                     provider = single_provider or router.resolve("executor")
@@ -474,6 +494,11 @@ class TaskService:
                     if code in {"BUDGET_EXHAUSTED", "MODEL_TIMEOUT", "OLLAMA_UNAVAILABLE", "OLLAMA_STREAM_FAILED", "OPENAI_COMPATIBLE_AUTH_FAILED", "OPENAI_COMPATIBLE_RATE_LIMITED", "OPENAI_COMPATIBLE_STREAM_FAILED"}:
                         raise ProviderError(code, outcome["payload"].get("message", code))
                     await update("verifying", "Run commands directly, without model Tokens")
+                    weakened = acceptance_changes(view.workspace.root, task['acceptance_baseline'])
+                    if weakened:
+                        await update('paused','现有验收文件或测试脚本被修改，需要检查 Diff；未运行被削弱的测试。',
+                                     verification=[{'command':'acceptance contract','ok':False,'category':'configuration','exit_code':None,'duration_ms':0,'summary':'Protected acceptance changed: '+', '.join(weakened[:20])}])
+                        return
                     before_validation = await self.workspace_fingerprint(view)
                     results = await verifier.run(commands)
                     if task.get('resolved_gui_verification') and all(r['ok'] for r in results):
@@ -538,6 +563,7 @@ class TaskService:
                             return
                         task = self.runtime.get(plan_id)
                         report = {"goal": goal, "passed": True, "tests": results, "review": review[:8000],
+                                  'unfinished': [],
                                   'gui_verification': 'PASS' if task.get('resolved_gui_verification') else 'NOT RUN',
                                   "diff": diff, "workspace": task["workspace"], "branch": task["branch"],
                                   "workspace_fingerprint": verified_snapshot,

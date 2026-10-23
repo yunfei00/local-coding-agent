@@ -156,15 +156,13 @@ class ProcessManager:
             if not raw:
                 break
 
-    async def launch(self, arguments, *, owner="", on_output=None, on_raw_output=None, environment=None, argv=None):
+    async def launch(self, arguments, *, owner="", on_output=None, on_raw_output=None, environment=None, argv=None, reuse_running=False):
         command = arguments.get("command")
         if not isinstance(command, str) or not command.strip() or len(command) > 32768:
             raise ToolError("INVALID_COMMAND", "Provide a nonempty command of at most 32768 characters")
         timeout = arguments.get("timeout_seconds", 120)
         if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= MAX_SECONDS:
             raise ToolError("INVALID_TIMEOUT", "timeout_seconds must be 1..86400")
-        if sum(s.owner == owner and s.state == "running" for s in self.sessions.values()) >= 8 or len(self.sessions) >= 64:
-            raise ToolError("PROCESS_LIMIT", "Stop existing processes before starting more")
         try:
             cwd = self.workspace.resolve(arguments.get("cwd") or ".", must_exist=True)
         except (FileNotFoundError, PermissionError) as exc:
@@ -175,6 +173,14 @@ class ProcessManager:
             executable, prefix = argv[0], []
         else:
             executable, prefix = shell_command(arguments.get("shell", "auto"))
+        if reuse_running:
+            for existing in self.sessions.values():
+                if (existing.owner == owner and existing.state == 'running' and
+                    existing.process.returncode is None and existing.command == command and
+                    existing.cwd == self.workspace.display(cwd) and existing.shell == Path(executable).stem):
+                    return existing
+        if sum(s.owner == owner and s.state == "running" for s in self.sessions.values()) >= 8 or len(self.sessions) >= 64:
+            raise ToolError("PROCESS_LIMIT", "Stop existing processes before starting more")
         env = {**os.environ, "PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1"}
         if environment:
             if set(environment) - {"PYTHONPYCACHEPREFIX", "PYTHONDONTWRITEBYTECODE"}:

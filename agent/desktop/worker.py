@@ -26,8 +26,17 @@ def fail(code, message):
     raise DesktopError(code, message)
 
 
+def require_session():
+    from agent.desktop.session import require_interactive_session
+    try:
+        require_interactive_session()
+    except Exception as exc:
+        fail(getattr(exc, 'code', 'DESKTOP_SESSION_UNAVAILABLE'), 'Windows interactive session is locked or unavailable; no desktop action performed')
+
+
 def initialize():
     global gui, api, security, process, Desktop, user
+    require_session()
     import win32gui as gui
     import win32api as api
     import win32security as security
@@ -100,6 +109,7 @@ def identity(hwnd):
 
 
 def check(binding):
+    require_session()
     if not binding or identity(binding['hwnd']) != binding:
         fail('DESKTOP_WINDOW_STALE', 'Window identity changed; enumerate and authorize it again')
     return binding['hwnd']
@@ -286,6 +296,12 @@ def focus(binding, control=None):
     hwnd = check(binding)
     if gui.IsIconic(hwnd):
         gui.ShowWindow(hwnd, 9)
+    # UIA SetFocus only changes keyboard focus and need not activate a window.
+    # Ask Windows normally; never synthesize keys or alter foreground policy.
+    try:
+        gui.SetForegroundWindow(hwnd)
+    except Exception:
+        pass  # The authoritative foreground check below remains fail-closed.
     window = root(binding)
     window.set_focus()
     if control is not None:
@@ -300,6 +316,7 @@ def focus(binding, control=None):
 
 
 def input_batch(events):
+    require_session()
     # One SendInput batch contains all down/up events: no held keys across cancellation.
     class Mouse(C.Structure):
         _fields_ = [('dx',W.LONG),('dy',W.LONG),('mouseData',W.DWORD),('dwFlags',W.DWORD),('time',W.DWORD),('dwExtraInfo',C.c_size_t)]

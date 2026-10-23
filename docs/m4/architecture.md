@@ -1,5 +1,7 @@
 # M4 自主验收架构与能力矩阵
 
+> M4 收尾（PR #18 后）的续跑、恢复、诊断与验收保护矩阵，见 [continuation-recovery.md](continuation-recovery.md)。本文以下保留原 M4 历史基线，不能把当时的凭据状态视为当前实时配置。
+
 日期：2026-10-23。基线 main `0b29397ab2d78abe777121080deda8b2b856d293`，分支 `codex/m4-autonomous-verification`。继续使用 M1 `AgentServer.run_tool_turn`、M2 `ProcessManager` 与 M3 `desktop_*`；没有第二套 Agent Loop，也没有增加 Planner/Reviewer/路由角色。
 
 ## 执行路径

@@ -530,8 +530,16 @@ async function main() {
     await page.locator(".composer textarea").press("Enter");
     await page.locator(".composer .error-banner").waitFor();
     assert.equal(await page.locator(".composer textarea").inputValue(), "Keep this draft when start fails");
+    const recoveredPlan = await page.evaluate(ids => window.localAgent.planRequest(ids.thread, "plan.recover", {plan_id:ids.plan}), blockedPlan);
+    const recoveredStep = recoveredPlan.payload.plans.find(p => p.id === blockedPlan.plan).steps[0];
+    assert.equal(recoveredStep.state,"in_progress");
+    assert.equal(recoveredStep.executions.at(-1).tool,"list_directory");
+    assert.equal(recoveredStep.executions.at(-1).status,"succeeded");
+    // Recovery discovers real state; it must not manufacture completed evidence.
+    assert.notEqual(recoveredStep.state,"completed");
     await page.evaluate(ids => window.localAgent.planRequest(ids.thread, "plan.step.update", {plan_id: ids.plan, step_id: ids.step, state: "skipped"}), blockedPlan);
     checks.push("Failed send preserves draft");
+    checks.push("Blocked plan safely recovers through a real workspace probe without forged completion or replay");
 
     await page.locator(".composer textarea").fill("slow-stream");
     await page.locator(".composer textarea").press("Enter");

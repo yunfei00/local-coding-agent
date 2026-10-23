@@ -24,6 +24,7 @@ from agent.core.agent_loop import (
     compact_tool_payload,
 )
 from agent.core.context import ContextBudgetManager
+from agent.core.execution import failure_diagnosis
 from agent.core.explicit_context import (
     context_blocks_for_files,
     extract_file_mentions,
@@ -48,7 +49,7 @@ from agent.permissions.approval import (
     ApprovalManager,
 )
 from agent.plan_verification import verification_passed
-from agent.task_plans import automatic_steps, mutation_fingerprint
+from agent.task_plans import automatic_steps, mutation_fingerprint, repeatable_check
 from agent.persistence.store import SQLiteStore
 from agent.permissions.policy import PermissionMode, PermissionPolicy, READ_ONLY_TOOLS
 from agent.core.prompt_rules import PromptRuleManager
@@ -131,6 +132,8 @@ class AgentServer:
         self.store = SQLiteStore()
         self.last_turn_trace: dict[str, Any] | None = None
         self.confirmed_plan_resumes: set[tuple[str, str]] = set()
+        from agent.core.execution import execution_policy
+        self.continuation_policy = execution_policy()
         self.projects = ProjectRegistry(self.store)
         self.mcp_settings = MCPSettingsManager(self.store)
         self.mcp_runtime = MCPRuntime(self.mcp_settings, self.projects)
@@ -1292,6 +1295,29 @@ class AgentServer:
                     step = plans.active_step(plan_id)
                     if step:
                         self.confirmed_plan_resumes.add((thread_id, checkpoint["id"] if checkpoint else "uncheckpointed:" + step["id"]))
+                elif message_type == 'plan.recover':
+                    plan = plans.get(plan_id)
+                    if plan['thread_id'] != thread_id:
+                        raise ValueError('Plan belongs to another thread')
+                    owned = self.store.connection.execute('SELECT 1 FROM autonomous_tasks WHERE plan_id=?',(plan_id,)).fetchone()
+                    if owned:
+                        await ws.send_json(envelope('plan.loaded',{'plans':plans.list_for_thread(thread_id),'autonomous_task_id':plan_id},request_id=request_id,thread_id=thread_id))
+                        return
+                    await self.recover_plan(ws, project, plan_id, thread_id)
+                    checkpoint = plans.latest_checkpoint(plan_id)
+                    self.confirmed_plan_resumes.add((thread_id,checkpoint['id']))
+                elif message_type == 'plan.execution.extend':
+                    if plans.get(plan_id)['thread_id'] != thread_id:
+                        raise ValueError('Plan belongs to another thread')
+                    row=self.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',(plan_id,)).fetchone()
+                    if not row:
+                        raise ValueError('No execution budget exists for this plan')
+                    value=json.loads(row[0])
+                    for key,delta,cap in (('model_calls',16,512),('tokens',500000,20000000),('seconds',300,7200),('max_continuations',1,8)):
+                        value['limits'][key]=min(cap,value['limits'][key]+delta)
+                    with self.store.connection:
+                        self.store.connection.execute('UPDATE agent_execution_runs SET data_json=? WHERE id=?',(json.dumps(value),plan_id))
+                    plans.checkpoint(plan_id,'user_extended_execution_budget')
                 elif message_type != "plan.list":
                     raise ValueError("Unsupported plan operation")
                 await ws.send_json(envelope(
@@ -1346,9 +1372,23 @@ class AgentServer:
             for plan in self.store.task_plans.list_for_thread(thread_id):
                 next_step = self.store.task_plans.active_step(plan["id"])
                 checkpoint = self.store.task_plans.latest_checkpoint(plan["id"])
+                if next_step and self.store.connection.execute('SELECT 1 FROM autonomous_tasks WHERE plan_id=?',(plan['id'],)).fetchone():
+                    # Chat remains independent of paused worktree Tasks. The
+                    # explicit Task resume UI owns their recovery and budgets.
+                    continue
                 if next_step and next_step["state"] == "blocked":
-                    await self.send_error(ws, "PLAN_BLOCKED", "Resolve the blocked plan step before continuing.", request_id=request_id, thread_id=thread_id)
-                    return
+                    if next_step.get('recovery',{}).get('safe_probe'):
+                        try:
+                            await self.recover_plan(ws, project, plan['id'], thread_id)
+                        except ValueError:
+                            await self.send_error(ws,'PLAN_RECOVERY_FAILED','工作目录检查失败，计划仍保留。',request_id=request_id,thread_id=thread_id)
+                            return
+                        checkpoint = self.store.task_plans.latest_checkpoint(plan['id'])
+                        self.confirmed_plan_resumes.add((thread_id,checkpoint['id']))
+                        next_step = self.store.task_plans.active_step(plan['id'])
+                    else:
+                        await self.send_error(ws, "PLAN_BLOCKED", "检查 Plan 的失败原因并使用安全恢复；不会重放已完成操作。", request_id=request_id, thread_id=thread_id)
+                        return
                 if next_step and next_step["state"] == "in_progress":
                     confirmation = (thread_id, checkpoint["id"] if checkpoint else "uncheckpointed:" + next_step["id"])
                     if confirmation not in self.confirmed_plan_resumes:
@@ -1728,10 +1768,11 @@ class AgentServer:
 
     async def _checkpoint_thread_plans(self, thread_id: str, reason: str,
                                  files_changed: list[str] | None = None,
-                                 commands_run: list[dict] | None = None, *, project_override=None) -> None:
+                                 commands_run: list[dict] | None = None, *, project_override=None, target_plan_id=None) -> None:
         """Persist active plans on turn boundaries without replaying tools."""
         plans = self.store.task_plans
         active = [plan for plan in plans.list_for_thread(thread_id)
+                  if plan['id'] == target_plan_id
                   if any(step["state"] in ("pending", "in_progress", "blocked") for step in plan["steps"])]
         if not active:
             return
@@ -1748,6 +1789,34 @@ class AgentServer:
         for plan in active:
             plans.checkpoint(plan["id"], reason, files_changed=files_changed, commands_run=commands,
                 git_status=git_status, blockers=[step["description"] for step in plan["steps"] if step["state"] == "blocked"])
+
+    async def recover_plan(self, ws, project, plan_id, thread_id):
+        """Probe current workspace; do not replay stored arguments or mark completion."""
+        plans = self.store.task_plans
+        plan = plans.get(plan_id)
+        if plan['thread_id'] != thread_id:
+            raise ValueError('Plan belongs to another thread')
+        step = plans.active_step(plan_id)
+        if not step:
+            return
+        if step.get('recovery',{}).get('action') in {'rediscover_windows','restore_interactive_session_then_rediscover'}:
+            from agent.desktop.session import require_interactive_session
+            try:
+                require_interactive_session()
+            except ToolError as exc:
+                plans.set_recovery(plan_id,step['id'],'desktop_list_windows',exc.code)
+                plans.checkpoint(plan_id,'recovery_session_unavailable')
+                raise ValueError('交互桌面不可用；保留阻塞，不能后台恢复桌面操作。') from exc
+        probe = await self._authorize_tool(ws,project=project,call=ToolCall('list_directory',{'path':'.'}),
+            call_id=new_id('recovery'),thread_id=thread_id,turn_id='recovery-'+plan_id,user_prompt='Safely inspect the existing workspace before recovery')
+        plans.record_execution(plan_id,step['id'],new_id('probe'),'recovery','list_directory',probe)
+        if not probe.get('ok'):
+            plans.set_recovery(plan_id,step['id'],'list_directory','WORKING_DIRECTORY_UNAVAILABLE')
+            plans.checkpoint(plan_id,'recovery_probe_failed')
+            raise ValueError('工作目录检查失败；未改变步骤状态。恢复原工作目录后再试。')
+        if step['state'] == 'blocked':
+            plans.update_step(plan_id,step['id'],'in_progress')
+        plans.checkpoint(plan_id,'recovery_verified_workspace')
 
     async def run_tool_turn(
         self,
@@ -1787,6 +1856,8 @@ class AgentServer:
         )
         tools = project.tools
         state = project.state
+        if not getattr(provider,'max_output_tokens',None):
+            provider.max_output_tokens = min(self.context_reserved_output_tokens,8192)
         guard = ToolLoopGuard()
         metrics = TurnMetrics()
         plan_files_changed: set[str] = set()
@@ -1796,6 +1867,7 @@ class AgentServer:
 
         active_plans = [
             plan for plan in self.store.task_plans.list_for_thread(thread_id)
+            if plan_id or not self.store.connection.execute('SELECT 1 FROM autonomous_tasks WHERE plan_id=?',(plan['id'],)).fetchone()
             if (plan_id is None or plan["id"] == plan_id) and any(item["state"] in ("pending", "in_progress", "blocked") for item in plan["steps"])
         ]
         # Existing plans are explicit user intent. Do not create plans for simple turns.
@@ -1850,6 +1922,10 @@ class AgentServer:
                         f'(verify: {item["verification"]})'
                         for index, item in enumerate(active_plan["steps"])
                     )
+                    + '\nRecovery actions (read-only discovery first; old window/process handles expire): '
+                    + json.dumps([s.get('recovery',{}) for s in active_plan['steps']],ensure_ascii=False)
+                    + '\nPersisted tool outcomes (no arguments/bodies; inspect actual state before resuming): '
+                    + json.dumps(self.store.task_plans.executions(active_plan['id'])[-40:],ensure_ascii=False)
                 ),
             }] if active_plan else []),
             *context_blocks_for_files(mentioned_files),
@@ -1908,10 +1984,22 @@ class AgentServer:
         prompt_eval_count: int | None = None
         eval_count: int | None = None
         total_tool_calls = 0
+        unresolved_tool_failures: set[str] = set()
         previous_checkpoint = self.store.task_plans.latest_checkpoint(active_plan["id"]) if active_plan else None
+        from agent.core.execution import ExecutionBudget
+        execution = ExecutionBudget(self.store.connection, active_plan['id'] if active_plan else turn_id, thread_id, self.continuation_policy)
+        deadline = perf_counter() + max(.01, execution.data['limits']['seconds'] - execution.data['elapsed'])
 
         try:
-            for step in range(1, self.max_model_steps + 1):
+            for step in range(1, self.max_model_steps * (1 + execution.data['limits']['max_continuations']) + 1):
+                if step > 1 and (step - 1) % self.max_model_steps == 0:
+                    await self._checkpoint_thread_plans(thread_id, 'model_slice_limit', sorted(plan_files_changed), plan_commands_run, project_override=project, target_plan_id=active_plan['id'] if active_plan else None)
+                    if not execution.continue_slice():
+                        break
+                    await ws.send_json(envelope('turn.continuing', {'slice':1+(step-1)//self.max_model_steps, 'execution':execution.data,
+                        'message':'已保存 checkpoint；在原上下文、预算和权限内继续，不重放已完成操作。'}, thread_id=thread_id,turn_id=turn_id))
+                if perf_counter() >= deadline:
+                    raise ProviderError('EXECUTION_TIMEOUT','任务累计执行时间已耗尽，进度已保存。')
                 metrics.model_steps += 1
                 assistant_parts: list[str] = []
                 tool_calls: list[ToolCall] = []
@@ -1939,45 +2027,40 @@ class AgentServer:
                             )
                         )
 
-                        async for chunk in provider.stream_chat(
-                            model=model,
-                            messages=messages + ([tools.desktop.image_message(turn_id)] if tools.desktop.image_message(turn_id) else []),
-                            tools=tools.schemas(
-                                self.permissions.visible_tools(
-                                    tools.names,
-                                    tools.permission_metadata_map(),
-                                ), desktop_owner_id=turn_id,
-                            ),
-                        ):
-                            if chunk.content:
-                                observed_output = True
-                                assistant_parts.append(chunk.content)
-                                await ws.send_json(
-                                    envelope(
-                                        "turn.delta",
-                                        {"delta": chunk.content},
-                                        thread_id=thread_id,
-                                        turn_id=turn_id,
+                        request_messages = messages + ([tools.desktop.image_message(turn_id)] if tools.desktop.image_message(turn_id) else [])
+                        schemas = tools.schemas(self.permissions.visible_tools(tools.names, tools.permission_metadata_map()), desktop_owner_id=turn_id)
+                        execution.reserve(request_messages, schemas, getattr(provider,'max_output_tokens',None) or self.context_reserved_output_tokens)
+                        async with asyncio.timeout(max(.01, deadline - perf_counter())):
+                            async for chunk in provider.stream_chat(model=model, messages=request_messages, tools=schemas):
+                                if chunk.content:
+                                    observed_output = True
+                                    assistant_parts.append(chunk.content)
+                                    await ws.send_json(
+                                        envelope(
+                                            "turn.delta",
+                                            {"delta": chunk.content},
+                                            thread_id=thread_id,
+                                            turn_id=turn_id,
+                                        )
                                     )
-                                )
 
-                            if chunk.tool_calls:
-                                observed_output = True
-                                for call in chunk.tool_calls:
-                                    key = call.id or canonical_tool_fingerprint(
-                                        call.name,
-                                        call.arguments,
-                                    )
-                                    if key not in step_tool_keys:
-                                        step_tool_keys.add(key)
-                                        if provider.provider_name == "openai_compatible" and not call.id:
-                                            call = ToolCall(call.name, call.arguments, new_id("call"))
-                                        tool_calls.append(call)
+                                if chunk.tool_calls:
+                                    observed_output = True
+                                    for call in chunk.tool_calls:
+                                        key = call.id or canonical_tool_fingerprint(
+                                            call.name,
+                                            call.arguments,
+                                        )
+                                        if key not in step_tool_keys:
+                                            step_tool_keys.add(key)
+                                            if provider.provider_name == "openai_compatible" and not call.id:
+                                                call = ToolCall(call.name, call.arguments, new_id("call"))
+                                            tool_calls.append(call)
 
-                            if chunk.done:
-                                finish_reason = chunk.finish_reason
-                                prompt_eval_count = chunk.prompt_eval_count
-                                eval_count = chunk.eval_count
+                                if chunk.done:
+                                    finish_reason = chunk.finish_reason
+                                    prompt_eval_count = chunk.prompt_eval_count
+                                    eval_count = chunk.eval_count
                         break
                     except ProviderError as exc:
                         can_retry = (
@@ -2014,6 +2097,8 @@ class AgentServer:
                     raise ProviderError("MODEL_EMPTY_RESPONSE", "Model returned no text or tool calls; completion was not accepted")
 
                 if not tool_calls:
+                    if unresolved_tool_failures:
+                        raise ProviderError('PLAN_TOOLS_UNRESOLVED', '仍有工具失败尚无同类成功复测证据；不能宣告验收完成。查看 Plan 的最近工具记录。')
                     gaps = guard.completion_gaps()
                     verification = {
                         "complete": not gaps,
@@ -2051,7 +2136,7 @@ class AgentServer:
                                 and next_step["id"] != active_step_id):
                             await self._checkpoint_thread_plans(
                                 thread_id, "step_completed",
-                                sorted(plan_files_changed), plan_commands_run, project_override=project)
+                                sorted(plan_files_changed), plan_commands_run, project_override=project, target_plan_id=active_plan['id'] if active_plan else None)
                             await ws.send_json(envelope(
                                 "plan.step.completed",
                                 {"plan_id": active_plan["id"],
@@ -2071,13 +2156,19 @@ class AgentServer:
                             )})
                             continue
                     # Record the exchange once, at the real end of the turn.
+                    if active_plan and self.store.task_plans.uncertain_operation(active_plan['id'], 'check'):
+                        raise ProviderError('PLAN_UNCERTAIN_EFFECTS','仍有重启前未确认的副作用，不能宣告完成；检查实际状态并明确审批。')
+                    if active_plan and (self.store.task_plans.active_step(active_plan['id']) or {}).get('state') == 'blocked':
+                        raise ProviderError('PLAN_BLOCKED','步骤仍被阻塞；失败原因与安全恢复动作已保存在 Plan。')
+                    execution.data['status'] = 'completed'
+                    execution.data.pop('last_error', None)
                     # Intermediate plan steps must not create duplicate user turns.
                     state.append_exchange(
                         thread_id,
                         user=prompt,
                         assistant=assistant_text,
                     )
-                    await self._checkpoint_thread_plans(thread_id, "turn_completed", sorted(plan_files_changed), plan_commands_run, project_override=project)
+                    await self._checkpoint_thread_plans(thread_id, "turn_completed", sorted(plan_files_changed), plan_commands_run, project_override=project, target_plan_id=active_plan['id'] if active_plan else None)
                     # A fully completed plan is no longer considered active by
                     # _checkpoint_thread_plans. Persist its terminal state too.
                     if active_plan:
@@ -2192,11 +2283,18 @@ class AgentServer:
                     )
 
                     tool_started = perf_counter()
+                    if not active_plan:
+                        created = self.store.task_plans.create(thread_id, '工具任务：安全续跑与真实验收', [{'description':'执行请求并使用真实工具验证结果'}])
+                        active_plan = self.store.task_plans.get(created)
+                        active_step_id = active_plan['steps'][0]['id']
+                        execution.bind_plan(created)
+                        await ws.send_json(envelope('plan.loaded',{'plans':[active_plan]},thread_id=thread_id,turn_id=turn_id))
                     metadata = tools.permission_metadata(call.name) or {}
                     fingerprint = mutation_fingerprint(call.name, call.arguments,
                         read_only=call.name in READ_ONLY_TOOLS or bool(metadata.get("trusted") and metadata.get("read_only")))
-                    replay = active_plan and self.store.task_plans.previously_applied(active_plan["id"], fingerprint)
-                    journal_step_id = active_step_id or (active_plan["steps"][-1]["id"] if active_plan else None)
+                    replay = active_plan and not repeatable_check(call.name,call.arguments) and self.store.task_plans.previously_applied(active_plan["id"], fingerprint)
+                    unfinished = self.store.task_plans.active_step(active_plan['id']) if active_plan else None
+                    journal_step_id = active_step_id or (unfinished['id'] if unfinished else active_plan['steps'][-1]['id'] if active_plan else None)
                     if active_plan and active_step_id:
                         self.store.task_plans.update_step(active_plan["id"], active_step_id, "in_progress")
                     if active_plan and journal_step_id:
@@ -2243,18 +2341,24 @@ class AgentServer:
                                 "changed_paths": [],
                             }
                     else:
-                        payload = await self._authorize_tool(
+                        uncertain = active_plan and self.store.task_plans.uncertain_operation(active_plan['id'], fingerprint)
+                        async with asyncio.timeout(max(.01, deadline - perf_counter())):
+                            payload = await self._authorize_tool(
                             ws, project=project, call=call, call_id=call_id,
                             thread_id=thread_id, turn_id=turn_id,
                             user_prompt=authorization_prompt if authorization_prompt is not None else prompt,
                             autonomous=plan_id is not None,
                             supports_vision=bool(getattr(provider, 'supports_vision', False)),
+                            uncertain=bool(uncertain),
                         )
 
-                    metrics.record_tool(round((perf_counter() - tool_started) * 1000), ok=bool(payload.get("ok")))
+                    payload['duration_ms'] = round((perf_counter() - tool_started) * 1000)
+                    metrics.record_tool(payload['duration_ms'], ok=bool(payload.get("ok")))
                     if active_plan and journal_step_id:
                         self.store.task_plans.record_execution(active_plan["id"], journal_step_id,
                             call_id, turn_id, call.name, payload)
+                        if not payload.get('ok'):
+                            self.store.task_plans.set_recovery(active_plan['id'],journal_step_id,call.name,(payload.get('error') or {}).get('code'))
                     if active_plan and payload.get("ok"):
                         # Do not silently skip a blocked step, even after a
                         # subsequent tool succeeds in the same model turn.
@@ -2280,10 +2384,15 @@ class AgentServer:
                             "summary": str(payload.get("summary", ""))[:500],
                         })
                     plan_files_changed.update(str(p) for p in (payload.get("changed_paths") or []))
-                    if active_plan and active_step_id and not payload.get("ok") and not single_agent:
-                        self.store.task_plans.update_step(active_plan["id"], active_step_id, "blocked")
-                        active_step_id = None
+                    # A failed tool is repair evidence while this turn is still
+                    # running. Persist blocked only when execution actually stops;
+                    # otherwise a real fail -> fix -> retest could never recover.
                     guard.record_result(call.name, payload)
+                    if payload.get('ok'):
+                        unresolved_tool_failures.discard(call.name)
+                    elif (call.name in {'run_command','desktop_wait'} or fingerprint or
+                          failure_diagnosis(call.name,(payload.get('error') or {}).get('code'))['category'] in {'permission','repetition','compatibility'}):
+                        unresolved_tool_failures.add(call.name)
 
                     failure_limit_reached = guard.failure_limit_reached(
                         max_consecutive_failures=self.max_consecutive_tool_failures
@@ -2362,7 +2471,9 @@ class AgentServer:
                                     "model": model,
                                     "tool_calls": total_tool_calls,
                                     "consecutive_failures": guard.consecutive_failures,
-                                    "last_failure_code": guard.last_failure_code,
+                                    "last_failure_code": failure_diagnosis(call.name,guard.last_failure_code)['error_code'],
+                                    'last_tool': call.name,
+                                    'diagnosis': failure_diagnosis(call.name,guard.last_failure_code),
                                 },
                                 thread_id=thread_id,
                                 turn_id=turn_id,
@@ -2430,7 +2541,7 @@ class AgentServer:
                         )
                     )
 
-            await self._checkpoint_thread_plans(thread_id, "max_model_steps", sorted(plan_files_changed), plan_commands_run, project_override=project)
+            await self._checkpoint_thread_plans(thread_id, "max_model_steps", sorted(plan_files_changed), plan_commands_run, project_override=project, target_plan_id=active_plan['id'] if active_plan else None)
             self._record_diagnostic_error(
                 "MAX_MODEL_STEPS",
                 f"Agent exceeded {self.max_model_steps} model steps without completing the task.",
@@ -2454,7 +2565,7 @@ class AgentServer:
                 )
             )
         except asyncio.CancelledError:
-            await self._checkpoint_thread_plans(thread_id, "turn_cancelled", sorted(plan_files_changed), plan_commands_run, project_override=project)
+            await self._checkpoint_thread_plans(thread_id, "turn_cancelled", sorted(plan_files_changed), plan_commands_run, project_override=project, target_plan_id=active_plan['id'] if active_plan else None)
             with suppress(ConnectionResetError, RuntimeError):
                 await ws.send_json(
                     envelope(
@@ -2470,7 +2581,12 @@ class AgentServer:
                 )
             raise
         except ProviderError as exc:
-            await self._checkpoint_thread_plans(thread_id, "provider_error", sorted(plan_files_changed), plan_commands_run, project_override=project)
+            if active_plan and exc.code.startswith(('MODEL_','OPENAI_','OLLAMA_','EXECUTION_')):
+                current = self.store.task_plans.active_step(active_plan['id'])
+                if current:
+                    self.store.task_plans.set_recovery(active_plan['id'],current['id'],'model',exc.code)
+            await self._checkpoint_thread_plans(thread_id, "provider_error", sorted(plan_files_changed), plan_commands_run, project_override=project, target_plan_id=active_plan['id'] if active_plan else None)
+            execution.data['last_error'] = exc.code
             self._record_diagnostic_error(
                 exc.code,
                 exc.message,
@@ -2491,28 +2607,50 @@ class AgentServer:
                         turn_id=turn_id,
                     )
                 )
+        except TimeoutError:
+            execution.data['last_error'] = 'EXECUTION_TIMEOUT'
+            if active_plan:
+                current = self.store.task_plans.active_step(active_plan['id'])
+                if current:
+                    self.store.task_plans.set_recovery(active_plan['id'],current['id'],'model','EXECUTION_TIMEOUT')
+            await self._checkpoint_thread_plans(thread_id, 'execution_timeout', sorted(plan_files_changed), plan_commands_run, project_override=project, target_plan_id=active_plan['id'] if active_plan else None)
+            await ws.send_json(envelope('turn.failed',{'code':'EXECUTION_TIMEOUT','message':'累计执行时间耗尽；checkpoint 已保存。','recoverable':True},thread_id=thread_id,turn_id=turn_id))
         except (ConnectionResetError, RuntimeError):
             return
         finally:
-            await tools.desktop.close_owner(turn_id)
-            cleanup = await tools.processes.close_owner(turn_id)
-            if cleanup:
+            try:
+                if active_plan:
+                    with self.store.connection:
+                        self.store.connection.execute("UPDATE task_plan_executions SET status='interrupted' WHERE plan_id=? AND turn_id=? AND status='running'",(active_plan['id'],turn_id))
+                execution.data['status'] = 'completed' if execution.data['status'] == 'completed' else 'paused'
+                if active_plan and execution.data['status'] == 'paused':
+                    current = self.store.task_plans.active_step(active_plan['id'])
+                    if current and current.get('recovery') and current['state'] != 'blocked':
+                        self.store.task_plans.update_step(active_plan['id'], current['id'], 'blocked')
+                        self.store.task_plans.checkpoint(active_plan['id'], 'blocked_with_recovery')
+                execution.save()
+                with suppress(ConnectionResetError,RuntimeError):
+                    await ws.send_json(envelope('execution.updated',{'execution':execution.data},thread_id=thread_id,turn_id=turn_id))
+            finally:
+                await tools.desktop.close_owner(turn_id)
+                cleanup = await tools.processes.close_owner(turn_id)
+                if cleanup:
+                    with suppress(ConnectionResetError, RuntimeError):
+                        await ws.send_json(envelope("process.cleanup", {"processes": cleanup}, thread_id=thread_id, turn_id=turn_id))
+                if active_plan and self.store.task_plans.latest_checkpoint(active_plan["id"]) == previous_checkpoint:
+                    await self._checkpoint_thread_plans(thread_id, "turn_interrupted", sorted(plan_files_changed), plan_commands_run, project_override=project, target_plan_id=active_plan['id'] if active_plan else None)
+                self.approvals.finish_turn(turn_id)
+                self.last_turn_trace = {
+                    "provider": redact_text(provider.provider_name, exact_secrets=self._exact_secrets()),
+                    "model": redact_text(model, exact_secrets=self._exact_secrets()),
+                    "execution_summary": metrics.summary(),
+                }
                 with suppress(ConnectionResetError, RuntimeError):
-                    await ws.send_json(envelope("process.cleanup", {"processes": cleanup}, thread_id=thread_id, turn_id=turn_id))
-            if active_plan and self.store.task_plans.latest_checkpoint(active_plan["id"]) == previous_checkpoint:
-                await self._checkpoint_thread_plans(thread_id, "turn_interrupted", sorted(plan_files_changed), plan_commands_run, project_override=project)
-            self.approvals.finish_turn(turn_id)
-            self.last_turn_trace = {
-                "provider": redact_text(provider.provider_name, exact_secrets=self._exact_secrets()),
-                "model": redact_text(model, exact_secrets=self._exact_secrets()),
-                "execution_summary": metrics.summary(),
-            }
-            with suppress(ConnectionResetError, RuntimeError):
-                await ws.send_json(envelope("turn.metrics", self.last_turn_trace,
-                    thread_id=thread_id, turn_id=turn_id))
+                    await ws.send_json(envelope("turn.metrics", self.last_turn_trace,
+                        thread_id=thread_id, turn_id=turn_id))
 
     async def _authorize_tool(self, ws, *, project, call, call_id, thread_id, turn_id,
-                              user_prompt, autonomous=False, on_raw_output=None, environment=None, supports_vision=False, desktop_destination=None):
+                              user_prompt, autonomous=False, on_raw_output=None, environment=None, supports_vision=False, desktop_destination=None, uncertain=False):
         review_arguments = public_arguments(call.name,call.arguments)
         if call.name == 'desktop_screenshot' and call.arguments.get('share_with_model') and desktop_destination:
             review_arguments = {**review_arguments, 'upload_destination': desktop_destination}
@@ -2533,6 +2671,11 @@ class AgentServer:
         if not verdict.allowed:
             return {"ok": False, "summary": verdict.reason,
                     "error": {"code": "PERMISSION_DENIED", "message": verdict.reason, "risk": verdict.risk}, "changed_paths": []}
+        if uncertain:
+            decision = await self.approvals.request(ws, turn_id=turn_id,thread_id=thread_id,approval_key=call_id,
+                tool_name=call.name,arguments=review_arguments,reason='上次操作在重启前未确认结果；检查现状后明确批准本次重试。',risk='uncertain_operation')
+            if decision == APPROVAL_DENY:
+                return {'ok':False,'error':{'code':'APPROVAL_DENIED'},'summary':'未确认操作未获重试授权。','changed_paths':[]}
         if verdict.requires_approval:
             decision = await self.approvals.request(ws, turn_id=turn_id, thread_id=thread_id,
                 approval_key=(call_id if verdict.risk == 'desktop_fresh' else verdict.approval_key or call_id), tool_name=call.name,
@@ -2602,6 +2745,13 @@ class AgentServer:
                 },
                 "changed_paths": [],
             }
+        except (FileNotFoundError, NotADirectoryError, PermissionError) as exc:
+            code = ('PERMISSION_DENIED' if isinstance(exc,PermissionError) else
+                    'WORKING_DIRECTORY_UNAVAILABLE' if not tools.processes.workspace.root.is_dir() else
+                    'NOT_DIRECTORY' if isinstance(exc,NotADirectoryError) else 'FILE_NOT_FOUND')
+            diagnosis = failure_diagnosis(call.name,code)
+            self._record_diagnostic_error(code,diagnosis['summary'],source='tool:'+call.name)
+            return {'ok':False,'summary':diagnosis['summary'],'error':{'code':code,'message':diagnosis['summary']},'changed_paths':[]}
         except Exception as exc:
             self._record_diagnostic_error(
                 "TOOL_INTERNAL_ERROR",

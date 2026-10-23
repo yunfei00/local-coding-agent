@@ -3,10 +3,51 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import time
 import uuid
+
+
+def acceptance_snapshot(root: Path) -> dict:
+    """Freeze existing test expectations/configuration, never store file bodies."""
+    snapshot = {}
+    def candidates():
+        for directory, dirs, files in os.walk(root,followlinks=False):
+            dirs[:] = [d for d in dirs if d not in {'.git','node_modules','.venv','__pycache__','dist','lib'}]
+            for name in files:
+                yield Path(directory)/name
+    for path in candidates():
+        relative = path.relative_to(root)
+        if any(p in {'.git','node_modules','.venv','__pycache__','dist','lib'} for p in relative.parts) or not path.is_file():
+            continue
+        name = path.name
+        is_test = any(p in ('tests','__tests__') for p in relative.parts) or name.startswith('test_') or '.test.' in name or '.spec.' in name
+        config = str(relative).replace('\\','/') in ('.lca/verification.json','.lca/gui-verification.json') or name in ('tsconfig.json','vitest.config.ts','jest.config.js','pytest.ini')
+        if name == 'package.json':
+            if path.stat().st_size > 262144 or not path.resolve().is_relative_to(root.resolve()):
+                raise ValueError('Acceptance manifest outside workspace or too large')
+            scripts = json.loads(path.read_text(encoding='utf-8')).get('scripts',{})
+            snapshot[str(relative)] = {'scripts':{k:v for k,v in scripts.items() if k in ('test','typecheck','build','pretest','posttest','prebuild','postbuild')}}
+        elif (is_test or config) and path.suffix not in ('.pyc','.pyo'):
+            if not path.resolve().is_relative_to(root.resolve()) or path.stat().st_size > 2*1024*1024 or len(snapshot) >= 2000:
+                raise ValueError('Acceptance baseline exceeds bounded safe discovery')
+            snapshot[str(relative)] = {'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}
+    return snapshot
+
+
+def acceptance_changes(root: Path, baseline: dict) -> list[str]:
+    current = acceptance_snapshot(root)
+    changed=[]
+    for name, original in baseline.items():
+        candidate=current.get(name)
+        if 'scripts' in original:
+            if candidate is None or any(candidate.get('scripts',{}).get(k) != v for k,v in original['scripts'].items()):
+                changed.append(name)
+        elif candidate != original:
+            changed.append(name)
+    return changed
 
 
 def discover_commands(root: Path, configured: list[str]) -> list[str]:
