@@ -150,7 +150,12 @@ class WindowsDesktopTests(unittest.IsolatedAsyncioTestCase):
                     x0,y0,x1,y1=control['bounds']
                     ox,oy=after.data['origin']
                     region=a.crop((x0-ox+2,y0-oy+2,x1-ox-2,y1-oy-2))
-                    self.assertEqual(region.getextrema(),((0,0),(0,0),(0,0)),'Actual input pixels must be masked, not a displaced rectangle')
+                    if control['automation_id'] == 'PasswordInput':
+                        self.assertEqual(region.getextrema(),((0,0),(0,0),(0,0)),
+                                         'Sensitive input pixels must remain black')
+                    else:
+                        self.assertEqual(region.getpixel((max(0, region.width-5), max(0, region.height-5))), (246,246,246),
+                                         'Ordinary editor contents must be concealed with a light placeholder')
             shutil.copy2(after.data['path'],ROOT/'validation-reports/m3-fixture-sanitized.png')
         image=self.registry.desktop.image_message(self.owner)['content'][1]['image_url']['url']
         self.assertTrue(base64.b64decode(image.split(',',1)[1]).startswith(b'\xff\xd8'))

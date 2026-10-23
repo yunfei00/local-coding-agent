@@ -373,16 +373,28 @@ def execute(request):
             fail('DESKTOP_CAPTURE_GEOMETRY_UNKNOWN','Capture bounds do not match client/window physical bounds; no image saved')
         scale_x, scale_y = 1,1
         draw = ImageDraw.Draw(image)
+        # Validate original capture *before* privacy masking. A Notepad editor may
+        # cover the entire client and must not be mistaken for a failed capture
+        # after its text contents have been concealed.
+        if _capture_looks_blank(image):
+            fail('DESKTOP_CAPTURE_EMPTY', 'Window capture is blank before redaction')
         redactions = 0
+        redacted_area = 0
         for control in items:
-            if sensitive(control) or control.element_info.control_type == 'Edit':
+            secret = sensitive(control)
+            editable = control.element_info.control_type == 'Edit'
+            if secret or editable:
                 r = control.rectangle()
                 box=(max(0,r.left-left-4),max(0,r.top-top-4),min(image.width,r.right-left+4),min(image.height,r.bottom-top+4))
                 if box[2]>box[0] and box[3]>box[1]:
-                    draw.rectangle(box,fill='black')
+                    # Password/secret controls remain black. Ordinary text
+                    # editors receive an opaque, light neutral placeholder:
+                    # preserving the editor's location but never its contents.
+                    draw.rectangle(box,fill='black' if secret else (246,246,246))
+                    if not secret and box[2]-box[0] >= 110 and box[3]-box[1] >= 18:
+                        draw.text((box[0]+8,box[1]+5), 'EDIT CONTENT REDACTED', fill=(64,64,64))
                     redactions += 1
-        if all(lo == hi for lo,hi in image.getextrema()):
-            fail('DESKTOP_CAPTURE_EMPTY', 'Window capture is blank; GPU/protected/minimized content may not support capture')
+                    redacted_area += (box[2]-box[0])*(box[3]-box[1])
         origin = [left,top]
         if a.get('scope') == 'screen':
             x, y = user.GetSystemMetrics(76), user.GetSystemMetrics(77)
@@ -391,7 +403,7 @@ def execute(request):
             canvas.paste(image, (left-x,top-y))
             image, origin = canvas, [x,y]
         image.save(request['artifact_path'], format='PNG')
-        return {'width':image.width,'height':image.height,'origin':origin, **geometry(hwnd), 'pixel_to_screen_scale':[1/scale_x,1/scale_y],'redacted_controls':redactions,'scope':a.get('scope','window'), 'screen_policy':'only authorized window pixels; remaining desktop masked'}
+        return {'width':image.width,'height':image.height,'origin':origin, **geometry(hwnd), 'pixel_to_screen_scale':[1/scale_x,1/scale_y],'redacted_controls':redactions,'redacted_area_fraction':min(1.0,round(redacted_area/max(1,image.width*image.height),4)),'redaction_policy':'text editors concealed with light placeholder; sensitive controls black','scope':a.get('scope','window'), 'screen_policy':'only authorized window pixels; remaining desktop masked'}
     if op == 'desktop_focus_window':
         focus(binding)
         return {'focused':True}

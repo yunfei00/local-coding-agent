@@ -31,3 +31,12 @@ selector 允许 automation_id/name/control_type/runtime_id，均为精确匹配�
 在 Task Models 中仅为实际支持图像的 Model Profile 启用 Vision image input（supports_vision，缺省 false）。截图发送还需 share_with_model=true 及独立授权。`vision_feedback=image_attached` 才代表真实图像进入下一轮模型请求；否则明确为 local_artifact_only 或 model_not_vision_capable_use_control_tree。普通 Chat 未声明能力时不假定视觉支持。接口通路经过自动测试，未以付费模型识别质量作为回归依据。
 
 稳定错误码还包括 DESKTOP_WINDOW_SCOPE / DESKTOP_WINDOW_STALE、DESKTOP_SESSION_DENIED / USER_DENIED / ELEVATION_DENIED、DESKTOP_SENSITIVE_CONTROL / SENSITIVE_INPUT、DESKTOP_RISK_APPROVAL_REQUIRED、DESKTOP_FOCUS_FAILED / WINDOW_OCCLUDED、DESKTOP_CAPTURE_GEOMETRY_UNKNOWN、DESKTOP_UIA_PATTERN_UNAVAILABLE、DESKTOP_TIMEOUT。Windows 异常仅记录类型、原生错误码和内部位置，不记录 UI 异常正文。
+
+
+## 2026-10-23 记事本大面积黑屏的隐私遮盖修正
+
+截图链路会遮盖所有 UIA Edit 控件，防止代码、聊天、凭据等文字意外上传。旧版对普通编辑区也整块填黑；对于 Windows 记事本，编辑区域占满绝大部分客户区，结果看上去像截图失败，实际上可能是**隐私遮盖而非底层捕获失败**。
+
+现改为先判断原始捕获是否为空，再对普通编辑区填充浅灰色不透明占位区域并标注 `EDIT CONTENT REDACTED`，敏感/密码控件仍为黑色。结果附带 `redacted_area_fraction` 与 `redaction_policy`，告知视觉模型实际画面有多少区域被遮盖。**这不是公开记事本文字内容的开关**；即使空白记事本，编辑区也按同一规则处理，图像不能用于判断编辑区内的真实文字。需要验证文本输入时必须使用受控 UI Automation 或独立测试状态断言。
+
+若原始截图确实黑屏，仍触发受限的前台窗口屏幕回退，窗口被遮挡时安全失败，不捕获其他应用；不同 DPI/多显示器/现代记事本版本仍需公司实机复测。截图返回成功不等于所有用户可见内容都已完整呈现。
