@@ -1,5 +1,6 @@
 import {useEffect, useState} from "react";
 import {Connection, ModelCatalog, ModelProfile, TaskConfig, modelLabel} from "../lib/modelCatalog";
+import {ModelDiagnosticResult} from "./ModelDiagnosticResult";
 
 export function ModelSettingsSection({threadId = "", running}: {threadId?: string; running: boolean}) {
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
@@ -12,6 +13,9 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
   const [busy, setBusy] = useState(false);
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [discovered, setDiscovered] = useState<string[]>([]);
+  const [live, setLive] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diagnostic, setDiagnostic] = useState<Record<string, unknown> | null>(null);
   const request = (op: string, payload: Record<string, unknown> = {}) => window.localAgent.taskRequest(threadId, op, payload);
   useEffect(() => {
     let alive = true;
@@ -42,7 +46,7 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
     <h2>Models and routing</h2><p>Connections and roles are independent of the chat Provider. Save changes here; existing tasks retain their snapshots.</p>
     {error ? <p className="error-banner" role="alert">{error}</p> : null}
     {message ? <p role="status">{message}</p> : null}
-    <fieldset disabled={busy || running}>
+    <fieldset disabled={busy || running || diagnosing}>
       <legend>Provider Connections</legend>
       <label className="settings-field">Connection<select aria-label="Model connection" value={selected} onChange={e => {setSelected(e.target.value); setKey(""); setDiscovered([]);}}>{catalog.connections.map(c => <option key={c.connection_id} value={c.connection_id}>{c.display_name} · {c.provider_type}</option>)}</select></label>
       <button onClick={() => {const c: Connection = {connection_id:crypto.randomUUID(), display_name:"New connection", provider_type:"ollama", base_url:"http://127.0.0.1:11434", credential_reference:null, enabled:true}; setCatalog({...catalog, connections:[...catalog.connections,c]}); setSelected(c.connection_id); setKey(""); setDiscovered([]);}}>Add connection</button>
@@ -54,7 +58,7 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
         {connection.provider_type === "openai_compatible" ? <>
           <label className="settings-field">API key<input aria-label="Connection API key" type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} /></label>
           <p>Credential: {connection.credential_reference || "No key reference"}. Keys stay in OS protected storage, or session memory when unavailable.</p>
-          <button onClick={() => void action(async () => {const result = await request("task.credential.set", {connection_id:selected, api_key:key}); editConnection({credential_reference:"connection-" + selected}); setKey(""); setMessage("Credential updated: " + String(result.payload?.mode) + ". Save model configuration to apply the reference.");})}>Save / clear connection key</button>
+          <button onClick={() => void action(async () => {const result = await request("task.credential.set", {connection_id:selected, api_key:key}); const next = {...catalog, connections:catalog.connections.map(c => c.connection_id === selected ? {...c, credential_reference:key ? "connection-" + selected : null} : c)}; await request("task.catalog.update", {catalog:next, config}); setCatalog(next); setKey(""); setMessage("Credential and connection reference saved: " + String(result.payload?.mode));})}>Save / clear connection key</button>
         </> : null}
         <button onClick={() => void action(async () => {
           // Save first so the tested endpoint is exactly the one displayed.
@@ -64,7 +68,7 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
           setStatuses(s => ({...s, [selected]:payload.online ? "Connected" : "Unavailable"}));
           setDiscovered(((payload.models ?? []) as Array<{name: string}>).map(m => m.name));
           setMessage(JSON.stringify(payload, null, 2));
-        })}>Test connection / fetch models</button>
+        })}>Fetch model list (does not verify capabilities)</button>
         <button onClick={() => {if (catalog.profiles.some(p => p.connection_id === selected)) {setError("Remove this connection's model profiles after rebinding roles first."); return;} setCatalog({...catalog, connections:catalog.connections.filter(c => c.connection_id !== selected)}); setSelected("");}}>Delete connection</button>
         {discovered.map(name => <button key={name} onClick={() => addModel(name)}>Add model: {name}</button>)}
       </> : null}
@@ -96,5 +100,21 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
       <p>Caps use conservative reservations and request output limits; provider tokenization and billing may differ. Failed requests retain reservations. Cost caps require configured prices.</p>
       <button onClick={() => void action(async () => {const result = await request("task.catalog.update", {catalog, config}); setCatalog(result.payload?.catalog as ModelCatalog); setConfig(result.payload?.config as TaskConfig); setMessage("Model configuration saved. Running task snapshots are unchanged.");})}>Save model configuration</button>
     </fieldset>
+    <section aria-label="Model connection diagnostics">
+      <h3>Connection diagnostics</h3>
+      <p>请选择已保存的模型。默认仅检查配置，不发送请求。Vision 标志是声明，实测结果单独显示。</p>
+      <label><input aria-label="Enable Live Test" type="checkbox" checked={live} disabled={diagnosing} onChange={e => setLive(e.target.checked)} />Live Test：授权付费请求，最多 3 次、1 张合成图片；不上传桌面。每次最长 60 秒，无自动重试。</label>
+      {[false,true].map(vision => <button key={String(vision)} disabled={diagnosing || running || !profile || profile.connection_id !== selected} onClick={() => {
+        setDiagnosing(true); setDiagnostic(null); setError("");
+        void (async () => {
+          const saved = (await request("task.catalog.get")).payload?.catalog as ModelCatalog;
+          if (JSON.stringify(saved.profiles.find(p => p.model_profile_id === profileId)) !== JSON.stringify(profile) || JSON.stringify(saved.connections.find(c => c.connection_id === selected)) !== JSON.stringify(connection)) throw new Error("Save model configuration before testing changed fields.");
+          const event = await request("task.model.diagnostic", {connection_id:selected, model_profile_id:profileId, live, vision});
+          setDiagnostic(event.payload ?? {});
+        })().catch(cause => setError(String(cause))).finally(() => setDiagnosing(false));
+      }}>{vision ? "Test Vision" : "Test Connection"}</button>)}
+      {diagnosing ? <><span role="status">Diagnosing…</span><button onClick={() => void request("task.model.diagnostic.cancel", {connection_id:selected})}>Stop diagnostics</button></> : null}
+      {diagnostic ? <ModelDiagnosticResult report={diagnostic} /> : null}
+    </section>
   </div>;
 }

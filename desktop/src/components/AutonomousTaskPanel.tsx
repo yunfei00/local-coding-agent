@@ -51,6 +51,7 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
       if (event.type === "task.updated") apply(event);
       if (event.type === "model.active") setModel(String(event.payload?.role) + " · " + String(event.payload?.provider ?? event.payload?.route) + " / " + String(event.payload?.model));
       if (event.type === "model.compatibility") setNotice(String(event.payload?.message));
+      if (event.type === "verification.progress") setNotice("GUI 验收 · " + String(event.payload?.stage) + " · " + String(event.payload?.state));
     });
     return () => {alive = false; unsubscribe();};
   }, [threadId]);
@@ -96,6 +97,9 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
         <label>Verification commands (one per line; empty = project discovery)<textarea aria-label="Verification commands" value={commands} onChange={e => setCommands(e.target.value)} /></label>
         <button disabled={busy || running || !goal.trim()} onClick={() => void start()}>Start autonomous task</button>
         <details><summary>Models and budget</summary>
+          <details><summary>GUI acceptance contract</summary><p>在任务开始前固定启动命令、精确窗口标题和 desktop_* 控件断言。每轮独立启动、截图和清理；默认 UI Automation。可选 vision_profile_id 只提供视觉观察，每次上传仍需授权。</p>
+            <textarea aria-label="GUI acceptance contract" key={JSON.stringify(config.gui_verification)} defaultValue={config.gui_verification ? JSON.stringify(config.gui_verification,null,2) : ""} placeholder={'{"command":"npm start","window_title":"My App","steps":[{"tool":"desktop_wait","arguments":{"selector":{"automation_id":"StatusLabel"},"state":"name","expected":"Settings ready"}}]}'} onBlur={e => {try {setConfig({...config,gui_verification:e.target.value.trim() ? JSON.parse(e.target.value) : null});} catch {setError("GUI contract requires valid JSON");}}} />
+          </details>
           <button onClick={onSettings}>Provider addresses and secure API key</button>
           {(["local", "api"] as const).map(route => <button key={route} disabled={busy} onClick={() => void request("task.connection.test", {route}).then(event => {if (event) setNotice(JSON.stringify(event.payload, null, 2));})}>Test {route} connection</button>)}
           {Object.entries(config.roles).filter(([role]) => config.strategy !== "single-agent" || role === "executor").map(([role, profile]) => <div className="task-role" key={role}>
@@ -125,6 +129,9 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
         {task.config ? <p>API calls: {task.usage.api_calls} / {task.config.budget.api_calls} · API tokens reserved: {task.usage.reserved_tokens} / {task.config.budget.api_tokens} · Remaining {Math.max(0, Number(task.config.budget.api_tokens) - task.usage.reserved_tokens)}</p> : null}
         {task.calls?.length ? <details><summary>Model call journal</summary>{task.calls.map(call => <p key={call.id}>[{new Date(call.created_at * 1000).toLocaleTimeString()}] #{call.usage.sequence} · {call.id.slice(0,8)} · {call.usage.phase} / {call.role} · {call.usage.provider || call.route} / {call.model} · {call.status} {call.usage.http_status ? `HTTP ${call.usage.http_status}` : ""} {call.usage.error_code || ""} {call.usage.schema_valid !== undefined && call.usage.schema_valid !== null ? `Schema ${call.usage.schema_valid ? "PASS" : "FAIL"}` : ""} {call.usage.next_state ? `→ ${call.usage.next_state}` : ""}</p>)}</details> : null}
         <p>API input {task.usage.input_tokens} · Output {task.usage.output_tokens} · Cached {task.usage.cached_tokens} {task.usage.estimated ? "(estimated)" : "(reported)"}</p>
+        <p>验收轮次 {task.attempts} · 自动修复 {task.repairs}</p>
+        {task.verification_history?.length ? <details><summary>独立验收与自动修复记录</summary>{task.verification_history.map(round => <div key={round.attempt}><strong>#{round.attempt} {round.passed ? "PASS" : "FAIL"}</strong>{round.results.filter(r => !r.ok).map((r,i) => <pre key={i}>{r.command + ": " + r.summary}</pre>)}</div>)}</details> : null}
+        {task.report.gui_verification ? <p>GUI acceptance: {task.report.gui_verification}</p> : null}
         <p>Reserved cost {task.usage.reserved_cost.toFixed(6)} · Actual {task.usage.actual_cost_known ? task.usage.actual_cost.toFixed(6) : "unavailable"}</p>
         <details><summary>Usage precision</summary><p>{task.usage.precision}</p></details>
         {taskIsActive(task) ? <><button disabled={busy} onClick={() => void request("task.pause", {task_id:task.id})}>Pause task</button><button disabled={busy} onClick={() => void request("task.cancel", {task_id:task.id})}>Stop task</button></> : <>

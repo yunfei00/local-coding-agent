@@ -33,6 +33,9 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --locked
 
+      - name: Credential and private artifact scan
+        run: uv run python scripts/validation/credential_scan.py
+
       - name: Electron headless test display
         if: runner.os == 'Linux'
         shell: bash
@@ -120,4 +123,12 @@ jobs:
         with:
           name: m3-desktop-evidence-${{ matrix.os }}
           path: validation-reports/m3-*.json
+          if-no-files-found: ignore
+
+      - name: Retain M4 controlled GUI evidence (never screenshot pixels)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m4-acceptance-${{ matrix.os }}
+          path: validation-reports/m4-autonomous-gui.json
           if-no-files-found: ignore

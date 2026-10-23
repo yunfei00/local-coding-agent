@@ -39,10 +39,16 @@ def validate_catalog(raw):
         if not isinstance(c["base_url"], str) or len(c["base_url"]) > 2000:
             raise ValueError("Invalid connection URL")
         url = urlsplit(c["base_url"])
-        if url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password or url.query or url.fragment:
+        try:
+            url.port
+        except ValueError:
+            raise ValueError('Invalid connection URL port') from None
+        if url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password or url.query or url.fragment or re.search(r'\s', c['base_url']):
             raise ValueError("Use an HTTP(S) base URL without embedded credentials, query or fragment")
         c["base_url"] = c["base_url"].rstrip("/")
         ref = c["credential_reference"]
+        if ref == 'legacy-openai' and c['connection_id'] != 'legacy-openai':
+            raise ValueError('Legacy credential belongs only to the migrated connection')
         if ref not in (None, "legacy-openai") and ref != "connection-" + c["connection_id"]:
             raise ValueError("Credential reference must belong to its connection")
     profile_ids = set()

@@ -4,6 +4,11 @@ import {taskConfigOverrides, TaskConfig} from "./modelCatalog";
 const saved: TaskConfig = {strategy:"local-only", budget:{api_calls:0,api_tokens:0,global_api_calls:30}, verification_commands:[], roles:{planner:{route:"local",model:"old",model_profile_id:"local-old",context_window:32768,output_limit:1024,tool_mode:"auto",input_price:null,output_price:null}}};
 
 describe("Task edits over latest Settings", () => {
+  it("adds or clears a deliberate GUI contract without replaying saved model settings", () => {
+    const gui={command:"npm start",window_title:"App",steps:[]};
+    expect(taskConfigOverrides(saved,{...saved,gui_verification:gui})).toEqual({gui_verification:gui});
+    expect(taskConfigOverrides({...saved,gui_verification:gui},{...saved,gui_verification:null})).toEqual({gui_verification:null});
+  });
   it("does not send cached defaults as explicit overrides", () => {
     expect(taskConfigOverrides(saved, structuredClone(saved))).toEqual({});
   });

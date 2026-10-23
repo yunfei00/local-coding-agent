@@ -93,6 +93,20 @@ class WindowsJob:
         if not resumed:
             raise OSError("Suspended process has no resumable thread")
 
+    def contains(self, pid: int) -> bool:
+        if not self.handle:
+            return False
+        kernel = self.kernel
+        kernel.IsProcessInJob.argtypes = [wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
+        process = kernel.OpenProcess(0x1000, False, pid)
+        if not process:
+            return False
+        try:
+            member = wintypes.BOOL()
+            return bool(kernel.IsProcessInJob(process, self.handle, ctypes.byref(member)) and member.value)
+        finally:
+            kernel.CloseHandle(process)
+
     def terminate(self) -> None:
         if self.handle:
             if not self.kernel.TerminateJobObject(self.handle, 1):
