@@ -23,13 +23,13 @@ EXTRA = {
 class DesktopTool(BaseTool):
     def __init__(self, runtime, name):
         self.runtime, self.name = runtime, name
-        self.description = name + ': current-session Windows UIA; explicit consent required. Inspect before input; never enter secrets.'
+        self.description = name + ': current-session Windows UIA; explicit consent required. Inspect before input; never enter secrets. For non-Edit Tkinter Pane typing, use an exact runtime_id and confirm_risk=true; result is NOT value_verified and must be checked through application output.'
         keys = {'timeout_seconds'}
         if name != 'desktop_list_windows':
             keys.add('window_id')
         if name in ('desktop_click','desktop_type_text','desktop_keypress','desktop_scroll','desktop_wait'):
             keys.add('selector')
-        if name in ('desktop_click','desktop_keypress','desktop_scroll'):
+        if name in ('desktop_click','desktop_keypress','desktop_scroll','desktop_type_text'):
             keys.add('confirm_risk')
         required = [] if name == 'desktop_list_windows' else ['window_id']
         self.parameters = {'type':'object','properties':{**{k:v for k,v in PROPERTIES.items() if k in keys}, **EXTRA[name]}, 'required':required, 'additionalProperties':False}
