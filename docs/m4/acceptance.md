@@ -24,9 +24,11 @@
 | 运行取消 | 实际 GUI 等待取消，GUI 与 worker 清理，不继续操作 |
 | Python/React/TS/Electron | 保留并运行 M1/M2/M3 真实工程回归；非 Windows GUI 明确跳过 |
 
-首轮完整 `uv run python scripts/validation/check.py`：316 项 Python（Windows 跳过 2）、42 项 Vitest / 12 文件、TypeScript 类型检查与构建全部通过，Errors=0。报告 `validation-reports/20261023-085128-759826.json`。随后增加 HTTP 错误、CLI 只读退出码与契约冻结回归；诊断专项 13 项通过，GUI 专项包含 5 项真实 Windows 场景及 2 项跨平台契约。desktop-smoke 实际 Electron/Renderer/Agent 27 项通过、0 跳过。
+最终完整 `uv run python scripts/validation/check.py`：322 项 Python（Windows 跳过 2）、42 项 Vitest / 12 文件、TypeScript 类型检查与构建全部通过，Errors=0。报告 `validation-reports/20261023-090552-169445.json`。此前首轮为 316 项，新增 HTTP 错误、CLI 只读退出码与契约冻结后进行了完整复验。诊断专项 13 项通过；GUI 专项包含 5 项真实 Windows 场景及 2 项跨平台契约。desktop-smoke 实际 Electron/Renderer/Agent 27 项通过、0 跳过。
 
-最终完整复验和 Windows/Ubuntu CI 在 PR 阶段执行后记录。原始日志和 JSON 位于忽略的 validation-reports；CI 仅保留受控 fixture JSON，不上传截图或用户配置。阶段性失败已修复，不作为最终通过证据。
+[Windows / Ubuntu CI 完整记录](https://github.com/yunfei00/local-coding-agent/actions/runs/39882035101) 两端通过：Windows 实际运行 322 项，跳过 2；Ubuntu 实际运行 322 项，跳过 12（Windows GUI 与 CMD 场景）。两端桌面单元测试、类型检查、构建通过，Windows 另执行 27 项 desktop-smoke。后续敏感契约保存前校验补充了同一跨平台契约测试中的拒绝断言；最终提交门禁以 [PR #15 最新检查](https://github.com/yunfei00/local-coding-agent/pull/15/checks) 为准，全部通过后合并。
+
+凭据/私有产物扫描 305 个受版本控制文本文件，无发现；编译检查、git diff --check 通过。扫描是模式与已知环境密钥检查，不宣称覆盖所有未知凭据格式。原始日志和 JSON 位于忽略的 validation-reports；CI 仅保留受控 fixture JSON，不上传截图或用户配置。阶段性失败已修复，不作为最终通过证据。
 
 ## 限制与 M5
 
