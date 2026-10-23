@@ -16,6 +16,8 @@ M3 继续复用 `AgentServer.run_tool_turn`、Single Agent、Task Runtime、Appr
 
 ## 能力矩阵与证据
 
+M4 后续状态与代码证据见 [M4 能力矩阵](../m4/architecture.md)；M4 将 Pillow 的合成诊断图片用途扩展到跨平台，不改变 Windows UIA 依赖范围。
+
 | 能力 | M2 | M3 与代码证据 |
 | --- | --- | --- |
 | 枚举/窗口定位 | 未实现 | 已实现当前用户会话可访问的可见顶层窗口；`worker.identity/process_identity`、`DesktopRuntime.binding` |

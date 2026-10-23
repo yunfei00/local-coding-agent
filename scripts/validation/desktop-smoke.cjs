@@ -58,6 +58,20 @@ const provider = http.createServer((req, res) => {
       res.writeHead(200, {"Content-Type":"application/x-ndjson"});
       return res.end(JSON.stringify({message, done:true, prompt_eval_count:120, eval_count:30}) + "\n");
     }
+    const first = payload.messages?.[0]?.content;
+    const syntheticProbe = Array.isArray(first) && first[0]?.text?.includes("Read the image as data");
+    if (first === "Reply with LCA_OK only." || syntheticProbe || payload.tools?.some(t => t.function.name === "lca_diagnostic_echo")) {
+      let message = {content:"LCA_OK"};
+      if (syntheticProbe) {
+        const image = Buffer.from(first[1].image_url.url.split(",")[1], "base64");
+        assert.equal(image.subarray(0,2).toString("hex"), "ffd8");
+        // Deliberately cannot recognize the hidden random check. HTTP 200 must FAIL vision.
+        message.content = JSON.stringify({title:"LCA Vision Test",button_color:"blue",button_text:"Settings",input_boxes:1,check_text:"CHECK-WRONG"});
+      }
+      if (payload.tools) message = {content:null,tool_calls:[{id:"diagnostic",type:"function",function:{name:"lca_diagnostic_echo",arguments:'{"value":"LCA_OK"}'}}]};
+      res.writeHead(200, {"Content-Type":"application/json"});
+      return res.end(JSON.stringify({choices:[{message,finish_reason:payload.tools ? "tool_calls" : "stop"}],usage:{prompt_tokens:12,completion_tokens:8}}));
+    }
     const prompt = payload.messages?.filter(m => m.role === "user").at(-1)?.content ?? "";
     for (const message of payload.messages ?? []) for (const item of message.tool_calls ?? []) assert.equal(typeof item.function.arguments, "string", "OpenAI wire tool arguments must be JSON strings");
     res.writeHead(200, {"Content-Type": "text/event-stream"});
@@ -269,7 +283,7 @@ async function main() {
       if (kind === "openai_compatible") {
         await page.getByLabel("Connection API key", {exact:true}).fill("mock-only-not-a-real-key");
         await page.getByRole("button", {name:"Save / clear connection key", exact:true}).click();
-        await page.getByText(/Credential updated:/).waitFor();
+        await page.getByText(/Credential and connection reference saved:/).waitFor();
       }
       for (const model of models) {
         await page.getByRole("button", {name:"Manually add model", exact:true}).click();
@@ -283,12 +297,23 @@ async function main() {
     for (const [role,name] of Object.entries(roleChoices)) await page.getByLabel(role + " profile", {exact:true}).selectOption(profileIds[name]);
     await page.getByRole("button", {name:"Save model configuration", exact:true}).click();
     await page.getByText("Model configuration saved. Running task snapshots are unchanged.").waitFor();
-    await page.getByRole("button", {name:"Test connection / fetch models", exact:true}).click();
+    await page.getByRole("button", {name:"Fetch model list (does not verify capabilities)", exact:true}).click();
     await page.getByRole("button", {name:"Add model: smoke-coder", exact:true}).waitFor();
     await screenshot("desktop-mixed-provider-settings.png");
     const persistedRouting = await page.evaluate(async () => (await window.localAgent.taskRequest("", "task.catalog.get")).payload);
     assert.equal(new Set(Object.values(persistedRouting.config.roles).map(p => p.model_profile_id)).size, 4);
     checks.push("Settings creates local/API connections, four model profiles, distinct role bindings and protected key");
+    const beforeDiagnosis = modelRequests.length;
+    await page.getByRole("button", {name:"Test Vision", exact:true}).click();
+    await page.getByText(/配置 PASS · 连接 NOT RUN/).waitFor();
+    assert.equal(modelRequests.length,beforeDiagnosis,"Offline diagnosis must not send model requests");
+    await page.getByLabel("Enable Live Test", {exact:true}).check();
+    await page.getByRole("button", {name:"Test Vision", exact:true}).click();
+    await page.getByText(/配置 PASS · 连接 PASS · 文本 PASS · 视觉 FAIL · 工具 PASS/).waitFor();
+    assert.equal(modelRequests.length-beforeDiagnosis,3);
+    assert((await page.locator('[aria-label="Model connection diagnostics"] pre').innerText()).includes("CAPABILITY_ASSERTION_FAILED"));
+    await page.getByLabel("Enable Live Test", {exact:true}).uncheck();
+    checks.push("M4 Settings diagnostics: offline zero requests, explicit local Live Test sends real JPEG, HTTP200 wrong-image assertion FAIL, text/native functions PASS, exactly three requests");
     await application.close();
     page = await launch();
     await page.getByRole("button", {name:"Settings", exact:true}).click();
@@ -299,7 +324,7 @@ async function main() {
     }
     await page.getByLabel("Model connection", {exact:true}).selectOption({label:"Company API · openai_compatible"});
     protectedCredentialSeen = false;
-    await page.getByRole("button", {name:"Test connection / fetch models", exact:true}).click();
+    await page.getByRole("button", {name:"Fetch model list (does not verify capabilities)", exact:true}).click();
     await page.getByRole("button", {name:"Add model: smoke-coder", exact:true}).waitFor();
     const keyStorage = await page.evaluate(async () => (await window.localAgent.taskRequest("", "task.credential.status")).payload.mode);
     if (keyStorage === "os_protected") {

@@ -17,7 +17,7 @@ STRATEGIES = ("local-first", "local-only", "api-only", "single-agent")
 
 def apply_config_overrides(saved: dict, overrides: dict) -> dict:
     """Apply only deliberate Task edits to the latest saved Settings, preserving zeros."""
-    if not isinstance(overrides, dict) or set(overrides) - set(saved):
+    if not isinstance(overrides, dict) or set(overrides) - (set(saved) | {'gui_verification'}):
         raise ValueError("Invalid task configuration overrides")
     result = {**saved, **overrides}
     for key in ("budget", "roles"):
@@ -35,7 +35,7 @@ def apply_config_overrides(saved: dict, overrides: dict) -> dict:
 
 def validate_config(raw: dict | None = None) -> dict:
     raw = raw or {}
-    if set(raw) - {"strategy", "roles", "budget", "verification_commands"}:
+    if set(raw) - {"strategy", "roles", "budget", "verification_commands", "gui_verification"}:
         raise ValueError("Unknown orchestration configuration")
     strategy = raw.get("strategy", "local-first")
     if strategy not in STRATEGIES:
@@ -70,8 +70,11 @@ def validate_config(raw: dict | None = None) -> dict:
     commands = raw.get("verification_commands", [])
     if not isinstance(commands, list) or len(commands) > 12 or any(not isinstance(c, str) or not c.strip() or len(c) > 2000 for c in commands):
         raise ValueError("Provide up to 12 nonempty verification commands")
-    return {"strategy": strategy, "roles": roles, "budget": validate_limits(raw.get("budget")),
-            "verification_commands": commands}
+    from agent.core.gui_verification import validate_gui
+    result = {"strategy": strategy, "roles": roles, "budget": validate_limits(raw.get("budget")), "verification_commands": commands}
+    if raw.get('gui_verification') is not None:
+        result['gui_verification'] = validate_gui(raw['gui_verification'])
+    return result
 
 
 def json_object(text: str, *, require_object=True):

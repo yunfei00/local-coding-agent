@@ -1,0 +1,8 @@
+{
+  "source_fixture": "manual-fixtures/m3-windows-gui/app.ps1",
+  "initial_old": "Entry.Enabled=true;Status.Text=\"Settings ready\"",
+  "initial_new": "Entry.Enabled=false;Status.Text=\"Settings broken\"",
+  "expected_status": "Settings ready",
+  "expected_input": "M4 validated",
+  "description": "复用 M3 WinForms。先只修复状态文字，独立 GUI 断言发现输入框仍禁用；第二轮修复启用输入框。实际编译、窗口操作、截图和状态文件均发生在临时工程。"
+}

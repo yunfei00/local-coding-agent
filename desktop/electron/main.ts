@@ -1401,8 +1401,9 @@ ipcMain.handle("agent:task-request", async (_event, threadId: string, operation:
     return {type:"task.loaded", payload:{mode:safeStorage.isEncryptionAvailable() ? "os_protected" : "session_only", configured:!!key}};
   }
   const allowed = new Set(["task.catalog.get", "task.catalog.update", "task.settings.get", "task.settings.update", "task.connection.test", "task.list", "task.start", "task.resume", "task.pause", "task.cancel", "task.budget.add", "task.configure", "task.approve", "task.diagnostics"]);
+  allowed.add("task.model.diagnostic"); allowed.add("task.model.diagnostic.cancel");
   if (!allowed.has(operation)) throw new Error("Unsupported task operation");
-  return sendRequest(operation, "task.loaded", payload, {threadId}, operation === "task.connection.test" ? 30000 : 15000);
+  return sendRequest(operation, "task.loaded", payload, {threadId}, operation === "task.model.diagnostic" ? 300000 : operation === "task.connection.test" ? 30000 : 15000);
 });
 ipcMain.handle("agent:plan-request", async (_event, threadId: string, operation: string, payload: Record<string, unknown> = {}) => {
   const allowed = new Set(["plan.list", "plan.create", "plan.step.update", "plan.step.edit", "plan.steps.reorder", "plan.checkpoint", "plan.resume", "plan.resume.confirm"]);

@@ -200,6 +200,7 @@ class AgentServer:
         )
 
         owned_turns: set[str] = set()
+        diagnostic_requests = set()
         try:
             async for msg in ws:
                 if msg.type == WSMsgType.TEXT:
@@ -233,10 +234,18 @@ class AgentServer:
                         )
                         continue
 
-                    await self.handle_message(ws, data, owned_turns)
+                    if data['type'] == 'task.model.diagnostic':
+                        diagnostic = asyncio.create_task(self.handle_message(ws, data, owned_turns))
+                        diagnostic_requests.add(diagnostic)
+                        diagnostic.add_done_callback(diagnostic_requests.discard)
+                    else:
+                        await self.handle_message(ws, data, owned_turns)
                 elif msg.type == WSMsgType.ERROR:
                     break
         finally:
+            for diagnostic in list(diagnostic_requests):
+                diagnostic.cancel()
+            await asyncio.gather(*diagnostic_requests, return_exceptions=True)
             for turn_id in list(owned_turns):
                 task = self.active_turns.get(turn_id)
                 if task and not task.done():
@@ -2487,8 +2496,10 @@ class AgentServer:
                     thread_id=thread_id, turn_id=turn_id))
 
     async def _authorize_tool(self, ws, *, project, call, call_id, thread_id, turn_id,
-                              user_prompt, autonomous=False, on_raw_output=None, environment=None, supports_vision=False):
+                              user_prompt, autonomous=False, on_raw_output=None, environment=None, supports_vision=False, desktop_destination=None):
         review_arguments = public_arguments(call.name,call.arguments)
+        if call.name == 'desktop_screenshot' and call.arguments.get('share_with_model') and desktop_destination:
+            review_arguments = {**review_arguments, 'upload_destination': desktop_destination}
         if call.name in DESKTOP_TOOLS and call.name != 'desktop_list_windows':
             try:
                 binding=project.tools.desktop.binding(call.arguments.get('window_id'), turn_id)
