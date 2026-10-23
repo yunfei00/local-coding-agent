@@ -159,8 +159,9 @@ def _capture_visible_client_only(hwnd):
     if x < desktop[0] or y < desktop[1] or x+w > desktop[0]+desktop[2] or y+h > desktop[1]+desktop[3]:
         fail('DESKTOP_CAPTURE_OCCLUDED', 'Authorized client must be fully visible on screen')
     blocked = False
+    blocking_class = 'unknown'
     def visit(other, unused):
-        nonlocal blocked
+        nonlocal blocked, blocking_class
         if other == hwnd:
             return False
         if not gui.IsWindowVisible(other) or gui.IsIconic(other):
@@ -168,12 +169,13 @@ def _capture_visible_client_only(hwnd):
         l, t, r, b = gui.GetWindowRect(other)
         if max(l, x) < min(r, x+w) and max(t, y) < min(b, y+h):
             blocked = True
+            blocking_class = gui.GetClassName(other) if hasattr(gui,'GetClassName') else 'unknown'
             return False
         return True
     gui.EnumWindows(visit, None)
     if blocked:
         fail('DESKTOP_CAPTURE_OCCLUDED',
-             'Another visible window overlaps the authorized client; no screen pixels captured')
+             'Another visible window (' + blocking_class + ') overlaps the authorized client; no screen pixels captured')
     image = ImageGrab.grab(bbox=(x, y, x+w, y+h), all_screens=True).convert('RGB')
     if image.size != (w, h) or _capture_looks_blank(image):
         fail('DESKTOP_CAPTURE_EMPTY', 'Screen fallback did not capture usable window pixels')
@@ -211,7 +213,10 @@ def capture_window(hwnd):
     if _capture_looks_blank(image):
         # PrintWindow can report success while returning a near-black bitmap
         # for modern Windows Notepad/Chromium composition surfaces.
-        return _capture_visible_client_only(hwnd)
+        image = _capture_visible_client_only(hwnd)
+        image.info['capture_method'] = 'foreground_visible_client'
+        return image
+    image.info['capture_method'] = 'PrintWindow_client'
     return image
 
 
@@ -262,6 +267,27 @@ def controls(window):
         elif children:
             truncated = True
     return result, bool(queue) or truncated, parents
+
+
+def private_editor(control):
+    kind = control.element_info.control_type
+    if kind == 'Edit':
+        return True
+    if kind != 'Document':
+        return False
+    # Chromium's root Document is a page, not an editable field. Masking it
+    # hides the entire app. Editable Document controls expose Value/TextEdit,
+    # while modern Notepad RichEdit is explicitly protected as well.
+    if 'richedit' in str(control.element_info.class_name).lower():
+        return True
+    try:
+        return not bool(control.iface_value.CurrentIsReadOnly)
+    except Exception:
+        try:
+            from comtypes.gen.UIAutomationClient import UIA_IsTextEditPatternAvailablePropertyId
+            return bool(control.element_info.element.GetCurrentPropertyValue(UIA_IsTextEditPatternAvailablePropertyId))
+        except Exception:
+            return False
 
 
 def describe(control, parent_id=None):
@@ -399,7 +425,7 @@ def execute(request):
         redacted_area = 0
         for control in items:
             secret = sensitive(control)
-            editable = control.element_info.control_type == 'Edit'
+            editable = private_editor(control)
             if secret or editable:
                 r = control.rectangle()
                 box=(max(0,r.left-left-4),max(0,r.top-top-4),min(image.width,r.right-left+4),min(image.height,r.bottom-top+4))
@@ -420,7 +446,7 @@ def execute(request):
             canvas.paste(image, (left-x,top-y))
             image, origin = canvas, [x,y]
         image.save(request['artifact_path'], format='PNG')
-        return {'width':image.width,'height':image.height,'origin':origin, **geometry(hwnd), 'pixel_to_screen_scale':[1/scale_x,1/scale_y],'redacted_controls':redactions,'redacted_area_fraction':min(1.0,round(redacted_area/max(1,image.width*image.height),4)),'redaction_policy':'text editors concealed with light placeholder; sensitive controls black','scope':a.get('scope','window'), 'screen_policy':'only authorized window pixels; remaining desktop masked'}
+        return {'capture_method':image.info.get('capture_method','unknown'),'raw_capture_valid':True,'width':image.width,'height':image.height,'origin':origin, **geometry(hwnd), 'pixel_to_screen_scale':[1/scale_x,1/scale_y],'redacted_controls':redactions,'redacted_area_fraction':min(1.0,round(redacted_area/max(1,image.width*image.height),4)),'redaction_policy':'text editors concealed with light placeholder; sensitive controls black','scope':a.get('scope','window'), 'screen_policy':'only authorized window pixels; remaining desktop masked'}
     if op == 'desktop_focus_window':
         focus(binding)
         return {'focused':True}

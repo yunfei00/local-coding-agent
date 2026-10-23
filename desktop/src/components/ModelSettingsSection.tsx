@@ -5,6 +5,9 @@ import {ModelDiagnosticResult} from "./ModelDiagnosticResult";
 export function ModelSettingsSection({threadId = "", running}: {threadId?: string; running: boolean}) {
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
   const [config, setConfig] = useState<TaskConfig | null>(null);
+  const [chatDefault,setChatDefault] = useState("");
+  const [chatVision,setChatVision] = useState("");
+  const [modelTests,setModelTests] = useState<Record<string,{vision?:string}>>({});
   const [selected, setSelected] = useState("");
   const [profileId, setProfileId] = useState("");
   const [key, setKey] = useState("");
@@ -23,6 +26,8 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
       if (!alive) return;
       const next = event.payload?.catalog as ModelCatalog;
       setCatalog(next); setConfig(event.payload?.config as TaskConfig); setSelected(next.connections[0]?.connection_id ?? "");
+      setChatDefault(String(event.payload?.chat_default ?? "")); setChatVision(String(event.payload?.chat_vision ?? ""));
+      setModelTests(event.payload?.model_tests as typeof modelTests ?? {});
     }).catch(cause => {if (alive) setError(String(cause));});
     return () => {alive = false;};
   }, [threadId]);
@@ -41,7 +46,7 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
     const p: ModelProfile = {model_profile_id:crypto.randomUUID(), connection_id:selected, model_id:name, display_name:name, max_output_tokens:1024, context_window:null, temperature:null, pricing:null, tool_mode:"auto"};
     setCatalog({...catalog, profiles:[...catalog.profiles, p]}); setProfileId(p.model_profile_id);
   };
-  const bound = (id: string) => Object.values(config.roles).some(p => p.model_profile_id === id);
+  const bound = (id: string) => id === chatDefault || id === chatVision || Object.values(config.roles).some(p => p.model_profile_id === id);
   return <div className="settings-section model-settings">
     <h2>Models and routing</h2><p>Connections and roles are independent of the chat Provider. Save changes here; existing tasks retain their snapshots.</p>
     {error ? <p className="error-banner" role="alert">{error}</p> : null}
@@ -74,7 +79,7 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
       </> : null}
       <h3>Model Profiles</h3>
       <p>All connections: {catalog.profiles.length} models</p>
-      <ul>{catalog.profiles.map(p => <li key={p.model_profile_id}>{modelLabel(catalog,p)} · {statuses[p.connection_id] ?? "Not tested this session"}</li>)}</ul>
+      <ul>{catalog.profiles.map(p => <li key={p.model_profile_id}>{modelLabel(catalog,p)} · {statuses[p.connection_id] ?? "Not tested this session"} · Image input {p.supports_vision ? "declared" : "disabled"} · Vision test {modelTests[p.model_profile_id]?.vision || "NOT RUN"}</li>)}</ul>
       <label className="settings-field">Edit model<select aria-label="Edit model profile" value={profileId} onChange={e => setProfileId(e.target.value)}><option value="">Select profile</option>{catalog.profiles.map(p => <option key={p.model_profile_id} value={p.model_profile_id}>{modelLabel(catalog,p)}</option>)}</select></label>
       <button disabled={!connection} onClick={() => addModel()}>Manually add model</button>
       {profile ? <>
@@ -89,6 +94,10 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
         <button onClick={() => {if (bound(profileId)) {setError("Rebind all roles using this model before deletion."); return;} setCatalog({...catalog, profiles:catalog.profiles.filter(p => p.model_profile_id !== profileId)}); setProfileId("");}}>Delete model profile</button>
       </> : null}
       <h3>Role Routing</h3>
+      <p>Chat 与 Task 独立选择模型；Single Agent 只需要配置 Executor。</p>
+      <label>Default Task Vision Observer<select aria-label="Default Task Vision Observer" value={config.vision_profile_id || ""} onChange={e=>setConfig({...config,vision_profile_id:e.target.value || null})}><option value="">Executor vision / UIA</option>{catalog.profiles.filter(p=>p.supports_vision).map(p=><option key={p.model_profile_id} value={p.model_profile_id}>{modelLabel(catalog,p)}</option>)}</select></label>
+      <label>Default Chat Model<select aria-label="Default Chat profile" value={chatDefault} onChange={e=>setChatDefault(e.target.value)}><option value="">Migrated legacy default</option>{catalog.profiles.map(p=><option key={p.model_profile_id} value={p.model_profile_id}>{modelLabel(catalog,p)}</option>)}</select></label>
+      <label>Chat Vision Observer<select aria-label="Chat Vision Observer" value={chatVision} onChange={e=>setChatVision(e.target.value)}><option value="">Use Chat model / UIA</option>{catalog.profiles.filter(p=>p.supports_vision).map(p=><option key={p.model_profile_id} value={p.model_profile_id}>{modelLabel(catalog,p)}</option>)}</select></label>
       {Object.entries(config.roles).map(([role, binding]) => <label className="settings-field" key={role}>{role} Model<select aria-label={role + " profile"} value={binding.model_profile_id ?? ""} onChange={e => setConfig({...config, roles:{...config.roles, [role]:{...binding, model_profile_id:e.target.value}}})}><option value="">Legacy / not configured</option>{catalog.profiles.map(p => <option key={p.model_profile_id} value={p.model_profile_id}>{modelLabel(catalog,p)}</option>)}</select></label>)}
       <h3>Execution Policy</h3>
       <select aria-label="Default execution policy" value={config.strategy} onChange={e => setConfig({...config, strategy:e.target.value})}><option value="single-agent">Single Agent (online)</option><option value="local-first">Local-first</option><option value="local-only">Local-only</option><option value="api-only">API-only</option></select>
@@ -98,7 +107,7 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
       <p>0 in api_calls or api_tokens explicitly disables API calls; changing strategy preserves these values. Global limits include earlier tasks across restarts. New tasks use saved Settings; existing tasks retain their snapshots.</p>
       {Object.entries(config.budget).map(([k,v]) => <label className="settings-field" key={k}>{k}<input aria-label={"Default " + k} type="number" min="0" value={v ?? ""} onChange={e => setConfig({...config, budget:{...config.budget, [k]:e.target.value ? Number(e.target.value) : null}})} /></label>)}
       <p>Caps use conservative reservations and request output limits; provider tokenization and billing may differ. Failed requests retain reservations. Cost caps require configured prices.</p>
-      <button onClick={() => void action(async () => {const result = await request("task.catalog.update", {catalog, config}); setCatalog(result.payload?.catalog as ModelCatalog); setConfig(result.payload?.config as TaskConfig); setMessage("Model configuration saved. Running task snapshots are unchanged.");})}>Save model configuration</button>
+      <button onClick={() => void action(async () => {const result = await request("task.catalog.update", {catalog, config,chat_default:chatDefault,chat_vision:chatVision}); setCatalog(result.payload?.catalog as ModelCatalog); setConfig(result.payload?.config as TaskConfig); setMessage("Model configuration saved. Running task snapshots are unchanged.");})}>Save model configuration</button>
     </fieldset>
     <section aria-label="Model connection diagnostics">
       <h3>Connection diagnostics</h3>

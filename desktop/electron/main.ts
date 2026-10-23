@@ -5,6 +5,7 @@ import {
   dialog,
   ipcMain,
   safeStorage,
+  screen,
   shell
 } from "electron";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
@@ -22,8 +23,11 @@ import WebSocket from "ws";
 
 import { checkProtocolCompatibility } from "./protocol";
 import { checkForUpdates } from "./updateCheck";
+import {desktopArtifact} from "./desktopArtifact";
 
 const APP_ID = "com.yunfei.localcodingagent";
+// Expose the renderer's semantic controls to Windows UI Automation.
+app.commandLine.appendSwitch("force-renderer-accessibility");
 if (process.env.LCA_DESKTOP_DATA_DIR) {
   app.setPath("userData", path.resolve(process.env.LCA_DESKTOP_DATA_DIR));
 }
@@ -888,12 +892,13 @@ async function stopAgent(): Promise<void> {
 
 function createWindow(): void {
   rendererReady = false;
+  const workArea = screen.getPrimaryDisplay().workArea;
   mainWindow = new BrowserWindow({
     show: process.env.LCA_HEADLESS_SMOKE !== "1",
-    width: 1180,
-    height: 780,
-    minWidth: 900,
-    minHeight: 600,
+    width: Math.min(1180, workArea.width),
+    height: Math.min(780, workArea.height),
+    minWidth: Math.min(900, workArea.width),
+    minHeight: Math.min(600, workArea.height),
     backgroundColor: "#111111",
     webPreferences: {
       offscreen: process.env.LCA_HEADLESS_SMOKE === "1",
@@ -961,6 +966,8 @@ ipcMain.on("renderer:ready", () => {
 });
 
 ipcMain.handle("agent:get-status", () => agentStatus);
+ipcMain.handle("agent:screenshot-preview", (_event, candidate: unknown) =>
+  desktopArtifact(process.env.LCA_DATA_DIR || app.getPath("userData"), candidate));
 ipcMain.handle("agent:update-check", async () => {
   return checkForUpdates(app.getVersion(), {
     url: process.env.LCA_UPDATE_CHECK_URL

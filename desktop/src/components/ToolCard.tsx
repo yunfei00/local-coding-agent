@@ -12,6 +12,7 @@ import {
   resolveSelectedDiffPath
 } from "../lib/diffReview";
 import { OrderedToolChunk } from "../lib/toolStream";
+import {ScreenshotPreview} from "./ScreenshotPreview";
 
 export type ToolChunk = OrderedToolChunk;
 
@@ -472,6 +473,7 @@ function ToolDetails({ tool }: { tool: ToolView }) {
       <div className="tool-card-header"><strong>WINDOWS DESKTOP · {tool.name}</strong><span>{statusLabel(tool)}</span></div>
       <pre>{JSON.stringify(tool.arguments, null, 2)}</pre>
       {tool.desktopData ? <pre aria-label="Desktop execution result">{JSON.stringify(tool.desktopData, null, 2)}</pre> : null}
+      {tool.name === "desktop_screenshot" && typeof tool.desktopData?.path === "string" ? <ScreenshotPreview path={tool.desktopData.path} /> : null}
       {tool.summary ? <div className="tool-summary">{tool.summary}</div> : null}
     </div>;
   }

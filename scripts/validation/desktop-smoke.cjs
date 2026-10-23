@@ -118,7 +118,7 @@ const provider = http.createServer((req, res) => {
 
 async function main() {
   await new Promise(resolve => provider.listen(0, "127.0.0.1", resolve));
-  const env = {...process.env, ELECTRON_RUN_AS_NODE: undefined, LCA_HEADLESS_SMOKE: "1",
+  const env = {...process.env, ELECTRON_RUN_AS_NODE: undefined, LCA_HEADLESS_SMOKE: process.platform === "win32" ? "0" : "1",
     LCA_DATA_DIR: path.join(data, "agent"), LCA_DESKTOP_DATA_DIR: path.join(data, "desktop"),
     LCA_OLLAMA_URL: `http://127.0.0.1:${provider.address().port}`, LCA_OLLAMA_MODEL: "task-executor",
     LCA_PROVIDER: "openai_compatible", LCA_OPENAI_BASE_URL: `http://127.0.0.1:${provider.address().port}/v1`,
@@ -168,6 +168,18 @@ async function main() {
     assert.equal(await page.locator(".project-tree-name").first().evaluate(e => getComputedStyle(e).fontSize), "14px");
     assert.equal(await page.getByRole("button",{name:"Settings",exact:true}).evaluate(e => getComputedStyle(e).fontSize), "14px");
     checks.push("Readable shared typography: 16px composer, 14px sidebar and controls");
+    if (process.platform === "win32") {
+      const captureTitle="LCA M4 controlled Electron capture";
+      const beforeCaptureBounds=await application.evaluate(({BrowserWindow,screen},title)=>{const w=BrowserWindow.getAllWindows()[0];const bounds=w.getBounds();const min=w.getMinimumSize();const area=screen.getPrimaryDisplay().workArea;w.setMinimumSize(0,0);w.setTitle(title);w.setBounds({x:area.x+20,y:area.y+20,width:Math.min(1000,area.width-40),height:Math.min(650,area.height-40)});w.setAlwaysOnTop(true);w.show();w.focus();return {bounds,min};},captureTitle);
+      const captured=JSON.parse(execFileSync("uv",["run","python","scripts/validation/desktop_window_probe.py","--title",captureTitle,"--authorized","--focus","--report","m4-electron-window.json"],{cwd:root,env:{...process.env,LCA_DATA_DIR:path.join(data,"agent")},encoding:"utf8",timeout:45000}).trim());
+      assert(captured.real_windows_api && captured.raw_capture_valid);
+      assert(captured.width>0 && captured.height>0);
+      assert(["PrintWindow_client","foreground_visible_client"].includes(captured.capture_method));
+      const preview=await page.evaluate(p=>window.localAgent.previewScreenshot(p),captured.path);
+      assert(preview.startsWith("data:image/png;base64,"));
+      await application.evaluate(({BrowserWindow},{bounds,min})=>{const w=BrowserWindow.getAllWindows()[0];w.setAlwaysOnTop(false);w.setBounds(bounds);w.setMinimumSize(...min);},beforeCaptureBounds);
+      checks.push("Real Electron HWND/UIA screenshot through product Windows capture with valid dimensions, privacy masking and method diagnostics");
+    }
     await page.getByRole("button", {name:"New project",exact:true}).click();
     let projectDialog = page.getByRole("dialog",{name:"New project",exact:true});
     await projectDialog.waitFor();
@@ -212,31 +224,38 @@ async function main() {
     });
     await application.close();
     page = await launch();
-    await page.waitForFunction(() => document.querySelector('.model-select')?.value === "gpt-oss:20b");
-    assert.equal((await page.evaluate(() => window.localAgent.getProject())).payload.active_thread.active_model, "DeepSeek-V4-Flash-SaaS");
+    // A restored Thread must not silently switch connections. Explicitly select
+    // the migrated local profile, then verify the actual HTTP model and persistence.
+    await page.getByLabel("Chat model",{exact:true}).selectOption({label:"gpt-oss:20b"});
+    const localChatProfile = await page.getByLabel("Chat model",{exact:true}).inputValue();
+    assert(localChatProfile.startsWith("profile:"));
     const requestsBeforeChat = modelRequests.length;
-    await page.locator(".composer textarea").fill("Check restored local chat model");
+    await page.locator(".composer textarea").fill("Check explicitly selected local chat profile");
     await page.locator(".composer textarea").press("Enter");
     await page.locator(".execution-summary").waitFor();
     await page.locator(".send-button").waitFor({state:"visible"});
     assert.deepEqual(modelRequests.slice(requestsBeforeChat), [{url:"/api/chat",model:"gpt-oss:20b"}]);
-    assert.equal((await page.evaluate(() => window.localAgent.getProject())).payload.active_thread.active_model, "gpt-oss:20b");
+    assert.equal((await page.evaluate(() => window.localAgent.getProject())).payload.active_thread.active_model,localChatProfile);
     await application.close();
     page = await launch();
-    await page.waitForFunction(() => document.querySelector('.model-select')?.value === "gpt-oss:20b");
-    assert.equal((await page.evaluate(() => window.localAgent.getProject())).payload.active_thread.active_model, "gpt-oss:20b");
-    await page.evaluate(settings => window.localAgent.applySettings(settings), previousSettings);
+    await page.waitForFunction(value => document.querySelector('.model-select')?.value === value,localChatProfile);
+    await page.evaluate(settings => window.localAgent.applySettings(settings),previousSettings);
     await application.close();
     page = await launch();
-    await page.waitForFunction(() => document.querySelector('.model-select')?.value === "smoke-coder");
-    checks.push("Restored API model switches to displayed Ollama model in actual HTTP request; selected model and chat history survive restart");
-    await page.locator(".thread-item.active").click();
-    await page.waitForFunction(() => document.querySelector('.model-select')?.value === "gpt-oss:20b");
+    await page.waitForFunction(value => document.querySelector('.model-select')?.value === value,localChatProfile);
+    checks.push("Explicit Profile routes the actual local HTTP model and persists across restart and legacy Provider changes without fallback");
+    await page.evaluate(async value => {
+      const loaded=(await window.localAgent.taskRequest("","task.catalog.get")).payload;
+      loaded.catalog.profiles=loaded.catalog.profiles.filter(p=>"profile:"+p.model_profile_id!==value);
+      await window.localAgent.taskRequest("","task.catalog.update",{catalog:loaded.catalog,config:loaded.config});
+    },localChatProfile);
+    await application.close();page=await launch();
+    await page.waitForFunction(value => document.querySelector('.model-select')?.value === value,localChatProfile);
     assert((await page.getByLabel("Chat model",{exact:true}).locator("option:checked").innerText()).includes("unavailable"));
     assert(await page.locator(".send-button").isDisabled());
-    await page.getByLabel("Chat model",{exact:true}).selectOption("smoke-coder");
+    await page.getByLabel("Chat model",{exact:true}).selectOption({label:"smoke-coder"});
     await page.waitForFunction(() => !document.querySelector('.composer textarea').disabled);
-    checks.push("Unavailable saved model is shown explicitly and blocks Send until a valid model is selected");
+    checks.push("Removed historical Profile is shown explicitly and blocks Send until a valid saved profile is selected");
 
     const hostPython = path.join(root, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
     const fixture = path.join(root, "tests", "fixtures", "mcp_test_server.py");
@@ -333,6 +352,18 @@ async function main() {
     } else skipped.push("OS protected model credentials unavailable; key is session-only as shown in Settings");
     checks.push("Restart restores four distinct role bindings; protected credential reaches the selected API connection");
     await page.getByRole("button", {name:"Settings", exact:true}).click();
+    const initialChatProfile=await page.getByLabel("Chat model",{exact:true}).inputValue();
+    await page.getByLabel("Search chat models",{exact:true}).fill("api-escalation");
+    await page.getByLabel("Chat model",{exact:true}).selectOption("profile:"+profileIds["api-escalation"]);
+    const priorProfileCalls=modelRequests.length;
+    const priorProfileTurns=await page.locator('.execution-summary').count();
+    await page.locator('.composer textarea').fill('Confirm independent saved API Chat profile');
+    await page.locator('.composer textarea').press('Enter');
+    await page.waitForFunction(count=>document.querySelectorAll('.execution-summary').length>count,priorProfileTurns);
+    assert.equal(modelRequests[priorProfileCalls].model,'api-escalation');
+    await page.getByLabel("Search chat models",{exact:true}).fill("");
+    await page.getByLabel("Chat model",{exact:true}).selectOption(initialChatProfile);
+    checks.push("Searchable connection-grouped Chat Profile routes selected API independently of Task Executor");
 
     await page.evaluate(async () => {
       const session = await window.localAgent.getProject();

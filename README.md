@@ -1,5 +1,7 @@
 # Local Coding Agent
 
+M4 全面修复统一了 Chat/Task 的连接和模型目录，支持独立 Vision Observer、真实窗口截图与冻结任务配置。见 [修复与用法](docs/m4/complete-fixes.md)、[验收分类](docs/m4/complete-validation.md)、[阶段能力矩阵](docs/capability-matrix.md)。真实在线推理与 HTTP Mock/真实 GUI 分开记录，本轮不发布安装包。
+
 Local Coding Agent 是一个面向 Windows 本地开发环境的桌面 Coding Agent。目标是提供类似 Codex Desktop 的核心开发体验，同时让模型、Agent、工具链、数据和权限边界保持在用户自己的环境中。
 
 > 当前代码版本：**v0.4.2**

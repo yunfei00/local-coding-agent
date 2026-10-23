@@ -102,7 +102,7 @@ async def run_gui(contract, execute, tools, owner, observe=None, notify=None):
             await call('desktop_screenshot', {'window_id': window, 'share_with_model': bool(observe), 'timeout_seconds': 15})
             if observe:
                 # The screenshot call above must pass M3's separate upload approval.
-                observation = await observe(tools.desktop.image_message(owner))
+                observation = await observe(tools.desktop.image_message(owner, consume=True))
                 evidence.append({'tool': 'vision_observer', 'observation': observation})
                 if observation['errors']:
                     raise ToolError('VISION_REPORTED_ERROR', 'Visual observation found an error; untrusted evidence returned to controller')

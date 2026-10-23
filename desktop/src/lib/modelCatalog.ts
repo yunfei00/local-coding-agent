@@ -1,5 +1,5 @@
 export type RoleProfile = {route: string; model: string; model_profile_id?: string; context_window: number | null; output_limit: number; tool_mode: string; input_price: number | null; output_price: number | null};
-export type TaskConfig = {strategy: string; roles: Record<string, RoleProfile>; budget: Record<string, number | null>; verification_commands: string[]; gui_verification?: Record<string, unknown> | null};
+export type TaskConfig = {strategy: string; roles: Record<string, RoleProfile>; budget: Record<string, number | null>; verification_commands: string[]; gui_verification?: Record<string, unknown> | null; vision_profile_id?:string|null};
 export type Connection = {connection_id: string; display_name: string; provider_type: "ollama" | "openai_compatible"; base_url: string; credential_reference: string | null; enabled: boolean};
 export type ModelProfile = {model_profile_id: string; connection_id: string; model_id: string; display_name: string; context_window?: number | null; max_output_tokens?: number; temperature?: number | null; pricing?: {input_price?: number; output_price?: number} | null; tool_mode?: string; supports_vision?: boolean};
 export type ModelCatalog = {connections: Connection[]; profiles: ModelProfile[]};
@@ -8,6 +8,7 @@ export type ModelCatalog = {connections: Connection[]; profiles: ModelProfile[]}
 export function taskConfigOverrides(saved: TaskConfig, edited: TaskConfig): Record<string, unknown> {
   const changes: Record<string, unknown> = {};
   if (saved.strategy !== edited.strategy) changes.strategy = edited.strategy;
+  if (saved.vision_profile_id !== edited.vision_profile_id) changes.vision_profile_id = edited.vision_profile_id;
   if (JSON.stringify(saved.gui_verification) !== JSON.stringify(edited.gui_verification)) changes.gui_verification = edited.gui_verification;
   if (JSON.stringify(saved.verification_commands) !== JSON.stringify(edited.verification_commands)) changes.verification_commands = edited.verification_commands;
   const budget = Object.fromEntries(Object.entries(edited.budget).filter(([key,value]) => saved.budget[key] !== value));

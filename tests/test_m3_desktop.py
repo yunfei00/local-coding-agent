@@ -172,6 +172,28 @@ class WindowsDesktopTests(unittest.IsolatedAsyncioTestCase):
             shutil.copy2(after.data['path'],ROOT/'validation-reports/m3-fixture-sanitized.png')
         image=self.registry.desktop.image_message(self.owner)['content'][1]['image_url']['url']
         self.assertTrue(base64.b64decode(image.split(',',1)[1]).startswith(b'\xff\xd8'))
+        # Actual Windows capture -> actual JPEG -> original HTTP client -> local
+        # Mock model endpoint. Pixels are never replaced with a generated fixture.
+        from aiohttp import web
+        received=[]
+        async def vision_http(request):
+            body=await request.json(); received.append(body)
+            jpeg=body['messages'][0]['content'][1]['image_url']['url']
+            self.assertEqual(jpeg,image)
+            self.assertEqual(body['model'],'controlled-vision')
+            self.assertEqual(request.headers.get('Authorization'),'Bearer mock-vision-only')
+            return web.json_response({'choices':[{'message':{'content':'Controlled window observed'},'finish_reason':'stop'}]})
+        app=web.Application();app.router.add_post('/v1/chat/completions',vision_http)
+        runner=web.AppRunner(app);await runner.setup()
+        try:
+            site=web.TCPSite(runner,'127.0.0.1',0);await site.start()
+            provider=OpenAICompatibleProvider(base_url=f'http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}/v1',api_key='mock-vision-only')
+            message=self.registry.desktop.image_message(self.owner,consume=True)
+            async for _ in provider.stream_chat(model='controlled-vision',messages=[message]): pass
+            self.assertEqual(len(received),1)
+            self.assertIsNone(self.registry.desktop.image_message(self.owner,consume=True))
+        finally:
+            await runner.cleanup()
         screen=await self.call('desktop_screenshot',scope='screen')
         self.assertGreaterEqual(screen.data['width'],after.data['width'])
         report={'tools':list(NAMES),'actual_gui_pid_exits_in_teardown':self.state['pid'],'capture_dimensions':[after.data['width'],after.data['height']], 'redacted_controls':after.data['redacted_controls'],'real_controls':len(result.data['controls']),'scroll':self.state_data()['scroll'],'shortcut_count':self.state_data()['shortcuts'],'vision':'actual JPEG bytes, not OCR','screenshots_committed':False}
@@ -303,6 +325,11 @@ class WindowsDesktopTests(unittest.IsolatedAsyncioTestCase):
         before=await self.call('desktop_inspect')
         old=next(c for c in before.data['controls'] if c['automation_id']=='SettingsButton')['bounds']
         win32gui.MoveWindow(self.state['hwnd'],180,120,660,680,True)
+        # This test owns the fixture. Keep only its window above unrelated
+        # desktop windows; production coordinate input must still reject cover.
+        import win32con
+        win32gui.SetWindowPos(self.state['hwnd'],win32con.HWND_TOPMOST,0,0,0,0,
+                             win32con.SWP_NOMOVE|win32con.SWP_NOSIZE)
         after=await self.call('desktop_inspect')
         bounds=next(c for c in after.data['controls'] if c['automation_id']=='SettingsButton')['bounds']
         self.assertNotEqual(old,bounds)

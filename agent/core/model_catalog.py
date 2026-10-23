@@ -86,6 +86,41 @@ class ModelCatalog:
     def __init__(self, store, settings):
         self.store, self.defaults = store, settings
 
+    def profile(self, profile_id):
+        """Resolve an explicit identity through the existing role resolver, never a model-name guess."""
+        return self.resolve(validate_config({'strategy':'single-agent', 'roles':{'executor':{'model_profile_id':profile_id}}}))['roles']['executor']
+
+    def fingerprint(self, profile_id):
+        catalog=self.load()
+        profile=next(p for p in catalog['profiles'] if p['model_profile_id']==profile_id)
+        connection=next(c for c in catalog['connections'] if c['connection_id']==profile['connection_id'])
+        return hashlib.sha256(json.dumps([profile,connection],sort_keys=True).encode()).hexdigest()
+
+    def test_result(self, profile_id):
+        result=json.loads(self.store.get_setting('model.test.'+profile_id) or '{}')
+        if result and result.get('config_fingerprint') != self.fingerprint(profile_id):
+            result={**result,'vision':'STALE','configuration':'STALE'}
+        return result
+
+    def import_legacy_models(self, models):
+        catalog = self.load()
+        cid = 'legacy-ollama' if self.defaults.provider == 'ollama' else 'legacy-openai'
+        connection = next((c for c in catalog['connections'] if c['connection_id'] == cid), None)
+        if not connection:
+            return catalog
+        expected = self.defaults.ollama_base_url if self.defaults.provider == 'ollama' else self.defaults.openai_base_url
+        if connection['base_url'].rstrip('/') != expected.rstrip('/'):
+            return catalog
+        for item in models:
+            name = item.get('name')
+            if not isinstance(name, str) or not name or any(p['connection_id'] == cid and p['model_id'] == name for p in catalog['profiles']):
+                continue
+            catalog['profiles'].append({'model_profile_id':cid+'-'+hashlib.sha256(name.encode()).hexdigest()[:16],
+                'connection_id':cid, 'model_id':name, 'display_name':name})
+        catalog = validate_catalog(catalog)
+        self.store.set_setting(KEY, json.dumps(catalog))
+        return catalog
+
     def load(self):
         raw = self.store.get_setting(KEY)
         if raw is not None:
