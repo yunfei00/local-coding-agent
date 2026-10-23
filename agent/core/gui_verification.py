@@ -1,6 +1,7 @@
 """Independent GUI contract executed by TaskService, never by a second agent."""
 import asyncio
 import json
+import re
 import sys
 import time
 
@@ -27,6 +28,15 @@ def validate_gui(value):
             raise ValueError('GUI steps must use existing scoped desktop tools')
         if not isinstance(step['arguments'], dict) or set(step['arguments']) & {'window_id', 'share_with_model', 'timeout_seconds'}:
             raise ValueError('GUI window, upload and step limits are owned by the verifier')
+        if len(json.dumps(step['arguments'], ensure_ascii=False)) > 8192:
+            raise ValueError('GUI step arguments exceed 8 KiB')
+        if step['tool'] == 'desktop_type_text':
+            # Reject sensitive input before contracts enter persistent storage.
+            text = step['arguments'].get('text')
+            sensitive = r'password|passwd|token|secret|api.?key|credential|密码|口令|密钥|\b(?:sk-|ghp_|github_pat_|eyJ)[A-Za-z0-9_-]{12,}'
+            selector = step['arguments'].get('selector', {})
+            if not isinstance(text, str) or len(text) > 4000 or re.search(sensitive, text + json.dumps(selector, ensure_ascii=False), re.I):
+                raise ValueError('GUI contracts accept ordinary non-secret fixture input only')
     assertions = [s for s in steps if s['tool'] == 'desktop_wait' and s['arguments'].get('state') in ('name', 'enabled', 'disabled', 'visible', 'hidden') and s['arguments'].get('selector')]
     if not assertions:
         raise ValueError('GUI contract needs an independent control state assertion')

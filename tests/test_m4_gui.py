@@ -36,6 +36,10 @@ class GUIContractTests(unittest.TestCase):
             with self.assertRaises(ValueError): discover_gui(root,None)
 
     def test_missing_assertion_or_model_controlled_window_rejected(self):
+        for text,selector in (('password=fixture',{'automation_id':'NameInput'}),('ordinary',{'automation_id':'PasswordInput'})):
+            steps=[{'tool':'desktop_type_text','arguments':{'text':text,'selector':selector}},{'tool':'desktop_wait','arguments':{'selector':{'automation_id':'Status'},'state':'visible'}}]
+            with self.assertRaises(ValueError):
+                validate_gui({'command':'npm start','window_title':'fixture','steps':steps})
         for steps in ([{'tool':'desktop_click','arguments':{}}], [{'tool':'desktop_wait','arguments':{'window_id':'foreign','state':'name','expected':'ok'}}]):
             with self.assertRaises(ValueError):
                 validate_gui({'command':'npm start','window_title':'fixture','steps':steps})
@@ -44,6 +48,7 @@ class GUIContractTests(unittest.TestCase):
 @unittest.skipUnless(sys.platform=='win32','Real Windows interactive GUI required; desktop APIs are never mocked')
 class AutonomousGUIRepairTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        (ROOT/'validation-reports').mkdir(exist_ok=True)
         self.temp=tempfile.TemporaryDirectory(prefix='m4-gui-')
         self.root=Path(self.temp.name)
         self.env=patch.dict(os.environ,{'LCA_DATA_DIR':str(self.root/'data'),'LCA_OPENAI_API_KEY':''})
