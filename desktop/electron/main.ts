@@ -23,6 +23,7 @@ import WebSocket from "ws";
 
 import { checkProtocolCompatibility } from "./protocol";
 import { checkForUpdates } from "./updateCheck";
+import {desktopArtifact} from "./desktopArtifact";
 
 const APP_ID = "com.yunfei.localcodingagent";
 // Expose the renderer's semantic controls to Windows UI Automation.
@@ -965,6 +966,8 @@ ipcMain.on("renderer:ready", () => {
 });
 
 ipcMain.handle("agent:get-status", () => agentStatus);
+ipcMain.handle("agent:screenshot-preview", (_event, candidate: unknown) =>
+  desktopArtifact(process.env.LCA_DATA_DIR || app.getPath("userData"), candidate));
 ipcMain.handle("agent:update-check", async () => {
   return checkForUpdates(app.getVersion(), {
     url: process.env.LCA_UPDATE_CHECK_URL

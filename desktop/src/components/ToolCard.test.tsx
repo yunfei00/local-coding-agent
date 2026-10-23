@@ -8,6 +8,7 @@ describe("managed process terminal cards", () => {
       desktopData:{artifact_id:"capture_owned",path:"local/desktop-artifacts/capture.png",vision_feedback:"local_artifact_only",redacted_controls:2}}} />);
     for (const value of ["WINDOWS DESKTOP", "capture_owned", "local/desktop-artifacts/capture.png", "local_artifact_only", "redacted_controls"])
       expect(html).toContain(value);
+    expect(html).toContain("View local screenshot");
   });
   it("shows background server output and process/log identity", () => {
     const html = renderToStaticMarkup(<ToolCard tool={{id:"call", name:"start_process", arguments:{command:"npm run dev"},

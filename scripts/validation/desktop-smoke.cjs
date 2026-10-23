@@ -175,6 +175,8 @@ async function main() {
       assert(captured.real_windows_api && captured.raw_capture_valid);
       assert(captured.width>0 && captured.height>0);
       assert(["PrintWindow_client","foreground_visible_client"].includes(captured.capture_method));
+      const preview=await page.evaluate(p=>window.localAgent.previewScreenshot(p),captured.path);
+      assert(preview.startsWith("data:image/png;base64,"));
       await application.evaluate(({BrowserWindow},{bounds,min})=>{const w=BrowserWindow.getAllWindows()[0];w.setAlwaysOnTop(false);w.setBounds(bounds);w.setMinimumSize(...min);},beforeCaptureBounds);
       checks.push("Real Electron HWND/UIA screenshot through product Windows capture with valid dimensions, privacy masking and method diagnostics");
     }

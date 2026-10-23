@@ -13,6 +13,7 @@ declare global {
   interface Window {
     localAgent: {
       platform: string;
+      previewScreenshot: (path: string) => Promise<string>;
       copyText: (text: string) => Promise<{ok: boolean}>;
       notifyRendererReady: () => void;
       getAgentStatus: () => Promise<{

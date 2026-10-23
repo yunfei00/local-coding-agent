@@ -4,6 +4,7 @@ type AgentEventHandler = (event: unknown) => void;
 
 contextBridge.exposeInMainWorld("localAgent", {
   platform: process.platform,
+  previewScreenshot: (path: string) => ipcRenderer.invoke("agent:screenshot-preview", path),
   copyText: (text: string) => ipcRenderer.invoke("clipboard:copy-text", text),
   notifyRendererReady: () => ipcRenderer.send("renderer:ready"),
   getAgentStatus: () => ipcRenderer.invoke("agent:get-status"),
