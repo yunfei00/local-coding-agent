@@ -1763,7 +1763,20 @@ class AgentServer:
         authorization_prompt: str | None = None,
         single_agent: bool = False,
     ) -> None:
-        provider = provider or self.provider
+        if provider is None:
+            provider = self.provider
+            # Ordinary chat turns must honor the selected Executor profile.
+            # The legacy default provider does not carry the profile's vision flag
+            # (and can also point to a different configured connection).
+            try:
+                config = self.tasks.settings()
+                resolved = self.tasks.catalog().resolve(config)
+                executor = resolved["roles"]["executor"]
+                if executor.get("model") == model and executor.get("_connection"):
+                    provider = self.tasks.make_provider(config, executor["route"], executor)
+            except (ValueError, KeyError, TypeError):
+                # Keep existing legacy chat behavior for incomplete catalogs.
+                pass
         project = project_override or self.projects.active
         if not project:
             return
@@ -2363,6 +2376,9 @@ class AgentServer:
                             if loop_abort_reason == "short_cycle"
                             else "Agent repeatedly requested identical tool calls."
                         )
+                        # Only public tool names, never arguments, paths or window titles.
+                        recent_tools = guard.recent_tool_names[-6:]
+                        detail += " Recent tools: " + " -> ".join(recent_tools)
                         self._record_diagnostic_error(
                             "TOOL_LOOP_DETECTED",
                             detail,

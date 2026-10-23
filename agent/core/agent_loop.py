@@ -161,6 +161,7 @@ class ToolLoopGuard:
     max_identical_calls: int = 2
     call_counts: dict[str, int] = field(default_factory=dict)
     recent_fingerprints: list[str] = field(default_factory=list)
+    recent_tool_names: list[str] = field(default_factory=list)
     changed_paths: set[str] = field(default_factory=set)
     result_sequence: int = 0
     last_change_sequence: int = -1
@@ -184,6 +185,8 @@ class ToolLoopGuard:
         self.call_counts[fingerprint] = count
         self.recent_fingerprints.append(fingerprint)
         self.recent_fingerprints = self.recent_fingerprints[-12:]
+        self.recent_tool_names.append(name)
+        self.recent_tool_names = self.recent_tool_names[-12:]
         self.last_block_reason = None
 
         # Polling an owned server also has a process TTL and model-step bound.
@@ -250,6 +253,7 @@ class ToolLoopGuard:
             if ok:
                 self.call_counts.clear()
                 self.recent_fingerprints.clear()
+                self.recent_tool_names.clear()
                 self.blocked_repeats = 0
                 self.blocked_cycles = 0
                 self.last_block_reason = None
