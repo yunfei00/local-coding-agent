@@ -144,7 +144,10 @@ class ElectronE2ETests(unittest.IsolatedAsyncioTestCase):
             self.action('desktop_click',selector={'name':'Save','control_type':'Button'},confirm_risk=True),self.action('desktop_inspect'),
             self.action('desktop_screenshot',share_with_model=True),self.stop,tool('git_diff'),ProviderChunk(content='Input repaired; independently verify saving',done=True),
             feedback,tool('apply_patch',path='src/App.tsx',old_text="setStatus('Not saved');",new_text="setStatus('Saved: '+value);"),*checks,tool('git_diff'),ProviderChunk(content='Second repair; run the frozen GUI contract',done=True)])
-        self.assertEqual(task['status'],'awaiting_approval',task.get('last_error') or task['reason'])
+        failures=[{'tool':e['payload']['name'],'error':e['payload']['result'].get('error'),
+                   'summary':e['payload']['result'].get('summary','')[:500]}
+                  for e in self.client.messages if e['type']=='tool.completed' and not e['payload']['result'].get('ok')]
+        self.assertEqual(task['status'],'awaiting_approval',{'task_error':task.get('last_error') or task['reason'],'failed_tools':failures})
         self.assertEqual((task['attempts'],task['repairs']),(2,1))
         self.assertTrue(all(v['ok'] for v in task['verification']))
         worktree=Path(task['workspace']);self.worktree=worktree
