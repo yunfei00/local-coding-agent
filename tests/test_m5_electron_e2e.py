@@ -210,7 +210,8 @@ class ElectronE2ETests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.server.tasks.runtime.usage(task['id']),usage)
         self.assertEqual(self.server.tasks.catalog().load()['profiles'][0]['model_profile_id'],'coder')
         restored_project=self.server.projects.active
-        self.assertEqual(Path(restored_project.workspace.root),self.source)
+        self.assertTrue(os.path.samefile(restored_project.workspace.root,self.source),
+                        'Restored project must be the same filesystem directory, including Windows 8.3 aliases')
         self.assertEqual(restored_project.state.get_thread(self.thread.id).active_model,'profile:coder')
         self.assertTrue(self.server.store.task_plans.executions(task['id']))
         report={'real_gui':True,'mock_scope':'model decisions via localhost HTTP only','real_online_inference':'NOT RUN',
