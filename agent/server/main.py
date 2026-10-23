@@ -2098,6 +2098,8 @@ class AgentServer:
                         schemas = tools.schemas(self.permissions.visible_tools(tools.names, tools.permission_metadata_map()), desktop_owner_id=turn_id)
                         execution.reserve(request_messages, schemas, getattr(provider,'max_output_tokens',None) or self.context_reserved_output_tokens)
                         execution.data['model_identity'] = {**getattr(provider,'chat_identity',{}), 'model_id':model,
+                            'vision_profile_id':getattr(observer,'chat_identity',{}).get('vision_profile_id') or getattr(observer,'chat_identity',{}).get('chat_profile_id'),
+                            'vision_connection_id':getattr(observer,'chat_identity',{}).get('connection_id'),
                             'executor_profile_id':getattr(provider,'profile',{}).get('model_profile_id') if plan_id else None}
                         execution.save()
                         async with asyncio.timeout(max(.01, deadline - perf_counter())):

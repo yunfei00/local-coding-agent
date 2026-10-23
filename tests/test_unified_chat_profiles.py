@@ -86,6 +86,8 @@ class UnifiedChatTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.project.tools.desktop.images)
         event=next(e for e in self.ws.messages if e['type']=='vision.observed')
         self.assertEqual(event['payload']['vision_profile_id'],'qwen-same')
+        run=self.server.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE thread_id=?',(self.thread.id,)).fetchone()
+        self.assertEqual(json.loads(run[0])['model_identity']['vision_profile_id'],'qwen-same')
 
     async def test_vision_chat_direct_attachment_is_consumed_once(self):
         await self.setup_models()
