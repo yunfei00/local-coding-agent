@@ -1,5 +1,6 @@
 import {useEffect, useState} from "react";
 import {RecentExecutions} from "./RecentExecutions";
+import {TaskEvidence} from "./TaskEvidence";
 import {mergeTaskSnapshot, TaskSnapshot, taskIsActive} from "../lib/autonomousTask";
 import {TaskConfig as Config, ModelCatalog, modelLabel, taskConfigOverrides} from "../lib/modelCatalog";
 
@@ -135,6 +136,7 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
         {task.calls?.length ? <details><summary>Model call journal</summary>{task.calls.map(call => <p key={call.id}>[{new Date(call.created_at * 1000).toLocaleTimeString()}] #{call.usage.sequence} · {call.id.slice(0,8)} · {call.usage.phase} / {call.role} · {call.usage.provider || call.route} / {call.model} · {call.status} {call.usage.http_status ? `HTTP ${call.usage.http_status}` : ""} {call.usage.error_code || ""} {call.usage.schema_valid !== undefined && call.usage.schema_valid !== null ? `Schema ${call.usage.schema_valid ? "PASS" : "FAIL"}` : ""} {call.usage.next_state ? `→ ${call.usage.next_state}` : ""}</p>)}</details> : null}
         <p>API input {task.usage.input_tokens} · Output {task.usage.output_tokens} · Cached {task.usage.cached_tokens} {task.usage.estimated ? "(estimated)" : "(reported)"}</p>
         <p>验收轮次 {task.attempts} · 自动修复 {task.repairs}</p>
+        <TaskEvidence task={task} />
         {task.verification_history?.length ? <details><summary>独立验收与自动修复记录</summary>{task.verification_history.map(round => <div key={round.attempt}><strong>#{round.attempt} {round.passed ? "PASS" : "FAIL"}</strong>{round.results.filter(r => !r.ok).map((r,i) => <pre key={i}>{r.command + ": " + r.summary}</pre>)}</div>)}</details> : null}
         {task.report.gui_verification ? <p>GUI acceptance: {task.report.gui_verification}</p> : null}
         <p>Reserved cost {task.usage.reserved_cost.toFixed(6)} · Actual {task.usage.actual_cost_known ? task.usage.actual_cost.toFixed(6) : "unavailable"}</p>

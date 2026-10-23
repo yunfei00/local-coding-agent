@@ -1,0 +1,119 @@
+{
+  "command": "npm start",
+  "window_title": "M5 Electron acceptance",
+  "timeout_seconds": 150,
+  "steps": [
+    {
+      "tool": "desktop_wait",
+      "arguments": {
+        "selector": {
+          "name": "Settings",
+          "control_type": "Button"
+        },
+        "state": "visible",
+        "seconds": 5
+      }
+    },
+    {
+      "tool": "desktop_focus_window",
+      "arguments": {}
+    },
+    {
+      "tool": "desktop_click",
+      "arguments": {
+        "selector": {
+          "name": "Settings",
+          "control_type": "Button"
+        }
+      }
+    },
+    {
+      "tool": "desktop_wait",
+      "arguments": {
+        "selector": {
+          "control_type": "Edit"
+        },
+        "state": "enabled",
+        "seconds": 0.5
+      }
+    },
+    {
+      "tool": "desktop_type_text",
+      "arguments": {
+        "selector": {
+          "control_type": "Edit"
+        },
+        "text": "M5 verified A"
+      }
+    },
+    {
+      "tool": "desktop_click",
+      "arguments": {
+        "selector": {
+          "name": "Save",
+          "control_type": "Button"
+        },
+        "confirm_risk": true
+      }
+    },
+    {
+      "tool": "desktop_wait",
+      "arguments": {
+        "selector": {
+          "name": "Status: Saved: M5 verified A"
+        },
+        "state": "visible",
+        "seconds": 1
+      }
+    },
+    {
+      "tool": "desktop_wait",
+      "arguments": {
+        "selector": {
+          "name": "Persisted: M5 verified A"
+        },
+        "state": "visible",
+        "seconds": 1
+      }
+    },
+    {
+      "tool": "desktop_type_text",
+      "arguments": {
+        "selector": {
+          "control_type": "Edit"
+        },
+        "text": "M5 verified B"
+      }
+    },
+    {
+      "tool": "desktop_click",
+      "arguments": {
+        "selector": {
+          "name": "Save",
+          "control_type": "Button"
+        },
+        "confirm_risk": true
+      }
+    },
+    {
+      "tool": "desktop_wait",
+      "arguments": {
+        "selector": {
+          "name": "Status: Saved: M5 verified B"
+        },
+        "state": "visible",
+        "seconds": 1
+      }
+    },
+    {
+      "tool": "desktop_wait",
+      "arguments": {
+        "selector": {
+          "name": "Persisted: M5 verified B"
+        },
+        "state": "visible",
+        "seconds": 1
+      }
+    }
+  ]
+}

@@ -1,12 +1,15 @@
+export type TaskVerification = {command:string; ok:boolean; category?:string; exit_code?:number | null; duration_ms?:number; summary:string; log_path?:string;
+  evidence?:Array<{tool:string;ok?:boolean;artifact_id?:string;path?:string;sha256?:string}>};
 export type TaskSnapshot = {
   id: string; thread_id: string; revision: number; goal: string; status: string; reason: string;
   workspace: string; branch: string; attempts: number; repairs: number; escalations: number; elapsed_seconds: number;
   usage: {api_calls: number; local_calls: number; reserved_tokens: number; input_tokens: number; output_tokens: number;
     cached_tokens: number; reserved_cost: number; actual_cost: number; actual_cost_known: boolean; estimated: boolean; precision: string};
   plan: {steps: Array<{id: string; description: string; state: string; executions?: import("../components/RecentExecutions").ExecutionCall[]}>};
-  verification: Array<{command: string; ok: boolean; category: string; exit_code: number | null; duration_ms: number; summary: string; log_path?: string}>;
+  verification: TaskVerification[];
   report: {review?: string; diff?: string; git_approval?: string; gui_verification?: string};
-  verification_history?: Array<{attempt:number; passed:boolean; at:number; results:Array<{command:string; ok:boolean; summary:string}>}>;
+  verification_history?: Array<{attempt:number; passed:boolean; at:number; results:TaskVerification[]}>;
+  transitions?: Array<{at:number;from:string;to:string;call_id?:string;error_code?:string}>;
   config?: {strategy?: string; budget: Record<string, number | null>};
   planning_attempts?: number; last_error?: {code:string; budget?: {scope:string; field:string; limit:number; used:number; required:number; remaining:number; input_token_estimate:number; output_limit:number; request_token_reservation:number; api_calls:number; reserved_tokens:number; rule:string}};
   calls?: Array<{id:string; created_at:number; role:string; model:string; route:string; status:string; usage:{provider?:string; connection_id?:string; model_profile_id?:string; phase?:string; sequence?:number; error_code?:string; http_status?:number; schema_valid?:boolean; next_state?:string}}>;

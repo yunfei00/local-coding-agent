@@ -9,6 +9,17 @@ from agent.core.agent_loop import (
 
 
 class AgentLoopTests(unittest.TestCase):
+    def test_gui_action_allows_fresh_observation_without_resetting_action_limits(self):
+        guard=ToolLoopGuard()
+        args={'window_id':'owned'}
+        self.assertTrue(guard.register_call('desktop_inspect',args)[0])
+        self.assertTrue(guard.register_call('desktop_inspect',args)[0])
+        guard.record_result('desktop_type_text',{'ok':True})
+        self.assertTrue(guard.register_call('desktop_inspect',args)[0])
+        for _ in range(2): self.assertTrue(guard.register_call('desktop_click',args)[0])
+        guard.record_result('desktop_type_text',{'ok':True})
+        self.assertFalse(guard.register_call('desktop_click',args)[0])
+
     def test_tool_fingerprint_is_stable(self) -> None:
         first = canonical_tool_fingerprint(
             "read_file",

@@ -527,6 +527,7 @@ class TaskService:
                     weakened = acceptance_changes(view.workspace.root, task['acceptance_baseline'])
                     if weakened:
                         await update('paused','现有验收文件或测试脚本被修改，需要检查 Diff；未运行被削弱的测试。',
+                                     last_error={'code':'ACCEPTANCE_CONTRACT_CHANGED','phase':'verifying','files':weakened[:20]},
                                      verification=[{'command':'acceptance contract','ok':False,'category':'configuration','exit_code':None,'duration_ms':0,'summary':'Protected acceptance changed: '+', '.join(weakened[:20])}])
                         return
                     before_validation = await self.workspace_fingerprint(view)

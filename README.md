@@ -1,5 +1,7 @@
 # Local Coding Agent
 
+M5 增加真实 Electron + React + TypeScript 双缺陷验收工程、Task Timeline 与失败/成功截图入口；修复 Chromium 受控输入、观察刷新及 GUI 启动契约保护。见 [M5 使用](docs/m5/user-guide.md)、[端到端验收](docs/m5/end-to-end-acceptance.md)、[实验工程](manual-fixtures/m5-electron-e2e/README.md)。真实在线自主推理本轮 NOT RUN，不发布 Tag/安装包。
+
 M4 全面修复统一了 Chat/Task 的连接和模型目录，支持独立 Vision Observer、真实窗口截图与冻结任务配置。见 [修复与用法](docs/m4/complete-fixes.md)、[验收分类](docs/m4/complete-validation.md)、[阶段能力矩阵](docs/capability-matrix.md)。真实在线推理与 HTTP Mock/真实 GUI 分开记录，本轮不发布安装包。
 
 Local Coding Agent 是一个面向 Windows 本地开发环境的桌面 Coding Agent。目标是提供类似 Codex Desktop 的核心开发体验，同时让模型、Agent、工具链、数据和权限边界保持在用户自己的环境中。
@@ -30,7 +32,7 @@ Task → Task strategy 选择 **Single Agent (online)**，在 Models and budget 
 
 Task 面板按需启动自主任务：默认 Local-first，规划/执行/审查使用本地模型，有限升级调用 API；支持 Local-only、API-only、四角色配置、持久化阶段、暂停/取消/恢复、请求前任务/全局预算、独立验证和完成报告。实际执行复用 v0.3 Agent Loop、权限、Approval、计划、Checkpoint、Shell 与受管理 Worktree，不自动提交、推送或合并。
 
-Settings → Models & Routing 同时配置多个 Ollama/API 连接和模型，四角色独立跨连接绑定；任务冻结解析快照，API 预检按实际连接类型计费。旧配置自动迁移，原 API Key 保留安全存储。普通聊天的 Provider 选择不改变自主任务角色。
+Settings → Models & Routing 同时配置多个 Ollama/API 连接和模型，四角色独立跨连接绑定；任务冻结解析快照，API 预检按实际连接类型计费。旧配置增量迁移，原 API Key 保留安全存储。普通 Chat 和 Task 共用目录，选择相互独立；旧 Provider 页只提供统一设置入口。
 
 v0.4.2 修复旧会话模型与底部显示不一致：发送请求携带当前 Chat model，后端验证后保存并执行，不再误用上一个 Provider 的模型名。不可用的旧模型会明确标注并阻止发送。见 [聊天模型同步修复](docs/v0.4/chat-model-sync.md)。
 

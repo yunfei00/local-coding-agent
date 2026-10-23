@@ -135,3 +135,6 @@ Task 按需展开查看阶段、真实 Model call journal、API 次数/预留 To
 ## 判定
 
 框架通过条件：自动化零失败、指定服务真实 HTTP 调用与回交成立、预算前置阻断成立、Windows UI 保存/重启成立、安装版和 Portable 可启动，文档及产物一致。公司业务能力另记：公司实际模型、网关认证/计费、网络代理与具体工程任务必须在公司环境核验。未运行的真实付费调用明确记“未验收”，不能用 Mock 数字冒充真实费用。
+## M4/M5 源码更新
+
+当前源码的 Provider 与模型目录已统一；Single Agent、独立视觉、真实 Electron 实验工程和最新运行命令见 [M5 公司源码使用](../m5/user-guide.md) 和 [可复现实验工程](../../manual-fixtures/m5-electron-e2e/README.md)。M4/M5 不发布安装包，原 v0.4.2 安装版不包含本轮源码。真实付费推理本轮 NOT RUN，历史用户模型结果与本机 HTTP Mock/真实 GUI 分开记录。
