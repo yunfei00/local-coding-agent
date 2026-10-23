@@ -154,7 +154,7 @@ class WindowsDesktopTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(region.getextrema(),((0,0),(0,0),(0,0)),
                                          'Sensitive input pixels must remain black')
                     else:
-                        self.assertEqual(region.getpixel((min(3,region.width-1),min(3,region.height-1))), (246,246,246),
+                        self.assertEqual(region.getpixel((max(0, region.width-5), max(0, region.height-5))), (246,246,246),
                                          'Ordinary editor contents must be concealed with a light placeholder')
             shutil.copy2(after.data['path'],ROOT/'validation-reports/m3-fixture-sanitized.png')
         image=self.registry.desktop.image_message(self.owner)['content'][1]['image_url']['url']
