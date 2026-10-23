@@ -463,7 +463,25 @@ def execute(request):
         if not isinstance(text,str) or len(text)>4000 or SECRET.search(text) or re.search(r'\b(?:sk-|ghp_|github_pat_|eyJ)[A-Za-z0-9_-]{12,}',text):
             fail('DESKTOP_SENSITIVE_INPUT','Use ordinary non-secret text only; input was not logged or entered')
         if control.element_info.control_type != 'Edit':
-            fail('DESKTOP_EDIT_REQUIRED','Select a non-sensitive editable control by UIA')
+            # A model sometimes selects a Tkinter frame/window rather than
+            # the child Entry. Report bounded structural hints, never names,
+            # text, selectors or identifiers of unrelated controls.
+            actual_type = str(control.element_info.control_type)[:40]
+            try:
+                candidates, incomplete, _ = controls(window)
+                available = sum(1 for candidate in candidates
+                    if candidate.element_info.control_type == 'Edit'
+                    and not sensitive(candidate)
+                    and candidate.is_enabled() and candidate.is_visible())
+                hint = ('UIA tree truncated; inspect the window again'
+                    if incomplete else
+                    f'{available} visible non-sensitive Edit candidate(s) in this window')
+            except Exception:
+                hint = 'Editable control inventory unavailable'
+            fail('DESKTOP_EDIT_REQUIRED',
+                f'Selected UIA control type is {actual_type}, not Edit; {hint}. '
+                'Inspect again and select an exact Edit runtime_id or automation_id. '
+                'No input was entered.')
         try:
             control.iface_value.SetValue(text)
             verified = control.iface_value.CurrentValue == text
