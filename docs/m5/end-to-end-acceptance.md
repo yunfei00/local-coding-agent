@@ -30,3 +30,15 @@ git diff --check
 ```
 
 Windows CI 设置 LCA_REQUIRE_INTERACTIVE_DESKTOP=1，没有交互桌面会失败而非静默跳过；Ubuntu 不宣称 Windows GUI PASS。保留脱敏 m5-electron-e2e.json，包含 Diff、真实断言、修复轮次、HTTP 图像字节数和清理结果，无原图或 Base64。最终数量与 CI 链接在门禁结束后记录。
+
+## 本机专项实测
+
+2026-10-23：m5-bounded-full-scenario.log，3 项通过、0 失败，167.233 秒。主用例为真实 Electron/Windows 闭环，另两项为启动脚本反篡改和契约/旧快照兼容测试。不是三项都冒充 GUI 操作。
+
+首轮真实 typecheck、2 项 Vitest、build、diff 检查通过，但保存状态 GUI 断言报 DESKTOP_WAIT_TIMEOUT，不能验收。相同 Executor 收到真实失败后补第二处源码；重新运行命令和新 Electron GUI，两个不同输入的状态、持久化和 saved.json 全部通过，进入 awaiting_approval。共两轮修复、一次追加修复；源工程仍保留原缺陷。
+
+此专项包含后续生命周期验证，共本机 HTTP coder 42 次、vision 3 次；次数随真实启动轮询可能变化，不是固定的在线请求数。3 次视觉传输来自当前实际捕获（首次工具观察、独立成功验收、恢复后新窗口验收），并非历史图像重复发送。每次新捕获仍经过授权；拒绝上传场景没有新增 Observer 请求，状态按预期 paused / APPROVAL_DENIED。
+
+Pause 与 Stop 均核对实际 Electron main 和记录的 renderer/utility 子进程退出；Resume 保留两次 apply_patch，不重放；重启新 Agent 保留项目、Thread 模型、Task、执行记录、角色快照和累计预算。报告 m5-electron-e2e.json 为本机脱敏证据，图片只留本机。
+
+M5 [PR #21](https://github.com/yunfei00/local-coding-agent/pull/21) 的最终 Windows/Ubuntu CI 和完整 check.py/desktop-smoke 仍为合并门禁，不能用此专项代替。真实在线模型推理 NOT RUN。
