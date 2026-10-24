@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from agent.core.model_catalog import KEY
 from agent.persistence.store import SQLiteStore
