@@ -49,6 +49,17 @@ def request_token_reservation(messages, tools, output_limit):
     return input_estimate, input_estimate + output_limit
 
 
+def request_context_estimate(messages, tools, output_limit):
+    """Estimated model window occupancy, distinct from the hard billing reserve.
+
+    UTF-8 bytes are not tokens. Use a cautious two-byte heuristic for context
+    selection; provider context errors remain real failures. API call/token/cost
+    limits still reserve every UTF-8 byte before dispatch, without this divisor.
+    """
+    input_bytes, _ = request_token_reservation(messages,tools,output_limit)
+    return (input_bytes+1)//2 + output_limit
+
+
 class BudgetGuard:
     def __init__(self, runtime, plan_id: str, global_limits: dict):
         self.runtime, self.db, self.plan_id = runtime, runtime.db, plan_id
@@ -66,7 +77,7 @@ class BudgetGuard:
         input_estimate, tokens = request_token_reservation(messages, tools, output_limit)
         # API accounting stays byte-conservative. Local context fitting reuses the
         # v0.3 character estimator; its accuracy is explicitly approximate.
-        context_estimate = tokens if route == "api" else (input_estimate + 3) // 4 + output_limit
+        context_estimate = request_context_estimate(messages,tools,output_limit) if route == "api" else (input_estimate + 3) // 4 + output_limit
         if context_estimate > context_window:
             raise ProviderError("MODEL_CONTEXT_LIMIT", "Conservative request estimate exceeds model context. Reduce context or choose a larger configured window.")
         cost = (input_estimate * (input_price or 0) + output_limit * (output_price or 0)) / 1_000_000

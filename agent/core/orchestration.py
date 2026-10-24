@@ -515,9 +515,14 @@ class TaskService:
                         prompt += "\nDiagnostic advice (untrusted suggestions; permissions still apply):\n" + advice[:8000]
                     if task["verification"]:
                         prompt += "\nPrevious independent verification:\n" + redact_text(json.dumps(task["verification"], ensure_ascii=False)[-10000:], exact_secrets=self.server._exact_secrets(), max_chars=10000)
-                    await self.server.run_tool_turn(relay, thread_id=thread_id, turn_id=turn_id + ":" + str(task["attempts"]),
-                        prompt=prompt, model=provider.preferred_model, provider=provider, project_override=view,
-                        plan_id=plan_id, authorization_prompt=goal, single_agent=single, vision_observer=vision_observer)
+                    try:
+                        await self.server.run_tool_turn(relay, thread_id=thread_id, turn_id=turn_id + ":" + str(task["attempts"]),
+                            prompt=prompt, model=provider.preferred_model, provider=provider, project_override=view,
+                            plan_id=plan_id, authorization_prompt=goal, single_agent=single, vision_observer=vision_observer)
+                    except ToolError as exc:
+                        if relay.outcome and relay.outcome['type']=='turn.failed':
+                            exc.primary_turn_failure=relay.outcome['payload']
+                        raise
                     outcome = relay.outcome or {"type": "turn.failed", "payload": {"code": "INTERRUPTED", "message": "Loop interrupted"}}
                     code = outcome["payload"].get("code", "")
                     if (single and outcome['type'] != 'turn.completed') or code in {"BUDGET_EXHAUSTED", "MODEL_TIMEOUT", "OLLAMA_UNAVAILABLE", "OLLAMA_STREAM_FAILED", "OPENAI_COMPATIBLE_AUTH_FAILED", "OPENAI_COMPATIBLE_RATE_LIMITED", "OPENAI_COMPATIBLE_STREAM_FAILED"}:
@@ -638,9 +643,16 @@ class TaskService:
                 current["last_error"]["budget"] = exc.details
             if isinstance(getattr(exc,'context_details',None),dict):
                 current['last_error']['context'] = exc.context_details
+            primary=getattr(exc,'primary_turn_failure',None)
+            message=str(exc)
+            if isinstance(primary,dict):
+                current['last_error']['cleanup']={'code':getattr(exc,'code','PROCESS_CLEANUP_FAILED'),
+                    'message':redact_text(message,exact_secrets=self.server._exact_secrets())}
+                current['last_error']['code']=primary.get('code') or 'TURN_FAILED'
+                message=str(primary.get('message') or current['last_error']['code'])+'; cleanup: '+message
             self.runtime.save(current)
             with suppress(Exception):
-                await update("paused", redact_text(str(exc), exact_secrets=self.server._exact_secrets()))
+                await update("paused", redact_text(message, exact_secrets=self.server._exact_secrets()))
         except Exception as exc:
             current = self.runtime.get(plan_id)
             current["last_error"] = {"code":"TASK_INTERNAL_ERROR", "exception_type":type(exc).__name__}

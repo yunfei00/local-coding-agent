@@ -96,32 +96,32 @@ class ContextBudgetManager:
         self._byte_conservative = False
 
     def fit_request(self, messages, *, tools, output_limit, history_messages_total):
-        """Fit API messages including schemas to the existing guard's exact bound.
+        """Fit API messages and schemas to the guard's context estimate.
 
         Reuse the original compaction/group selection. Do not increase limits,
         alter tool schemas, truncate tool-call headers, or bypass reservations.
         """
-        from agent.core.budget import request_token_reservation
-        _, fixed = request_token_reservation([], tools, output_limit)
+        from agent.core.budget import request_context_estimate
+        fixed = request_context_estimate([], tools, output_limit)
         fitter = ContextBudgetManager(context_window_tokens=self.context_window_tokens,
                                       reserved_output_tokens=output_limit,chars_per_token=1)
         fitter._byte_conservative = True
-        # Each message includes its comma framing; the empty array's two bytes
-        # already occur in fixed. This slightly over-reserves the final comma.
-        fitter.input_budget_tokens = max(0,self.context_window_tokens-fixed+2)
+        # Include per-message framing, rounding upward. Billing reservations
+        # remain byte-conservative and are independently enforced by the guard.
+        fitter.input_budget_tokens = max(0,self.context_window_tokens-fixed)
         try:
             selection = fitter.fit_runtime(messages,history_messages_total=history_messages_total)
         except ProviderError as exc:
             if exc.code != 'MODEL_CONTEXT_LIMIT':
                 raise
-            _, required = request_token_reservation(messages,tools,output_limit)
+            required = request_context_estimate(messages,tools,output_limit)
             exc.context_details = {'context_window':self.context_window_tokens,'request_reservation':required,
                                    'fixed_reservation':fixed,'output_limit':output_limit,'request_sent':False}
             raise
-        required_input, required = request_token_reservation(selection.messages,tools,output_limit)
+        required = request_context_estimate(selection.messages,tools,output_limit)
         if required > self.context_window_tokens:
             error = ProviderError('MODEL_CONTEXT_LIMIT',
-                f'Conservative request context {required} > window {self.context_window_tokens}; '
+                f'Estimated request context {required} > window {self.context_window_tokens}; '
                 f'fixed schemas/framing/output reserve {fixed}. No API request sent. '
                 'Inspect the saved model window and required context; budget was not increased.')
             error.context_details = {'context_window':self.context_window_tokens,'request_reservation':required,
@@ -129,7 +129,7 @@ class ContextBudgetManager:
             raise error
         return ContextSelection(selection.messages,replace(selection.usage,
             reserved_output_tokens=output_limit,input_budget_tokens=self.context_window_tokens-output_limit,
-            estimated_input_tokens=required_input,estimation_method='utf8_bytes_conservative',
+            estimated_input_tokens=required-output_limit,estimation_method='utf8_bytes_div2_estimate',
             context_sources={**selection.usage.context_sources,'schemas_and_framing':fixed-output_limit}))
 
     def prepare_initial(
@@ -446,7 +446,7 @@ class ContextBudgetManager:
 
     def _message_tokens(self, message: dict[str, Any]) -> int:
         if self._byte_conservative:
-            return len(json.dumps(message,ensure_ascii=False).encode())+2
+            return (len(json.dumps(message,ensure_ascii=False).encode())+1)//2+1
         return estimate_message_tokens(message, chars_per_token=self.chars_per_token)
 
     def _messages_tokens(self, messages: list[dict[str, Any]]) -> int:

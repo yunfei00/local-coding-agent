@@ -11,6 +11,7 @@ import time
 class WindowsJob:
     def __init__(self, pid: int):
         self.handle = None
+        self.last_cleanup = {}
         if os.name != "nt":
             return
         kernel = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -114,7 +115,7 @@ class WindowsJob:
             if not self.kernel.TerminateJobObject(self.handle, 1):
                 raise ctypes.WinError(ctypes.get_last_error())
 
-    def terminate_and_wait_sync(self, timeout=5) -> None:
+    def terminate_and_wait_sync(self, timeout=10) -> None:
         """Wait for the owned process handles, not merely a queued kill signal.
 
         Job termination is asynchronous. Chromium descendants can still hold
@@ -140,6 +141,7 @@ class WindowsJob:
             self.terminate()
             raise OSError('Owned process inventory exceeded bounded cleanup capacity')
         handles = []
+        started = time.monotonic()
         try:
             for index in range(count):
                 pid = ctypes.c_size_t.from_buffer(buffer,8 + index*ctypes.sizeof(ctypes.c_size_t)).value
@@ -163,16 +165,21 @@ class WindowsJob:
                 if any(state not in (0,258) for state in states):
                     raise ctypes.WinError(ctypes.get_last_error())
                 if 258 not in states:
+                    self.last_cleanup={'confirmed_exit':True,'owned_process_count':len(handles),
+                                       'elapsed_seconds':round(time.monotonic()-started,3),'timeout_seconds':timeout}
                     break
                 if time.monotonic() >= deadline:
                     pending = [pid for (pid,_),state in zip(handles,states) if state==258]
+                    self.last_cleanup={'confirmed_exit':False,'owned_process_count':len(handles),
+                                       'elapsed_seconds':round(time.monotonic()-started,3),'timeout_seconds':timeout,
+                                       'pending_owned_pids':pending[:16]}
                     raise TimeoutError(f'Owned process tree did not finish terminating before cleanup deadline; pending owned PIDs={pending[:16]}')
                 time.sleep(.02)
         finally:
             for _,handle in handles:
                 kernel.CloseHandle(handle)
 
-    async def terminate_and_wait(self, timeout=5) -> None:
+    async def terminate_and_wait(self, timeout=10) -> None:
         # Cancellation must not close the Job while its confirmation thread is
         # still using retained kernel handles. The wait itself is bounded.
         waiter = asyncio.create_task(asyncio.to_thread(self.terminate_and_wait_sync, timeout))

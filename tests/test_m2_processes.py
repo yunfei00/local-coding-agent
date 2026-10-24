@@ -146,7 +146,11 @@ setInterval(()=>console.log('HEARTBEAT'),100);
         self.assertFalse(any(alive(pid) for pid in pids.values()))
 
     async def test_background_timeout_stops_process_without_polling(self):
-        result = await self.tools.execute('start_process', {'command': 'node tree.cjs', 'timeout_seconds': 2})
+        # Keep the two-second process deadline. PowerShell cold startup alone
+        # can exceed it on a memory-starved host; shell behavior has separate
+        # real tests. CMD starts the same actual Node/Python tree here.
+        result = await self.tools.execute('start_process', {'command': 'node tree.cjs', 'timeout_seconds': 2,
+            'shell':'cmd' if os.name=='nt' else 'auto'})
         pids = await wait_file(self.root / 'pids.json')
         session = self.tools.processes.get(result.data['process_id'])
         await asyncio.wait_for(asyncio.shield(session.task), 10)
@@ -186,6 +190,10 @@ setInterval(()=>console.log('HEARTBEAT'),100);
         self.assertTrue(stopped.data['output_drain_timed_out'])
         self.assertTrue(stopped.data['output_truncated'])
         self.assertFalse(any(alive(pid) for pid in [session.process.pid,*pids.values()]))
+        if os.name=='nt':
+            metadata=json.loads(Path(stopped.data['metadata_path']).read_text(encoding='utf-8'))
+            self.assertTrue(metadata['job_cleanup']['confirmed_exit'])
+            self.assertGreaterEqual(metadata['job_cleanup']['owned_process_count'],2)
         self.assertEqual(len(await self.tools.processes.close_owner('slow')),1)
         self.assertEqual(await self.tools.processes.close_owner('slow'),[])
 

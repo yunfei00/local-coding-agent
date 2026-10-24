@@ -326,6 +326,7 @@ class ProcessManager:
                 metadata = {"process_id": s.id, "pid": s.process.pid, "owner": s.owner, "state": s.state,
                             "exit_code": s.process.returncode, "shell": s.shell, "log_truncated": s.log_truncated,
                             "error": s.error, "cleanup_stage": cleanup_stage, "cleanup_detail":s.cleanup_detail,
+                            "job_cleanup":s.job.last_cleanup,
                             "cleanup_reason": reason, "workspace": str(self.workspace.root),
                             "started_at": s.started_at, "ended_at": time.time(),
                             "duration_ms": round((time.monotonic()-s.started)*1000)}
