@@ -153,22 +153,23 @@ class WindowsJob:
                     kernel.CloseHandle(handle)
                     raise ctypes.WinError(ctypes.get_last_error())
                 if member.value:
-                    handles.append(handle)
+                    handles.append((pid,handle))
                 else:
                     kernel.CloseHandle(handle)  # PID was reused outside this Job.
             self.terminate()
             deadline = time.monotonic()+timeout
             while True:
-                states = [kernel.WaitForSingleObject(handle,0) for handle in handles]
+                states = [kernel.WaitForSingleObject(handle,0) for _,handle in handles]
                 if any(state not in (0,258) for state in states):
                     raise ctypes.WinError(ctypes.get_last_error())
                 if 258 not in states:
                     break
                 if time.monotonic() >= deadline:
-                    raise TimeoutError('Owned process tree did not finish terminating before cleanup deadline')
+                    pending = [pid for (pid,_),state in zip(handles,states) if state==258]
+                    raise TimeoutError(f'Owned process tree did not finish terminating before cleanup deadline; pending owned PIDs={pending[:16]}')
                 time.sleep(.02)
         finally:
-            for handle in handles:
+            for _,handle in handles:
                 kernel.CloseHandle(handle)
 
     async def terminate_and_wait(self, timeout=5) -> None:

@@ -22,6 +22,7 @@ from agent.llm.router import ModelRouter, json_object, validate_config, apply_co
 from agent.llm.planning import PLAN_PROMPT, PLAN_SCHEMA
 from agent.server.protocol import envelope, new_id
 from agent.tools.registry import ToolRegistry
+from agent.tools.base import ToolError
 from agent.tools.workspace import Workspace
 
 
@@ -630,7 +631,7 @@ class TaskService:
                 self.runtime.save(current)
                 await update(target, "Execution interrupted; checkpoint and uncertain API reservations retained")
             raise
-        except (ProviderError, TimeoutError) as exc:
+        except (ProviderError, ToolError, TimeoutError) as exc:
             current = self.runtime.get(plan_id)
             current["last_error"] = {"code":getattr(exc, "code", "TASK_TIMEOUT"), "role":getattr(exc, "role", None), "phase":current["status"]}
             if isinstance(exc, BudgetExceeded) and exc.details:

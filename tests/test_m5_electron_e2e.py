@@ -94,7 +94,8 @@ class ElectronE2ETests(unittest.IsolatedAsyncioTestCase):
         if tasks:
             (ROOT/'validation-reports').mkdir(exist_ok=True)
             execution=self.server.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',(tasks[0]['id'],)).fetchone()
-            (ROOT/('validation-reports/m5-debug-'+self._testMethodName+'.json')).write_text(json.dumps({'task':self.server.tasks.public(tasks[0]),'execution':json.loads(execution[0]) if execution else None,'tools':[e['payload'] for e in self.client.messages if e['type']=='tool.completed']},ensure_ascii=False,indent=2),encoding='utf-8')
+            process_metadata=[json.loads(p.read_text(encoding='utf-8')) for p in (self.root/'data'/'command-logs').glob('*/process.json')]
+            (ROOT/('validation-reports/m5-debug-'+self._testMethodName+'.json')).write_text(json.dumps({'task':self.server.tasks.public(tasks[0]),'execution':json.loads(execution[0]) if execution else None,'processes':process_metadata,'tools':[e['payload'] for e in self.client.messages if e['type']=='tool.completed']},ensure_ascii=False,indent=2),encoding='utf-8')
         self.model.release.set()
         for run in list(self.server.active_turns.values()):run.cancel()
         await asyncio.gather(*list(self.server.active_turns.values()),return_exceptions=True)

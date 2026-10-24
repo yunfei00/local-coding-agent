@@ -1,5 +1,6 @@
 """Real HTTP provider + Task tools; only model decisions are mocked, no paid API."""
 import asyncio
+from contextlib import nullcontext
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,8 @@ from unittest.mock import patch
 from aiohttp import web
 from agent.core.budget import request_token_reservation
 from agent.core.context import ContextBudgetManager
+from agent.core.verification import VerificationEngine
+from agent.tools.base import ToolError
 from agent.llm.base import ProviderError
 from agent.llm.router import validate_config
 from agent.server.main import AgentServer
@@ -73,7 +76,10 @@ class ApiContextTaskTests(unittest.IsolatedAsyncioTestCase):
     async def test_mid_execution_budget_failure_keeps_field_values_and_role(self):
         await self.scenario(1)
 
-    async def scenario(self,max_calls):
+    async def test_verifier_cleanup_failure_pauses_with_original_error_not_internal_error(self):
+        await self.scenario(4,cleanup_fault=True)
+
+    async def scenario(self,max_calls,cleanup_fault=False):
         with tempfile.TemporaryDirectory(prefix='api-context-') as temporary:
             root = Path(temporary)
             with patch.dict(os.environ,{'LCA_DATA_DIR':str(root/'data'),'LCA_OPENAI_API_KEY':''}):
@@ -119,10 +125,23 @@ class ApiContextTaskTests(unittest.IsolatedAsyncioTestCase):
                                  'context_window':32768,'max_output_tokens':1024}]}
                 try:
                     await server.tasks.handle(client,{'type':'task.catalog.update','payload':{'catalog':catalog,'config':config}},set())
-                    await server.tasks.handle(client,{'type':'task.start','thread_id':thread.id,
-                        'payload':{'goal':'Read calculator and large-a.txt and large-b.txt, repair addition, run unittest and inspect Diff.', 'config':config}},set())
-                    await asyncio.wait_for(asyncio.gather(*list(server.active_turns.values())),120)
+                    async def cleanup_failed(_engine,_commands):
+                        raise ToolError('PROCESS_CLEANUP_FAILED','Owned verifier process exit could not be confirmed')
+                    # Explicit infrastructure fault injection, never counted as
+                    # a successful native process/GUI acceptance.
+                    with patch.object(VerificationEngine,'run',cleanup_failed) if cleanup_fault else nullcontext():
+                        await server.tasks.handle(client,{'type':'task.start','thread_id':thread.id,
+                            'payload':{'goal':'Read calculator and large-a.txt and large-b.txt, repair addition, run unittest and inspect Diff.', 'config':config}},set())
+                        await asyncio.wait_for(asyncio.gather(*list(server.active_turns.values())),120)
                     task = server.tasks.runtime.list(thread.id)[0]
+                    if cleanup_fault:
+                        self.assertEqual(task['status'],'paused',task['reason'])
+                        self.assertEqual(task['last_error']['code'],'PROCESS_CLEANUP_FAILED')
+                        self.assertEqual(task['last_error']['phase'],'verifying')
+                        self.assertFalse(task['report'].get('passed'))
+                        self.assertIn('exit could not be confirmed',task['reason'])
+                        self.assertEqual(len(requests),4,'No paid-model repair for an infrastructure cleanup failure')
+                        return
                     if max_calls==1:
                         self.assertEqual(task['status'],'paused',task['reason'])
                         self.assertEqual(len(requests),1)

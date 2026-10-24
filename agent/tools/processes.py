@@ -124,6 +124,7 @@ class ProcessSession:
     task: asyncio.Task | None = None
     readers: list = field(default_factory=list)
     error: str | None = None
+    cleanup_detail: str | None = None
     stopping: bool = False
     on_output: object = None
     on_raw_output: object = None
@@ -275,12 +276,16 @@ class ProcessManager:
             reason, s.state, s.error = "output_error", "output_error", type(exc).__name__
         finally:
             s.stopping = True
+            cleanup_stage = 'termination_event'
             try:
                 if reason:
                     with suppress(Exception):
                         await self._emit(s, "process_terminating", reason=reason)
+                cleanup_stage = 'job_exit_confirmation'
                 await s.job.terminate_and_wait()
+                cleanup_stage = 'root_exit_confirmation'
                 method = await terminate_process_tree(s.process)
+                cleanup_stage = 'output_drain'
                 if s.readers:
                     try:
                         reader_results = await asyncio.wait_for(asyncio.gather(*s.readers, return_exceptions=True), 3)
@@ -300,8 +305,17 @@ class ProcessManager:
                 if s.state == "running":
                     s.state = "exited" if s.process.returncode == 0 else "failed"
                 with suppress(Exception):
+                    cleanup_stage = 'exit_event'
                     await self._emit(s, "process_terminated" if reason else "process_exited", reason=reason,
                                      method=method, exit_code=s.process.returncode, duration_ms=round((time.monotonic()-s.started)*1000))
+                cleanup_stage = 'finished'
+            except Exception as exc:
+                # Keep the failing stage in scoped metadata. No command output,
+                # environment or credentials are included in this diagnosis.
+                s.error = f'PROCESS_CLEANUP_FAILED:{cleanup_stage}:{type(exc).__name__}'
+                if cleanup_stage == 'job_exit_confirmation' and isinstance(exc,TimeoutError):
+                    s.cleanup_detail = str(exc)[:400]
+                raise
             finally:
                 s.job.close()
                 for reader in s.readers:
@@ -311,7 +325,8 @@ class ProcessManager:
                 s.process._transport.close()
                 metadata = {"process_id": s.id, "pid": s.process.pid, "owner": s.owner, "state": s.state,
                             "exit_code": s.process.returncode, "shell": s.shell, "log_truncated": s.log_truncated,
-                            "error": s.error, "cleanup_reason": reason, "workspace": str(self.workspace.root),
+                            "error": s.error, "cleanup_stage": cleanup_stage, "cleanup_detail":s.cleanup_detail,
+                            "cleanup_reason": reason, "workspace": str(self.workspace.root),
                             "started_at": s.started_at, "ended_at": time.time(),
                             "duration_ms": round((time.monotonic()-s.started)*1000)}
                 (s.directory / "process.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -343,7 +358,7 @@ class ProcessManager:
                     await self.stop(ident, owner=owner, reason="scope_finished")
                     results.append(s.result().data)
                 except Exception as exc:
-                    errors.append(type(exc).__name__)
+                    errors.append(f'{s.id}: {s.error or type(exc).__name__}')
                 finally:
                     self.sessions.pop(ident, None)
         if errors:
