@@ -23,10 +23,13 @@ const GOAL = `请检查当前 Electron + React + TypeScript 工程中的 Setting
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const TERMINAL = new Set(['paused','failed','cancelled','completed','awaiting_approval']);
 
-function approvalAllowed(payload, workspace, ownedPids) {
+function approvalAllowed(payload, workspace, ownedPids, phase) {
   const a = payload.arguments || {}, tool = payload.tool;
   if (tool === 'git_worktree_create') return /^lca\/task-[a-zA-Z0-9_-]+$/.test(a.branch || '');
-  if (tool === 'desktop_list_windows') return !a.pid || ownedPids.has(a.pid);
+  // The independent verifier filters by its launched Job before using results;
+  // model-facing enumeration must be PID scoped so private window titles never
+  // enter the online model context.
+  if (tool === 'desktop_list_windows') return a.pid ? ownedPids.has(a.pid) : phase === 'verifying';
   if (tool.startsWith('desktop_')) {
     const w = a.target_window;
     return !!w && w.title === 'M5 Electron acceptance' && ownedPids.has(w.pid)
@@ -65,6 +68,7 @@ function finalResult(task, tools) {
       && c.wire_images?.some(i => i.mime_type === 'image/jpeg' && i.bytes > 0 && i.sha256))
     && observation?.observations?.length > 0 && observation.errors?.length === 0;
   return {result:passed ? 'PASS' : 'FAIL', reason:task.last_error?.code || task.reason || task.status,
+    last_error:task.last_error || null,
     task_id:task.id, final_status:task.status, workspace:task.workspace,
     acceptance_baseline:task.acceptance_baseline, usage:task.usage, calls,
     paid_requests:calls.filter(c => c.request_sent).length,
@@ -81,7 +85,7 @@ function finalResult(task, tools) {
 async function main(manifest) {
   const { _electron } = require('../../desktop/node_modules/playwright-core');
   const root = path.resolve(__dirname,'../..');
-  let app, page, thread, task;
+  let app, page, thread, task, stage = 'electron_launch';
   const initial = JSON.parse(fs.readFileSync(manifest.report,'utf8'));
   const events = [], tools = [], approvals = [], ownedPids = new Set(), requests = new Map();
   const processFiles = () => {
@@ -100,6 +104,7 @@ async function main(manifest) {
     app = await _electron.launch({executablePath:require('../../desktop/node_modules/electron'),
       args:[path.join(root,'desktop')], cwd:root, env:environment, timeout:45000});
     page = await app.firstWindow();
+    stage = 'agent_ready';
     await page.waitForFunction(() => !!window.localAgent,undefined,{timeout:30000});
     const ready = Date.now() + 45000;
     while (Date.now() < ready) {
@@ -108,6 +113,7 @@ async function main(manifest) {
       if (state.state === 'error') throw new Error('AGENT_START_FAILED');
       await delay(200);
     }
+    stage = 'protected_credential_status';
     const credential = (await page.evaluate(() => window.localAgent.taskRequest('','task.credential.status'))).payload;
     initial.credential_mode = credential.mode;
     const expected = 'connection-' + manifest.executor.connection_id;
@@ -120,7 +126,7 @@ async function main(manifest) {
       if (event.type === 'task.updated' && p.task) task = p.task;
       if (event.type === 'approval.requested') {
         processFiles();
-        const allowed = approvalAllowed(p, task?.workspace, ownedPids);
+        const allowed = approvalAllowed(p, task?.workspace, ownedPids, task?.status);
         approvals.push({tool:p.tool, decision:allowed ? 'allow_once':'deny', risk:p.risk});
         await page.evaluate(({id, decision, turn}) => window.localAgent.respondApproval(id,decision,turn),
           {id:p.approval_id, decision:allowed ? 'allow_once':'deny', turn:event.turn_id});
@@ -144,6 +150,7 @@ async function main(manifest) {
     await page.evaluate(() => window.localAgent.onAgentEvent(e => {void window.lcaAcceptanceEvent(e);}));
     // Only the native file-picker is controlled; all project/task operations are production IPC.
     await app.evaluate(({dialog}, folder) => {dialog.showOpenDialog = async () => ({canceled:false,filePaths:[folder]});},manifest.source);
+    stage = 'project_and_thread';
     await page.evaluate(profile => window.localAgent.openProject('profile:'+profile),manifest.executor.model_profile_id);
     const created = await page.evaluate(profile => window.localAgent.createThread('profile:'+profile),manifest.executor.model_profile_id);
     thread = created.payload.thread?.id || created.payload.active_thread?.id;
@@ -153,10 +160,12 @@ async function main(manifest) {
     }
     await page.evaluate(() => window.localAgent.setPermission('workspace'));
     const started = Date.now();
+    stage = 'task_start';
     const response = await page.evaluate(({thread, goal, config}) => window.localAgent.taskRequest(thread,'task.start',{goal,config}),
       {thread, goal:GOAL, config:manifest.config});
     task = response.payload.task;
     if (!task) throw new Error('TASK_NOT_CREATED');
+    stage = 'task_running';
     save({task_id:task.id, source:manifest.source, result:'RUNNING', paid_requests:0});
     let lastStatus = '';
     while (Date.now()-started < manifest.config.budget.task_seconds*1000) {
@@ -179,7 +188,7 @@ async function main(manifest) {
   } catch (error) {
     // Error strings/stacks from requests or Electron may contain private data.
     save({...(task ? finalResult(task,tools):{}), result:task ? 'FAIL':'NOT RUN',
-      reason:'CONTROLLER_'+error.name, events, approvals, source:manifest.source});
+      reason:'CONTROLLER_'+error.name, controller_stage:stage, events, approvals, source:manifest.source});
     process.exitCode = 2;
   } finally {
     if (task && page && !TERMINAL.has(task.status)) {

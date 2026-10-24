@@ -134,6 +134,9 @@ class LiveAcceptanceGuards(unittest.TestCase):
 const assert=require('node:assert/strict');
 const {approvalAllowed,safeCall,finalResult}=require('./scripts/validation/real_online_agent_e2e.cjs');
 const pids=new Set([123]);
+assert(!approvalAllowed({tool:'desktop_list_windows',arguments:{}},'',pids,'executing'));
+assert(approvalAllowed({tool:'desktop_list_windows',arguments:{pid:123}},'',pids,'executing'));
+assert(approvalAllowed({tool:'desktop_list_windows',arguments:{}},'',pids,'verifying'));
 assert(!approvalAllowed({tool:'desktop_screenshot',arguments:{scope:'screen',target_window:{title:'M5 Electron acceptance',pid:123}}},'',pids));
 assert(!approvalAllowed({tool:'desktop_screenshot',arguments:{target_window:{title:'Private editor',pid:123}}},'',pids));
 assert(!approvalAllowed({tool:'desktop_click',arguments:{target_window:{title:'M5 Electron acceptance',pid:999},selector:{name:'Save'}}},'',pids));

@@ -559,7 +559,7 @@ def execute(request):
             check(binding)
             if gui.GetForegroundWindow()!=hwnd:
                 fail('DESKTOP_FOCUS_FAILED','Window lost focus; no input sent')
-            if len(text)*.01+3 > a.get('timeout_seconds',15):
+            if len(text)*.06+3 > a.get('timeout_seconds',15):
                 fail('DESKTOP_INPUT_LIMIT','Ordinary text requires a larger explicit timeout_seconds (maximum 60); no input sent')
             input_batch([(1,17,0),(1,65,0),(1,65,2),(1,17,2),(1,8,0),(1,8,2)])
             clear_deadline=time.monotonic()+2
@@ -568,11 +568,12 @@ def execute(request):
                 if time.monotonic()>=clear_deadline:
                     fail('DESKTOP_VALUE_MISMATCH','Edit did not acknowledge clearing; no text sent or replayed')
                 time.sleep(.02)
-            # A single large clear+Unicode batch can lose the first character
-            # in Chromium under load. Let the clear/input event settle, then
-            # send balanced character batches; never hold modifiers between
-            # batches, use the clipboard, or retry a partially applied write.
+            # A fixed pacing sleep still drops characters when Chromium/React
+            # is busy. Require the actual Edit to acknowledge each prefix before
+            # sending the next character. Each character is sent exactly once;
+            # no clipboard, held modifiers or replay of partially applied input.
             time.sleep(.05)
+            prefix=''
             for character in text:
                 check(binding)
                 focused=IUIA().iuia.GetFocusedElement()
@@ -581,7 +582,17 @@ def execute(request):
                 encoded=character.encode('utf-16-le')
                 units=[int.from_bytes(encoded[i:i+2],'little') for i in range(0,len(encoded),2)]
                 input_batch([event for unit in units for event in ((1,unit,4),(1,unit,6))])
-                time.sleep(.01)
+                prefix+=character
+                acknowledged, prefix_deadline = 0, time.monotonic()+3
+                while acknowledged<2:
+                    check(binding)
+                    focused=IUIA().iuia.GetFocusedElement()
+                    if gui.GetForegroundWindow()!=hwnd or tuple(focused.GetRuntimeId())!=tuple(control.element_info.runtime_id):
+                        fail('DESKTOP_FOCUS_FAILED','Edit lost focus while awaiting input acknowledgement; no further characters sent')
+                    acknowledged = acknowledged+1 if value_pattern.CurrentValue==prefix else 0
+                    if time.monotonic()>=prefix_deadline:
+                        fail('DESKTOP_VALUE_MISMATCH',f'Edit did not acknowledge character {len(prefix)} of {len(text)}; no input replayed or text logged')
+                    time.sleep(.03)
         else:
             try:
                 value_pattern.SetValue(text)
@@ -603,6 +614,7 @@ def execute(request):
         if not verified:
             fail('DESKTOP_VALUE_MISMATCH',f'Edit value did not stabilize: requested {len(text)} characters, observed {observed_length}; no text logged or input replayed')
         return {'entered':True,'characters':len(text),'value_verified':True,'input_logged':False,
+                'acknowledgement':'each_prefix' if chromium else 'complete_value',
                 'method':'uia_edit_unicode_input' if chromium else 'uia_value'}
     if op == 'desktop_keypress':
         keys = a.get('keys','').upper().split('+')

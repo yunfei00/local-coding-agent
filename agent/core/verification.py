@@ -98,6 +98,8 @@ def classify(result: dict) -> str:
         return "permission"
     if "TIMEOUT" in code:
         return "timeout"
+    if code == "COMMAND_OUTPUT_FAILED":
+        return "environment"  # Output transport failure is not evidence of broken code.
     if any(t in text for t in ("modulenotfounderror", "no module named", "commandnotfound", "not recognized", "enoent", "cannot find module")):
         return "environment"
     if any(t in text for t in ("econnrefused", "enotfound", "network is unreachable", "connectionerror", "unable to resolve")):

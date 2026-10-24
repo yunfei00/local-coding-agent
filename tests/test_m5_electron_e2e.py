@@ -162,6 +162,11 @@ class ElectronE2ETests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.images);self.assertTrue(all(v['model']=='m5-vision' for v in self.images))
         self.assertTrue(any(cid=='coder' for cid,_ in self.requests));self.assertTrue(any(cid=='vision' for cid,_ in self.requests))
         self.assertTrue(any(c['role']=='vision-observer' for c in self.server.tasks.runtime.calls(task['id'])))
+        typed=[e['payload']['result'] for e in self.client.messages if e['type']=='tool.completed'
+               and e['payload']['name']=='desktop_type_text' and e['payload']['result'].get('ok')]
+        self.assertTrue(typed)
+        self.assertTrue(all(r['data']['acknowledgement']=='each_prefix' for r in typed),
+                        'Actual Chromium input must acknowledge every prefix, not only use a pacing sleep')
         initial_history=task['verification_history']
         self.assertFalse(initial_history[0]['passed']);self.assertTrue(initial_history[1]['passed'])
         captures=[e for r in initial_history for v in r['results'] for e in v.get('evidence',[]) if e['tool']=='desktop_screenshot' and e.get('ok')]

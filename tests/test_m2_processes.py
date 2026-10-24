@@ -197,6 +197,9 @@ setInterval(()=>console.log('HEARTBEAT'),100);
         self.assertEqual(caught.exception.code,'COMMAND_OUTPUT_FAILED')
         self.assertTrue(caught.exception.details['data']['output_drain_timed_out'])
         self.assertFalse(alive(caught.exception.details['data']['pid']))
+        from agent.core.verification import classify
+        self.assertEqual(classify({'ok':False,'exit_code':0,'error':{'code':caught.exception.code}}),'environment',
+                         'Incomplete output must pause as an environment issue rather than trigger paid code repair')
 
     @unittest.skipIf(os.name == 'nt', 'POSIX process group')
     async def test_sigterm_ignoring_descendant_is_killed_after_root_exit(self):

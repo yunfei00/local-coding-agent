@@ -75,3 +75,5 @@ git diff --check
 正在执行；当前未将任何真实在线任务记为 PASS。完成后以本节最终记录及脱敏报告为准。
 
 基线 M5 曾在 Stop 后的输出排空阶段超时，导致 TASK_INTERNAL_ERROR / PROCESS_CLEANUP_FAILED。`ProcessManager._monitor` 原先让 3 秒读取收尾超时直接逃出，同一失败协程在 close_owner 再次抛出。修复保留原 3 秒上限：进程树照常由 Job 终止，Stop 返回明确的 output_drain_timed_out / output_truncated；自然退出但输出未收全仍为 COMMAND_OUTPUT_FAILED，不能冒充测试通过。新增两个实际进程回归覆盖停机背压和正常退出背压，进程专项共 15 项（14 通过、1 POSIX 平台跳过）。
+
+随后串行 M5 重测暴露 Chromium 输入 16 字符仅保留 12 字符，任务以 DESKTOP_VALUE_MISMATCH / PLAN_TOOLS_UNRESOLVED 暂停。原固定 10ms 逐字符间隔在繁忙的 React 渲染环境仍可能丢字。改为每个 Unicode 字符只发送一次，连续两次 UIA 读取确认实际前缀后才发送下一个字符；每次继续检查精确 RuntimeId 与前台窗口，等待最长 3 秒并受原工具总超时约束。缺字不会自动补发，既不关闭审批也不使用剪贴板或 JS 注入。原生非 Chromium Edit 保持 ValuePattern 路径。实际 M5 用例同时检查 each_prefix 证据。
