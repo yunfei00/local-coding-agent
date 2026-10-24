@@ -137,4 +137,6 @@ Task 按需展开查看阶段、真实 Model call journal、API 次数/预留 To
 框架通过条件：自动化零失败、指定服务真实 HTTP 调用与回交成立、预算前置阻断成立、Windows UI 保存/重启成立、安装版和 Portable 可启动，文档及产物一致。公司业务能力另记：公司实际模型、网关认证/计费、网络代理与具体工程任务必须在公司环境核验。未运行的真实付费调用明确记“未验收”，不能用 Mock 数字冒充真实费用。
 ## M4/M5 源码更新
 
+2026-10-24 后续验收使用用户已配置的 `qwen3.8-max`，执行与视觉使用同一在线 Profile。真实 Max 已完成 46 次请求、741,103 服务端 Token、2 次源码修改及 npm 工程检查，但 Task 因工具失败暂停，Max 视觉尚未运行；不得写成完整通过。Windows/Ubuntu CI 已通过的准确提交、当前命令、已用量和未完成事项见[在线验收最新结论](../validation/real-online-agent-acceptance.md#最新结论2026-10-24qwen-max)。本机另有约 12.37 GiB 非分页内核池异常及 Electron 退出确认失败，见[环境阻断与安全恢复](../validation/windows-kernel-memory-blocker.md)。保存工作并恢复环境后由 Agent 继续验证，不要求重新配模型、粘贴 Key 或增加预算。
+
 当前源码的 Provider 与模型目录已统一；Single Agent、独立视觉、真实 Electron 实验工程和最新运行命令见 [M5 公司源码使用](../m5/user-guide.md) 和 [可复现实验工程](../../manual-fixtures/m5-electron-e2e/README.md)。M4/M5 不发布安装包，原 v0.4.2 安装版不包含本轮源码。真实付费推理已有实际 Qwen 请求和源码修改，但完整在线闭环尚未通过；详细 Task ID、服务端 Token、阻断与可复制命令见 [真实在线验收](../validation/real-online-agent-acceptance.md)。该记录与本机 HTTP Mock/真实 GUI 回归分别报告，不能互相替代。

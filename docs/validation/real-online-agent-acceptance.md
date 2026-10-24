@@ -1,5 +1,46 @@
 # 真实在线模型自主开发验收
 
+## 最新结论（2026-10-24，Qwen Max）
+
+按用户最新要求，本轮后续只使用已配置的 **`qwen3.8-max`**（执行与视觉均指向该在线 Profile），不再切回 Flash 或开始 GLM。完整在线验收仍为 **FAIL，不能合并或宣称完成**。Windows/Ubuntu CI 通过与本机真实在线闭环失败分别记录。
+
+- 真实 Task `4ed592db-cfc9-4123-923f-2b5e05934033`：46 次真实 HTTP 模型请求，输入 727,849、输出 13,254，合计 **741,103 服务端 Token**；缓存 252,160 为输入子集。2 次模型实际修改 `App.tsx`；实际 npm ci、typecheck、test、build、git diff --check 均退出 0。
+- 任务最终因连续工具失败进入 paused / `TOOL_FAILURE_LIMIT`，涉及受控 Electron 停止确认、桌面输入/审批失败与重复读取；未进入独立验收。此次没有发生 Max 图像请求，**Max 视觉理解 NOT RUN**，不能用 Profile 的视觉能力标记或此前 Flash 图像响应代替。
+- 当前累计 146 次真实请求，服务端已确认 1,797,324 Token；另有早前超时请求 53,446 不确定预留，账本共 1,850,770。费用 UNKNOWN；未核实供应商免费额度或金额，不自动充值。
+- 本次专用入口已按用户授权放宽到累计 **10,000 次请求 / 1,000,000,000 Token / 7200 秒活动时间**，保留全部已用账本、单请求 60 秒、权限及循环保护。旧版小预算不是 Max 本次失败原因。
+- 最新代码 `3582adf9243fec39b4f98f1b530dc8e89e742d87` 的 CI [run 40071929862](https://github.com/yunfei00/local-coding-agent/actions/runs/40071929862) 全部通过：Windows Python 396 项（394 通过、2 跳过）；Ubuntu 396 项（380 通过、16 跳过）；两端前端均 46 通过，typecheck/build 通过。Windows 额外 3 项真实 Electron 专项及 desktop-smoke 通过；模型推理为 HTTP Mock，不是真实在线模型验收。
+- 本机最后一次完整 `check.py` 是较早版本：Python 387 项，5 failure、3 error、2 skip（7 个不同失败用例，其中一个兼有 teardown error）；桌面 46 项、typecheck/build 通过。不能拿远程 CI 改写本机失败结果。
+- 后续只读诊断发现 16 GB 主机非分页内核池约 **12.37 GiB**，物理内存 99% 使用、可用内存曾为 88 MB，复查降至 24 MB。原生专项仍报 `PROCESS_CLEANUP_FAILED`；即使退出码为 1，保留的进程句柄仍未发信号且存在文件锁。内存压力是明确的环境异常，尚未证明是所有失败的唯一原因。详见 [Windows 内核内存阻断](windows-kernel-memory-blocker.md)。在该状态下暂停新的付费任务，先保存证据、等待安全重启后继续；没有擅自重启或停止无关进程。
+
+### 恢复后的当前命令
+
+仅适用于本机已授权连接，保留现有 session 文件；不在命令行传递 Key：
+
+```powershell
+git switch feature/real-online-agent-validation
+git pull --ff-only
+uv sync --locked
+npm --prefix desktop ci --no-audit --no-fund
+npm --prefix desktop run build
+
+# 先串行运行真实桌面 + Mock 推理回归，不产生付费请求
+uv run python -m unittest discover -s tests -p test_m5_electron_e2e.py -k test_actual_electron -v
+uv run python scripts/validation/check.py
+
+# 前述门禁通过后继续用户指定的 Max；同一模型也用于视觉
+uv run python scripts/validation/real_online_agent_e2e.py --live --model qwen3.8-max --vision-model qwen3.8-max --executor-profile 4ac4bab1-1da5-4a72-b944-f4b4e8b63354 --vision-profile 4ac4bab1-1da5-4a72-b944-f4b4e8b63354 --authorize-budget-update --max-calls 10000 --max-tokens 1000000000 --max-seconds 7200 --max-full-attempts 3
+```
+
+这些 Profile ID 仅属于本机；其他电脑先配置实际同名在线 Profile，再传该机器的 ID。Max 当前只进行了一次完整 Task，另一次 Task 创建前的 Electron 启动失败为 NOT RUN / 0 请求，不算完整重试。入口会归档报告，但会清理临时数据库/Worktree；**不能恢复已经清理的 Max 失败任务**，本次重跑是新任务而非旧 Checkpoint 恢复。原用户数据库和凭据不被替换。
+
+### 本轮后续修复与限制
+
+Chromium 前缀确认存在一个确定缺陷：第二次成功的 UIA 读取跨过等待截止时，旧代码仍报值不匹配。现改为先确认连续两次成功再检查超时；丢失焦点或确实不匹配仍失败，字符不重放。4 项确定性回归通过。清空输入也要求连续两次为空。
+
+Electron 冷启动从 90 秒改为有界 180 秒，入口另加 360 秒启动 watchdog；真实就绪标记的测试期限适度延长但不取消断言。停止路径只对保留句柄且核验属于当前 Job 的窗口发 WM_CLOSE，再终止该 Job，等待实际句柄信号最多 30 秒；保留退出码、待退出 PID、耗时及清理阶段。额外针对已核验句柄的终止请求在本机得到 access denied，**未证明能修复环境中的延迟退出**。不提权、不按陌生 PID 杀进程、不把非零退出码或发送信号当作退出确认。
+
+以下旧章节保留各次历史授权、Flash 尝试和诊断过程；执行时以上述 Max 命令与当前结论为准。
+
 ## 范围与判定
 
 基线 main：`4d89487181e7e6ab21ca1642d6e3de625bdefeda`。本轮不重新实现 M1～M5，不发布、打 Tag、打包或开始 M6。

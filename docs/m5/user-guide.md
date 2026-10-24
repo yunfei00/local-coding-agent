@@ -20,4 +20,4 @@ npm --prefix desktop run dev
 6. 只有独立命令和 GUI 全部通过才进入 awaiting_approval。检查每项 PASS、Diff、实际应用行为后 Accept verified report；这不是自动提交或合并工程。失败/无验证不能看作完成；不接受可 Cancel，Worktree 保留供检查，不覆盖源工程。
 7. 运行时用 Cancel active task / Pause active task；恢复前检查 Worktree 与 Checkpoint，明确确认 Resume。旧窗口不会复用。改 Settings 后新 Task 使用新值，暂停旧 Task 需 Apply configuration 才更新快照。
 
-完整可运行实验工程与自动入口见 manual-fixtures/m5-electron-e2e/README.md。本机 HTTP Mock 不使用已保存的真实密钥。真实模型测试须用户明确授权费用与图片传输，本轮未执行。
+完整可运行实验工程与自动入口见 manual-fixtures/m5-electron-e2e/README.md。本机 HTTP Mock 不使用已保存的真实密钥。真实模型测试须用户明确授权费用与图片传输。本轮已按用户授权执行真实 Qwen Flash 和 Qwen Max，实际修改文件和工程检查成功，但完整在线闭环仍未通过；Max 视觉尚未运行。最新精确结果和当前分支命令见[真实在线验收](../validation/real-online-agent-acceptance.md)，本机内核内存异常及恢复流程见[环境阻断](../validation/windows-kernel-memory-blocker.md)。本轮尚未合并 main，验证本轮修复需使用该记录中的功能分支；上述 main 命令只更新已合并版本。
