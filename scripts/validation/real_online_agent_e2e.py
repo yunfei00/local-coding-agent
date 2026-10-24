@@ -29,7 +29,7 @@ REPORT = ROOT / 'validation-reports/real-online-agent-acceptance.json'
 SESSION = REPORT.with_name('real-online-agent-session.json')
 
 
-def allocate_session(path, model, requested_calls, requested_tokens=60000, attempt_limit=2, update=False):
+def allocate_session(path, model, requested_calls, requested_tokens=60000, attempt_limit=2, update=False, requested_seconds=900):
     """One bounded acceptance session, including retries and both model groups.
 
     A controller crash keeps the full allocation reserved rather than resetting
@@ -38,20 +38,24 @@ def allocate_session(path, model, requested_calls, requested_tokens=60000, attem
     state = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {
         'call_ceiling': min(12, requested_calls), 'attempts': []}
     state.setdefault('token_ceiling',60000)
+    state.setdefault('seconds_ceiling',900)
     state.setdefault('attempt_limits',{})
     attempts = state['attempts']
     if any(a['state'] == 'reserved' for a in attempts):
         raise ValueError('PREVIOUS_ATTEMPT_UNSETTLED: no automatic retry or reservation refund')
     if update:
-        if not 1 <= requested_calls <= 40 or not 1 <= requested_tokens <= 200000 or not 1 <= attempt_limit <= 3:
+        if not 1 <= requested_calls <= 80 or not 1 <= requested_tokens <= 500000 or not 1 <= attempt_limit <= 6 or not 1 <= requested_seconds <= 1800:
             raise ValueError('INVALID_EXPLICIT_SESSION_CAPS')
         previous = {'calls':state['call_ceiling'],'tokens':state['token_ceiling'],
                     'attempts':state['attempt_limits'].get(model,2)}
+        previous_seconds=state['seconds_ceiling']
         state.update(call_ceiling=requested_calls,token_ceiling=requested_tokens)
+        state['seconds_ceiling']=requested_seconds
         state['attempt_limits'][model] = attempt_limit
         state.setdefault('budget_updates',[]).append({'at':datetime.now(timezone.utc).isoformat(),
             'authorization':'explicit_cli_budget_update','previous':previous,
             'new':{'calls':requested_calls,'tokens':requested_tokens,'attempts':attempt_limit},
+            'previous_seconds':previous_seconds,'new_seconds':requested_seconds,
             'used_calls':sum(a['calls'] for a in attempts),'used_tokens':sum(a['tokens'] for a in attempts)})
     if sum(a['model'] == model and bool(a.get('task_id')) for a in attempts) >= state['attempt_limits'].get(model,2):
         raise ValueError('FULL_RETRY_LIMIT_REACHED')
@@ -59,7 +63,7 @@ def allocate_session(path, model, requested_calls, requested_tokens=60000, attem
         raise ValueError('QWEN_ACCEPTANCE_REQUIRED_BEFORE_GLM')
     remaining = {'calls': min(requested_calls, state['call_ceiling'] - sum(a['calls'] for a in attempts)),
                  'tokens': min(requested_tokens,state['token_ceiling'] - sum(a['tokens'] for a in attempts)),
-                 'seconds': int(900 - sum(a['seconds'] for a in attempts))}
+                 'seconds': int(state['seconds_ceiling'] - sum(a['seconds'] for a in attempts))}
     if any(v <= 0 for v in remaining.values()):
         raise ValueError('LIVE_SESSION_BUDGET_EXHAUSTED')
     attempts.append({'model': model, 'state': 'reserved', **remaining})
@@ -108,13 +112,13 @@ def select_profile(catalog, model, explicit=None, *, vision=False):
 
 
 def live_config(executor, vision, calls, tokens=60000, extended=False):
-    if isinstance(calls, bool) or not isinstance(calls, int) or not 1 <= calls <= 40:
-        raise ValueError('Live acceptance allows 1..40 calls')
+    if isinstance(calls, bool) or not isinstance(calls, int) or not 1 <= calls <= 80:
+        raise ValueError('Live acceptance allows 1..80 calls')
     # Currency/price units are not recorded in old profiles. Do not invent CNY
     # pricing or claim a monetary hard cap. Use a stricter request ceiling.
     if calls > 12 and not extended:
         raise ValueError('UNVERIFIED_CNY_PRICING: maximum 12 calls, no automatic increase')
-    if isinstance(tokens,bool) or not isinstance(tokens,int) or not 1 <= tokens <= (200000 if extended else 60000):
+    if isinstance(tokens,bool) or not isinstance(tokens,int) or not 1 <= tokens <= (500000 if extended else 60000):
         raise ValueError('INVALID_LIVE_TOKEN_LIMIT')
     return validate_config({'strategy': 'single-agent',
         'roles': {r: {'model_profile_id': executor['model_profile_id']}
@@ -247,6 +251,7 @@ def main():
     parser.add_argument('--max-calls', type=int, default=12)
     parser.add_argument('--max-tokens', type=int, default=60000)
     parser.add_argument('--max-full-attempts', type=int, default=2)
+    parser.add_argument('--max-seconds', type=int, default=900)
     parser.add_argument('--authorize-budget-update', action='store_true',help='Explicit user authorization required; preserves all prior usage')
     args = parser.parse_args()
     allocated = False
@@ -271,7 +276,7 @@ def main():
             with tempfile.TemporaryDirectory(prefix='lca-live-m5-') as temporary:
                 REPORT.parent.mkdir(exist_ok=True)
                 remaining = allocate_session(SESSION, args.model, args.max_calls,args.max_tokens,
-                                             args.max_full_attempts,args.authorize_budget_update)
+                                             args.max_full_attempts,args.authorize_budget_update,args.max_seconds)
                 allocated = True
                 manifest = prepare(args.data_dir, catalog, executor, vision, remaining['calls'], temporary,
                                    tokens=remaining['tokens'],extended=args.authorize_budget_update)
@@ -287,7 +292,8 @@ def main():
                 env = {k:v for k,v in os.environ.items() if not k.startswith('LCA_') and k != 'ELECTRON_RUN_AS_NODE'}
                 env.update(PYTHONUTF8='1')
                 controller_started = True
-                exit_code = run_controller(['node', str(Path(__file__).with_suffix('.cjs')), str(manifest)],env)
+                exit_code = run_controller(['node', str(Path(__file__).with_suffix('.cjs')), str(manifest)],env,
+                                          timeout=remaining['seconds']+120)
                 report = json.loads(REPORT.read_text(encoding='utf-8'))
                 verify_disk(report)
                 if exit_code and report['result'] == 'PASS':

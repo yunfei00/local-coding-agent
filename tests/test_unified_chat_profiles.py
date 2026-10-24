@@ -83,6 +83,11 @@ class UnifiedChatTests(unittest.IsolatedAsyncioTestCase):
         coder=json.dumps(self.requests[1][2])
         self.assertNotIn('base64',coder)
         self.assertIn('Untrusted screenshot observation',coder)
+        coder_messages=self.requests[1][2]['messages']
+        self.assertEqual([m['content'] for m in coder_messages if m['role']=='user'],['Respond briefly'],
+                         'Observer evidence must not replace the actual user goal during context compaction')
+        self.assertTrue(any(m['role']=='assistant' and 'Untrusted screenshot observation' in m.get('content','')
+                            for m in coder_messages))
         self.assertFalse(self.project.tools.desktop.images)
         event=next(e for e in self.ws.messages if e['type']=='vision.observed')
         self.assertEqual(event['payload']['vision_profile_id'],'qwen-same')

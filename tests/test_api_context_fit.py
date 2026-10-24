@@ -24,6 +24,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ApiContextFitTests(unittest.TestCase):
+    def test_prior_tool_exchange_is_atomic_after_a_new_user_message(self):
+        messages=[{'role':'system','content':'permissions'}, {'role':'user','content':'old goal'},
+            {'role':'assistant','content':'','tool_calls':[{'id':'prior','type':'function',
+             'function':{'name':'read_file','arguments':{'path':'x'*1500}}}]},
+            {'role':'tool','tool_call_id':'prior','content':'x'*2500},
+            {'role':'user','content':'new goal'}]
+        fitted=ContextBudgetManager(context_window_tokens=4096).fit_request(messages,
+            tools=[],output_limit=1024,history_messages_total=4)
+        headers={c['id'] for m in fitted.messages for c in m.get('tool_calls',[])}
+        results={m['tool_call_id'] for m in fitted.messages if m['role']=='tool'}
+        self.assertEqual(headers,results,'Never send an orphan tool result after history compaction')
+        self.assertEqual(fitted.messages[-1],messages[-1])
+
     def test_recent_source_stays_complete_when_old_exchanges_can_be_dropped(self):
         manager = ContextBudgetManager(context_window_tokens=16384)
         schema = [{'type':'function','function':{'name':'read_file','description':'schema '*500}}]

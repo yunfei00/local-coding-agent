@@ -144,6 +144,39 @@ class LiveAcceptanceGuards(unittest.TestCase):
             self.assertEqual(copied.connection.execute('SELECT COUNT(*) FROM messages').fetchone()[0],0)
             copied.connection.close()
 
+    def test_fourth_attempt_needs_explicit_update_and_keeps_remaining_cumulative_caps(self):
+        with tempfile.TemporaryDirectory() as temp:
+            session=Path(temp)/'session.json'
+            session.write_text(json.dumps({'call_ceiling':40,'token_ceiling':200000,
+                'attempt_limits':{'qwen3.8-flash':3},'attempts':[
+                    {'model':'qwen3.8-flash','task_id':str(i),'state':'settled','result':'FAIL',
+                     'calls':calls,'tokens':tokens,'seconds':seconds}
+                    for i,(calls,tokens,seconds) in enumerate([(2,10872,9.944),(4,25729,28.748),(14,103253,141.183)])]}))
+            with self.assertRaisesRegex(ValueError,'RETRY_LIMIT'):
+                live.allocate_session(session,'qwen3.8-flash',40,200000,4)
+            remaining=live.allocate_session(session,'qwen3.8-flash',40,200000,4,True)
+            self.assertEqual(remaining,{'calls':20,'tokens':60146,'seconds':720})
+            state=json.loads(session.read_text())
+            self.assertEqual(state['budget_updates'][-1]['used_tokens'],139854)
+            self.assertEqual(state['budget_updates'][-1]['new'],{'calls':40,'tokens':200000,'attempts':4})
+
+    def test_work_driven_explicit_caps_stay_bounded_and_preserve_usage_and_time(self):
+        with tempfile.TemporaryDirectory() as temp:
+            session=Path(temp)/'session.json'
+            session.write_text(json.dumps({'call_ceiling':40,'token_ceiling':200000,
+                'attempts':[{'model':'qwen3.8-flash','task_id':'previous','state':'settled','result':'FAIL',
+                             'calls':20,'tokens':139854,'seconds':179.875}]}))
+            remaining=live.allocate_session(session,'qwen3.8-flash',80,500000,6,True,1800)
+            self.assertEqual(remaining,{'calls':60,'tokens':360146,'seconds':1620})
+            state=json.loads(session.read_text())
+            self.assertEqual(state['budget_updates'][-1]['previous_seconds'],900)
+            self.assertEqual(state['budget_updates'][-1]['new_seconds'],1800)
+            profile=catalog()['profiles'][0]
+            config=live.live_config(profile,profile,remaining['calls'],remaining['tokens'],True)
+            self.assertEqual(config['budget']['global_api_calls'],60)
+            self.assertEqual(config['budget']['global_api_tokens'],360146)
+            self.assertEqual(config['budget']['request_seconds'],60)
+
     @unittest.skipUnless(shutil.which('node'),'Node required for offline controller guard test')
     def test_controller_rejects_unscoped_approvals_and_false_completion(self):
         # Require only helper exports, never launch Electron or a provider.

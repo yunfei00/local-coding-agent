@@ -264,16 +264,16 @@ class ContextBudgetManager:
         current_cost = self._messages_tokens(current_turn)
         remaining = max(self.input_budget_tokens - system_cost - current_cost, 0)
 
-        selected_reversed: list[dict[str, Any]] = []
+        selected_reversed: list[list[dict[str, Any]]] = []
         used = 0
-        for message in reversed(history):
-            cost = self._message_tokens(message)
+        for group in reversed(self._runtime_groups(history)):
+            cost = self._messages_tokens(group)
             if used + cost > remaining:
                 break
-            selected_reversed.append(message)
+            selected_reversed.append(group)
             used += cost
 
-        selected_history = list(reversed(selected_reversed))
+        selected_history = [message for group in reversed(selected_reversed) for message in group]
         fitted = [system_message, *selected_history, *current_turn]
         omitted_history = max(history_messages_total - len(selected_history), 0)
 
