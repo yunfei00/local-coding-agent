@@ -42,7 +42,10 @@ def alive(pid):
 
 
 async def wait_file(path):
-    for _ in range(200):
+    # Cold Electron/WinForms startup under memory pressure can exceed 10s.
+    # Still require the actual process marker; no simulated readiness.
+    deadline=asyncio.get_running_loop().time()+30
+    while asyncio.get_running_loop().time()<deadline:
         if path.exists():
             return json.loads(path.read_text())
         await asyncio.sleep(.05)

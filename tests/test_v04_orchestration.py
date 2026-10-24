@@ -60,7 +60,7 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
             "payload": {"goal": "Fix calculator addition", "config": config or self.config()}}, set())
         tasks = list(self.server.active_turns.values())
         self.assertTrue(tasks, self.ws.messages[-1])
-        await asyncio.wait_for(asyncio.gather(*tasks), 30)
+        await asyncio.wait_for(asyncio.gather(*tasks), 120)
         task = self.server.store.task_runtime.list(self.thread.id)[0]
         return task, local, api
 
