@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 from contextlib import closing
 import hashlib
+from io import BytesIO
 import json
 import os
 from pathlib import Path
@@ -44,7 +45,7 @@ def allocate_session(path, model, requested_calls, requested_tokens=60000, attem
     if any(a['state'] == 'reserved' for a in attempts):
         raise ValueError('PREVIOUS_ATTEMPT_UNSETTLED: no automatic retry or reservation refund')
     if update:
-        if not 1 <= requested_calls <= 80 or not 1 <= requested_tokens <= 500000 or not 1 <= attempt_limit <= 6 or not 1 <= requested_seconds <= 1800:
+        if not 1 <= requested_calls <= 200 or not 1 <= requested_tokens <= 10000000 or not 1 <= attempt_limit <= 6 or not 1 <= requested_seconds <= 7200:
             raise ValueError('INVALID_EXPLICIT_SESSION_CAPS')
         previous = {'calls':state['call_ceiling'],'tokens':state['token_ceiling'],
                     'attempts':state['attempt_limits'].get(model,2)}
@@ -118,13 +119,13 @@ def select_profile(catalog, model, explicit=None, *, vision=False):
 
 
 def live_config(executor, vision, calls, tokens=60000, extended=False):
-    if isinstance(calls, bool) or not isinstance(calls, int) or not 1 <= calls <= 80:
-        raise ValueError('Live acceptance allows 1..80 calls')
+    if isinstance(calls, bool) or not isinstance(calls, int) or not 1 <= calls <= 200:
+        raise ValueError('Live acceptance allows 1..200 calls')
     # Currency/price units are not recorded in old profiles. Do not invent CNY
     # pricing or claim a monetary hard cap. Use a stricter request ceiling.
     if calls > 12 and not extended:
         raise ValueError('UNVERIFIED_CNY_PRICING: maximum 12 calls, no automatic increase')
-    if isinstance(tokens,bool) or not isinstance(tokens,int) or not 1 <= tokens <= (500000 if extended else 60000):
+    if isinstance(tokens,bool) or not isinstance(tokens,int) or not 1 <= tokens <= (10000000 if extended else 60000):
         raise ValueError('INVALID_LIVE_TOKEN_LIMIT')
     return validate_config({'strategy': 'single-agent',
         'roles': {r: {'model_profile_id': executor['model_profile_id']}
@@ -229,6 +230,35 @@ def verify_disk(report):
                     retained.append({'artifact_id':evidence.get('artifact_id'),
                         'sha256':hashlib.sha256(target.read_bytes()).hexdigest(),'local_path':str(target)})
     report['controlled_local_artifacts'] = retained
+    # This isolated backend serves one Task only. Every screenshot is approved
+    # for the exact fixture PID/title, including model-led captures before the
+    # independent verifier is reached. Preserve those too on a failed attempt.
+    approved=any(a.get('tool')=='desktop_screenshot' and a.get('decision')=='allow_once' for a in report.get('approvals',[]))
+    if approved and report.get('task_id'):
+        from PIL import Image
+        known={a['local_path'] for a in retained}
+        wire_hashes={image['sha256'] for call in report.get('calls',[]) for image in call.get('wire_images',[])}
+        for capture in artifact_root.rglob('capture_*.png'):
+            if not capture.resolve().is_relative_to(artifact_root) or capture.stat().st_size>32*1024*1024:
+                continue
+            local_artifacts.mkdir(exist_ok=True)
+            target=local_artifacts/capture.name
+            if str(target) in known:
+                continue
+            shutil.copy2(capture,target)
+            with Image.open(target) as pixels:
+                pixels=pixels.convert('RGB');pixels.thumbnail((768,768));encoded=BytesIO()
+                pixels.save(encoded,format='JPEG',quality=65)
+            wire_hash=hashlib.sha256(encoded.getvalue()).hexdigest()
+            retained.append({'artifact_id':capture.stem,'sha256':hashlib.sha256(target.read_bytes()).hexdigest(),
+                             'local_path':str(target),'wire_jpeg_sha256':wire_hash,'wire_request_matched':wire_hash in wire_hashes})
+    report['process_cleanup_metadata']=[]
+    for metadata in (source.parent/'data/command-logs').glob('*/process.json'):
+        value=json.loads(metadata.read_text(encoding='utf-8'))
+        if Path(value.get('workspace','')).resolve().is_relative_to(source.parent.resolve()):
+            report['process_cleanup_metadata'].append({k:value.get(k) for k in (
+                'process_id','pid','state','exit_code','error','cleanup_stage','cleanup_detail','cleanup_reason','job_cleanup',
+                'started_at','ended_at','duration_ms')})
     if report.get('result') == 'PASS' and (not unchanged or changed or not diff.strip()
             or report['disk_evidence']['persisted_value'] != 'M5 verified B'):
         report['result'] = 'FAIL'
@@ -288,12 +318,20 @@ def main():
                                    tokens=remaining['tokens'],extended=args.authorize_budget_update)
                 document = json.loads(manifest.read_text(encoding='utf-8'))
                 document['config']['budget'].update(api_tokens=remaining['tokens'],global_api_tokens=remaining['tokens'],task_seconds=remaining['seconds'])
+                if args.authorize_budget_update:
+                    # Latest user authorization: large run-specific bounds,
+                    # while original repetition, failure and approval guards stay.
+                    document['execution_overrides']={'LCA_EXECUTION_TOKENS':str(remaining['tokens']),
+                        'LCA_EXECUTION_SECONDS':str(remaining['seconds']),
+                        'LCA_EXECUTION_MODEL_CALLS':str(remaining['calls']),
+                        'LCA_MAX_MODEL_STEPS':str(min(100,remaining['calls'])),'LCA_MAX_TOOL_CALLS':'200'}
                 # Settings and Task both receive the reduced remaining global cap.
                 isolated = SQLiteStore(Path(temporary)/'data')
                 isolated.set_setting('orchestration.config',json.dumps(document['config']))
                 isolated.connection.close()
                 manifest.write_text(json.dumps(document),encoding='utf-8')
                 report['limits'] = document['config']['budget']
+                report['execution_overrides']=document.get('execution_overrides',{})
                 write_report(report)
                 env = {k:v for k,v in os.environ.items() if not k.startswith('LCA_') and k != 'ELECTRON_RUN_AS_NODE'}
                 env.update(PYTHONUTF8='1')

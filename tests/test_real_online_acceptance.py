@@ -167,15 +167,15 @@ class LiveAcceptanceGuards(unittest.TestCase):
             session.write_text(json.dumps({'call_ceiling':40,'token_ceiling':200000,
                 'attempts':[{'model':'qwen3.8-flash','task_id':'previous','state':'settled','result':'FAIL',
                              'calls':20,'tokens':139854,'seconds':179.875}]}))
-            remaining=live.allocate_session(session,'qwen3.8-flash',80,500000,6,True,1800)
-            self.assertEqual(remaining,{'calls':60,'tokens':360146,'seconds':1620})
+            remaining=live.allocate_session(session,'qwen3.8-flash',200,10000000,6,True,7200)
+            self.assertEqual(remaining,{'calls':180,'tokens':9860146,'seconds':7020})
             state=json.loads(session.read_text())
             self.assertEqual(state['budget_updates'][-1]['previous_seconds'],900)
-            self.assertEqual(state['budget_updates'][-1]['new_seconds'],1800)
+            self.assertEqual(state['budget_updates'][-1]['new_seconds'],7200)
             profile=catalog()['profiles'][0]
             config=live.live_config(profile,profile,remaining['calls'],remaining['tokens'],True)
-            self.assertEqual(config['budget']['global_api_calls'],60)
-            self.assertEqual(config['budget']['global_api_tokens'],360146)
+            self.assertEqual(config['budget']['global_api_calls'],180)
+            self.assertEqual(config['budget']['global_api_tokens'],9860146)
             self.assertEqual(config['budget']['request_seconds'],60)
 
     def test_lost_task_start_reply_never_refunds_unknown_paid_usage(self):
@@ -200,6 +200,30 @@ class LiveAcceptanceGuards(unittest.TestCase):
             state=json.loads(session.read_text())
             self.assertEqual(state['attempts'][-1]['state'],'settled')
             self.assertEqual(state['attempts'][-1]['tokens'],0)
+
+    @unittest.skipUnless(importlib.util.find_spec('PIL'),'Pillow required for controlled artifact encoding')
+    def test_failed_task_retains_model_capture_without_claiming_vision_or_gui_pass(self):
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);source_data=root/'user';source_data.mkdir()
+            isolated=root/'isolated';isolated.mkdir()
+            store=SQLiteStore(source_data);store.set_setting(KEY,json.dumps(catalog()));store.connection.close()
+            profile=catalog()['profiles'][0]
+            manifest=json.loads(live.prepare(source_data,catalog(),profile,profile,12,isolated).read_text())
+            captures=isolated/'data/desktop-artifacts/turn_unit';captures.mkdir(parents=True)
+            Image.new('RGB',(32,32),'white').save(captures/'capture_unit.png')
+            output=root/'reports/result.json';output.parent.mkdir()
+            report={'result':'FAIL','task_id':'unit-only','source':manifest['source'],'workspace':manifest['source'],
+                    'approvals':[{'tool':'desktop_screenshot','decision':'allow_once'}],
+                    'calls':[],'verification_history':[]}
+            with patch.object(live,'REPORT',output):
+                live.verify_disk(report)
+            self.assertEqual(report['result'],'FAIL')
+            self.assertEqual(len(report['controlled_local_artifacts']),1)
+            capture=report['controlled_local_artifacts'][0]
+            self.assertTrue(Path(capture['local_path']).is_file())
+            self.assertFalse(capture['wire_request_matched'],'No fabricated paid image transport from a local PNG')
+            self.assertNotIn('base64',json.dumps(report))
 
     @unittest.skipUnless(shutil.which('node'),'Node required for offline controller guard test')
     def test_controller_rejects_unscoped_approvals_and_false_completion(self):

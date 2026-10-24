@@ -105,6 +105,11 @@ async function main(manifest) {
     const environment = {...process.env, LCA_DESKTOP_DATA_DIR:manifest.credential_data, LCA_DATA_DIR:manifest.data,
       LCA_HEADLESS_SMOKE:'0', LCA_OPENAI_API_KEY:'', LCA_PROVIDER:'openai_compatible', LCA_OPENAI_MODEL:'',
       LCA_OPENAI_BASE_URL:'http://127.0.0.1:1/v1'};
+    // Only execution bounds for this isolated backend. Never change approval,
+    // blocked-repeat or consecutive-failure settings.
+    for (const key of ['LCA_EXECUTION_TOKENS','LCA_EXECUTION_SECONDS','LCA_EXECUTION_MODEL_CALLS','LCA_MAX_MODEL_STEPS','LCA_MAX_TOOL_CALLS']) {
+      if (manifest.execution_overrides?.[key]) environment[key]=manifest.execution_overrides[key];
+    }
     delete environment.ELECTRON_RUN_AS_NODE;
     mark('electron_launch');
     app = await _electron.launch({executablePath:require('../../desktop/node_modules/electron'),
