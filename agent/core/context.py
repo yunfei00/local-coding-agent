@@ -302,24 +302,10 @@ class ContextBudgetManager:
         if self._messages_tokens(current) <= budget:
             return current, 0, truncated
 
-        for max_chars in (8_000, 4_000, 2_000, 1_000):
-            changed = 0
-            compacted: list[dict[str, Any]] = []
-            for message in current:
-                if message.get("role") != "tool":
-                    compacted.append(message)
-                    continue
-                next_message, was_truncated = self._truncate_message_content(
-                    message,
-                    max_chars=max_chars,
-                )
-                compacted.append(next_message)
-                changed += int(was_truncated)
-            current = compacted
-            truncated = max(truncated, changed)
-            if self._messages_tokens(current) <= budget:
-                return current, 0, truncated
-
+        # Keep recent, complete exchanges before shortening their results.
+        # Truncating every result first destroyed freshly read source code even
+        # when dropping old exchanges would have left room for the whole file.
+        # Headers and all their tool results remain one indivisible group.
         user_message = current[0]
         groups = self._runtime_groups(current[1:])
         selected_reversed: list[list[dict[str, Any]]] = []
@@ -330,6 +316,7 @@ class ContextBudgetManager:
                 break
             if not selected_reversed and used + group_cost > budget:
                 latest_group = self._force_fit_group(group, max(budget - used, 0))
+                truncated = sum(a.get('content') != b.get('content') for a,b in zip(group,latest_group))
                 selected_reversed.append(latest_group)
                 used += self._messages_tokens(latest_group)
                 break

@@ -21,6 +21,24 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ApiContextFitTests(unittest.TestCase):
+    def test_recent_source_stays_complete_when_old_exchanges_can_be_dropped(self):
+        manager = ContextBudgetManager(context_window_tokens=16384)
+        schema = [{'type':'function','function':{'name':'read_file','description':'schema '*500}}]
+        messages = [{'role':'system','content':'KEEP PERMISSIONS'}, {'role':'user','content':'KEEP GOAL'}]
+        latest = 'SOURCE START\n' + ('const value = "完整 source";\n'*180) + 'SOURCE END'
+        for i in range(6):
+            messages.extend([{'role':'assistant','content':'','tool_calls':[{'id':str(i),'type':'function',
+                'function':{'name':'read_file','arguments':{'path':f'{i}.tsx'}}}]},
+                {'role':'tool','tool_call_id':str(i),'content':latest if i==5 else 'old irrelevant result '*400}])
+        fitted = manager.fit_request(messages,tools=schema,output_limit=1024,history_messages_total=0)
+        self.assertEqual(fitted.messages[-1]['content'],latest)
+        self.assertEqual(fitted.messages[:2],messages[:2])
+        self.assertGreater(fitted.usage.runtime_messages_omitted,0)
+        self.assertEqual(fitted.usage.truncated_messages,0)
+        headers = {c['id'] for m in fitted.messages for c in m.get('tool_calls',[])}
+        self.assertEqual(headers,{m['tool_call_id'] for m in fitted.messages if m['role']=='tool'})
+        self.assertLessEqual(request_token_reservation(fitted.messages,schema,1024)[1],16384)
+
     def test_multibyte_large_tool_exchange_fits_with_schema_and_no_orphan_results(self):
         manager = ContextBudgetManager(context_window_tokens=32768)
         schema = [{'type':'function','function':{'name':'read_file','description':'bounded '*900}}]
