@@ -32,6 +32,18 @@ def catalog():
 
 
 class LiveAcceptanceGuards(unittest.TestCase):
+    def test_user_configured_max_model_is_selected_exactly_without_local_name_collision(self):
+        saved = catalog()
+        saved['connections'].append({'connection_id':'ollama','provider_type':'ollama','enabled':True})
+        saved['profiles'] += [{'connection_id':cid,'model_profile_id':cid+'-max','model_id':'qwen3.8-max',
+            'display_name':'Qwen Max','supports_vision':True} for cid in ('api','ollama')]
+        executor=live.select_profile(saved,'qwen3.8-max','api-max')
+        observer=live.select_profile(saved,'qwen3.8-max','api-max',vision=True)
+        config=live.live_config(executor,observer,10000,1000000000,True)
+        self.assertEqual(config['roles']['executor']['model_profile_id'],'api-max')
+        self.assertEqual(config['vision_profile_id'],'api-max')
+        self.assertEqual(config['budget']['api_tokens'],1000000000)
+
     def test_wire_image_evidence_fingerprints_bytes_without_retaining_content_or_urls(self):
         pixels = b'controlled-test-pixels'
         image = 'data:image/jpeg;base64,'+base64.b64encode(pixels).decode()

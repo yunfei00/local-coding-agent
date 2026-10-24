@@ -45,7 +45,7 @@ def allocate_session(path, model, requested_calls, requested_tokens=60000, attem
     if any(a['state'] == 'reserved' for a in attempts):
         raise ValueError('PREVIOUS_ATTEMPT_UNSETTLED: no automatic retry or reservation refund')
     if update:
-        if not 1 <= requested_calls <= 200 or not 1 <= requested_tokens <= 10000000 or not 1 <= attempt_limit <= 6 or not 1 <= requested_seconds <= 7200:
+        if not 1 <= requested_calls <= 10000 or not 1 <= requested_tokens <= 1000000000 or not 1 <= attempt_limit <= 10 or not 1 <= requested_seconds <= 7200:
             raise ValueError('INVALID_EXPLICIT_SESSION_CAPS')
         previous = {'calls':state['call_ceiling'],'tokens':state['token_ceiling'],
                     'attempts':state['attempt_limits'].get(model,2)}
@@ -119,13 +119,13 @@ def select_profile(catalog, model, explicit=None, *, vision=False):
 
 
 def live_config(executor, vision, calls, tokens=60000, extended=False):
-    if isinstance(calls, bool) or not isinstance(calls, int) or not 1 <= calls <= 200:
-        raise ValueError('Live acceptance allows 1..200 calls')
+    if isinstance(calls, bool) or not isinstance(calls, int) or not 1 <= calls <= 10000:
+        raise ValueError('Live acceptance allows 1..10000 calls')
     # Currency/price units are not recorded in old profiles. Do not invent CNY
     # pricing or claim a monetary hard cap. Use a stricter request ceiling.
     if calls > 12 and not extended:
         raise ValueError('UNVERIFIED_CNY_PRICING: maximum 12 calls, no automatic increase')
-    if isinstance(tokens,bool) or not isinstance(tokens,int) or not 1 <= tokens <= (10000000 if extended else 60000):
+    if isinstance(tokens,bool) or not isinstance(tokens,int) or not 1 <= tokens <= (1000000000 if extended else 60000):
         raise ValueError('INVALID_LIVE_TOKEN_LIMIT')
     return validate_config({'strategy': 'single-agent',
         'roles': {r: {'model_profile_id': executor['model_profile_id']}
@@ -281,7 +281,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data-dir', type=Path, default=Path(os.getenv('APPDATA', str(Path.home()))) / 'local-coding-agent-desktop')
     parser.add_argument('--live', action='store_true', help='Authorize paid requests and controlled M5 GUI operations')
-    parser.add_argument('--model', choices=('qwen3.8-flash', 'glm-5.3'), default='qwen3.8-flash')
+    parser.add_argument('--model', choices=('qwen3.8-flash', 'qwen3.8-max', 'glm-5.3'), default='qwen3.8-flash')
+    parser.add_argument('--vision-model', choices=('qwen3.8-flash','qwen3.8-max'))
     parser.add_argument('--executor-profile')
     parser.add_argument('--vision-profile')
     parser.add_argument('--max-calls', type=int, default=12)
@@ -298,7 +299,8 @@ def main():
     try:
         catalog = load_catalog(args.data_dir)
         executor = select_profile(catalog, args.model, args.executor_profile)
-        vision = select_profile(catalog, 'qwen3.8-flash', args.vision_profile, vision=True)
+        vision_model = args.vision_model or ('qwen3.8-flash' if args.model == 'glm-5.3' else args.model)
+        vision = select_profile(catalog, vision_model, args.vision_profile, vision=True)
         config = live_config(executor, vision, args.max_calls,args.max_tokens,args.authorize_budget_update)
         report.update(executor={k:executor[k] for k in ('model_profile_id','connection_id','model_id')},
                       vision={k:vision[k] for k in ('model_profile_id','connection_id','model_id')}, limits=config['budget'])
@@ -323,8 +325,8 @@ def main():
                     # while original repetition, failure and approval guards stay.
                     document['execution_overrides']={'LCA_EXECUTION_TOKENS':str(remaining['tokens']),
                         'LCA_EXECUTION_SECONDS':str(remaining['seconds']),
-                        'LCA_EXECUTION_MODEL_CALLS':str(remaining['calls']),
-                        'LCA_MAX_MODEL_STEPS':str(min(100,remaining['calls'])),'LCA_MAX_TOOL_CALLS':'200'}
+                        'LCA_EXECUTION_MODEL_CALLS':str(min(512,remaining['calls'])),
+                        'LCA_MAX_MODEL_STEPS':str(min(100,remaining['calls'])),'LCA_MAX_TOOL_CALLS':'512'}
                 # Settings and Task both receive the reduced remaining global cap.
                 isolated = SQLiteStore(Path(temporary)/'data')
                 isolated.set_setting('orchestration.config',json.dumps(document['config']))
