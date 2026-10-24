@@ -2096,8 +2096,11 @@ class AgentServer:
                             await ws.send_json(envelope('vision.observed', {**observer.chat_identity, **tools.desktop.image_metadata.get(turn_id,{}), 'vision_profile_id':observer.chat_identity.get('vision_profile_id') or observer.chat_identity['chat_profile_id'], 'image_attached':True, 'attachment_transport':'jpeg_multimodal', 'tools_allowed':False},thread_id=thread_id,turn_id=turn_id))
                             capture = None
                         from agent.core.execution import execution_observation
-                        runtime_observation = execution_observation(guard,tools.processes,turn_id,single_agent=single_agent)
-                        request_messages = [*messages,runtime_observation] + ([capture] if capture else [])
+                        runtime_observation = (execution_observation(guard,tools.processes,turn_id,single_agent=single_agent)
+                            if single_agent or plan_id else None)
+                        request_messages = [dict(m) for m in messages] + ([capture] if capture else [])
+                        if runtime_observation:
+                            request_messages[0]['content'] += '\n\n' + runtime_observation['content']
                         await ws.send_json(envelope('model.identity', {**getattr(provider,'chat_identity',{}), **(tools.desktop.image_metadata.get(turn_id,{}) if capture else {}), 'executor_profile_id':getattr(provider,'profile',{}).get('model_profile_id') if plan_id else None, 'image_attached':bool(capture), 'vision_profile_id':getattr(observer,'chat_identity',{}).get('chat_profile_id'), 'model_id':model, 'attachment_state':'queued' if capture else 'none'}, thread_id=thread_id,turn_id=turn_id))
                         schemas = tools.schemas(self.permissions.visible_tools(tools.names, tools.permission_metadata_map()), desktop_owner_id=turn_id)
                         if getattr(provider,'route',None) == 'api':
@@ -2109,8 +2112,9 @@ class AgentServer:
                             retained = request_messages[:-1] if capture else request_messages
                             # This live snapshot is reconstructed each call, not
                             # accumulated as history or persisted as user intent.
-                            messages = [m for m in retained if not (m.get('role') == 'system'
-                                and m.get('content') == runtime_observation['content'])]
+                            messages = [dict(m) for m in retained]
+                            if runtime_observation:
+                                messages[0]['content'] = messages[0]['content'].removesuffix('\n\n'+runtime_observation['content'])
                             self.last_context_usage = fitted_request.usage.to_dict()
                             metrics.record_context(self.last_context_usage)
                             await ws.send_json(envelope('context.updated',self.last_context_usage,

@@ -68,7 +68,7 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
             tool('apply_patch',path='calculator.py',old_text='return a - b',new_text='return a + b'),
             tool('run_command',command='uv run --no-project python -m unittest discover -s tests -v'),
             tool('git_diff'),ProviderChunk(content='Actual tests and diff passed',done=True)]
-        model=await self.run_model(steps)
+        model=await self.run_model(steps,single=True)
         self.assertEqual(len(model.seen),50)
         self.assertTrue(any(e['type']=='turn.completed' for e in self.client.messages))
         self.assertIn('return a + b',(self.repo/'calculator.py').read_text())
@@ -105,8 +105,9 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         for n in range(8):
             messages.extend([{'role':'assistant','content':'Inspected source '+str(n),'tool_calls':[{'id':str(n),'type':'function','function':{'name':'read_file','arguments':'{}'}}]},
                 {'role':'tool','tool_call_id':str(n),'content':'source '*3000}])
+        messages[0]['content'] += '\n\n'+state['content']
         fitted=ContextBudgetManager(context_window_tokens=4096,reserved_output_tokens=512).fit_request(
-            [*messages,state],tools=[],output_limit=512,history_messages_total=0)
+            messages,tools=[],output_limit=512,history_messages_total=0)
         encoded=json.dumps(fitted.messages)
         self.assertIn('process-owned',encoded)
         self.assertNotIn('process-PRIVATE',encoded)
