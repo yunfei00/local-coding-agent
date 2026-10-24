@@ -74,12 +74,18 @@ def allocate_session(path, model, requested_calls, requested_tokens=60000, attem
 def settle_session(path, report):
     state = json.loads(path.read_text(encoding='utf-8'))
     attempt = state['attempts'][-1]
-    usage = report.get('usage', {})
-    # No task means no product request was possible. A running or crashed task
-    # without a settled usage record retains its full preallocation.
-    if not report.get('task_id') or report.get('final_status') in {'paused','failed','cancelled','completed','awaiting_approval'}:
-        attempt.update(state='settled', calls=usage.get('api_calls', report.get('paid_requests', 0)),
-                       tokens=usage.get('reserved_tokens', 0), seconds=report.get('active_seconds', 0),
+    usage = report.get('usage') or {}
+    # Missing task ID alone is insufficient: task.start may have reached the
+    # backend before the controller lost its reply. Refund only known preflight
+    # failures or a terminal task with settled, numeric usage.
+    safe_preflight=(not report.get('task_id') and report.get('controller_stage') in {
+        'electron_launch','electron_window','agent_ready','protected_credential_status','project_and_thread'})
+    settled_task=(report.get('task_id') and report.get('final_status') in {
+        'paused','failed','cancelled','completed','awaiting_approval'} and not report.get('usage_uncertain')
+        and isinstance(usage.get('api_calls'),int) and isinstance(usage.get('reserved_tokens'),int))
+    if safe_preflight or settled_task:
+        attempt.update(state='settled', calls=0 if safe_preflight else usage['api_calls'],
+                       tokens=0 if safe_preflight else usage['reserved_tokens'], seconds=report.get('active_seconds', 0) or 0,
                        result=report['result'], task_id=report.get('task_id'))
     path.write_text(json.dumps(state, indent=2), encoding='utf-8')
     report['session'] = state
@@ -302,8 +308,7 @@ def main():
         # No traceback/request objects/environment dump (may contain secrets).
         if controller_started and REPORT.exists():
             recorded = json.loads(REPORT.read_text(encoding='utf-8'))
-            if recorded.get('task_id'):
-                report = recorded
+            report = recorded
         report.update(result='FAIL' if report.get('task_id') else 'NOT RUN',
                       reason=getattr(exc,'code',str(exc) if isinstance(exc, ValueError) else type(exc).__name__))
     if allocated:

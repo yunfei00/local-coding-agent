@@ -97,15 +97,21 @@ async function main(manifest) {
     }
   };
   const save = extra => fs.writeFileSync(manifest.report,JSON.stringify({...initial,...extra},null,2));
+  const mark = value => {
+    stage=value;
+    save({result:'NOT RUN',reason:'STARTING',controller_stage:stage,paid_requests:0});
+  };
   try {
     const environment = {...process.env, LCA_DESKTOP_DATA_DIR:manifest.credential_data, LCA_DATA_DIR:manifest.data,
       LCA_HEADLESS_SMOKE:'0', LCA_OPENAI_API_KEY:'', LCA_PROVIDER:'openai_compatible', LCA_OPENAI_MODEL:'',
       LCA_OPENAI_BASE_URL:'http://127.0.0.1:1/v1'};
     delete environment.ELECTRON_RUN_AS_NODE;
+    mark('electron_launch');
     app = await _electron.launch({executablePath:require('../../desktop/node_modules/electron'),
-      args:[path.join(root,'desktop')], cwd:root, env:environment, timeout:45000});
-    page = await app.firstWindow();
-    stage = 'agent_ready';
+      args:[path.join(root,'desktop')], cwd:root, env:environment, timeout:90000});
+    mark('electron_window');
+    page = await app.firstWindow({timeout:45000});
+    mark('agent_ready');
     await page.waitForFunction(() => !!window.localAgent,undefined,{timeout:30000});
     const ready = Date.now() + 45000;
     while (Date.now() < ready) {
@@ -114,17 +120,20 @@ async function main(manifest) {
       if (state.state === 'error') throw new Error('AGENT_START_FAILED');
       await delay(200);
     }
-    stage = 'protected_credential_status';
+    mark('protected_credential_status');
     const credential = (await page.evaluate(() => window.localAgent.taskRequest('','task.credential.status'))).payload;
     initial.credential_mode = credential.mode;
     const expected = 'connection-' + manifest.executor.connection_id;
     if (credential.mode !== 'os_protected' || !credential.configured.includes(expected)) {
-      save({result:'NOT RUN', reason:'PROTECTED_CREDENTIAL_UNAVAILABLE', paid_requests:0});
+      save({result:'NOT RUN', reason:'PROTECTED_CREDENTIAL_UNAVAILABLE', controller_stage:stage, paid_requests:0});
       return;
     }
     await page.exposeFunction('lcaAcceptanceEvent', async event => {
       const p = event.payload || {};
-      if (event.type === 'task.updated' && p.task) task = p.task;
+      if (event.type === 'task.updated' && p.task) {
+        task = p.task;
+        save({...finalResult(task,tools),result:'RUNNING',source:manifest.source,controller_stage:stage});
+      }
       if (event.type === 'approval.requested') {
         processFiles();
         const allowed = approvalAllowed(p, task?.workspace, ownedPids, task?.status);
@@ -151,7 +160,7 @@ async function main(manifest) {
     await page.evaluate(() => window.localAgent.onAgentEvent(e => {void window.lcaAcceptanceEvent(e);}));
     // Only the native file-picker is controlled; all project/task operations are production IPC.
     await app.evaluate(({dialog}, folder) => {dialog.showOpenDialog = async () => ({canceled:false,filePaths:[folder]});},manifest.source);
-    stage = 'project_and_thread';
+    mark('project_and_thread');
     await page.evaluate(profile => window.localAgent.openProject('profile:'+profile),manifest.executor.model_profile_id);
     const created = await page.evaluate(profile => window.localAgent.createThread('profile:'+profile),manifest.executor.model_profile_id);
     thread = created.payload.thread?.id || created.payload.active_thread?.id;
@@ -161,7 +170,7 @@ async function main(manifest) {
     }
     await page.evaluate(() => window.localAgent.setPermission('workspace'));
     const started = Date.now();
-    stage = 'task_start';
+    mark('task_start');
     const response = await page.evaluate(({thread, goal, config}) => window.localAgent.taskRequest(thread,'task.start',{goal,config}),
       {thread, goal:GOAL, config:manifest.config});
     task = response.payload.task;
@@ -188,8 +197,10 @@ async function main(manifest) {
     console.log(JSON.stringify({task_id:task.id,result:result.result,reason:result.reason,paid_requests:result.paid_requests}));
   } catch (error) {
     // Error strings/stacks from requests or Electron may contain private data.
-    save({...(task ? finalResult(task,tools):{}), result:task ? 'FAIL':'NOT RUN',
-      reason:'CONTROLLER_'+error.name, controller_stage:stage, events, approvals, source:manifest.source});
+    const uncertain = !task && stage === 'task_start';
+    save({...(task ? finalResult(task,tools):{}), result:task || uncertain ? 'FAIL':'NOT RUN',
+      paid_requests:uncertain ? null : task ? finalResult(task,tools).paid_requests : 0,
+      usage_uncertain:uncertain,reason:'CONTROLLER_'+error.name, controller_stage:stage, events, approvals, source:manifest.source});
     process.exitCode = 2;
   } finally {
     if (task && page && !TERMINAL.has(task.status)) {

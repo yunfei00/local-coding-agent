@@ -177,6 +177,29 @@ class LiveAcceptanceGuards(unittest.TestCase):
             self.assertEqual(config['budget']['global_api_tokens'],360146)
             self.assertEqual(config['budget']['request_seconds'],60)
 
+    def test_lost_task_start_reply_never_refunds_unknown_paid_usage(self):
+        with tempfile.TemporaryDirectory() as temp:
+            session=Path(temp)/'session.json'
+            live.allocate_session(session,'qwen3.8-flash',12)
+            with patch.object(live,'REPORT',Path(temp)/'report.json'):
+                live.settle_session(session,{'result':'FAIL','controller_stage':'task_start','paid_requests':None,
+                                             'usage_uncertain':True})
+            state=json.loads(session.read_text())
+            self.assertEqual(state['attempts'][-1]['state'],'reserved')
+            self.assertEqual(state['attempts'][-1]['tokens'],60000)
+            with self.assertRaisesRegex(ValueError,'UNSETTLED'):
+                live.allocate_session(session,'qwen3.8-flash',12)
+
+    def test_confirmed_preflight_timeout_has_no_task_or_paid_usage(self):
+        with tempfile.TemporaryDirectory() as temp:
+            session=Path(temp)/'session.json'
+            live.allocate_session(session,'qwen3.8-flash',12)
+            with patch.object(live,'REPORT',Path(temp)/'report.json'):
+                live.settle_session(session,{'result':'NOT RUN','controller_stage':'electron_launch','paid_requests':0})
+            state=json.loads(session.read_text())
+            self.assertEqual(state['attempts'][-1]['state'],'settled')
+            self.assertEqual(state['attempts'][-1]['tokens'],0)
+
     @unittest.skipUnless(shutil.which('node'),'Node required for offline controller guard test')
     def test_controller_rejects_unscoped_approvals_and_false_completion(self):
         # Require only helper exports, never launch Electron or a provider.
