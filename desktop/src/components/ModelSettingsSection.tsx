@@ -1,5 +1,5 @@
 import {useEffect, useState} from "react";
-import {Connection, ModelCatalog, ModelProfile, TaskConfig, modelLabel} from "../lib/modelCatalog";
+import {Connection, ModelCatalog, ModelProfile, TaskConfig, modelLabel, longTaskBudget} from "../lib/modelCatalog";
 import {ModelDiagnosticResult} from "./ModelDiagnosticResult";
 
 export function ModelSettingsSection({threadId = "", running}: {threadId?: string; running: boolean}) {
@@ -104,6 +104,8 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
       <p>Single Agent requires only one online Executor profile. It calls tools directly, without a separate Planner, Reviewer or escalation model.</p>
       <p>Local-only and API-only reject incompatible bindings. No silent fallback. Local-first defaults to local planning, execution and review with API escalation.</p>
       <h3>API Budget</h3>
+      <button onClick={() => setConfig(longTaskBudget(config))}>Use long task budget</button>
+      <p>长任务额度：每任务至少 200 次 API、1,000 万 Token、2 小时；全局至少 2,000 次、1 亿 Token。可能增加费用。保存后用于新任务；保留费用上限、重试和停止保护。</p>
       <p>0 in api_calls or api_tokens explicitly disables API calls; changing strategy preserves these values. Global limits include earlier tasks across restarts. New tasks use saved Settings; existing tasks retain their snapshots.</p>
       {Object.entries(config.budget).map(([k,v]) => <label className="settings-field" key={k}>{k}<input aria-label={"Default " + k} type="number" min="0" value={v ?? ""} onChange={e => setConfig({...config, budget:{...config.budget, [k]:e.target.value ? Number(e.target.value) : null}})} /></label>)}
       <p>Caps use conservative reservations and request output limits; provider tokenization and billing may differ. Failed requests retain reservations. Cost caps require configured prices.</p>

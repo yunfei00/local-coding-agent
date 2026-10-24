@@ -8,10 +8,10 @@ import uuid
 
 from agent.llm.base import ProviderError
 
-DEFAULT_LIMITS = {"api_calls": 3, "api_tokens": 30000, "api_cost": None,
-                  "local_repairs": 3, "task_seconds": 1800, "request_seconds": 120,
-                  "verification_seconds": 120, "global_api_calls": 30,
-                  "global_api_tokens": 300000, "global_api_cost": None}
+DEFAULT_LIMITS = {"api_calls": 200, "api_tokens": 10000000, "api_cost": None,
+                  "local_repairs": 3, "task_seconds": 7200, "request_seconds": 120,
+                  "verification_seconds": 120, "global_api_calls": 2000,
+                  "global_api_tokens": 100000000, "global_api_cost": None}
 DEFAULT_LIMITS["planning_attempts"] = 4
 
 
@@ -44,7 +44,7 @@ class BudgetExceeded(ProviderError):
 
 
 def request_token_reservation(messages, tools, output_limit):
-    """Shared conservative sizing for context fitting and final budget checks."""
+    """Conservative billing reserve; model window occupancy is estimated separately."""
     input_estimate = len(json.dumps({"messages":messages,"tools":tools or []},ensure_ascii=False).encode()) + 256
     return input_estimate, input_estimate + output_limit
 

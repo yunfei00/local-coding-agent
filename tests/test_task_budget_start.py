@@ -52,7 +52,7 @@ class TaskBudgetStartTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(task["status"], "awaiting_approval", task["reason"])
         self.assertEqual(self.requests[0]["model"], "planner")
         self.assertEqual(len(self.requests), 4)
-        self.assertEqual(task["config"]["budget"]["api_tokens"], 30000)
+        self.assertEqual(task["config"]["budget"]["api_tokens"], DEFAULT_LIMITS['api_tokens'])
         self.assertTrue(all(v["ok"] for v in task["verification"]))
         self.assertIn("a + b", Path(task["workspace"], "calculator.py").read_text())
         self.assertIn("a - b", (self.repo / "calculator.py").read_text())
@@ -178,8 +178,8 @@ class TaskBudgetStartTests(unittest.IsolatedAsyncioTestCase):
 class BudgetConfigTests(unittest.TestCase):
     def test_serialized_zero_missing_and_null_are_distinct(self):
         self.assertEqual(validate_limits(json.loads('{"api_calls":0,"api_tokens":0}'))["api_calls"], 0)
-        self.assertEqual(validate_limits({})["api_calls"], 3)
-        self.assertEqual(validate_limits({})["api_tokens"], 30000)
+        self.assertEqual(validate_limits({})["api_calls"], 200)
+        self.assertEqual(validate_limits({})["api_tokens"], 10000000)
         for field in ("api_calls","api_tokens","global_api_calls","global_api_tokens"):
             with self.subTest(field=field), self.assertRaisesRegex(ValueError, field): validate_limits({field:None})
 
@@ -191,6 +191,6 @@ class BudgetConfigTests(unittest.TestCase):
         self.assertEqual(result["budget"]["api_tokens"], 0)
         self.assertEqual(result["roles"]["planner"]["model"], "latest")
         self.assertEqual(result["roles"]["executor"]["output_limit"], 256)
-        self.assertEqual(saved["budget"]["api_tokens"], 30000)
+        self.assertEqual(saved["budget"]["api_tokens"], 10000000)
         for patch in ({"budget":None},{"roles":{"unknown":{}}},{"roles":{"planner":0}}, {"unknown":1}):
             with self.subTest(patch=patch), self.assertRaises(ValueError): apply_config_overrides(saved, patch)

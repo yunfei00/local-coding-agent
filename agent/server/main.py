@@ -1313,8 +1313,8 @@ class AgentServer:
                     if not row:
                         raise ValueError('No execution budget exists for this plan')
                     value=json.loads(row[0])
-                    for key,delta,cap in (('model_calls',16,512),('tokens',500000,20000000),('seconds',300,7200),('max_continuations',1,8)):
-                        value['limits'][key]=min(cap,value['limits'][key]+delta)
+                    for key,delta,cap in (('model_calls',16,512),('tokens',500000,1000000000),('seconds',300,86400),('max_continuations',1,8)):
+                        value['limits'][key]=max(value['limits'][key],min(cap,value['limits'][key]+delta))
                     with self.store.connection:
                         self.store.connection.execute('UPDATE agent_execution_runs SET data_json=? WHERE id=?',(json.dumps(value),plan_id))
                     plans.checkpoint(plan_id,'user_extended_execution_budget')

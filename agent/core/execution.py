@@ -10,8 +10,8 @@ from agent.llm.base import ProviderError
 def execution_policy():
     result = {}
     for name, default, minimum, maximum in (
-        ('max_continuations', 2, 0, 8), ('model_calls', 64, 1, 512),
-        ('tokens', 2000000, 1, 20000000), ('seconds', 900, 1, 7200)):
+        ('max_continuations', 2, 0, 8), ('model_calls', 512, 1, 512),
+        ('tokens', 200000000, 1, 1000000000), ('seconds', 7200, 1, 86400)):
         value = int(os.getenv('LCA_EXECUTION_' + name.upper(), str(default)))
         if not minimum <= value <= maximum:
             raise ValueError('Invalid bounded execution policy: ' + name)

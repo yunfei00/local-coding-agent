@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from agent.core.execution import ExecutionBudget, failure_diagnosis
+from agent.core.execution import ExecutionBudget, failure_diagnosis, execution_policy
 from agent.llm.base import ProviderChunk
 from agent.server.main import AgentServer
 from agent.task_plans import mutation_fingerprint
@@ -43,6 +43,7 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         return model
 
     async def test_more_than_16_calls_preserves_patch_results_and_checkpoint(self):
+        self.server.max_model_steps=16  # Exercise a short slice independently of defaults.
         steps=[tool('read_file',path='calculator.py'),tool('apply_patch',path='calculator.py',old_text='return a - b',new_text='return a + b'),
                tool('run_command',command='uv run --no-project python -m unittest discover -s tests -v')]
         steps += [tool('file_exists',path=f'probe-{n}.txt') for n in range(14)]
@@ -60,6 +61,34 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         checkpoints=self.server.store.connection.execute('select reason from task_checkpoints where plan_id=?',(plan['id'],)).fetchall()
         self.assertIn('model_slice_limit',[r[0] for r in checkpoints])
         self.assertNotIn('return a + b',json.dumps(calls))
+
+    async def test_default_long_task_crosses_old_tool_limit_and_verifies_real_patch(self):
+        steps=[tool('file_exists',path=f'probe-{n}') for n in range(45)]
+        steps += [tool('read_file',path='calculator.py'),
+            tool('apply_patch',path='calculator.py',old_text='return a - b',new_text='return a + b'),
+            tool('run_command',command='uv run --no-project python -m unittest discover -s tests -v'),
+            tool('git_diff'),ProviderChunk(content='Actual tests and diff passed',done=True)]
+        model=await self.run_model(steps)
+        self.assertEqual(len(model.seen),50)
+        self.assertTrue(any(e['type']=='turn.completed' for e in self.client.messages))
+        self.assertIn('return a + b',(self.repo/'calculator.py').read_text())
+        self.assertTrue(any(c['tool']=='run_command' and c['status']=='succeeded' and c['exit_code']==0
+            for p in self.server.store.task_plans.list_for_thread(self.thread.id)
+            for c in self.server.store.task_plans.executions(p['id'])))
+
+    async def test_large_execution_budget_can_be_extended_without_shrinking_or_resetting_usage(self):
+        plan_id=self.server.store.task_plans.create(self.thread.id,'Preserve large budget',[{'description':'Inspect'}])
+        budget=ExecutionBudget(self.server.store.connection,plan_id,self.thread.id,execution_policy())
+        budget.reserve([{'role':'user','content':'Inspect existing workspace'}],[],1024)
+        plan=self.server.store.task_plans.get(plan_id)
+        before=plan['execution']
+        self.assertGreaterEqual(before['limits']['tokens'],10000000)
+        await self.server.handle_message(self.client,{'type':'plan.execution.extend','thread_id':self.thread.id,
+            'payload':{'plan_id':plan['id']}},set())
+        after=self.server.store.task_plans.get(plan['id'])['execution']
+        self.assertEqual(after['calls'],before['calls'])
+        self.assertEqual(after['reserved_tokens'],before['reserved_tokens'])
+        self.assertGreaterEqual(after['limits']['tokens'],before['limits']['tokens'])
 
     async def test_budget_is_persistent_and_does_not_send_another_request(self):
         self.server.continuation_policy['model_calls']=1
