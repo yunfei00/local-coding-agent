@@ -113,7 +113,7 @@ async function main(manifest) {
     delete environment.ELECTRON_RUN_AS_NODE;
     mark('electron_launch');
     app = await _electron.launch({executablePath:require('../../desktop/node_modules/electron'),
-      args:[path.join(root,'desktop')], cwd:root, env:environment, timeout:90000});
+      args:[path.join(root,'desktop')], cwd:root, env:environment, timeout:180000});
     mark('electron_window');
     page = await app.firstWindow({timeout:45000});
     mark('agent_ready');

@@ -7,6 +7,9 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
+import os
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -32,6 +35,17 @@ def catalog():
 
 
 class LiveAcceptanceGuards(unittest.TestCase):
+    def test_startup_watchdog_terminates_owned_controller_without_resetting_session(self):
+        with tempfile.TemporaryDirectory() as temp:
+            report=Path(temp)/'report.json'
+            report.write_text(json.dumps({'controller_stage':'electron_launch','paid_requests':0}))
+            started=time.monotonic()
+            with self.assertRaisesRegex(ValueError,'CONTROLLER_STARTUP_TIMEOUT'):
+                live.run_controller([sys.executable,'-c','import time; time.sleep(60)'],dict(os.environ),
+                    timeout=10,report_path=report,startup_timeout=.01)
+            self.assertLess(time.monotonic()-started,15)
+            self.assertEqual(json.loads(report.read_text())['paid_requests'],0)
+
     def test_user_configured_max_model_is_selected_exactly_without_local_name_collision(self):
         saved = catalog()
         saved['connections'].append({'connection_id':'ollama','provider_type':'ollama','enabled':True})

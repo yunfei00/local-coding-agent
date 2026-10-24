@@ -17,6 +17,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -175,7 +176,7 @@ def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=
     return path
 
 
-def run_controller(command, env, timeout=1020):
+def run_controller(command, env, timeout=1020, *, report_path=None, startup_timeout=360):
     """Reuse the product kill-on-close Job even if the controller itself hangs."""
     from agent.tools.windows_job import WindowsJob
     child = subprocess.Popen(command, cwd=ROOT, env=env,
@@ -184,7 +185,30 @@ def run_controller(command, env, timeout=1020):
     try:
         job = WindowsJob(child.pid)
         job.resume(child.pid)
-        return child.wait(timeout=timeout)
+        deadline=time.monotonic()+timeout
+        stage,stage_started=None,time.monotonic()
+        while True:
+            remaining=deadline-time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(command,timeout)
+            try:
+                return child.wait(timeout=min(1,remaining))
+            except subprocess.TimeoutExpired:
+                if report_path is None:
+                    continue
+                try:
+                    progress=json.loads(Path(report_path).read_text(encoding='utf-8'))
+                except (FileNotFoundError,json.JSONDecodeError):
+                    continue
+                current=progress.get('controller_stage')
+                if current != stage:
+                    stage,stage_started=current,time.monotonic()
+                # A launch timeout can itself get stuck in Playwright cleanup.
+                # Bound that phase externally using only our owned process Job.
+                if not progress.get('task_id') and current in {
+                    'electron_launch','electron_window','agent_ready','protected_credential_status','project_and_thread'
+                } and time.monotonic()-stage_started >= startup_timeout:
+                    raise ValueError('CONTROLLER_STARTUP_TIMEOUT')
     finally:
         try:
             if job:
@@ -339,7 +363,7 @@ def main():
                 env.update(PYTHONUTF8='1')
                 controller_started = True
                 exit_code = run_controller(['node', str(Path(__file__).with_suffix('.cjs')), str(manifest)],env,
-                                          timeout=remaining['seconds']+120)
+                                          timeout=remaining['seconds']+120,report_path=REPORT)
                 report = json.loads(REPORT.read_text(encoding='utf-8'))
                 verify_disk(report)
                 if exit_code and report['result'] == 'PASS':
