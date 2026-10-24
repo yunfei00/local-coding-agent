@@ -2096,6 +2096,17 @@ class AgentServer:
                         request_messages = messages + ([capture] if capture else [])
                         await ws.send_json(envelope('model.identity', {**getattr(provider,'chat_identity',{}), **(tools.desktop.image_metadata.get(turn_id,{}) if capture else {}), 'executor_profile_id':getattr(provider,'profile',{}).get('model_profile_id') if plan_id else None, 'image_attached':bool(capture), 'vision_profile_id':getattr(observer,'chat_identity',{}).get('chat_profile_id'), 'model_id':model, 'attachment_state':'queued' if capture else 'none'}, thread_id=thread_id,turn_id=turn_id))
                         schemas = tools.schemas(self.permissions.visible_tools(tools.names, tools.permission_metadata_map()), desktop_owner_id=turn_id)
+                        if getattr(provider,'route',None) == 'api':
+                            fitted_request = context_manager.fit_request(request_messages,tools=schemas,
+                                output_limit=getattr(provider,'max_output_tokens',None) or self.context_reserved_output_tokens,
+                                history_messages_total=len(history))
+                            request_messages = fitted_request.messages
+                            # Captures are one-shot; retain only conversational messages.
+                            messages = request_messages[:-1] if capture else request_messages
+                            self.last_context_usage = fitted_request.usage.to_dict()
+                            metrics.record_context(self.last_context_usage)
+                            await ws.send_json(envelope('context.updated',self.last_context_usage,
+                                thread_id=thread_id,turn_id=turn_id))
                         execution.reserve(request_messages, schemas, getattr(provider,'max_output_tokens',None) or self.context_reserved_output_tokens)
                         execution.data['model_identity'] = {**getattr(provider,'chat_identity',{}), 'model_id':model,
                             'vision_profile_id':getattr(observer,'chat_identity',{}).get('vision_profile_id') or getattr(observer,'chat_identity',{}).get('chat_profile_id'),

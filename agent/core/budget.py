@@ -43,6 +43,12 @@ class BudgetExceeded(ProviderError):
         self.role = details.get("role") if details else None
 
 
+def request_token_reservation(messages, tools, output_limit):
+    """Shared conservative sizing for context fitting and final budget checks."""
+    input_estimate = len(json.dumps({"messages":messages,"tools":tools or []},ensure_ascii=False).encode()) + 256
+    return input_estimate, input_estimate + output_limit
+
+
 class BudgetGuard:
     def __init__(self, runtime, plan_id: str, global_limits: dict):
         self.runtime, self.db, self.plan_id = runtime, runtime.db, plan_id
@@ -57,8 +63,7 @@ class BudgetGuard:
         if elapsed >= limits["task_seconds"]:
             raise BudgetExceeded("Task execution time exhausted")
         # UTF-8 bytes plus framing overhead deliberately over-reserve ordinary tokenizers.
-        input_estimate = len(json.dumps({"messages": messages, "tools": tools or []}, ensure_ascii=False).encode()) + 256
-        tokens = input_estimate + output_limit
+        input_estimate, tokens = request_token_reservation(messages, tools, output_limit)
         # API accounting stays byte-conservative. Local context fitting reuses the
         # v0.3 character estimator; its accuracy is explicitly approximate.
         context_estimate = tokens if route == "api" else (input_estimate + 3) // 4 + output_limit

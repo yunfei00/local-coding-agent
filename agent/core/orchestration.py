@@ -631,6 +631,8 @@ class TaskService:
             current["last_error"] = {"code":getattr(exc, "code", "TASK_TIMEOUT"), "role":getattr(exc, "role", None), "phase":current["status"]}
             if isinstance(exc, BudgetExceeded) and exc.details:
                 current["last_error"]["budget"] = exc.details
+            if isinstance(getattr(exc,'context_details',None),dict):
+                current['last_error']['context'] = exc.context_details
             self.runtime.save(current)
             with suppress(Exception):
                 await update("paused", redact_text(str(exc), exact_secrets=self.server._exact_secrets()))
