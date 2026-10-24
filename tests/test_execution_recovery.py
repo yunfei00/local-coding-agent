@@ -72,6 +72,9 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(model.seen),50)
         self.assertTrue(any(e['type']=='turn.completed' for e in self.client.messages))
         self.assertIn('return a + b',(self.repo/'calculator.py').read_text())
+        for messages in model.seen:
+            self.assertEqual(sum(m.get('role')=='system' and 'Current execution metadata' in str(m.get('content'))
+                for m in messages),1)
         self.assertTrue(any(c['tool']=='run_command' and c['status']=='succeeded' and c['exit_code']==0
             for p in self.server.store.task_plans.list_for_thread(self.thread.id)
             for c in self.server.store.task_plans.executions(p['id'])))
@@ -89,6 +92,26 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(after['calls'],before['calls'])
         self.assertEqual(after['reserved_tokens'],before['reserved_tokens'])
         self.assertGreaterEqual(after['limits']['tokens'],before['limits']['tokens'])
+
+    def test_live_process_observation_survives_compaction_without_other_owner_data(self):
+        from types import SimpleNamespace
+        from agent.core.execution import execution_observation
+        from agent.core.agent_loop import ToolLoopGuard
+        from agent.core.context import ContextBudgetManager
+        own=SimpleNamespace(id='process-owned',owner='turn',state='running',process=SimpleNamespace(pid=321,returncode=None))
+        other=SimpleNamespace(id='process-PRIVATE',owner='different-turn',state='running',process=SimpleNamespace(pid=999,returncode=None))
+        state=execution_observation(ToolLoopGuard(),SimpleNamespace(sessions={'own':own,'other':other}),'turn',single_agent=True)
+        messages=[{'role':'system','content':'Original safety rules'},{'role':'user','content':'Repair and verify actual application'}]
+        for n in range(8):
+            messages.extend([{'role':'assistant','content':'Inspected source '+str(n),'tool_calls':[{'id':str(n),'type':'function','function':{'name':'read_file','arguments':'{}'}}]},
+                {'role':'tool','tool_call_id':str(n),'content':'source '*3000}])
+        fitted=ContextBudgetManager(context_window_tokens=4096,reserved_output_tokens=512).fit_request(
+            [*messages,state],tools=[],output_limit=512,history_messages_total=0)
+        encoded=json.dumps(fitted.messages)
+        self.assertIn('process-owned',encoded)
+        self.assertNotIn('process-PRIVATE',encoded)
+        self.assertIn('Repair and verify actual application',encoded)
+        self.assertIn('independent verification',encoded)
 
     async def test_budget_is_persistent_and_does_not_send_another_request(self):
         self.server.continuation_policy['model_calls']=1

@@ -159,6 +159,10 @@ class WindowsJob:
                 else:
                     kernel.CloseHandle(handle)  # PID was reused outside this Job.
             self.terminate()
+            # All subsequent waits use retained process handles. Release the
+            # kill-on-close Job now as well: keeping it until after confirmation
+            # leaves the fallback kill action behind the very wait it protects.
+            self.close()
             deadline = time.monotonic()+timeout
             while True:
                 states = [kernel.WaitForSingleObject(handle,0) for _,handle in handles]
