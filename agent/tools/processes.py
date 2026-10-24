@@ -142,6 +142,7 @@ class ProcessSession:
                   "log_path": str(self.directory / "output.jsonl"), "log_truncated": self.log_truncated,
                   "output_truncated": self.output_truncated,
                   "output_drain_timed_out": self.error == "OUTPUT_DRAIN_TIMEOUT",
+                  "job_cleanup":self.job.last_cleanup,
                   "error_code": {"timed_out":"COMMAND_TIMEOUT", "output_error":"COMMAND_OUTPUT_FAILED", "failed":"COMMAND_EXIT_NONZERO", "cleanup_failed":"PROCESS_CLEANUP_FAILED"}.get(self.state),
                   "metadata_path": str(self.directory / "process.json"), "stream": self.stream.snapshot()})
 
@@ -317,7 +318,8 @@ class ProcessManager:
                 if cleanup_stage == 'job_exit_confirmation' and isinstance(exc,TimeoutError):
                     s.cleanup_detail = str(exc)[:400]
                 raise ToolError('PROCESS_CLEANUP_FAILED',
-                    f'Owned process cleanup failed at {cleanup_stage}: {type(exc).__name__}') from exc
+                    f'Owned process cleanup failed at {cleanup_stage}: {type(exc).__name__}',
+                    details={'cleanup_stage':cleanup_stage,'job_cleanup':s.job.last_cleanup}) from exc
             finally:
                 s.job.close()
                 for reader in s.readers:

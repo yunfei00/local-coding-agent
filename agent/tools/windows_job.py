@@ -144,7 +144,7 @@ class WindowsJob:
         user.EnumWindows(visit,0)
         return requested
 
-    def terminate_and_wait_sync(self, timeout=10) -> None:
+    def terminate_and_wait_sync(self, timeout=30) -> None:
         """Wait for the owned process handles, not merely a queued kill signal.
 
         Job termination is asynchronous. Chromium descendants can still hold
@@ -222,7 +222,7 @@ class WindowsJob:
             for _,handle in handles:
                 kernel.CloseHandle(handle)
 
-    async def terminate_and_wait(self, timeout=10) -> None:
+    async def terminate_and_wait(self, timeout=30) -> None:
         # Cancellation must not close the Job while its confirmation thread is
         # still using retained kernel handles. The wait itself is bounded.
         waiter = asyncio.create_task(asyncio.to_thread(self.terminate_and_wait_sync, timeout))

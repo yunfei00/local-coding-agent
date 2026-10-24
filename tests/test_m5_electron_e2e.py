@@ -150,6 +150,8 @@ class ElectronE2ETests(unittest.IsolatedAsyncioTestCase):
             self.action('desktop_screenshot',share_with_model=True),self.stop,tool('git_diff'),ProviderChunk(content='Input repaired; independently verify saving',done=True),
             feedback,tool('apply_patch',path='src/App.tsx',old_text="setStatus('Not saved');",new_text="setStatus('Saved: '+value);"),*checks,tool('git_diff'),ProviderChunk(content='Second repair; run the frozen GUI contract',done=True)])
         failures=[{'tool':e['payload']['name'],'error':e['payload']['result'].get('error'),
+                   'cleanup_stage':e['payload']['result'].get('cleanup_stage'),
+                   'job_cleanup':e['payload']['result'].get('job_cleanup'),
                    'summary':e['payload']['result'].get('summary','')[:500]}
                   for e in self.client.messages if e['type']=='tool.completed' and not e['payload']['result'].get('ok')]
         self.assertEqual(task['status'],'awaiting_approval',{'task_error':task.get('last_error') or task['reason'],'failed_tools':failures})
