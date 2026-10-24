@@ -102,7 +102,7 @@ class LiveAcceptanceGuards(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'BUDGET_EXHAUSTED'):
                 live.allocate_session(session,'qwen3.8-flash',12)
 
-    def test_preparation_preserves_fixture_and_user_data_without_decryption(self):
+    def test_preparation_preserves_fixture_and_user_storage_without_copying_secrets(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             source = root / 'original';source.mkdir()
@@ -118,7 +118,8 @@ class LiveAcceptanceGuards(unittest.TestCase):
             manifest = json.loads(live.prepare(source,normalized,profile,profile,12,isolated).read_text())
             self.assertNotIn('opaque-test-ciphertext',json.dumps(manifest))
             self.assertEqual((source/'model-secrets.json').read_bytes(),encrypted)
-            self.assertEqual((isolated/'data/model-secrets.json').read_bytes(),encrypted)
+            self.assertFalse((isolated/'data/model-secrets.json').exists())
+            self.assertEqual(Path(manifest['credential_data']),source.resolve())
             app = (isolated/'fixture/src/App.tsx').read_text()
             self.assertIn('disabled={true}',app)
             self.assertIn("setStatus('Not saved');",app)

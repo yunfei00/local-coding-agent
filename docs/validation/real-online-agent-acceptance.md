@@ -14,7 +14,7 @@
 
 默认只读 `%APPDATA%\local-coding-agent-desktop\local-coding-agent.sqlite3` 的公开模型目录，不复制用户数据库、Thread、消息或公司文件。精确选择已保存的 Model ID；同名在线 Profile 有多个时必须显式提供 ID。不猜测端点、不测试其他模型、不静默更换收费模型。
 
-真实执行时，只有原始 `model-secrets.json`、`provider-secrets.json` 的密文复制到本机当前用户的临时应用目录。原 Electron main 的 safeStorage 读取和既有 `task.credentials.update` 负责凭据同步；控制器不自行解密、不返回 Key，不绕过操作系统保护。仅当 `task.credential.status` 明确为 os_protected 且当前连接已配置时才启动 Task。结束后删除临时密文副本。
+真实执行时，Electron 保持原当前用户的 userData / safeStorage 上下文，使用既有读取与 `task.credentials.update` 接口；Agent 通过独立 `LCA_DATA_DIR` 使用全新的临时数据库。密钥文件和 OS 加密上下文不复制、不自行解密、不返回 Key。仅当 `task.credential.status` 明确为 os_protected 且当前连接已配置时才启动 Task。正常 Electron 日志/浏览器运行数据可能更新，原用户 SQLite、模型配置及凭据不被替换。不要同时启动使用同一 userData 的旧实例。
 
 当前入口使用受保护的本机模型连接凭据；不承诺自动识别任意环境变量名。没有合法可访问的凭据时输出 NOT RUN，不要求聊天粘贴 Key。
 
@@ -23,6 +23,8 @@
 用户授权总上界为 40 次真实请求、60,000 Token、60 秒单请求、900 秒活动执行时间、最多一次完整重试，不自动扩大预算。本机 Profile 没有已核实的人民币价格单位，因此不假称能保证 ¥3 金额硬上限；入口采用 **12 次全会话请求的更保守上限**。请求前仍由生产 BudgetGuard 按字节保守预留，可能早于服务端实际 Token 达到上限而暂停，不能绕过。
 
 `validation-reports/real-online-agent-session.json` 跨本入口重跑保留 Calls、Token 预留和时间。Qwen 与 GLM 共用该额度；中断不明确时保留整次分配，不自动退款或清零。每组最多两次完整执行。GLM 只有在同一会话 Qwen 已 PASS 且还有额度时才运行。普通 ExecutionBudget 默认限额保持不变。不要删除会话记录来继续付费调用。
+
+凭据前置失败、尚未创建 Task 的尝试仍归档，但不算完整任务重试；不会产生模型请求。初版入口将密文放进另一个 Electron userData 时没有建立可用的原安全上下文，因而没有证明凭据可用。最终入口通过原应用安全接口正常读取，未使用独立解密程序或复制 OS 主密钥。
 
 ## 可复制命令
 
@@ -77,3 +79,9 @@ git diff --check
 基线 M5 曾在 Stop 后的输出排空阶段超时，导致 TASK_INTERNAL_ERROR / PROCESS_CLEANUP_FAILED。`ProcessManager._monitor` 原先让 3 秒读取收尾超时直接逃出，同一失败协程在 close_owner 再次抛出。修复保留原 3 秒上限：进程树照常由 Job 终止，Stop 返回明确的 output_drain_timed_out / output_truncated；自然退出但输出未收全仍为 COMMAND_OUTPUT_FAILED，不能冒充测试通过。新增两个实际进程回归覆盖停机背压和正常退出背压，进程专项共 15 项（14 通过、1 POSIX 平台跳过）。
 
 随后串行 M5 重测暴露 Chromium 输入 16 字符仅保留 12 字符，任务以 DESKTOP_VALUE_MISMATCH / PLAN_TOOLS_UNRESOLVED 暂停。原固定 10ms 逐字符间隔在繁忙的 React 渲染环境仍可能丢字。改为每个 Unicode 字符只发送一次，连续两次 UIA 读取确认实际前缀后才发送下一个字符；每次继续检查精确 RuntimeId 与前台窗口，等待最长 3 秒并受原工具总超时约束。缺字不会自动补发，既不关闭审批也不使用剪贴板或 JS 注入。原生非 Chromium Edit 保持 ValuePattern 路径。实际 M5 用例同时检查 each_prefix 证据。
+
+前缀确认后的 M5 主流程通过，但临时目录清理出现 Chromium 文件锁；Ubuntu CI 又捕获已发 SIGKILL、后代仍短暂存活的竞态。WindowsJob 现在在终止前持有本 Job 的进程句柄、终止后有界等待句柄信号，避免 PID 重用，并在确认完成后关闭 Job；POSIX 等待原进程组没有非僵尸成员。不以信号已发送冒充已退出。[Windows Job 终止语义](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-terminatejobobject)及[进程列表接口](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-queryinformationjobobject)为实现依据。
+
+首次真实 Qwen Task：`e8f3c2e1-799d-41aa-9d87-70c7ea5cdba8`。Profile `224a7892-28cb-4d24-8c0f-280d35713725`，Connection `763c8386-7de8-47a9-bd40-9a48edbfd02f`。2 次 HTTP 200 / SSE / tool_calls，服务端输入 10563、输出 309、缓存 4096（为输入的子集，不重复相加）；调用了 10 个真实读取/目录工具，没有修改文件。随后 MODEL_CONTEXT_LIMIT 暂停，不能算修复或 GUI PASS。
+
+根因：原 ContextBudgetManager 按字符近似 Token 裁剪且不扣除工具 Schema，而 Task BudgetGuard 按 UTF-8 字节保守检查整包。真实读取多个文件后，上游认为仍有空间，下游已超默认 32768 的保守窗口。修复在原 ContextBudgetManager 内增加请求级裁剪，复用原工具交换分组，使用与 BudgetGuard 相同的 sizing 函数并计入 Schema、输出、JSON 开销。只裁剪上下文，不提高窗口、不提高任务预算、不丢弃工具调用头或绕过最终预检。RoutedProvider 同时公开实际 Profile 输出上限，避免执行预算误用 Chat 预留值。新增 3 项测试含真实 HTTP Mock → 大文件读取 → 原工具修改 → unittest → Diff → awaiting_approval；原 Context 5 项回归亦通过。最终完整重试及门禁记录待补充。

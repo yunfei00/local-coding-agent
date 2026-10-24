@@ -39,7 +39,7 @@ def allocate_session(path, model, requested_calls):
     attempts = state['attempts']
     if any(a['state'] == 'reserved' for a in attempts):
         raise ValueError('PREVIOUS_ATTEMPT_UNSETTLED: no automatic retry or reservation refund')
-    if sum(a['model'] == model for a in attempts) >= 2:
+    if sum(a['model'] == model and bool(a.get('task_id')) for a in attempts) >= 2:
         raise ValueError('FULL_RETRY_LIMIT_REACHED')
     if model == 'glm-5.3' and not any(a['model'] == 'qwen3.8-flash' and a.get('result') == 'PASS' for a in attempts):
         raise ValueError('QWEN_ACCEPTANCE_REQUIRED_BEFORE_GLM')
@@ -62,7 +62,7 @@ def settle_session(path, report):
     if not report.get('task_id') or report.get('final_status') in {'paused','failed','cancelled','completed','awaiting_approval'}:
         attempt.update(state='settled', calls=usage.get('api_calls', report.get('paid_requests', 0)),
                        tokens=usage.get('reserved_tokens', 0), seconds=report.get('active_seconds', 0),
-                       result=report['result'])
+                       result=report['result'], task_id=report.get('task_id'))
     path.write_text(json.dumps(state, indent=2), encoding='utf-8')
     report['session'] = state
     archive = REPORT.with_name(f'real-online-agent-attempt-{len(state["attempts"])}.json')
@@ -110,10 +110,11 @@ def live_config(executor, vision, calls):
 
 
 def prepare(source_data, catalog, executor, vision, calls, temporary):
-    """Copy only public model metadata and still-encrypted credentials, same user.
+    """Copy only public model metadata, preserving the original credential context.
 
-    No user database/messages/files are copied. The real Electron main process
-    uses its existing safeStorage reader and credential synchronization IPC.
+    No user database/messages/secret files are copied. The real Electron main
+    process uses its existing userData safeStorage context and synchronization
+    IPC; its Agent database is separately isolated with LCA_DATA_DIR.
     """
     temporary = Path(temporary)
     data = temporary / 'data'
@@ -137,10 +138,8 @@ def prepare(source_data, catalog, executor, vision, calls, temporary):
         store.set_setting('chat.default_profile_id', executor['model_profile_id'])
     finally:
         store.connection.close()
-    for name in ('model-secrets.json', 'provider-secrets.json'):
-        if (source_data / name).is_file():
-            shutil.copy2(source_data / name, data / name)
     manifest = {'source': str(source), 'data': str(data), 'config': config,
+                'credential_data': str(source_data.resolve()),
                 'executor': {k: executor[k] for k in ('model_profile_id', 'connection_id', 'model_id')},
                 'vision': {k: vision[k] for k in ('model_profile_id', 'connection_id', 'model_id')},
                 'report': str(REPORT), 'call_limit': calls}
@@ -160,12 +159,15 @@ def run_controller(command, env, timeout=1020):
         job.resume(child.pid)
         return child.wait(timeout=timeout)
     finally:
-        if job:
-            job.terminate()
-            job.close()
-        if child.poll() is None:
-            child.kill()
-        child.wait(timeout=10)
+        try:
+            if job:
+                job.terminate_and_wait_sync()
+        finally:
+            if job:
+                job.close()
+            if child.poll() is None:
+                child.kill()
+            child.wait(timeout=10)
 
 
 def verify_disk(report):
@@ -263,17 +265,12 @@ def main():
                 write_report(report)
                 env = {k:v for k,v in os.environ.items() if not k.startswith('LCA_') and k != 'ELECTRON_RUN_AS_NODE'}
                 env.update(PYTHONUTF8='1')
-                try:
-                    controller_started = True
-                    exit_code = run_controller(['node', str(Path(__file__).with_suffix('.cjs')), str(manifest)],env)
-                    report = json.loads(REPORT.read_text(encoding='utf-8'))
-                    verify_disk(report)
-                    if exit_code and report['result'] == 'PASS':
-                        report.update(result='FAIL', reason='CONTROLLER_EXIT_FAILED')
-                finally:
-                    # Never retain temporary encrypted credential copies in reports.
-                    for name in ('model-secrets.json','provider-secrets.json'):
-                        (Path(temporary) / 'data' / name).unlink(missing_ok=True)
+                controller_started = True
+                exit_code = run_controller(['node', str(Path(__file__).with_suffix('.cjs')), str(manifest)],env)
+                report = json.loads(REPORT.read_text(encoding='utf-8'))
+                verify_disk(report)
+                if exit_code and report['result'] == 'PASS':
+                    report.update(result='FAIL', reason='CONTROLLER_EXIT_FAILED')
     except Exception as exc:
         # No traceback/request objects/environment dump (may contain secrets).
         if controller_started and REPORT.exists():

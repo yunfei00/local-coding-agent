@@ -97,7 +97,7 @@ async function main(manifest) {
   };
   const save = extra => fs.writeFileSync(manifest.report,JSON.stringify({...initial,...extra},null,2));
   try {
-    const environment = {...process.env, LCA_DESKTOP_DATA_DIR:manifest.data, LCA_DATA_DIR:manifest.data,
+    const environment = {...process.env, LCA_DESKTOP_DATA_DIR:manifest.credential_data, LCA_DATA_DIR:manifest.data,
       LCA_HEADLESS_SMOKE:'0', LCA_OPENAI_API_KEY:'', LCA_PROVIDER:'openai_compatible', LCA_OPENAI_MODEL:'',
       LCA_OPENAI_BASE_URL:'http://127.0.0.1:1/v1'};
     delete environment.ELECTRON_RUN_AS_NODE;
