@@ -102,6 +102,22 @@ class LiveAcceptanceGuards(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'BUDGET_EXHAUSTED'):
                 live.allocate_session(session,'qwen3.8-flash',12)
 
+    def test_explicit_authorized_update_preserves_all_existing_usage(self):
+        with tempfile.TemporaryDirectory() as temp:
+            session = Path(temp)/'session.json'
+            session.write_text(json.dumps({'call_ceiling':12,'attempts':[
+                {'model':'qwen3.8-flash','task_id':'first','state':'settled','result':'FAIL','calls':2,'tokens':10872,'seconds':10},
+                {'model':'qwen3.8-flash','task_id':'retry','state':'settled','result':'FAIL','calls':4,'tokens':25729,'seconds':29}]}))
+            with self.assertRaisesRegex(ValueError,'RETRY_LIMIT'):
+                live.allocate_session(session,'qwen3.8-flash',12)
+            remaining = live.allocate_session(session,'qwen3.8-flash',40,200000,3,True)
+            self.assertEqual(remaining,{'calls':34,'tokens':163399,'seconds':861})
+            updated = json.loads(session.read_text())
+            self.assertEqual(updated['attempts'][0]['calls'],2)
+            self.assertEqual(updated['budget_updates'][0]['used_tokens'],36601)
+            profile = catalog()['profiles'][0]
+            self.assertEqual(live.live_config(profile,profile,34,163399,True)['budget']['api_calls'],34)
+
     def test_preparation_preserves_fixture_and_user_storage_without_copying_secrets(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

@@ -69,6 +69,7 @@ function finalResult(task, tools) {
     && observation?.observations?.length > 0 && observation.errors?.length === 0;
   return {result:passed ? 'PASS' : 'FAIL', reason:task.last_error?.code || task.reason || task.status,
     last_error:task.last_error || null,
+    status_reason:task.reason,
     task_id:task.id, final_status:task.status, workspace:task.workspace,
     acceptance_baseline:task.acceptance_baseline, usage:task.usage, calls,
     paid_requests:calls.filter(c => c.request_sent).length,

@@ -519,10 +519,14 @@ class TaskService:
                         plan_id=plan_id, authorization_prompt=goal, single_agent=single, vision_observer=vision_observer)
                     outcome = relay.outcome or {"type": "turn.failed", "payload": {"code": "INTERRUPTED", "message": "Loop interrupted"}}
                     code = outcome["payload"].get("code", "")
-                    if single and outcome["type"] != "turn.completed":
-                        raise ProviderError(code or "SINGLE_AGENT_INTERRUPTED", outcome["payload"].get("message", "Single Agent did not complete; inspect tool and request diagnostics"))
-                    if code in {"BUDGET_EXHAUSTED", "MODEL_TIMEOUT", "OLLAMA_UNAVAILABLE", "OLLAMA_STREAM_FAILED", "OPENAI_COMPATIBLE_AUTH_FAILED", "OPENAI_COMPATIBLE_RATE_LIMITED", "OPENAI_COMPATIBLE_STREAM_FAILED"}:
-                        raise ProviderError(code, outcome["payload"].get("message", code))
+                    if (single and outcome['type'] != 'turn.completed') or code in {"BUDGET_EXHAUSTED", "MODEL_TIMEOUT", "OLLAMA_UNAVAILABLE", "OLLAMA_STREAM_FAILED", "OPENAI_COMPATIBLE_AUTH_FAILED", "OPENAI_COMPATIBLE_RATE_LIMITED", "OPENAI_COMPATIBLE_STREAM_FAILED"}:
+                        failure = outcome['payload']
+                        error = (BudgetExceeded(failure.get('message',code),failure.get('budget')) if code == 'BUDGET_EXHAUSTED'
+                                 else ProviderError(code or 'SINGLE_AGENT_INTERRUPTED',failure.get('message','Single Agent did not complete; inspect diagnostics')))
+                        error.role = failure.get('role') or getattr(error,'role',None)
+                        if isinstance(failure.get('context'),dict):
+                            error.context_details = failure['context']
+                        raise error
                     await update("verifying", "Run commands directly, without model Tokens")
                     weakened = acceptance_changes(view.workspace.root, task['acceptance_baseline'])
                     if weakened:

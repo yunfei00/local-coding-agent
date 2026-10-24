@@ -2675,6 +2675,12 @@ class AgentServer:
                 )
             raise
         except ProviderError as exc:
+            from agent.core.budget import BudgetExceeded
+            failure_details = {}
+            if isinstance(exc,BudgetExceeded) and isinstance(exc.details,dict):
+                failure_details['budget'] = exc.details
+            if isinstance(getattr(exc,'context_details',None),dict):
+                failure_details['context'] = exc.context_details
             if active_plan and exc.code.startswith(('MODEL_','OPENAI_','OLLAMA_','EXECUTION_')):
                 current = self.store.task_plans.active_step(active_plan['id'])
                 if current:
@@ -2696,6 +2702,8 @@ class AgentServer:
                             "recoverable": exc.recoverable,
                             "provider": provider.provider_name,
                             "model": model,
+                            "role":getattr(exc,'role',None),
+                            **failure_details,
                         },
                         thread_id=thread_id,
                         turn_id=turn_id,

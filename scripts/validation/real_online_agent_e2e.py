@@ -16,6 +16,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -28,7 +29,7 @@ REPORT = ROOT / 'validation-reports/real-online-agent-acceptance.json'
 SESSION = REPORT.with_name('real-online-agent-session.json')
 
 
-def allocate_session(path, model, requested_calls):
+def allocate_session(path, model, requested_calls, requested_tokens=60000, attempt_limit=2, update=False):
     """One bounded acceptance session, including retries and both model groups.
 
     A controller crash keeps the full allocation reserved rather than resetting
@@ -36,15 +37,28 @@ def allocate_session(path, model, requested_calls):
     """
     state = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {
         'call_ceiling': min(12, requested_calls), 'attempts': []}
+    state.setdefault('token_ceiling',60000)
+    state.setdefault('attempt_limits',{})
     attempts = state['attempts']
     if any(a['state'] == 'reserved' for a in attempts):
         raise ValueError('PREVIOUS_ATTEMPT_UNSETTLED: no automatic retry or reservation refund')
-    if sum(a['model'] == model and bool(a.get('task_id')) for a in attempts) >= 2:
+    if update:
+        if not 1 <= requested_calls <= 40 or not 1 <= requested_tokens <= 200000 or not 1 <= attempt_limit <= 3:
+            raise ValueError('INVALID_EXPLICIT_SESSION_CAPS')
+        previous = {'calls':state['call_ceiling'],'tokens':state['token_ceiling'],
+                    'attempts':state['attempt_limits'].get(model,2)}
+        state.update(call_ceiling=requested_calls,token_ceiling=requested_tokens)
+        state['attempt_limits'][model] = attempt_limit
+        state.setdefault('budget_updates',[]).append({'at':datetime.now(timezone.utc).isoformat(),
+            'authorization':'explicit_cli_budget_update','previous':previous,
+            'new':{'calls':requested_calls,'tokens':requested_tokens,'attempts':attempt_limit},
+            'used_calls':sum(a['calls'] for a in attempts),'used_tokens':sum(a['tokens'] for a in attempts)})
+    if sum(a['model'] == model and bool(a.get('task_id')) for a in attempts) >= state['attempt_limits'].get(model,2):
         raise ValueError('FULL_RETRY_LIMIT_REACHED')
     if model == 'glm-5.3' and not any(a['model'] == 'qwen3.8-flash' and a.get('result') == 'PASS' for a in attempts):
         raise ValueError('QWEN_ACCEPTANCE_REQUIRED_BEFORE_GLM')
     remaining = {'calls': min(requested_calls, state['call_ceiling'] - sum(a['calls'] for a in attempts)),
-                 'tokens': 60000 - sum(a['tokens'] for a in attempts),
+                 'tokens': min(requested_tokens,state['token_ceiling'] - sum(a['tokens'] for a in attempts)),
                  'seconds': int(900 - sum(a['seconds'] for a in attempts))}
     if any(v <= 0 for v in remaining.values()):
         raise ValueError('LIVE_SESSION_BUDGET_EXHAUSTED')
@@ -93,23 +107,25 @@ def select_profile(catalog, model, explicit=None, *, vision=False):
     return profile
 
 
-def live_config(executor, vision, calls):
+def live_config(executor, vision, calls, tokens=60000, extended=False):
     if isinstance(calls, bool) or not isinstance(calls, int) or not 1 <= calls <= 40:
         raise ValueError('Live acceptance allows 1..40 calls')
     # Currency/price units are not recorded in old profiles. Do not invent CNY
     # pricing or claim a monetary hard cap. Use a stricter request ceiling.
-    if calls > 12:
+    if calls > 12 and not extended:
         raise ValueError('UNVERIFIED_CNY_PRICING: maximum 12 calls, no automatic increase')
+    if isinstance(tokens,bool) or not isinstance(tokens,int) or not 1 <= tokens <= (200000 if extended else 60000):
+        raise ValueError('INVALID_LIVE_TOKEN_LIMIT')
     return validate_config({'strategy': 'single-agent',
         'roles': {r: {'model_profile_id': executor['model_profile_id']}
                   for r in ('planner', 'executor', 'reviewer', 'escalation')},
         'vision_profile_id': vision['model_profile_id'],
         'budget': {'api_calls': calls, 'global_api_calls': calls,
-                   'api_tokens': 60000, 'global_api_tokens': 60000,
+                   'api_tokens': tokens, 'global_api_tokens': tokens,
                    'request_seconds': 60, 'task_seconds': 900, 'local_repairs': 3}})
 
 
-def prepare(source_data, catalog, executor, vision, calls, temporary):
+def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=60000, extended=False):
     """Copy only public model metadata, preserving the original credential context.
 
     No user database/messages/secret files are copied. The real Electron main
@@ -130,7 +146,7 @@ def prepare(source_data, catalog, executor, vision, calls, temporary):
     profiles = [p for p in catalog['profiles'] if p['model_profile_id'] in selected]
     connections = [c for c in catalog['connections']
                    if c['connection_id'] in {p['connection_id'] for p in profiles}]
-    config = live_config(executor, vision, calls)
+    config = live_config(executor, vision, calls,tokens,extended)
     store = SQLiteStore(data)
     try:
         store.set_setting(KEY, json.dumps({'connections': connections, 'profiles': profiles}))
@@ -215,7 +231,7 @@ def write_report(report):
     lines = ['# 真实在线 Agent 验收', '', f"结果：{report['result']}",
              f"原因：{report.get('reason', '')}", '',
              '真实推理与 Mock 回归分别报告；没有请求不计为在线通过。', '',
-             '费用未知：未假设人民币定价，使用最多 12 次请求的更保守上限。', '',
+             '费用未知：默认最多 12 次；只有明确授权的额度更新才能提高，上限及既有用量见 session。', '',
              '```json', json.dumps({k:v for k,v in report.items() if k not in ('tools','disk_evidence','verification_history')},
                                  ensure_ascii=False, indent=2), '```']
     REPORT.with_suffix('.md').write_text('\n'.join(lines), encoding='utf-8')
@@ -229,6 +245,9 @@ def main():
     parser.add_argument('--executor-profile')
     parser.add_argument('--vision-profile')
     parser.add_argument('--max-calls', type=int, default=12)
+    parser.add_argument('--max-tokens', type=int, default=60000)
+    parser.add_argument('--max-full-attempts', type=int, default=2)
+    parser.add_argument('--authorize-budget-update', action='store_true',help='Explicit user authorization required; preserves all prior usage')
     args = parser.parse_args()
     allocated = False
     controller_started = False
@@ -239,7 +258,7 @@ def main():
         catalog = load_catalog(args.data_dir)
         executor = select_profile(catalog, args.model, args.executor_profile)
         vision = select_profile(catalog, 'qwen3.8-flash', args.vision_profile, vision=True)
-        config = live_config(executor, vision, args.max_calls)
+        config = live_config(executor, vision, args.max_calls,args.max_tokens,args.authorize_budget_update)
         report.update(executor={k:executor[k] for k in ('model_profile_id','connection_id','model_id')},
                       vision={k:vision[k] for k in ('model_profile_id','connection_id','model_id')}, limits=config['budget'])
         from agent.desktop.session import require_interactive_session
@@ -251,9 +270,11 @@ def main():
             # Fresh isolated state, ordinary execution budget defaults preserved.
             with tempfile.TemporaryDirectory(prefix='lca-live-m5-') as temporary:
                 REPORT.parent.mkdir(exist_ok=True)
-                remaining = allocate_session(SESSION, args.model, args.max_calls)
+                remaining = allocate_session(SESSION, args.model, args.max_calls,args.max_tokens,
+                                             args.max_full_attempts,args.authorize_budget_update)
                 allocated = True
-                manifest = prepare(args.data_dir, catalog, executor, vision, remaining['calls'], temporary)
+                manifest = prepare(args.data_dir, catalog, executor, vision, remaining['calls'], temporary,
+                                   tokens=remaining['tokens'],extended=args.authorize_budget_update)
                 document = json.loads(manifest.read_text(encoding='utf-8'))
                 document['config']['budget'].update(api_tokens=remaining['tokens'],global_api_tokens=remaining['tokens'],task_seconds=remaining['seconds'])
                 # Settings and Task both receive the reduced remaining global cap.

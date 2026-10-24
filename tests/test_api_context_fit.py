@@ -50,6 +50,12 @@ class ApiContextFitTests(unittest.TestCase):
 
 class ApiContextTaskTests(unittest.IsolatedAsyncioTestCase):
     async def test_large_reads_then_real_patch_unittest_diff_through_http_task(self):
+        await self.scenario(4)
+
+    async def test_mid_execution_budget_failure_keeps_field_values_and_role(self):
+        await self.scenario(1)
+
+    async def scenario(self,max_calls):
         with tempfile.TemporaryDirectory(prefix='api-context-') as temporary:
             root = Path(temporary)
             with patch.dict(os.environ,{'LCA_DATA_DIR':str(root/'data'),'LCA_OPENAI_API_KEY':''}):
@@ -87,7 +93,7 @@ class ApiContextTaskTests(unittest.IsolatedAsyncioTestCase):
                 site = web.TCPSite(http,'127.0.0.1',0);await site.start()
                 port = site._server.sockets[0].getsockname()[1]
                 config = validate_config({'strategy':'single-agent','roles':{'executor':{'model_profile_id':'coder'}},
-                    'budget':{'api_calls':4,'api_tokens':60000,'global_api_calls':4,'global_api_tokens':60000},
+                    'budget':{'api_calls':max_calls,'api_tokens':60000,'global_api_calls':4,'global_api_tokens':60000},
                     'verification_commands':[command,'git diff --check']})
                 catalog = {'connections':[{'connection_id':'http','display_name':'HTTP Mock only','enabled':True,
                     'provider_type':'openai_compatible','base_url':f'http://127.0.0.1:{port}/v1','credential_reference':None}],
@@ -99,6 +105,15 @@ class ApiContextTaskTests(unittest.IsolatedAsyncioTestCase):
                         'payload':{'goal':'Read calculator and large-a.txt and large-b.txt, repair addition, run unittest and inspect Diff.', 'config':config}},set())
                     await asyncio.wait_for(asyncio.gather(*list(server.active_turns.values())),120)
                     task = server.tasks.runtime.list(thread.id)[0]
+                    if max_calls==1:
+                        self.assertEqual(task['status'],'paused',task['reason'])
+                        self.assertEqual(len(requests),1)
+                        error = task['last_error']
+                        self.assertEqual(error['role'],'executor')
+                        self.assertEqual(error['budget']['field'],'api_calls')
+                        self.assertEqual((error['budget']['limit'],error['budget']['used'],error['budget']['required']),(1,1,1))
+                        self.assertFalse(error['budget']['request_sent'])
+                        return
                     self.assertEqual(task['status'],'awaiting_approval',task['reason'])
                     self.assertEqual(len(requests),4)
                     self.assertTrue(all(v['ok'] for v in task['verification']))
