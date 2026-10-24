@@ -1,6 +1,6 @@
 # Local Coding Agent
 
-M5 增加真实 Electron + React + TypeScript 双缺陷验收工程、Task Timeline 与失败/成功截图入口；修复 Chromium 受控输入、观察刷新及 GUI 启动契约保护。见 [M5 使用](docs/m5/user-guide.md)、[端到端验收](docs/m5/end-to-end-acceptance.md)、[实验工程](manual-fixtures/m5-electron-e2e/README.md)。真实在线自主推理本轮 NOT RUN，不发布 Tag/安装包。
+M5 增加真实 Electron + React + TypeScript 双缺陷验收工程、Task Timeline 与失败/成功截图入口；修复 Chromium 受控输入、观察刷新及 GUI 启动契约保护。见 [M5 使用](docs/m5/user-guide.md)、[端到端验收](docs/m5/end-to-end-acceptance.md)、[实验工程](manual-fixtures/m5-electron-e2e/README.md)。新增真实在线实测见 [有界在线验收](docs/validation/real-online-agent-acceptance.md)：已发生真实推理和源码修改，完整闭环尚未通过，不发布 Tag/安装包。
 
 M4 全面修复统一了 Chat/Task 的连接和模型目录，支持独立 Vision Observer、真实窗口截图与冻结任务配置。见 [修复与用法](docs/m4/complete-fixes.md)、[验收分类](docs/m4/complete-validation.md)、[阶段能力矩阵](docs/capability-matrix.md)。真实在线推理与 HTTP Mock/真实 GUI 分开记录，本轮不发布安装包。
 
@@ -26,7 +26,7 @@ M2 增加统一终端与受管理进程工具 `start_process` / `read_process` /
 
 Task → Task strategy 选择 **Single Agent (online)**，在 Models and budget 中绑定一个 OpenAI Compatible 的 **executor task profile**，填写目标后启动。模型直接读取文件、执行终端、修改代码、接收真实工具结果并继续调用工具；无需配置 Planner、Reviewer 或本地模型。任务仍在受管理 Worktree 中执行，完成后由真实命令独立验证并展示 Diff；支持暂停、取消、检查后恢复。
 
-沿用已有 API 调用上限；多轮工具任务需要足够的调用次数，默认 3 次可能提前停止。切换模式不修改用户显式预算。Key 继续使用桌面安全存储，不写入任务配置。详见 [M1 能力与架构审计](docs/m1/architecture-audit.md)、[验收记录](docs/m1/acceptance.md)、[M2–M5 接口规划](docs/m1/roadmap.md)。本阶段不创建 Tag、Release 或安装包。
+已有显式预算继续保留；本轮源码的长任务默认额度为每任务 200 次 API、1,000 万 Token、2 小时。旧小额度可在 Settings/Task 点击 Use long task budget；旧步骤/工具上限在 Settings → Agent 点击 Use long task execution limits 后保存。循环、失败、审批与停止保护保留，切换模式不修改用户显式预算。Key 继续使用桌面安全存储，不写入任务配置。详见 [预算说明](docs/v0.4/budget-control.md)、[M1 能力与架构审计](docs/m1/architecture-audit.md)、[验收记录](docs/m1/acceptance.md)、[M2–M5 接口规划](docs/m1/roadmap.md)。本阶段不创建 Tag、Release 或安装包。
 
 ## v0.4 Local-first Autonomous Coding
 

@@ -77,7 +77,7 @@ ollama list
 4. 密码框输入公司分配的 Key，Save / clear connection key，再 Save model configuration。Key 不写入工程或配置 JSON。无 Key 的网关可保留空凭据。
 5. 获取模型列表，添加两个获准的 API 模型；网关不支持列表时手动填实际 Model ID。根据服务文档配置上下文、输出限制、工具模式和价格。
 6. 四个下拉框均能看到全部模型。推荐 Planner/Executor 选择本地编码模型、Reviewer 选择另一本地模型、Escalation 选择强 API 模型。允许多个角色共享模型；可临时选择四个不同配置确认独立绑定，再恢复本地 Reviewer。
-7. Execution Policy 选 Local-first。预算初始 3 次、30000 Token、120 秒请求、3 次本地修复、1800 秒任务。费用上限需要两个价格；未知价格不虚构费用精度。
+7. Execution Policy 选 Local-first。本轮源码未配置预算时默认 200 次、1,000 万 Token、120 秒请求、3 次本地修复、7200 秒任务；全局默认 2,000 次、1 亿 Token。旧配置不会自动覆盖，可点击 Use long task budget 并保存；Settings → Agent 的 Use long task execution limits 提高旧步骤/工具额度。价格和费用上限保持原值，未知价格不虚构费用精度。
 8. Save model configuration，关闭并重新启动软件，核对连接、模型和四角色。切换旧 Provider 页不应改变这些角色。模型/连接删除前先解除角色引用。
 
 ## 场景 A：本地修复
@@ -137,4 +137,4 @@ Task 按需展开查看阶段、真实 Model call journal、API 次数/预留 To
 框架通过条件：自动化零失败、指定服务真实 HTTP 调用与回交成立、预算前置阻断成立、Windows UI 保存/重启成立、安装版和 Portable 可启动，文档及产物一致。公司业务能力另记：公司实际模型、网关认证/计费、网络代理与具体工程任务必须在公司环境核验。未运行的真实付费调用明确记“未验收”，不能用 Mock 数字冒充真实费用。
 ## M4/M5 源码更新
 
-当前源码的 Provider 与模型目录已统一；Single Agent、独立视觉、真实 Electron 实验工程和最新运行命令见 [M5 公司源码使用](../m5/user-guide.md) 和 [可复现实验工程](../../manual-fixtures/m5-electron-e2e/README.md)。M4/M5 不发布安装包，原 v0.4.2 安装版不包含本轮源码。真实付费推理本轮 NOT RUN，历史用户模型结果与本机 HTTP Mock/真实 GUI 分开记录。
+当前源码的 Provider 与模型目录已统一；Single Agent、独立视觉、真实 Electron 实验工程和最新运行命令见 [M5 公司源码使用](../m5/user-guide.md) 和 [可复现实验工程](../../manual-fixtures/m5-electron-e2e/README.md)。M4/M5 不发布安装包，原 v0.4.2 安装版不包含本轮源码。真实付费推理已有实际 Qwen 请求和源码修改，但完整在线闭环尚未通过；详细 Task ID、服务端 Token、阻断与可复制命令见 [真实在线验收](../validation/real-online-agent-acceptance.md)。该记录与本机 HTTP Mock/真实 GUI 回归分别报告，不能互相替代。
