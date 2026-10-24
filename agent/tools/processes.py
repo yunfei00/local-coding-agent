@@ -112,6 +112,7 @@ class ProcessSession:
                   "output_omitted": bool(self.chunks and cursor < self.chunks[0]["cursor"] - 1),
                   "log_path": str(self.directory / "output.jsonl"), "log_truncated": self.log_truncated,
                   "output_truncated": self.output_truncated,
+                  "output_drain_timed_out": self.error == "OUTPUT_DRAIN_TIMEOUT",
                   "error_code": {"timed_out":"COMMAND_TIMEOUT", "output_error":"COMMAND_OUTPUT_FAILED", "failed":"COMMAND_EXIT_NONZERO"}.get(self.state),
                   "metadata_path": str(self.directory / "process.json"), "stream": self.stream.snapshot()})
 
@@ -253,7 +254,18 @@ class ProcessManager:
                 s.job.terminate()
                 method = await terminate_process_tree(s.process)
                 if s.readers:
-                    reader_results = await asyncio.wait_for(asyncio.gather(*s.readers, return_exceptions=True), 3)
+                    try:
+                        reader_results = await asyncio.wait_for(asyncio.gather(*s.readers, return_exceptions=True), 3)
+                    except TimeoutError:
+                        # A slow/disconnected output consumer must not turn a
+                        # successful explicit Stop into an uncaught TimeoutError
+                        # that is thrown again on every scope cleanup. The Job
+                        # has already been terminated. Normal command completion
+                        # with incomplete output remains a verification failure.
+                        s.error, s.output_truncated = "OUTPUT_DRAIN_TIMEOUT", True
+                        if s.state == "running":
+                            reason, s.state = "output_drain_timeout", "output_error"
+                        reader_results = []
                     failures = [value for value in reader_results if isinstance(value, Exception)]
                     if failures and s.state == "running":
                         reason, s.state, s.error = "output_error", "output_error", type(failures[0]).__name__

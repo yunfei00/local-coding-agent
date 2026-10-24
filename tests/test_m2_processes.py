@@ -173,6 +173,31 @@ setInterval(()=>console.log('HEARTBEAT'),100);
         self.assertEqual(caught.exception.details['exit_code'],0)
         self.assertFalse(alive(caught.exception.details['data']['pid']))
 
+    async def test_stop_with_stalled_output_consumer_still_cleans_tree_and_owner(self):
+        receiving = asyncio.Event()
+        async def stalled(stream, text):
+            receiving.set()
+            await asyncio.Event().wait()
+        session = await self.tools.processes.launch({'command':'node tree.cjs'},owner='slow',on_raw_output=stalled)
+        pids = await wait_file(self.root/'pids.json')
+        await asyncio.wait_for(receiving.wait(),10)
+        stopped = await asyncio.wait_for(self.tools.processes.stop(session.id,owner='slow'),15)
+        self.assertEqual(stopped.data['state'],'stopped')
+        self.assertTrue(stopped.data['output_drain_timed_out'])
+        self.assertTrue(stopped.data['output_truncated'])
+        self.assertFalse(any(alive(pid) for pid in [session.process.pid,*pids.values()]))
+        self.assertEqual(len(await self.tools.processes.close_owner('slow')),1)
+        self.assertEqual(await self.tools.processes.close_owner('slow'),[])
+
+    async def test_normal_exit_with_stalled_output_consumer_is_not_test_pass(self):
+        async def stalled(stream, text):
+            await asyncio.Event().wait()
+        with self.assertRaises(ToolError) as caught:
+            await self.tools.execute('run_command',{'command':'node "child script.cjs" 0'},on_raw_output=stalled)
+        self.assertEqual(caught.exception.code,'COMMAND_OUTPUT_FAILED')
+        self.assertTrue(caught.exception.details['data']['output_drain_timed_out'])
+        self.assertFalse(alive(caught.exception.details['data']['pid']))
+
     @unittest.skipIf(os.name == 'nt', 'POSIX process group')
     async def test_sigterm_ignoring_descendant_is_killed_after_root_exit(self):
         (self.root/'stubborn.cjs').write_text("const {spawn}=require('node:child_process'); const fs=require('node:fs'); const p=spawn(process.env.LCA_M2_PYTHON,['-c',\"import signal,time,json,os; from pathlib import Path; signal.signal(signal.SIGTERM,signal.SIG_IGN); Path('ready.json').write_text(json.dumps({'pid':os.getpid()})); time.sleep(120)\"],{stdio:'inherit'}); setInterval(()=>{},1000);",encoding='utf-8')
