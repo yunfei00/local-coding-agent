@@ -8,10 +8,10 @@ import uuid
 
 from agent.llm.base import ProviderError
 
-DEFAULT_LIMITS = {"api_calls": 3, "api_tokens": 30000, "api_cost": None,
-                  "local_repairs": 3, "task_seconds": 1800, "request_seconds": 120,
-                  "verification_seconds": 120, "global_api_calls": 30,
-                  "global_api_tokens": 300000, "global_api_cost": None}
+DEFAULT_LIMITS = {"api_calls": 200, "api_tokens": 10000000, "api_cost": None,
+                  "local_repairs": 3, "task_seconds": 7200, "request_seconds": 120,
+                  "verification_seconds": 120, "global_api_calls": 2000,
+                  "global_api_tokens": 100000000, "global_api_cost": None}
 DEFAULT_LIMITS["planning_attempts"] = 4
 
 
@@ -43,6 +43,23 @@ class BudgetExceeded(ProviderError):
         self.role = details.get("role") if details else None
 
 
+def request_token_reservation(messages, tools, output_limit):
+    """Conservative billing reserve; model window occupancy is estimated separately."""
+    input_estimate = len(json.dumps({"messages":messages,"tools":tools or []},ensure_ascii=False).encode()) + 256
+    return input_estimate, input_estimate + output_limit
+
+
+def request_context_estimate(messages, tools, output_limit):
+    """Estimated model window occupancy, distinct from the hard billing reserve.
+
+    UTF-8 bytes are not tokens. Use a cautious two-byte heuristic for context
+    selection; provider context errors remain real failures. API call/token/cost
+    limits still reserve every UTF-8 byte before dispatch, without this divisor.
+    """
+    input_bytes, _ = request_token_reservation(messages,tools,output_limit)
+    return (input_bytes+1)//2 + output_limit
+
+
 class BudgetGuard:
     def __init__(self, runtime, plan_id: str, global_limits: dict):
         self.runtime, self.db, self.plan_id = runtime, runtime.db, plan_id
@@ -57,11 +74,10 @@ class BudgetGuard:
         if elapsed >= limits["task_seconds"]:
             raise BudgetExceeded("Task execution time exhausted")
         # UTF-8 bytes plus framing overhead deliberately over-reserve ordinary tokenizers.
-        input_estimate = len(json.dumps({"messages": messages, "tools": tools or []}, ensure_ascii=False).encode()) + 256
-        tokens = input_estimate + output_limit
+        input_estimate, tokens = request_token_reservation(messages, tools, output_limit)
         # API accounting stays byte-conservative. Local context fitting reuses the
         # v0.3 character estimator; its accuracy is explicitly approximate.
-        context_estimate = tokens if route == "api" else (input_estimate + 3) // 4 + output_limit
+        context_estimate = request_context_estimate(messages,tools,output_limit) if route == "api" else (input_estimate + 3) // 4 + output_limit
         if context_estimate > context_window:
             raise ProviderError("MODEL_CONTEXT_LIMIT", "Conservative request estimate exceeds model context. Reduce context or choose a larger configured window.")
         cost = (input_estimate * (input_price or 0) + output_limit * (output_price or 0)) / 1_000_000

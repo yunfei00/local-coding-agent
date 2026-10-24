@@ -213,7 +213,9 @@ class SingleAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(feedback[0]["error"]["code"])
 
     async def test_request_timeout_is_diagnosed_without_retrying_planning(self):
-        self.config["budget"]["request_seconds"] = 1
+        # Permit cold HTTP client setup; keep the request blocked and require
+        # one actual request, a timeout, and no planning retry.
+        self.config["budget"]["request_seconds"] = 3
         task = await self.start(["block"])
         self.assertEqual(task["status"], "paused")
         self.assertEqual(task["last_error"]["code"], "MODEL_TIMEOUT")

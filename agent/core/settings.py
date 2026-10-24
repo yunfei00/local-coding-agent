@@ -95,11 +95,11 @@ class RuntimeSettings:
             ),
             max_model_steps=_env_int(
                 "LCA_MAX_MODEL_STEPS",
-                16,
+                100,
             ),
             max_tool_calls=_env_int(
                 "LCA_MAX_TOOL_CALLS",
-                40,
+                512,
             ),
             max_blocked_repeats=_env_int(
                 "LCA_MAX_BLOCKED_REPEATS",

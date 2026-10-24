@@ -68,6 +68,34 @@ async def terminate_process_tree(process):
         os.killpg(process.pid, signal.SIGKILL)
     with suppress(asyncio.TimeoutError):
         await asyncio.wait_for(process.wait(), 3)
+    # SIGKILL is asynchronous too. The shell may already have exited while
+    # descendants still run. Verify only its process group; zombies are dead and
+    # have released their descriptors, even if init has not reaped them yet.
+    deadline = time.monotonic()+5
+    while True:
+        active = False
+        if Path('/proc').is_dir():
+            for item in Path('/proc').iterdir():
+                if not item.name.isdigit():
+                    continue
+                try:
+                    fields = (item/'stat').read_text(encoding='utf-8',errors='replace').rsplit(')',1)[1].split()
+                    if int(fields[2]) == process.pid and fields[0] not in {'Z','X'}:
+                        active = True
+                        break
+                except (FileNotFoundError, ProcessLookupError, PermissionError):
+                    continue
+        else:
+            try:
+                os.killpg(process.pid,0)
+                active = True
+            except ProcessLookupError:
+                pass
+        if not active:
+            break
+        if time.monotonic() >= deadline:
+            raise ToolError('PROCESS_CLEANUP_FAILED','Owned process group did not finish terminating')
+        await asyncio.sleep(.02)
     return "sigkill"
 
 
@@ -96,13 +124,14 @@ class ProcessSession:
     task: asyncio.Task | None = None
     readers: list = field(default_factory=list)
     error: str | None = None
+    cleanup_detail: str | None = None
     stopping: bool = False
     on_output: object = None
     on_raw_output: object = None
 
     def result(self, *, cursor=0):
         events = [c for c in self.chunks if c["cursor"] > cursor]
-        return ToolResult(ok=self.state not in {"failed", "timed_out", "output_error"},
+        return ToolResult(ok=self.state not in {"failed", "timed_out", "output_error", "cleanup_failed"},
             summary=f"Process {self.id}: {self.state}; exit={self.process.returncode}",
             stdout=self.stdout, stderr=self.stderr, exit_code=self.process.returncode,
             duration_ms=round((time.monotonic() - self.started) * 1000),
@@ -112,7 +141,9 @@ class ProcessSession:
                   "output_omitted": bool(self.chunks and cursor < self.chunks[0]["cursor"] - 1),
                   "log_path": str(self.directory / "output.jsonl"), "log_truncated": self.log_truncated,
                   "output_truncated": self.output_truncated,
-                  "error_code": {"timed_out":"COMMAND_TIMEOUT", "output_error":"COMMAND_OUTPUT_FAILED", "failed":"COMMAND_EXIT_NONZERO"}.get(self.state),
+                  "output_drain_timed_out": self.error == "OUTPUT_DRAIN_TIMEOUT",
+                  "job_cleanup":self.job.last_cleanup,
+                  "error_code": {"timed_out":"COMMAND_TIMEOUT", "output_error":"COMMAND_OUTPUT_FAILED", "failed":"COMMAND_EXIT_NONZERO", "cleanup_failed":"PROCESS_CLEANUP_FAILED"}.get(self.state),
                   "metadata_path": str(self.directory / "process.json"), "stream": self.stream.snapshot()})
 
 
@@ -246,22 +277,49 @@ class ProcessManager:
             reason, s.state, s.error = "output_error", "output_error", type(exc).__name__
         finally:
             s.stopping = True
+            cleanup_stage = 'termination_event'
             try:
                 if reason:
                     with suppress(Exception):
                         await self._emit(s, "process_terminating", reason=reason)
-                s.job.terminate()
+                cleanup_stage = 'job_exit_confirmation'
+                await s.job.terminate_and_wait()
+                cleanup_stage = 'root_exit_confirmation'
                 method = await terminate_process_tree(s.process)
+                cleanup_stage = 'output_drain'
                 if s.readers:
-                    reader_results = await asyncio.wait_for(asyncio.gather(*s.readers, return_exceptions=True), 3)
+                    try:
+                        reader_results = await asyncio.wait_for(asyncio.gather(*s.readers, return_exceptions=True), 3)
+                    except TimeoutError:
+                        # A slow/disconnected output consumer must not turn a
+                        # successful explicit Stop into an uncaught TimeoutError
+                        # that is thrown again on every scope cleanup. The Job
+                        # has already been terminated. Normal command completion
+                        # with incomplete output remains a verification failure.
+                        s.error, s.output_truncated = "OUTPUT_DRAIN_TIMEOUT", True
+                        if s.state == "running":
+                            reason, s.state = "output_drain_timeout", "output_error"
+                        reader_results = []
                     failures = [value for value in reader_results if isinstance(value, Exception)]
                     if failures and s.state == "running":
                         reason, s.state, s.error = "output_error", "output_error", type(failures[0]).__name__
                 if s.state == "running":
                     s.state = "exited" if s.process.returncode == 0 else "failed"
                 with suppress(Exception):
+                    cleanup_stage = 'exit_event'
                     await self._emit(s, "process_terminated" if reason else "process_exited", reason=reason,
                                      method=method, exit_code=s.process.returncode, duration_ms=round((time.monotonic()-s.started)*1000))
+                cleanup_stage = 'finished'
+            except Exception as exc:
+                # Keep the failing stage in scoped metadata. No command output,
+                # environment or credentials are included in this diagnosis.
+                s.error = f'PROCESS_CLEANUP_FAILED:{cleanup_stage}:{type(exc).__name__}'
+                s.state = 'cleanup_failed'
+                if cleanup_stage == 'job_exit_confirmation' and isinstance(exc,TimeoutError):
+                    s.cleanup_detail = str(exc)[:400]
+                raise ToolError('PROCESS_CLEANUP_FAILED',
+                    f'Owned process cleanup failed at {cleanup_stage}: {type(exc).__name__}',
+                    details={'cleanup_stage':cleanup_stage,'job_cleanup':s.job.last_cleanup}) from exc
             finally:
                 s.job.close()
                 for reader in s.readers:
@@ -271,7 +329,9 @@ class ProcessManager:
                 s.process._transport.close()
                 metadata = {"process_id": s.id, "pid": s.process.pid, "owner": s.owner, "state": s.state,
                             "exit_code": s.process.returncode, "shell": s.shell, "log_truncated": s.log_truncated,
-                            "error": s.error, "cleanup_reason": reason, "workspace": str(self.workspace.root),
+                            "error": s.error, "cleanup_stage": cleanup_stage, "cleanup_detail":s.cleanup_detail,
+                            "job_cleanup":s.job.last_cleanup,
+                            "cleanup_reason": reason, "workspace": str(self.workspace.root),
                             "started_at": s.started_at, "ended_at": time.time(),
                             "duration_ms": round((time.monotonic()-s.started)*1000)}
                 (s.directory / "process.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -303,7 +363,7 @@ class ProcessManager:
                     await self.stop(ident, owner=owner, reason="scope_finished")
                     results.append(s.result().data)
                 except Exception as exc:
-                    errors.append(type(exc).__name__)
+                    errors.append(f'{s.id}: {s.error or type(exc).__name__}')
                 finally:
                     self.sessions.pop(ident, None)
         if errors:

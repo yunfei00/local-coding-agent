@@ -180,6 +180,7 @@ class RoutedProvider:
         self.provider_name = provider.provider_name
         self.supports_vision = bool(getattr(provider, 'supports_vision',False))
         self.context_window = profile["context_window"] or provider.context_window
+        self.max_output_tokens = profile['output_limit']
         self.provider.context_window = self.context_window
         self.provider.max_output_tokens = profile["output_limit"]
         self.provider.request_timeout = router.config["budget"]["request_seconds"]

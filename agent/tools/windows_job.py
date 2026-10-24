@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import ctypes
+import asyncio
 from ctypes import wintypes
 import os
+import time
 
 
 class WindowsJob:
     def __init__(self, pid: int):
         self.handle = None
+        self.last_cleanup = {}
         if os.name != "nt":
             return
         kernel = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -111,6 +114,153 @@ class WindowsJob:
         if self.handle:
             if not self.kernel.TerminateJobObject(self.handle, 1):
                 raise ctypes.WinError(ctypes.get_last_error())
+
+    def _close_owned_windows(self, handles) -> int:
+        """Ask only this Job's visible windows to close before forced teardown.
+
+        No titles, controls or input are read. Retained process handles and a
+        fresh Job membership check prevent using a reused PID as authority.
+        This is part of stopping an owned process, not a general desktop tool.
+        """
+        user = ctypes.WinDLL('user32',use_last_error=True)
+        callback_type=ctypes.WINFUNCTYPE(wintypes.BOOL,wintypes.HWND,wintypes.LPARAM)
+        user.EnumWindows.argtypes=[callback_type,wintypes.LPARAM]
+        user.GetWindowThreadProcessId.argtypes=[wintypes.HWND,ctypes.POINTER(wintypes.DWORD)]
+        user.IsWindowVisible.argtypes=[wintypes.HWND]
+        user.PostMessageW.argtypes=[wintypes.HWND,wintypes.UINT,wintypes.WPARAM,wintypes.LPARAM]
+        owned=dict(handles)
+        requested=0
+        @callback_type
+        def visit(hwnd, _):
+            nonlocal requested
+            pid=wintypes.DWORD()
+            user.GetWindowThreadProcessId(hwnd,ctypes.byref(pid))
+            handle=owned.get(pid.value)
+            if handle and user.IsWindowVisible(hwnd) and self.kernel.WaitForSingleObject(handle,0)==258:
+                member=wintypes.BOOL()
+                if self.kernel.IsProcessInJob(handle,self.handle,ctypes.byref(member)) and member.value:
+                    requested += bool(user.PostMessageW(hwnd,0x0010,0,0))  # WM_CLOSE
+            return True
+        user.EnumWindows(visit,0)
+        return requested
+
+    def terminate_and_wait_sync(self, timeout=30) -> None:
+        """Wait for the owned process handles, not merely a queued kill signal.
+
+        Job termination is asynchronous. Chromium descendants can still hold
+        profile files after the original shell has exited. Snapshot only this
+        Job, retain kernel handles across termination, and never follow a reused
+        PID into an unrelated process.
+        """
+        if not self.handle:
+            return
+        kernel = self.kernel
+        kernel.QueryInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                                                    wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+        kernel.IsProcessInJob.argtypes = [wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
+        kernel.TerminateProcess.argtypes = [wintypes.HANDLE,wintypes.UINT]
+        kernel.GetExitCodeProcess.argtypes = [wintypes.HANDLE,ctypes.POINTER(wintypes.DWORD)]
+        capacity = 4096
+        buffer = ctypes.create_string_buffer(8 + capacity * ctypes.sizeof(ctypes.c_size_t))
+        if not kernel.QueryInformationJobObject(self.handle, 3, buffer, len(buffer), None):
+            self.terminate()
+            raise ctypes.WinError(ctypes.get_last_error())
+        count = ctypes.c_uint32.from_buffer(buffer,4).value
+        if count > capacity:
+            self.terminate()
+            raise OSError('Owned process inventory exceeded bounded cleanup capacity')
+        handles = []
+        terminatable=set()
+        started = time.monotonic()
+        try:
+            for index in range(count):
+                pid = ctypes.c_size_t.from_buffer(buffer,8 + index*ctypes.sizeof(ctypes.c_size_t)).value
+                handle = kernel.OpenProcess(0x101001, False, pid)  # SYNCHRONIZE | QUERY_LIMITED | TERMINATE
+                can_terminate=bool(handle)
+                if not handle and ctypes.get_last_error()==5:
+                    # Do not change privileges to obtain additional access.
+                    handle=kernel.OpenProcess(0x101000,False,pid)
+                if not handle:
+                    if ctypes.get_last_error() == 87:  # Already exited and removed.
+                        continue
+                    raise ctypes.WinError(ctypes.get_last_error())
+                member = wintypes.BOOL()
+                if not kernel.IsProcessInJob(handle,self.handle,ctypes.byref(member)):
+                    kernel.CloseHandle(handle)
+                    raise ctypes.WinError(ctypes.get_last_error())
+                if member.value:
+                    handles.append((pid,handle))
+                    if can_terminate:
+                        terminatable.add(handle)
+                else:
+                    kernel.CloseHandle(handle)  # PID was reused outside this Job.
+            graceful_started=time.monotonic()
+            close_requests=self._close_owned_windows(handles) if handles else 0
+            if close_requests:
+                graceful_deadline=time.monotonic()+3
+                while any(kernel.WaitForSingleObject(handle,0)==258 for _,handle in handles):
+                    if time.monotonic() >= graceful_deadline:
+                        break
+                    time.sleep(.02)
+            graceful={'graceful_window_close_requests':close_requests,
+                      'graceful_wait_seconds':round(time.monotonic()-graceful_started,3)}
+            self.terminate()
+            direct_requests=0
+            direct_errors={}
+            for pid,handle in handles:
+                if handle in terminatable and kernel.WaitForSingleObject(handle,0)==258:
+                    # Retained handles were verified as members of this Job;
+                    # never reopen a PID or follow arbitrary descendants here.
+                    if kernel.TerminateProcess(handle,1):
+                        direct_requests+=1
+                    else:
+                        direct_errors[str(pid)]=ctypes.get_last_error()
+            graceful.update(direct_termination_requests=direct_requests,
+                            direct_termination_errors=direct_errors)
+            # All subsequent waits use retained process handles. Release the
+            # kill-on-close Job now as well: keeping it until after confirmation
+            # leaves the fallback kill action behind the very wait it protects.
+            self.close()
+            deadline = time.monotonic()+timeout
+            while True:
+                states = [kernel.WaitForSingleObject(handle,0) for _,handle in handles]
+                if any(state not in (0,258) for state in states):
+                    raise ctypes.WinError(ctypes.get_last_error())
+                if 258 not in states:
+                    self.last_cleanup={**graceful,'confirmed_exit':True,'owned_process_count':len(handles),
+                                       'elapsed_seconds':round(time.monotonic()-started,3),'timeout_seconds':timeout}
+                    break
+                if time.monotonic() >= deadline:
+                    pending = [pid for (pid,_),state in zip(handles,states) if state==258]
+                    exit_codes={}
+                    for (pid,handle),state in zip(handles,states):
+                        if state==258:
+                            code=wintypes.DWORD()
+                            exit_codes[str(pid)]=code.value if kernel.GetExitCodeProcess(handle,ctypes.byref(code)) else None
+                    self.last_cleanup={**graceful,'confirmed_exit':False,'owned_process_count':len(handles),
+                                       'elapsed_seconds':round(time.monotonic()-started,3),'timeout_seconds':timeout,
+                                       'pending_owned_pids':pending[:16],'pending_exit_codes':exit_codes}
+                    raise TimeoutError(f'Owned process tree did not finish terminating before cleanup deadline; pending owned PIDs={pending[:16]}')
+                time.sleep(.02)
+        finally:
+            for _,handle in handles:
+                kernel.CloseHandle(handle)
+
+    async def terminate_and_wait(self, timeout=30) -> None:
+        # Cancellation must not close the Job while its confirmation thread is
+        # still using retained kernel handles. The wait itself is bounded.
+        waiter = asyncio.create_task(asyncio.to_thread(self.terminate_and_wait_sync, timeout))
+        cancelled = False
+        while not waiter.done():
+            try:
+                await asyncio.shield(waiter)
+            except asyncio.CancelledError:
+                cancelled = True
+        waiter.result()
+        if cancelled:
+            raise asyncio.CancelledError
 
     def close(self) -> None:
         if self.handle:

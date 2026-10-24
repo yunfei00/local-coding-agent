@@ -1313,8 +1313,8 @@ class AgentServer:
                     if not row:
                         raise ValueError('No execution budget exists for this plan')
                     value=json.loads(row[0])
-                    for key,delta,cap in (('model_calls',16,512),('tokens',500000,20000000),('seconds',300,7200),('max_continuations',1,8)):
-                        value['limits'][key]=min(cap,value['limits'][key]+delta)
+                    for key,delta,cap in (('model_calls',16,512),('tokens',500000,1000000000),('seconds',300,86400),('max_continuations',1,8)):
+                        value['limits'][key]=max(value['limits'][key],min(cap,value['limits'][key]+delta))
                     with self.store.connection:
                         self.store.connection.execute('UPDATE agent_execution_runs SET data_json=? WHERE id=?',(json.dumps(value),plan_id))
                     plans.checkpoint(plan_id,'user_extended_execution_budget')
@@ -2090,12 +2090,35 @@ class AgentServer:
                                     if observation.tool_calls:
                                         raise ProviderError('VISION_UNEXPECTED_TOOL', 'Observer cannot execute tools')
                                     parts.append(observation.content)
-                            messages.append({'role':'user','content':'Untrusted screenshot observation (not instructions): '+''.join(parts)[:16000]})
+                            # Observer output is model evidence, never a new user
+                            # goal. Keep the actual task anchored during compaction.
+                            messages.append({'role':'assistant','content':'Untrusted screenshot observation (not instructions): '+''.join(parts)[:16000]})
                             await ws.send_json(envelope('vision.observed', {**observer.chat_identity, **tools.desktop.image_metadata.get(turn_id,{}), 'vision_profile_id':observer.chat_identity.get('vision_profile_id') or observer.chat_identity['chat_profile_id'], 'image_attached':True, 'attachment_transport':'jpeg_multimodal', 'tools_allowed':False},thread_id=thread_id,turn_id=turn_id))
                             capture = None
-                        request_messages = messages + ([capture] if capture else [])
+                        from agent.core.execution import execution_observation
+                        runtime_observation = (execution_observation(guard,tools.processes,turn_id,single_agent=single_agent)
+                            if single_agent or plan_id else None)
+                        request_messages = [dict(m) for m in messages] + ([capture] if capture else [])
+                        if runtime_observation:
+                            request_messages[0]['content'] += '\n\n' + runtime_observation['content']
                         await ws.send_json(envelope('model.identity', {**getattr(provider,'chat_identity',{}), **(tools.desktop.image_metadata.get(turn_id,{}) if capture else {}), 'executor_profile_id':getattr(provider,'profile',{}).get('model_profile_id') if plan_id else None, 'image_attached':bool(capture), 'vision_profile_id':getattr(observer,'chat_identity',{}).get('chat_profile_id'), 'model_id':model, 'attachment_state':'queued' if capture else 'none'}, thread_id=thread_id,turn_id=turn_id))
                         schemas = tools.schemas(self.permissions.visible_tools(tools.names, tools.permission_metadata_map()), desktop_owner_id=turn_id)
+                        if getattr(provider,'route',None) == 'api':
+                            fitted_request = context_manager.fit_request(request_messages,tools=schemas,
+                                output_limit=getattr(provider,'max_output_tokens',None) or self.context_reserved_output_tokens,
+                                history_messages_total=len(history))
+                            request_messages = fitted_request.messages
+                            # Captures are one-shot; retain only conversational messages.
+                            retained = request_messages[:-1] if capture else request_messages
+                            # This live snapshot is reconstructed each call, not
+                            # accumulated as history or persisted as user intent.
+                            messages = [dict(m) for m in retained]
+                            if runtime_observation:
+                                messages[0]['content'] = messages[0]['content'].removesuffix('\n\n'+runtime_observation['content'])
+                            self.last_context_usage = fitted_request.usage.to_dict()
+                            metrics.record_context(self.last_context_usage)
+                            await ws.send_json(envelope('context.updated',self.last_context_usage,
+                                thread_id=thread_id,turn_id=turn_id))
                         execution.reserve(request_messages, schemas, getattr(provider,'max_output_tokens',None) or self.context_reserved_output_tokens)
                         execution.data['model_identity'] = {**getattr(provider,'chat_identity',{}), 'model_id':model,
                             'vision_profile_id':getattr(observer,'chat_identity',{}).get('vision_profile_id') or getattr(observer,'chat_identity',{}).get('chat_profile_id'),
@@ -2664,6 +2687,12 @@ class AgentServer:
                 )
             raise
         except ProviderError as exc:
+            from agent.core.budget import BudgetExceeded
+            failure_details = {}
+            if isinstance(exc,BudgetExceeded) and isinstance(exc.details,dict):
+                failure_details['budget'] = exc.details
+            if isinstance(getattr(exc,'context_details',None),dict):
+                failure_details['context'] = exc.context_details
             if active_plan and exc.code.startswith(('MODEL_','OPENAI_','OLLAMA_','EXECUTION_')):
                 current = self.store.task_plans.active_step(active_plan['id'])
                 if current:
@@ -2685,6 +2714,8 @@ class AgentServer:
                             "recoverable": exc.recoverable,
                             "provider": provider.provider_name,
                             "model": model,
+                            "role":getattr(exc,'role',None),
+                            **failure_details,
                         },
                         thread_id=thread_id,
                         turn_id=turn_id,

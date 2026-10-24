@@ -67,7 +67,7 @@ class DesktopRuntime:
             raise ToolError('DESKTOP_TIMEOUT', 'Desktop operation timed out; worker terminated') from exc
         finally:
             if job:
-                job.terminate()
+                await job.terminate_and_wait()
             await terminate_process_tree(process)
             if job:
                 job.close()

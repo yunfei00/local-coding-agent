@@ -1,6 +1,8 @@
 # API 预算控制
 
-默认任务限制：API 3 次、30000 Token、本地连续失败上限 3、活动执行时间 1800 秒、单次模型请求 120 秒、单次验证 120 秒。全局默认累计限制为 API 30 次、300000 Token；跨任务、跨重启保留，不按日自动归零。任务和全局费用上限默认未设置，配置价格后可设置。Settings → Models & Routing 配置模型价格、输出限制和 API Budget；Task → Models and budget 可以调整任务配置。
+按本轮用户明确要求，未配置字段的长任务默认限制调整为：API 200 次、10,000,000 Token、本地连续失败上限 3、活动执行时间 7200 秒、单次模型请求 120 秒、单次验证 120 秒。全局默认累计限制为 API 2000 次、100,000,000 Token；跨任务、跨重启保留，不按日自动归零。不是无限重试，费用上限默认未设置。Settings → Models and routing 或 Task → Models and budget 的 **Use long task budget** 可把已有小额度显式提高到这些值，保留更大的已配额度、价格、费用上限、模型角色及重试限制。Settings 需要保存；暂停任务需要 Apply configuration to paused task，再继续。原已保存的低额度及明确零值不会自动改写，原任务快照和已用量也不清零。
+
+原 Loop 默认每片 100 次模型步骤、最多 2 次续片、512 次工具调用；内部累计执行账本默认 512 次模型调用、200,000,000 字节保守 Token 预留、7200 秒。它与 Task 的实际 API 预算独立，用于包含本地及视觉调用的执行边界。增加这些值避免旧 16 步、40 工具或 2,000,000 累计字节预留过早截断工作。已有 Runtime Settings 和执行账本保留原值，可在 Settings → Agent 点击 **Use long task execution limits** 后 Save settings；原重复操作、连续工具失败、有限模型重试、审批、暂停、Stop 均保留。模型本身的上下文窗口与最大输出不能取消，超过时仍裁剪上下文或明确失败。
 
 每次模型调用先预留，再发送请求。API 输入采用序列化消息与工具 Schema 的 UTF-8 字节数加 256 开销，输出预留该角色的 `output_limit`。原子 SQLite `BEGIN IMMEDIATE` 同时检查任务与全局调用数、Token 和费用上限；不足时不调用 Provider。输入与最大输出还需满足配置的模型上下文。OpenAI 请求传递 `max_tokens` 和流式 usage 参数，Ollama 传递 `num_predict`，请求还有超时保护。
 
@@ -12,7 +14,7 @@
 
 任务级和全局级始终在发送前用保守估算检查，不能通过格式重试或恢复绕过限制。旧版本已结算的历史记录保持原值，不事后改写账单或自动追加预算；因此累计上界仍可能比供应商消费大。费用上限在供应商未返回真实费用时继续保留保守费用预留。
 
-规划另有 `planning_attempts` 上限，默认 4、可配置 1..10，独立于执行修复次数。跨暂停、恢复和升级诊断保留；相同无效计划重复两次提前暂停。Local-first 规划最多一次升级诊断，API-only 不再自动重复升级；这些请求仍全部经过原预算预检。没有增加默认 API 3 次/30000 Token 上限。
+规划另有 `planning_attempts` 上限，默认 4、可配置 1..10，独立于执行修复次数。跨暂停、恢复和升级诊断保留；相同无效计划重复两次提前暂停。Local-first 规划最多一次升级诊断，API-only 不再自动重复升级；这些请求仍全部经过原预算预检。Single Agent 不发独立 Planner 请求。
 
 耗尽后任务暂停，可 Continue local-only、保持暂停或 Add task budget（输入明确的新上限）。新任务同时冻结任务级与全局上限；修改 Settings 不改变旧任务。暂停后 Apply configuration to paused task 才刷新全局上限快照。也可在 Add task budget 显式传入 `global_api_calls` / `global_api_tokens` / `global_api_cost` 更新该任务使用的全局阈值；只追加 `api_calls` 不会覆盖全局阈值。任何路径都保留跨任务累计账本，不退款或清零。
 

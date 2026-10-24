@@ -619,6 +619,10 @@ export function SettingsPanel({
           {tab === "agent" ? (
             <div className="settings-section">
               <h2>Agent</h2>
+              <button disabled={busy || running} onClick={() => setSettings({...settings,
+                max_model_steps:Math.max(settings.max_model_steps,100),
+                max_tool_calls:Math.max(settings.max_tool_calls,512)})}>Use long task execution limits</button>
+              <p>提高模型步骤与工具调用额度，保留重复操作、连续失败和 Provider 重试保护。点击 Save settings 后生效。</p>
               <div className="settings-field-row">
                 <label className="settings-field">
                   <span>Max model steps</span>
