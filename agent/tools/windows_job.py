@@ -160,6 +160,8 @@ class WindowsJob:
         kernel.IsProcessInJob.argtypes = [wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
         kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
         kernel.WaitForSingleObject.restype = wintypes.DWORD
+        kernel.TerminateProcess.argtypes = [wintypes.HANDLE,wintypes.UINT]
+        kernel.GetExitCodeProcess.argtypes = [wintypes.HANDLE,ctypes.POINTER(wintypes.DWORD)]
         capacity = 4096
         buffer = ctypes.create_string_buffer(8 + capacity * ctypes.sizeof(ctypes.c_size_t))
         if not kernel.QueryInformationJobObject(self.handle, 3, buffer, len(buffer), None):
@@ -170,11 +172,16 @@ class WindowsJob:
             self.terminate()
             raise OSError('Owned process inventory exceeded bounded cleanup capacity')
         handles = []
+        terminatable=set()
         started = time.monotonic()
         try:
             for index in range(count):
                 pid = ctypes.c_size_t.from_buffer(buffer,8 + index*ctypes.sizeof(ctypes.c_size_t)).value
-                handle = kernel.OpenProcess(0x101000, False, pid)  # SYNCHRONIZE | QUERY_LIMITED_INFORMATION
+                handle = kernel.OpenProcess(0x101001, False, pid)  # SYNCHRONIZE | QUERY_LIMITED | TERMINATE
+                can_terminate=bool(handle)
+                if not handle and ctypes.get_last_error()==5:
+                    # Do not change privileges to obtain additional access.
+                    handle=kernel.OpenProcess(0x101000,False,pid)
                 if not handle:
                     if ctypes.get_last_error() == 87:  # Already exited and removed.
                         continue
@@ -185,6 +192,8 @@ class WindowsJob:
                     raise ctypes.WinError(ctypes.get_last_error())
                 if member.value:
                     handles.append((pid,handle))
+                    if can_terminate:
+                        terminatable.add(handle)
                 else:
                     kernel.CloseHandle(handle)  # PID was reused outside this Job.
             graceful_started=time.monotonic()
@@ -198,6 +207,18 @@ class WindowsJob:
             graceful={'graceful_window_close_requests':close_requests,
                       'graceful_wait_seconds':round(time.monotonic()-graceful_started,3)}
             self.terminate()
+            direct_requests=0
+            direct_errors={}
+            for pid,handle in handles:
+                if handle in terminatable and kernel.WaitForSingleObject(handle,0)==258:
+                    # Retained handles were verified as members of this Job;
+                    # never reopen a PID or follow arbitrary descendants here.
+                    if kernel.TerminateProcess(handle,1):
+                        direct_requests+=1
+                    else:
+                        direct_errors[str(pid)]=ctypes.get_last_error()
+            graceful.update(direct_termination_requests=direct_requests,
+                            direct_termination_errors=direct_errors)
             # All subsequent waits use retained process handles. Release the
             # kill-on-close Job now as well: keeping it until after confirmation
             # leaves the fallback kill action behind the very wait it protects.
@@ -213,9 +234,14 @@ class WindowsJob:
                     break
                 if time.monotonic() >= deadline:
                     pending = [pid for (pid,_),state in zip(handles,states) if state==258]
+                    exit_codes={}
+                    for (pid,handle),state in zip(handles,states):
+                        if state==258:
+                            code=wintypes.DWORD()
+                            exit_codes[str(pid)]=code.value if kernel.GetExitCodeProcess(handle,ctypes.byref(code)) else None
                     self.last_cleanup={**graceful,'confirmed_exit':False,'owned_process_count':len(handles),
                                        'elapsed_seconds':round(time.monotonic()-started,3),'timeout_seconds':timeout,
-                                       'pending_owned_pids':pending[:16]}
+                                       'pending_owned_pids':pending[:16],'pending_exit_codes':exit_codes}
                     raise TimeoutError(f'Owned process tree did not finish terminating before cleanup deadline; pending owned PIDs={pending[:16]}')
                 time.sleep(.02)
         finally:

@@ -229,11 +229,13 @@ class EngineeringTests(unittest.IsolatedAsyncioTestCase):
         try:
             for mode in ('cancel','timeout','scope'):
                 pids_file.unlink(missing_ok=True)
-                started = await tools.execute('start_process', {'command':'npm start','timeout_seconds':4 if mode=='timeout' else 120},owner_id=mode)
+                # Require actual Electron/Node/Python readiness before expiry;
+                # 4s can kill a cold Electron before it creates the test marker.
+                started = await tools.execute('start_process', {'command':'npm start','timeout_seconds':30 if mode=='timeout' else 120},owner_id=mode)
                 actual = await wait_file(pids_file)
                 self.assertTrue(all(alive(actual[k]) for k in ('pid','node','python')))
                 if mode=='timeout':
-                    await asyncio.wait_for(asyncio.shield(tools.processes.get(started.data['process_id'],mode).task),15)
+                    await asyncio.wait_for(asyncio.shield(tools.processes.get(started.data['process_id'],mode).task),75)
                 else:
                     await tools.processes.close_owner(mode)
                 self.assertFalse(any(alive(actual[k]) for k in ('pid','node','python')), (mode,actual))
