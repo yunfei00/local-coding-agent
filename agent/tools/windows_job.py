@@ -115,6 +115,35 @@ class WindowsJob:
             if not self.kernel.TerminateJobObject(self.handle, 1):
                 raise ctypes.WinError(ctypes.get_last_error())
 
+    def _close_owned_windows(self, handles) -> int:
+        """Ask only this Job's visible windows to close before forced teardown.
+
+        No titles, controls or input are read. Retained process handles and a
+        fresh Job membership check prevent using a reused PID as authority.
+        This is part of stopping an owned process, not a general desktop tool.
+        """
+        user = ctypes.WinDLL('user32',use_last_error=True)
+        callback_type=ctypes.WINFUNCTYPE(wintypes.BOOL,wintypes.HWND,wintypes.LPARAM)
+        user.EnumWindows.argtypes=[callback_type,wintypes.LPARAM]
+        user.GetWindowThreadProcessId.argtypes=[wintypes.HWND,ctypes.POINTER(wintypes.DWORD)]
+        user.IsWindowVisible.argtypes=[wintypes.HWND]
+        user.PostMessageW.argtypes=[wintypes.HWND,wintypes.UINT,wintypes.WPARAM,wintypes.LPARAM]
+        owned=dict(handles)
+        requested=0
+        @callback_type
+        def visit(hwnd, _):
+            nonlocal requested
+            pid=wintypes.DWORD()
+            user.GetWindowThreadProcessId(hwnd,ctypes.byref(pid))
+            handle=owned.get(pid.value)
+            if handle and user.IsWindowVisible(hwnd) and self.kernel.WaitForSingleObject(handle,0)==258:
+                member=wintypes.BOOL()
+                if self.kernel.IsProcessInJob(handle,self.handle,ctypes.byref(member)) and member.value:
+                    requested += bool(user.PostMessageW(hwnd,0x0010,0,0))  # WM_CLOSE
+            return True
+        user.EnumWindows(visit,0)
+        return requested
+
     def terminate_and_wait_sync(self, timeout=10) -> None:
         """Wait for the owned process handles, not merely a queued kill signal.
 
@@ -158,6 +187,16 @@ class WindowsJob:
                     handles.append((pid,handle))
                 else:
                     kernel.CloseHandle(handle)  # PID was reused outside this Job.
+            graceful_started=time.monotonic()
+            close_requests=self._close_owned_windows(handles) if handles else 0
+            if close_requests:
+                graceful_deadline=time.monotonic()+3
+                while any(kernel.WaitForSingleObject(handle,0)==258 for _,handle in handles):
+                    if time.monotonic() >= graceful_deadline:
+                        break
+                    time.sleep(.02)
+            graceful={'graceful_window_close_requests':close_requests,
+                      'graceful_wait_seconds':round(time.monotonic()-graceful_started,3)}
             self.terminate()
             # All subsequent waits use retained process handles. Release the
             # kill-on-close Job now as well: keeping it until after confirmation
@@ -169,12 +208,12 @@ class WindowsJob:
                 if any(state not in (0,258) for state in states):
                     raise ctypes.WinError(ctypes.get_last_error())
                 if 258 not in states:
-                    self.last_cleanup={'confirmed_exit':True,'owned_process_count':len(handles),
+                    self.last_cleanup={**graceful,'confirmed_exit':True,'owned_process_count':len(handles),
                                        'elapsed_seconds':round(time.monotonic()-started,3),'timeout_seconds':timeout}
                     break
                 if time.monotonic() >= deadline:
                     pending = [pid for (pid,_),state in zip(handles,states) if state==258]
-                    self.last_cleanup={'confirmed_exit':False,'owned_process_count':len(handles),
+                    self.last_cleanup={**graceful,'confirmed_exit':False,'owned_process_count':len(handles),
                                        'elapsed_seconds':round(time.monotonic()-started,3),'timeout_seconds':timeout,
                                        'pending_owned_pids':pending[:16]}
                     raise TimeoutError(f'Owned process tree did not finish terminating before cleanup deadline; pending owned PIDs={pending[:16]}')

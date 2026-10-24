@@ -131,7 +131,7 @@ class ProcessSession:
 
     def result(self, *, cursor=0):
         events = [c for c in self.chunks if c["cursor"] > cursor]
-        return ToolResult(ok=self.state not in {"failed", "timed_out", "output_error"},
+        return ToolResult(ok=self.state not in {"failed", "timed_out", "output_error", "cleanup_failed"},
             summary=f"Process {self.id}: {self.state}; exit={self.process.returncode}",
             stdout=self.stdout, stderr=self.stderr, exit_code=self.process.returncode,
             duration_ms=round((time.monotonic() - self.started) * 1000),
@@ -142,7 +142,7 @@ class ProcessSession:
                   "log_path": str(self.directory / "output.jsonl"), "log_truncated": self.log_truncated,
                   "output_truncated": self.output_truncated,
                   "output_drain_timed_out": self.error == "OUTPUT_DRAIN_TIMEOUT",
-                  "error_code": {"timed_out":"COMMAND_TIMEOUT", "output_error":"COMMAND_OUTPUT_FAILED", "failed":"COMMAND_EXIT_NONZERO"}.get(self.state),
+                  "error_code": {"timed_out":"COMMAND_TIMEOUT", "output_error":"COMMAND_OUTPUT_FAILED", "failed":"COMMAND_EXIT_NONZERO", "cleanup_failed":"PROCESS_CLEANUP_FAILED"}.get(self.state),
                   "metadata_path": str(self.directory / "process.json"), "stream": self.stream.snapshot()})
 
 
@@ -313,9 +313,11 @@ class ProcessManager:
                 # Keep the failing stage in scoped metadata. No command output,
                 # environment or credentials are included in this diagnosis.
                 s.error = f'PROCESS_CLEANUP_FAILED:{cleanup_stage}:{type(exc).__name__}'
+                s.state = 'cleanup_failed'
                 if cleanup_stage == 'job_exit_confirmation' and isinstance(exc,TimeoutError):
                     s.cleanup_detail = str(exc)[:400]
-                raise
+                raise ToolError('PROCESS_CLEANUP_FAILED',
+                    f'Owned process cleanup failed at {cleanup_stage}: {type(exc).__name__}') from exc
             finally:
                 s.job.close()
                 for reader in s.readers:

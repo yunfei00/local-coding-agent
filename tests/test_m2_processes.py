@@ -50,6 +50,46 @@ async def wait_file(path):
 
 
 class ProcessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stop_cleanup_failure_keeps_specific_error_and_read_cannot_claim_success(self):
+        started=await self.tools.execute('start_process',{'command':'node tree.cjs'},owner_id='cleanup-fault')
+        session=self.tools.processes.get(started.data['process_id'],'cleanup-fault')
+        await wait_file(self.root/'pids.json')
+        original=session.job.terminate_and_wait
+        async def fail_confirmation(*args,**kwargs):
+            await original(*args,**kwargs)
+            from agent.tools.processes import terminate_process_tree
+            await terminate_process_tree(session.process)
+            raise TimeoutError('injected exit confirmation fault')
+        with patch.object(session.job,'terminate_and_wait',side_effect=fail_confirmation):
+            with self.assertRaises(ToolError) as caught:
+                await self.tools.execute('stop_process',{'process_id':session.id},owner_id='cleanup-fault')
+        self.assertEqual(caught.exception.code,'PROCESS_CLEANUP_FAILED')
+        self.assertIn('job_exit_confirmation',caught.exception.message)
+        result=await self.tools.execute('read_process',{'process_id':session.id},owner_id='cleanup-fault')
+        self.assertFalse(result.ok)
+        self.assertEqual(result.data['error_code'],'PROCESS_CLEANUP_FAILED')
+        # The injected diagnostic must not leave a failing future in teardown.
+        self.tools.processes.sessions.pop(session.id)
+
+    @unittest.skipUnless(os.name=='nt','Windows owned window shutdown')
+    def test_graceful_close_never_messages_foreign_or_reused_pid_windows(self):
+        from types import SimpleNamespace
+        from agent.tools.windows_job import WindowsJob
+        class Fn:
+            def __init__(self,fn):self.fn=fn
+            def __call__(self,*args):return self.fn(*args)
+        posted=[]
+        def pid(hwnd,out):out._obj.value={11:1,22:9,33:2,44:1}[hwnd];return 1
+        def member(handle,job,out):out._obj.value=handle==101;return True
+        user=SimpleNamespace(EnumWindows=Fn(lambda callback,param:[callback(h,param) for h in (11,22,33,44)]),
+            GetWindowThreadProcessId=Fn(pid),IsWindowVisible=Fn(lambda h:h!=44),
+            PostMessageW=Fn(lambda hwnd,*args:posted.append(hwnd) or True))
+        job=WindowsJob.__new__(WindowsJob);job.handle=7
+        job.kernel=SimpleNamespace(WaitForSingleObject=lambda h,wait:258,IsProcessInJob=member)
+        with patch('agent.tools.windows_job.ctypes.WinDLL',return_value=user):
+            self.assertEqual(job._close_owned_windows([(1,101),(2,102)]),1)
+        self.assertEqual(posted,[11])
+
     async def asyncSetUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='m2 space 中文 ')
         self.root = Path(self.temp.name)
