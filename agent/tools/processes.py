@@ -68,6 +68,34 @@ async def terminate_process_tree(process):
         os.killpg(process.pid, signal.SIGKILL)
     with suppress(asyncio.TimeoutError):
         await asyncio.wait_for(process.wait(), 3)
+    # SIGKILL is asynchronous too. The shell may already have exited while
+    # descendants still run. Verify only its process group; zombies are dead and
+    # have released their descriptors, even if init has not reaped them yet.
+    deadline = time.monotonic()+5
+    while True:
+        active = False
+        if Path('/proc').is_dir():
+            for item in Path('/proc').iterdir():
+                if not item.name.isdigit():
+                    continue
+                try:
+                    fields = (item/'stat').read_text(encoding='utf-8',errors='replace').rsplit(')',1)[1].split()
+                    if int(fields[2]) == process.pid and fields[0] not in {'Z','X'}:
+                        active = True
+                        break
+                except (FileNotFoundError, ProcessLookupError, PermissionError):
+                    continue
+        else:
+            try:
+                os.killpg(process.pid,0)
+                active = True
+            except ProcessLookupError:
+                pass
+        if not active:
+            break
+        if time.monotonic() >= deadline:
+            raise ToolError('PROCESS_CLEANUP_FAILED','Owned process group did not finish terminating')
+        await asyncio.sleep(.02)
     return "sigkill"
 
 
@@ -251,7 +279,7 @@ class ProcessManager:
                 if reason:
                     with suppress(Exception):
                         await self._emit(s, "process_terminating", reason=reason)
-                s.job.terminate()
+                await s.job.terminate_and_wait()
                 method = await terminate_process_tree(s.process)
                 if s.readers:
                     try:

@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import ctypes
+import asyncio
 from ctypes import wintypes
 import os
+import time
 
 
 class WindowsJob:
@@ -111,6 +113,77 @@ class WindowsJob:
         if self.handle:
             if not self.kernel.TerminateJobObject(self.handle, 1):
                 raise ctypes.WinError(ctypes.get_last_error())
+
+    def terminate_and_wait_sync(self, timeout=5) -> None:
+        """Wait for the owned process handles, not merely a queued kill signal.
+
+        Job termination is asynchronous. Chromium descendants can still hold
+        profile files after the original shell has exited. Snapshot only this
+        Job, retain kernel handles across termination, and never follow a reused
+        PID into an unrelated process.
+        """
+        if not self.handle:
+            return
+        kernel = self.kernel
+        kernel.QueryInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                                                    wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+        kernel.IsProcessInJob.argtypes = [wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
+        capacity = 4096
+        buffer = ctypes.create_string_buffer(8 + capacity * ctypes.sizeof(ctypes.c_size_t))
+        if not kernel.QueryInformationJobObject(self.handle, 3, buffer, len(buffer), None):
+            self.terminate()
+            raise ctypes.WinError(ctypes.get_last_error())
+        count = ctypes.c_uint32.from_buffer(buffer,4).value
+        if count > capacity:
+            self.terminate()
+            raise OSError('Owned process inventory exceeded bounded cleanup capacity')
+        handles = []
+        try:
+            for index in range(count):
+                pid = ctypes.c_size_t.from_buffer(buffer,8 + index*ctypes.sizeof(ctypes.c_size_t)).value
+                handle = kernel.OpenProcess(0x101000, False, pid)  # SYNCHRONIZE | QUERY_LIMITED_INFORMATION
+                if not handle:
+                    if ctypes.get_last_error() == 87:  # Already exited and removed.
+                        continue
+                    raise ctypes.WinError(ctypes.get_last_error())
+                member = wintypes.BOOL()
+                if not kernel.IsProcessInJob(handle,self.handle,ctypes.byref(member)):
+                    kernel.CloseHandle(handle)
+                    raise ctypes.WinError(ctypes.get_last_error())
+                if member.value:
+                    handles.append(handle)
+                else:
+                    kernel.CloseHandle(handle)  # PID was reused outside this Job.
+            self.terminate()
+            deadline = time.monotonic()+timeout
+            while True:
+                states = [kernel.WaitForSingleObject(handle,0) for handle in handles]
+                if any(state not in (0,258) for state in states):
+                    raise ctypes.WinError(ctypes.get_last_error())
+                if 258 not in states:
+                    break
+                if time.monotonic() >= deadline:
+                    raise TimeoutError('Owned process tree did not finish terminating before cleanup deadline')
+                time.sleep(.02)
+        finally:
+            for handle in handles:
+                kernel.CloseHandle(handle)
+
+    async def terminate_and_wait(self, timeout=5) -> None:
+        # Cancellation must not close the Job while its confirmation thread is
+        # still using retained kernel handles. The wait itself is bounded.
+        waiter = asyncio.create_task(asyncio.to_thread(self.terminate_and_wait_sync, timeout))
+        cancelled = False
+        while not waiter.done():
+            try:
+                await asyncio.shield(waiter)
+            except asyncio.CancelledError:
+                cancelled = True
+        waiter.result()
+        if cancelled:
+            raise asyncio.CancelledError
 
     def close(self) -> None:
         if self.handle:
