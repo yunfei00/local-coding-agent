@@ -124,7 +124,7 @@ class TaskBudgetStartTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_first_reservation_exceeds_token_cap_despite_zero_usage(self):
         await self.http([http_fixture.VALID])
-        config = self.online(api_calls=6)
+        config = self.online(api_calls=6, api_tokens=30000)
         config["roles"]["planner"]["output_limit"] = 32768
         await self.save(config)
         await self.start_current()

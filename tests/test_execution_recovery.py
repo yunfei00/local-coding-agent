@@ -111,10 +111,12 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         command=('& ' if os.name=='nt' else '')+command
         model=ModelResponses([tool('start_process',command=command,timeout_seconds=120),tool('file_exists',path='calculator.py'),'block'])
         pending=asyncio.create_task(self.server.run_tool_turn(self.client,thread_id=self.thread.id,turn_id='cancel-slice',prompt='Start and inspect a fixture process',model=model.preferred_model,provider=model))
-        await asyncio.wait_for(model.blocked.wait(),15)
-        sessions=list(self.project.tools.processes.sessions.values());self.assertTrue(sessions)
-        pending.cancel()
-        with self.assertRaises(asyncio.CancelledError):await pending
+        try:
+            await asyncio.wait_for(model.blocked.wait(),15)
+            sessions=list(self.project.tools.processes.sessions.values());self.assertTrue(sessions)
+        finally:
+            pending.cancel()
+            with self.assertRaises(asyncio.CancelledError):await pending
         self.assertTrue(all(s.process.returncode is not None for s in sessions))
         self.assertTrue(any(e['type']=='turn.continuing' for e in self.client.messages))
 
