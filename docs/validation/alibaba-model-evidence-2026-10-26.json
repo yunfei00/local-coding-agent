@@ -406,5 +406,17 @@
   "overall_online_m5_acceptance": "NOT PASSED",
   "cost": "UNKNOWN",
   "ci_run": "https://github.com/yunfei00/local-coding-agent/actions/runs/40258421855",
-  "ci_conclusion": "success"
+  "ci_conclusion": "success",
+  "local_full_regression": {
+    "run_id": "20261026-102306-909169",
+    "python_total": 406,
+    "passed": 391,
+    "skipped": 15,
+    "failures": 0,
+    "errors": 0,
+    "frontend_passed": 46,
+    "typecheck": "PASS",
+    "build": "PASS",
+    "standalone_desktop_smoke": "FAILED preflight: Windows session locked; not a native GUI PASS"
+  }
 }
