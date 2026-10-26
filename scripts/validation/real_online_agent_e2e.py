@@ -126,7 +126,7 @@ def configure_run_output(catalog, profile_id, output_tokens):
     return validate_catalog(copied)
 
 
-def live_config(executor, vision, calls, tokens=60000, extended=False, *, scenario='electron', strategy='single-agent'):
+def live_config(executor, vision, calls, tokens=60000, extended=False, *, scenario='electron', strategy='single-agent', request_seconds=60):
     if isinstance(calls, bool) or not isinstance(calls, int) or not 1 <= calls <= 10000:
         raise ValueError('Live acceptance allows 1..10000 calls')
     # Currency/price units are not recorded in old profiles. Do not invent CNY
@@ -140,7 +140,7 @@ def live_config(executor, vision, calls, tokens=60000, extended=False, *, scenar
                   for r in ('planner', 'executor', 'reviewer', 'escalation')},
         'budget': {'api_calls': calls, 'global_api_calls': calls,
                    'api_tokens': tokens, 'global_api_tokens': tokens,
-                   'request_seconds': 60, 'task_seconds': 900, 'local_repairs': 3}}
+                   'request_seconds': request_seconds, 'task_seconds': 900, 'local_repairs': 3}}
     if vision is not None:
         raw['vision_profile_id'] = vision['model_profile_id']
     if scenario == 'calculator':
@@ -148,7 +148,7 @@ def live_config(executor, vision, calls, tokens=60000, extended=False, *, scenar
     return validate_config(raw)
 
 
-def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=60000, extended=False, scenario='electron', strategy='single-agent'):
+def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=60000, extended=False, scenario='electron', strategy='single-agent', request_seconds=60):
     """Copy only public model metadata, preserving the original credential context.
 
     No user database/messages/secret files are copied. The real Electron main
@@ -172,7 +172,7 @@ def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=
     profiles = [p for p in catalog['profiles'] if p['model_profile_id'] in selected]
     connections = [c for c in catalog['connections']
                    if c['connection_id'] in {p['connection_id'] for p in profiles}]
-    config = live_config(executor, vision, calls,tokens,extended,scenario=scenario,strategy=strategy)
+    config = live_config(executor, vision, calls,tokens,extended,scenario=scenario,strategy=strategy,request_seconds=request_seconds)
     store = SQLiteStore(data)
     try:
         store.set_setting(KEY, json.dumps({'connections': connections, 'profiles': profiles}))
@@ -338,6 +338,7 @@ def main():
     parser.add_argument('--executor-profile')
     parser.add_argument('--vision-profile')
     parser.add_argument('--output-tokens',type=int,help='Explicit output cap in the isolated selected profile; saved Settings unchanged')
+    parser.add_argument('--request-seconds',type=int,default=60,help='Per-request timeout; bounded by the existing BudgetGuard validator')
     parser.add_argument('--max-calls', type=int, default=12)
     parser.add_argument('--max-tokens', type=int, default=60000)
     parser.add_argument('--max-full-attempts', type=int, default=2)
@@ -356,7 +357,7 @@ def main():
         executor = select_profile(catalog,args.model,args.executor_profile)
         vision_model = args.vision_model or ('qwen3.8-flash' if args.model == 'glm-5.3' else args.model)
         vision = select_profile(catalog, vision_model, args.vision_profile, vision=True) if args.scenario=='electron' or args.vision_model else None
-        config = live_config(executor, vision, args.max_calls,args.max_tokens,args.authorize_budget_update,scenario=args.scenario,strategy=args.strategy)
+        config = live_config(executor, vision, args.max_calls,args.max_tokens,args.authorize_budget_update,scenario=args.scenario,strategy=args.strategy,request_seconds=args.request_seconds)
         report.update(executor={k:executor[k] for k in ('model_profile_id','connection_id','model_id')},
                       vision={k:vision[k] for k in ('model_profile_id','connection_id','model_id')} if vision else None,
                       scenario=args.scenario,limits=config['budget'],
@@ -376,7 +377,7 @@ def main():
                                              args.max_full_attempts,args.authorize_budget_update,args.max_seconds)
                 allocated = True
                 manifest = prepare(args.data_dir, catalog, executor, vision, remaining['calls'], temporary,
-                                   tokens=remaining['tokens'],extended=args.authorize_budget_update,scenario=args.scenario,strategy=args.strategy)
+                                   tokens=remaining['tokens'],extended=args.authorize_budget_update,scenario=args.scenario,strategy=args.strategy,request_seconds=args.request_seconds)
                 document = json.loads(manifest.read_text(encoding='utf-8'))
                 document['config']['budget'].update(api_tokens=remaining['tokens'],global_api_tokens=remaining['tokens'],task_seconds=remaining['seconds'])
                 if args.authorize_budget_update:

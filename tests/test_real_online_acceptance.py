@@ -70,6 +70,7 @@ assert.equal(second.added.length,0);
 assert.equal(third.catalog.profiles.length,2);
 assert.notEqual(third.catalog.profiles[0].model_profile_id,third.catalog.profiles[1].model_profile_id);
 assert.equal(third.catalog.profiles[0].supports_vision,false);
+assert.equal(third.catalog.profiles[0].max_output_tokens,8192);
 assert.equal(third.catalog.profiles[0].credential_reference,undefined);
 assert.equal(third.catalog.roles,undefined);
 assert(codingCandidate('qwen3.7-plus'));
@@ -220,6 +221,16 @@ assert(!approvalAllowed({tool:'run_command',arguments:{command,cwd:'C:/outside'}
         for value in (0,True,32769):
             with self.assertRaises(ValueError):
                 live.configure_run_output(original,'qwen',value)
+
+    def test_explicit_request_timeout_keeps_call_token_and_total_time_limits(self):
+        p=catalog()['profiles'][0]
+        config=live.live_config(p,p,12,request_seconds=120)
+        self.assertEqual(config['budget']['request_seconds'],120)
+        self.assertEqual(config['budget']['task_seconds'],900)
+        self.assertEqual(config['budget']['api_tokens'],60000)
+        self.assertEqual(config['budget']['api_calls'],12)
+        with self.assertRaises(ValueError):
+            live.live_config(p,p,12,request_seconds=0)
 
     def test_session_retries_cannot_reset_calls_tokens_time_or_grow_ceiling(self):
         with tempfile.TemporaryDirectory() as temp:

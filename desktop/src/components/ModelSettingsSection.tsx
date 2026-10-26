@@ -1,5 +1,5 @@
 import {useEffect, useState} from "react";
-import {Connection, ModelCatalog, ModelProfile, TaskConfig, modelLabel, longTaskBudget} from "../lib/modelCatalog";
+import {Connection, ModelCatalog, ModelProfile, TaskConfig, modelLabel, longTaskBudget, defaultModelOutput, codingOutputProfile} from "../lib/modelCatalog";
 import {ModelDiagnosticResult} from "./ModelDiagnosticResult";
 
 export function ModelSettingsSection({threadId = "", running}: {threadId?: string; running: boolean}) {
@@ -38,12 +38,13 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
   if (!catalog || !config) return <div role="status">{error || "Loading model connections…"}</div>;
   const connection = catalog.connections.find(c => c.connection_id === selected);
   const profile = catalog.profiles.find(p => p.model_profile_id === profileId);
+  const profileConnection = catalog.connections.find(c => c.connection_id === profile?.connection_id);
   const editConnection = (patch: Partial<Connection>) => setCatalog({...catalog, connections:catalog.connections.map(c => c.connection_id === selected ? {...c, ...patch} : c)});
   const editProfile = (patch: Partial<ModelProfile>) => setCatalog({...catalog, profiles:catalog.profiles.map(p => p.model_profile_id === profileId ? {...p, ...patch} : p)});
   const addModel = (name = "new-model") => {
     if (!connection) return;
     if (catalog.profiles.some(p => p.connection_id === selected && p.model_id === name)) {setError("Model already exists on this connection."); return;}
-    const p: ModelProfile = {model_profile_id:crypto.randomUUID(), connection_id:selected, model_id:name, display_name:name, max_output_tokens:1024, context_window:null, temperature:null, pricing:null, tool_mode:"auto"};
+    const p: ModelProfile = {model_profile_id:crypto.randomUUID(), connection_id:selected, model_id:name, display_name:name, max_output_tokens:defaultModelOutput(connection.provider_type), context_window:null, temperature:null, pricing:null, tool_mode:"auto"};
     setCatalog({...catalog, profiles:[...catalog.profiles, p]}); setProfileId(p.model_profile_id);
   };
   const bound = (id: string) => id === chatDefault || id === chatVision || Object.values(config.roles).some(p => p.model_profile_id === id);
@@ -87,6 +88,8 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
         <label className="settings-field">Display name<input aria-label="Profile display name" value={profile.display_name} onChange={e => editProfile({display_name:e.target.value})} /></label>
         <label className="settings-field">Context window<input aria-label="Profile context window" type="number" value={profile.context_window ?? ""} onChange={e => editProfile({context_window:e.target.value ? Number(e.target.value) : null})} /></label>
         <label className="settings-field">Maximum output tokens<input aria-label="Profile output limit" type="number" value={profile.max_output_tokens ?? 1024} onChange={e => editProfile({max_output_tokens:Number(e.target.value)})} /></label>
+        <small>这是单次响应的输出上限，与 Task 累计 Token 预算不同。过小可能截断工具参数或最终报告；请按模型实际能力配置。</small>
+        {profileConnection?.provider_type === 'openai_compatible' ? <button onClick={() => editProfile(codingOutputProfile(profile))}>Use coding output limit</button> : null}
         <label className="settings-field">Temperature<input aria-label="Profile temperature" type="number" step="0.1" value={profile.temperature ?? ""} onChange={e => editProfile({temperature:e.target.value ? Number(e.target.value) : null})} /></label>
         <label className="settings-field">Tool compatibility<select value={profile.tool_mode ?? "auto"} onChange={e => editProfile({tool_mode:e.target.value})}><option value="auto">Auto</option><option value="native">Native tools</option><option value="json">JSON compatibility</option></select></label>
         <label className="settings-field"><span>Vision image input</span><input aria-label="Profile supports vision" type="checkbox" checked={profile.supports_vision ?? false} onChange={e => editProfile({supports_vision:e.target.checked})} /><small>仅为支持图像的模型启用。截图默认保存在本机；每次授权发送截图时，在线模型服务可能收到图像。</small></label>

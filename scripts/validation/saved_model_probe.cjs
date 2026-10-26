@@ -12,7 +12,7 @@ function importProfiles(catalog, connectionId, names) {
     if (result.profiles.some(p => p.connection_id === connectionId && p.model_id === name)) continue;
     const id = 'fetched-' + crypto.createHash('sha256').update(connectionId + '\0' + name).digest('hex').slice(0,24);
     result.profiles.push({model_profile_id:id, connection_id:connectionId, model_id:name,
-      display_name:name, context_window:null, max_output_tokens:1024, temperature:null,
+      display_name:name, context_window:null, max_output_tokens:8192, temperature:null,
       pricing:null, tool_mode:'auto', supports_vision:false});
     added.push(id);
   }
