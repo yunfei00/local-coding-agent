@@ -1,5 +1,7 @@
 # 公司环境验证流程
 
+2026-10-26 最新源码：本轮修复仍在 `feature/real-online-agent-validation`，未合并 main。真实 GLM API-only 与 Omni Single Agent 的 calculator 修复已通过，当前本机锁屏下原生桌面在线验收未通过。公司请按[最新分支安装、配置与逐模型结果](../validation/alibaba-model-validation-2026-10-26.md)获取源码，避免下载 main 后误以为包含本轮修复。
+
 本流程使用现有 manual-fixtures/v04-local-first，不要求自己编写工程。真实模型能力与路由框架验收分开记录；没有付费 API 凭据时使用下面的 HTTP Mock 自动化。
 
 ## Planning 修复的本轮验证约定
