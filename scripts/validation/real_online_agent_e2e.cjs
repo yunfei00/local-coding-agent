@@ -39,7 +39,8 @@ function approvalAllowed(payload, workspace, ownedPids, phase, scenario='electro
     const w = a.target_window;
     return !!w && w.title === 'M5 Electron acceptance' && ownedPids.has(w.pid)
       && a.scope !== 'screen' && !['desktop_keypress','desktop_scroll'].includes(tool)
-      && (tool !== 'desktop_click' || a.selector && ['Settings','Save'].includes(a.selector.name));
+      && (tool !== 'desktop_click' || a.selector && (['Settings','Save'].includes(a.selector.name)
+        || a.selector.control_type === 'Edit' && (!a.selector.name || a.selector.name === 'Display name')));
   }
   if (tool === 'run_command' || tool === 'start_process') {
     const commandAllowed=/^(npm (ci --no-audit --no-fund|run (typecheck|build)|test|start)|git (diff( --check)?|status( -sb)?))$/.test(a.command || '')

@@ -359,6 +359,10 @@ assert(approvalAllowed({tool:'desktop_list_windows',arguments:{}},'',pids,'verif
 assert(!approvalAllowed({tool:'desktop_screenshot',arguments:{scope:'screen',target_window:{title:'M5 Electron acceptance',pid:123}}},'',pids));
 assert(!approvalAllowed({tool:'desktop_screenshot',arguments:{target_window:{title:'Private editor',pid:123}}},'',pids));
 assert(!approvalAllowed({tool:'desktop_click',arguments:{target_window:{title:'M5 Electron acceptance',pid:999},selector:{name:'Save'}}},'',pids));
+assert(approvalAllowed({tool:'desktop_click',arguments:{target_window:{title:'M5 Electron acceptance',pid:123},selector:{control_type:'Edit'}}},'',pids));
+assert(approvalAllowed({tool:'desktop_click',arguments:{target_window:{title:'M5 Electron acceptance',pid:123},selector:{control_type:'Edit',name:'Display name'}}},'',pids));
+assert(!approvalAllowed({tool:'desktop_click',arguments:{target_window:{title:'Private editor',pid:123},selector:{control_type:'Edit'}}},'',pids));
+assert(!approvalAllowed({tool:'desktop_click',arguments:{target_window:{title:'M5 Electron acceptance',pid:123},selector:{control_type:'Edit',name:'Unrelated field'}}},'',pids));
 assert(approvalAllowed({tool:'desktop_screenshot',arguments:{share_with_model:true,target_window:{title:'M5 Electron acceptance',pid:123}}},'',pids));
 assert(!approvalAllowed({tool:'run_command',arguments:{command:'npm test; git push'}},'',pids));
 assert(!approvalAllowed({tool:'git_commit',arguments:{}},'',pids));
