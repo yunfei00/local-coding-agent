@@ -117,12 +117,15 @@ def select_profile(catalog, model, explicit=None, *, vision=False):
     return profile
 
 
-def configure_run_output(catalog, profile_id, output_tokens):
+def configure_run_output(catalog, profile_id, output_tokens, context_window=None):
     """Explicit per-run output setting; never overwrites saved user profiles."""
     copied = json.loads(json.dumps(catalog))
-    if output_tokens is not None:
+    if output_tokens is not None or context_window is not None:
         profile = next(p for p in copied['profiles'] if p['model_profile_id'] == profile_id)
-        profile['max_output_tokens'] = output_tokens
+        if output_tokens is not None:
+            profile['max_output_tokens'] = output_tokens
+        if context_window is not None:
+            profile['context_window'] = context_window
     return validate_catalog(copied)
 
 
@@ -388,6 +391,7 @@ def main():
     parser.add_argument('--executor-profile')
     parser.add_argument('--vision-profile')
     parser.add_argument('--output-tokens',type=int,help='Explicit output cap in the isolated selected profile; saved Settings unchanged')
+    parser.add_argument('--context-window',type=int,help='Explicit isolated context-window setting for controlled diagnosis; saved Settings unchanged')
     parser.add_argument('--request-seconds',type=int,default=60,help='Per-request timeout; bounded by the existing BudgetGuard validator')
     parser.add_argument('--max-calls', type=int, default=12)
     parser.add_argument('--max-tokens', type=int, default=60000)
@@ -405,7 +409,7 @@ def main():
     try:
         catalog = load_catalog(args.data_dir)
         executor = select_profile(catalog, args.model, args.executor_profile)
-        catalog = configure_run_output(catalog,executor['model_profile_id'],args.output_tokens)
+        catalog = configure_run_output(catalog,executor['model_profile_id'],args.output_tokens,args.context_window)
         executor = select_profile(catalog,args.model,args.executor_profile)
         vision_model = args.vision_model or ('qwen3.8-flash' if args.model == 'glm-5.3' else args.model)
         vision = select_profile(catalog, vision_model, args.vision_profile, vision=True) if args.scenario=='electron' or args.vision_model else None

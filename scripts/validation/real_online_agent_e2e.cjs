@@ -200,9 +200,11 @@ async function main(manifest) {
           changed_paths:r.changed_paths || [], exit_code:r.exit_code, duration_ms:r.duration_ms});
         processFiles();
       }
-      if (['model.active','verification.progress','vision.observed'].includes(event.type)) {
+      if (['model.active','verification.progress','vision.observed','context.updated'].includes(event.type)) {
         events.push({type:event.type, at:event.timestamp, ...Object.fromEntries(
-          ['role','model','connection_id','model_profile_id','stage','state','ok','image_attached','attachment_transport'].filter(k => p[k] !== undefined).map(k=>[k,p[k]]))});
+          ['role','model','connection_id','model_profile_id','stage','state','ok','image_attached','attachment_transport',
+           'context_window_tokens','reserved_output_tokens','input_budget_tokens','estimated_input_tokens',
+           'history_messages_total','history_messages_included','omitted_history_messages','runtime_messages_omitted','truncated_messages'].filter(k => p[k] !== undefined).map(k=>[k,p[k]]))});
       }
     });
     await page.evaluate(() => window.localAgent.onAgentEvent(e => {void window.lcaAcceptanceEvent(e);}));
