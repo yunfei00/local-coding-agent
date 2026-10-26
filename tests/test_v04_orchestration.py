@@ -67,6 +67,80 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
     def fix(self):
         return tool_step("apply_patch", {"path": "calculator.py", "old_text": "return a - b", "new_text": "return a + b"})
 
+    async def test_multistep_plan_executes_step_local_tools_and_finishes_real_validation(self):
+        plan=final_step(json.dumps({'steps':[
+            {'description':'Inspect calculator source','verification':''},
+            {'description':'Implement calculator fix','verification':''},
+            {'description':'Validate calculator and Diff','verification':COMMAND}]}))
+        task, local, api=await self.run_task([plan,
+            tool_step('read_file',{'path':'calculator.py'}),final_step('Inspection finished'),
+            self.fix(),final_step('Implementation finished'),
+            tool_step('run_command',{'command':COMMAND}),tool_step('git_diff',{}),
+            final_step('Step validation finished'),final_step('Reviewed independent validation')])
+        self.assertEqual(task['status'],'awaiting_approval',task['reason'])
+        self.assertTrue(all(s['state']=='completed' for s in self.server.store.task_plans.get(task['id'])['steps']))
+        self.assertEqual(task['repairs'],0)
+        self.assertEqual(api.calls,0)
+        self.assertTrue(all(r['ok'] for r in task['verification']))
+
+    async def test_api_plan_step_snapshot_is_refreshed_without_accumulating_old_steps(self):
+        class RecordingProvider(ScriptedProvider):
+            def __init__(self,steps):
+                super().__init__(steps)
+                self.systems=[]
+            async def stream_chat(self,**kwargs):
+                self.systems.append(kwargs['messages'][0]['content'])
+                async for chunk in super().stream_chat(**kwargs):
+                    yield chunk
+        config=self.config(api_calls=30,global_api_calls=30,api_tokens=1000000,global_api_tokens=1000000)
+        config['strategy']='api-only'
+        for role in config['roles'].values():
+            role['route']='api'
+        plan=final_step(json.dumps({'steps':[
+            {'description':'STEP_INSPECT'}, {'description':'STEP_IMPLEMENT'}]}))
+        with patch(__name__+'.ScriptedProvider',RecordingProvider):
+            task, _, api=await self.run_task([], [plan,
+                tool_step('read_file',{'path':'calculator.py'}),final_step('Inspected'),
+                self.fix(),final_step('Implemented'),final_step('Reviewed')], config)
+        self.assertEqual(task['status'],'awaiting_approval',task['reason'])
+        systems=[s for s in api.systems if 'Current autonomous plan step (runtime state):' in s]
+        self.assertEqual(len(systems),4)
+        for system in systems:
+            self.assertEqual(system.count('Current autonomous plan step (runtime state):'),1)
+        self.assertIn('STEP_INSPECT',systems[0].split('Current autonomous plan step (runtime state):')[1])
+        self.assertIn('STEP_IMPLEMENT',systems[-1].split('Current autonomous plan step (runtime state):')[1])
+        self.assertNotIn('STEP_INSPECT',systems[-1].split('Current autonomous plan step (runtime state):')[1])
+
+    async def test_passing_tests_and_stalled_plan_stop_without_paid_escalation(self):
+        # A prose-only final step has no successful command evidence. Passing
+        # project tests must neither auto-complete it nor trigger endless API advice.
+        plan=final_step(json.dumps({'steps':[
+            {'description':'Fix calculator'},
+            {'description':'Produce report','verification':'Report is clear and complete'}]}))
+        task, local, api=await self.run_task([plan,self.fix(),final_step('Fix done'),
+            tool_step('read_file',{'path':'calculator.py'}),final_step('Report'),
+            tool_step('read_file',{'path':'calculator.py'}),final_step('Report again')])
+        self.assertEqual(task['status'],'paused',task['reason'])
+        self.assertEqual(task['last_error']['code'],'TASK_PLAN_NO_PROGRESS')
+        self.assertTrue(task['last_error']['context']['verification_passed'])
+        self.assertEqual(task['last_error']['context']['remaining_steps'],1)
+        self.assertEqual(api.calls,0)
+        self.assertEqual(task['escalations'],0)
+        self.assertEqual(task['attempts'],2)
+        self.assertTrue(all(r['ok'] for r in task['verification']))
+        self.assertFalse(task['report'].get('passed'))
+
+    async def test_identical_failed_tests_after_diagnosis_stop_before_second_api_advice(self):
+        wrong=tool_step('apply_patch',{'path':'calculator.py','old_text':'a - b','new_text':'a * b'})
+        task, local, api=await self.run_task([PLAN,wrong,final_step('Attempted fix'),
+            tool_step('read_file',{'path':'calculator.py'}),final_step('No further change')],
+            [final_step('Replace multiplication with addition')],self.config(local_repairs=0))
+        self.assertEqual(task['status'],'paused',task['reason'])
+        self.assertEqual(task['last_error']['code'],'REPAIR_NO_PROGRESS')
+        self.assertEqual(api.calls,1)
+        self.assertEqual(task['escalations'],1)
+        self.assertFalse(task['report'].get('passed'))
+
     async def test_local_success_no_api_real_tests_and_source_unchanged(self):
         (self.repo / "user-untracked.txt").write_text("preserve")
         task, local, api = await self.run_task([PLAN, self.fix(), final_step(), final_step("No additional risks")])

@@ -215,6 +215,20 @@ class ToolLoopGuard:
                 return width
         return None
 
+    def verified_plan_progress(self) -> None:
+        """A verified step boundary permits fresh inspection/validation.
+
+        The caller must first persist step-local successful evidence. This does
+        not reset execution/tool budgets, failure counts, changed-file evidence,
+        or the persistent journal preventing replay of successful mutations.
+        """
+        self.call_counts.clear()
+        self.recent_fingerprints.clear()
+        self.recent_tool_names.clear()
+        self.blocked_repeats = 0
+        self.blocked_cycles = 0
+        self.last_block_reason = None
+
     def loop_abort_reason(self, *, max_blocked_repeats: int) -> str | None:
         if self.blocked_cycles > 0:
             return "short_cycle"

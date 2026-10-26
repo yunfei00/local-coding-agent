@@ -20,10 +20,15 @@ const GOAL = `请检查当前 Electron + React + TypeScript 工程中的 Setting
 不要读取公司文件、凭据或其他用户窗口。不要修改 package scripts、测试或 .lca 契约。
 依赖需要 npm ci --no-audit --no-fund。可以合并独立只读检查到同一轮工具调用以节约预算。`;
 
+const CALCULATOR_GOAL = `检查当前 Python 工程，修复 calculator.py 的 add 函数使现有测试全部通过。
+先读取源码和 tests，不修改测试、README、验证命令或 Git 元数据。用真实文件工具修改业务代码。
+使用 uv run --no-project python -m unittest discover -s tests -v 运行测试，并检查实际 Git Diff。
+只允许本任务 Worktree；无需桌面、联网安装依赖、提交、推送或合并。完成检查后给出简洁报告。`;
+
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const TERMINAL = new Set(['paused','failed','cancelled','completed','awaiting_approval']);
 
-function approvalAllowed(payload, workspace, ownedPids, phase) {
+function approvalAllowed(payload, workspace, ownedPids, phase, scenario='electron') {
   const a = payload.arguments || {}, tool = payload.tool;
   if (tool === 'git_worktree_create') return /^lca\/task-[a-zA-Z0-9_-]+$/.test(a.branch || '');
   // The independent verifier filters by its launched Job before using results;
@@ -37,7 +42,9 @@ function approvalAllowed(payload, workspace, ownedPids, phase) {
       && (tool !== 'desktop_click' || a.selector && ['Settings','Save'].includes(a.selector.name));
   }
   if (tool === 'run_command' || tool === 'start_process') {
-    return /^(npm (ci --no-audit --no-fund|run (typecheck|build)|test|start)|git (diff( --check)?|status( -sb)?))$/.test(a.command || '')
+    const commandAllowed=/^(npm (ci --no-audit --no-fund|run (typecheck|build)|test|start)|git (diff( --check)?|status( -sb)?))$/.test(a.command || '')
+      || scenario==='calculator' && a.command==='uv run --no-project python -m unittest discover -s tests -v';
+    return commandAllowed
       && (!a.cwd || a.cwd === '.' || path.resolve(a.cwd) === path.resolve(workspace || '.'));
   }
   return false; // No blanket Full Access, allow_turn, publishing or outside paths.
@@ -53,7 +60,7 @@ function safeCall(call) {
     reserved_tokens:call.reserved_tokens, ...Object.fromEntries(keys.filter(k => call.usage?.[k] !== undefined).map(k => [k,call.usage[k]]))};
 }
 
-function finalResult(task, tools) {
+function finalResult(task, tools, scenario='electron') {
   const verifications = task.verification || [];
   const calls = (task.calls || []).map(safeCall);
   const real = calls.filter(c => c.request_sent === true && c.http_status === 200);
@@ -61,12 +68,15 @@ function finalResult(task, tools) {
   const evidence = gui?.evidence || [];
   const image = evidence.some(e => e.tool === 'desktop_screenshot' && e.ok && e.sha256);
   const observation = evidence.find(e => e.tool === 'vision_observer')?.observation;
-  const passed = task.status === 'awaiting_approval' && verifications.length >= 5
+  const codePassed = task.status === 'awaiting_approval' && verifications.length >= (scenario==='calculator' ? 2 : 5)
     && verifications.every(v => v.ok) && tools.some(t => t.ok && ['apply_patch','write_file'].includes(t.name))
-    && real.length > 0 && real.every(c => c.estimated === false)
-    && image && real.some(c => c.role === 'vision-observer' && c.tool_schema_count === 0
+    && real.length > 0 && real.every(c => c.estimated === false);
+  const passed = codePassed && (scenario==='calculator' ?
+    verifications.some(v=>v.command==='uv run --no-project python -m unittest discover -s tests -v'
+      && /Ran [1-9][0-9]* tests?/.test((v.stdout || '')+'\n'+(v.stderr || '')))
+    : image && real.some(c => c.role === 'vision-observer' && c.tool_schema_count === 0
       && c.wire_images?.some(i => i.mime_type === 'image/jpeg' && i.bytes > 0 && i.sha256))
-    && observation?.observations?.length > 0 && observation.errors?.length === 0;
+    && observation?.observations?.length > 0 && observation.errors?.length === 0);
   return {result:passed ? 'PASS' : 'FAIL', reason:task.last_error?.code || task.reason || task.status,
     last_error:task.last_error || null,
     status_reason:task.reason,
@@ -84,6 +94,8 @@ function finalResult(task, tools) {
 }
 
 async function main(manifest) {
+  const scenario=manifest.scenario || 'electron';
+  const resultOf=(task,tools)=>finalResult(task,tools,scenario);
   const { _electron } = require('../../desktop/node_modules/playwright-core');
   const root = path.resolve(__dirname,'../..');
   let app, page, thread, task, stage = 'electron_launch';
@@ -137,11 +149,11 @@ async function main(manifest) {
       const p = event.payload || {};
       if (event.type === 'task.updated' && p.task) {
         task = p.task;
-        save({...finalResult(task,tools),result:'RUNNING',source:manifest.source,controller_stage:stage});
+        save({...resultOf(task,tools),result:'RUNNING',source:manifest.source,controller_stage:stage});
       }
       if (event.type === 'approval.requested') {
         processFiles();
-        const allowed = approvalAllowed(p, task?.workspace, ownedPids, task?.status);
+        const allowed = approvalAllowed(p, task?.workspace, ownedPids, task?.status,scenario);
         approvals.push({tool:p.tool, decision:allowed ? 'allow_once':'deny', risk:p.risk});
         await page.evaluate(({id, decision, turn}) => window.localAgent.respondApproval(id,decision,turn),
           {id:p.approval_id, decision:allowed ? 'allow_once':'deny', turn:event.turn_id});
@@ -177,7 +189,7 @@ async function main(manifest) {
     const started = Date.now();
     mark('task_start');
     const response = await page.evaluate(({thread, goal, config}) => window.localAgent.taskRequest(thread,'task.start',{goal,config}),
-      {thread, goal:GOAL, config:manifest.config});
+      {thread, goal:scenario==='calculator' ? CALCULATOR_GOAL : GOAL, config:manifest.config});
     task = response.payload.task;
     if (!task) throw new Error('TASK_NOT_CREATED');
     stage = 'task_running';
@@ -189,7 +201,7 @@ async function main(manifest) {
       processFiles();
       const progress = `${task.status} calls=${task.usage.api_calls} tokens=${task.usage.reserved_tokens}`;
       if (progress !== lastStatus) {console.log(progress);lastStatus=progress;}
-      save({...finalResult(task,tools), result:'RUNNING', source:manifest.source, events, approvals});
+      save({...resultOf(task,tools), result:'RUNNING', source:manifest.source, events, approvals});
       if (TERMINAL.has(task.status)) break;
       await delay(1000);
     }
@@ -197,14 +209,14 @@ async function main(manifest) {
       await page.evaluate(({thread,id})=>window.localAgent.taskRequest(thread,'task.cancel',{task_id:id}),{thread,id:task.id});
       task = (await page.evaluate(thread=>window.localAgent.taskRequest(thread,'task.list'),thread)).payload.tasks.find(t=>t.id===task.id);
     }
-    const result = finalResult(task,tools);
+    const result = resultOf(task,tools);
     save({...result, source:manifest.source, events, approvals, active_seconds:(Date.now()-started)/1000});
     console.log(JSON.stringify({task_id:task.id,result:result.result,reason:result.reason,paid_requests:result.paid_requests}));
   } catch (error) {
     // Error strings/stacks from requests or Electron may contain private data.
     const uncertain = !task && stage === 'task_start';
-    save({...(task ? finalResult(task,tools):{}), result:task || uncertain ? 'FAIL':'NOT RUN',
-      paid_requests:uncertain ? null : task ? finalResult(task,tools).paid_requests : 0,
+    save({...(task ? resultOf(task,tools):{}), result:task || uncertain ? 'FAIL':'NOT RUN',
+      paid_requests:uncertain ? null : task ? resultOf(task,tools).paid_requests : 0,
       usage_uncertain:uncertain,reason:'CONTROLLER_'+error.name, controller_stage:stage, events, approvals, source:manifest.source});
     process.exitCode = 2;
   } finally {
@@ -213,7 +225,7 @@ async function main(manifest) {
         await page.evaluate(({thread,id})=>window.localAgent.taskRequest(thread,'task.pause',{task_id:id}),{thread,id:task.id});
         const latest = (await page.evaluate(thread=>window.localAgent.taskRequest(thread,'task.list'),thread)).payload.tasks.find(t=>t.id===task.id);
         const last = JSON.parse(fs.readFileSync(manifest.report,'utf8'));
-        save({...last,...finalResult(latest,tools),result:'FAIL',reason:last.reason,events,approvals});
+        save({...last,...resultOf(latest,tools),result:'FAIL',reason:last.reason,events,approvals});
       } catch {
         const last = JSON.parse(fs.readFileSync(manifest.report,'utf8'));
         save({...last,result:'FAIL',paid_requests:null,usage_uncertain:true});

@@ -31,7 +31,7 @@ REPORT = ROOT / 'validation-reports/real-online-agent-acceptance.json'
 SESSION = REPORT.with_name('real-online-agent-session.json')
 
 
-def allocate_session(path, model, requested_calls, requested_tokens=60000, attempt_limit=2, update=False, requested_seconds=900):
+def allocate_session(path, model, requested_calls, requested_tokens=60000, attempt_limit=2, update=False, requested_seconds=900, *, independent=False):
     """One bounded acceptance session, including retries and both model groups.
 
     A controller crash keeps the full allocation reserved rather than resetting
@@ -61,7 +61,7 @@ def allocate_session(path, model, requested_calls, requested_tokens=60000, attem
             'used_calls':sum(a['calls'] for a in attempts),'used_tokens':sum(a['tokens'] for a in attempts)})
     if sum(a['model'] == model and bool(a.get('task_id')) for a in attempts) >= state['attempt_limits'].get(model,2):
         raise ValueError('FULL_RETRY_LIMIT_REACHED')
-    if model == 'glm-5.3' and not any(a['model'] == 'qwen3.8-flash' and a.get('result') == 'PASS' for a in attempts):
+    if not independent and model == 'glm-5.3' and not any(a['model'] == 'qwen3.8-flash' and a.get('result') == 'PASS' for a in attempts):
         raise ValueError('QWEN_ACCEPTANCE_REQUIRED_BEFORE_GLM')
     remaining = {'calls': min(requested_calls, state['call_ceiling'] - sum(a['calls'] for a in attempts)),
                  'tokens': min(requested_tokens,state['token_ceiling'] - sum(a['tokens'] for a in attempts)),
@@ -119,7 +119,7 @@ def select_profile(catalog, model, explicit=None, *, vision=False):
     return profile
 
 
-def live_config(executor, vision, calls, tokens=60000, extended=False):
+def live_config(executor, vision, calls, tokens=60000, extended=False, *, scenario='electron', strategy='single-agent'):
     if isinstance(calls, bool) or not isinstance(calls, int) or not 1 <= calls <= 10000:
         raise ValueError('Live acceptance allows 1..10000 calls')
     # Currency/price units are not recorded in old profiles. Do not invent CNY
@@ -128,16 +128,20 @@ def live_config(executor, vision, calls, tokens=60000, extended=False):
         raise ValueError('UNVERIFIED_CNY_PRICING: maximum 12 calls, no automatic increase')
     if isinstance(tokens,bool) or not isinstance(tokens,int) or not 1 <= tokens <= (1000000000 if extended else 60000):
         raise ValueError('INVALID_LIVE_TOKEN_LIMIT')
-    return validate_config({'strategy': 'single-agent',
+    raw = {'strategy': strategy,
         'roles': {r: {'model_profile_id': executor['model_profile_id']}
                   for r in ('planner', 'executor', 'reviewer', 'escalation')},
-        'vision_profile_id': vision['model_profile_id'],
         'budget': {'api_calls': calls, 'global_api_calls': calls,
                    'api_tokens': tokens, 'global_api_tokens': tokens,
-                   'request_seconds': 60, 'task_seconds': 900, 'local_repairs': 3}})
+                   'request_seconds': 60, 'task_seconds': 900, 'local_repairs': 3}}
+    if vision is not None:
+        raw['vision_profile_id'] = vision['model_profile_id']
+    if scenario == 'calculator':
+        raw['verification_commands'] = ['uv run --no-project python -m unittest discover -s tests -v', 'git diff --check']
+    return validate_config(raw)
 
 
-def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=60000, extended=False):
+def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=60000, extended=False, scenario='electron', strategy='single-agent'):
     """Copy only public model metadata, preserving the original credential context.
 
     No user database/messages/secret files are copied. The real Electron main
@@ -148,17 +152,20 @@ def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=
     data = temporary / 'data'
     data.mkdir()
     source = temporary / 'fixture'
-    shutil.copytree(ROOT / 'manual-fixtures/m5-electron-e2e', source,
+    fixture = 'v04-local-first' if scenario == 'calculator' else 'm5-electron-e2e'
+    shutil.copytree(ROOT / 'manual-fixtures' / fixture, source,
                     ignore=shutil.ignore_patterns('node_modules', 'dist', '.runtime'))
     for args in (['init', '-q', '-b', 'main'], ['config', 'user.name', 'Live acceptance'],
                  ['config', 'user.email', 'acceptance@example.test'], ['add', '.'],
                  ['commit', '-qm', 'Unrepaired M5 fixture baseline']):
         subprocess.run(['git', *args], cwd=source, check=True, capture_output=True)
-    selected = {executor['model_profile_id'], vision['model_profile_id']}
+    selected = {executor['model_profile_id']}
+    if vision is not None:
+        selected.add(vision['model_profile_id'])
     profiles = [p for p in catalog['profiles'] if p['model_profile_id'] in selected]
     connections = [c for c in catalog['connections']
                    if c['connection_id'] in {p['connection_id'] for p in profiles}]
-    config = live_config(executor, vision, calls,tokens,extended)
+    config = live_config(executor, vision, calls,tokens,extended,scenario=scenario,strategy=strategy)
     store = SQLiteStore(data)
     try:
         store.set_setting(KEY, json.dumps({'connections': connections, 'profiles': profiles}))
@@ -169,7 +176,8 @@ def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=
     manifest = {'source': str(source), 'data': str(data), 'config': config,
                 'credential_data': str(source_data.resolve()),
                 'executor': {k: executor[k] for k in ('model_profile_id', 'connection_id', 'model_id')},
-                'vision': {k: vision[k] for k in ('model_profile_id', 'connection_id', 'model_id')},
+                'vision': {k: vision[k] for k in ('model_profile_id', 'connection_id', 'model_id')} if vision else None,
+                'scenario': scenario,
                 'report': str(REPORT), 'call_limit': calls}
     path = temporary / 'manifest.json'
     path.write_text(json.dumps(manifest), encoding='utf-8')
@@ -234,8 +242,19 @@ def verify_disk(report):
     diff = subprocess.run(['git', 'diff', '--', '.', ':!package-lock.json'], cwd=workspace,
                           capture_output=True, text=True, encoding='utf-8', check=True).stdout
     report['disk_evidence'] = {'source_unchanged': unchanged,
-        'acceptance_changes': changed, 'diff': diff[:24000], 'diff_truncated': len(diff) > 24000,
-        'app_sha256': hashlib.sha256((workspace / 'src/App.tsx').read_bytes()).hexdigest()}
+        'acceptance_changes': changed, 'diff': diff[:24000], 'diff_truncated': len(diff) > 24000}
+    if report.get('scenario') == 'calculator':
+        paths = subprocess.check_output(['git','diff','--name-only'],cwd=workspace,text=True).splitlines()
+        original_tests = ROOT / 'manual-fixtures/v04-local-first/tests/test_calculator.py'
+        # Git checkout may normalize CRLF/LF on Windows. Compare test contents
+        # with universal newlines, in addition to the task's frozen byte hashes.
+        tests_unchanged = (workspace/'tests/test_calculator.py').read_text(encoding='utf-8') == original_tests.read_text(encoding='utf-8')
+        report['disk_evidence'].update(changed_files=paths,tests_unchanged=tests_unchanged,
+            calculator_sha256=hashlib.sha256((workspace/'calculator.py').read_bytes()).hexdigest())
+        if report.get('result') == 'PASS' and (not unchanged or changed or paths != ['calculator.py'] or not tests_unchanged or not diff.strip()):
+            report.update(result='FAIL',reason='INDEPENDENT_DISK_EVIDENCE_FAILED')
+        return
+    report['disk_evidence']['app_sha256'] = hashlib.sha256((workspace / 'src/App.tsx').read_bytes()).hexdigest()
     saved = workspace / '.runtime/saved.json'
     report['disk_evidence']['persisted_value'] = json.loads(saved.read_text()).get('value') if saved.exists() else None
     artifact_root = (source.parent / 'data/desktop-artifacts').resolve()
@@ -305,8 +324,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data-dir', type=Path, default=Path(os.getenv('APPDATA', str(Path.home()))) / 'local-coding-agent-desktop')
     parser.add_argument('--live', action='store_true', help='Authorize paid requests and controlled M5 GUI operations')
-    parser.add_argument('--model', choices=('qwen3.8-flash', 'qwen3.8-max', 'glm-5.3'), default='qwen3.8-flash')
-    parser.add_argument('--vision-model', choices=('qwen3.8-flash','qwen3.8-max'))
+    parser.add_argument('--model', default='qwen3.8-flash', help='Exact saved online Model ID, never an unverified fallback')
+    parser.add_argument('--vision-model', help='Exact saved online vision Model ID')
+    parser.add_argument('--scenario', choices=('electron','calculator'), default='electron')
+    parser.add_argument('--strategy', choices=('single-agent','api-only'), default='single-agent')
     parser.add_argument('--executor-profile')
     parser.add_argument('--vision-profile')
     parser.add_argument('--max-calls', type=int, default=12)
@@ -324,13 +345,15 @@ def main():
         catalog = load_catalog(args.data_dir)
         executor = select_profile(catalog, args.model, args.executor_profile)
         vision_model = args.vision_model or ('qwen3.8-flash' if args.model == 'glm-5.3' else args.model)
-        vision = select_profile(catalog, vision_model, args.vision_profile, vision=True)
-        config = live_config(executor, vision, args.max_calls,args.max_tokens,args.authorize_budget_update)
+        vision = select_profile(catalog, vision_model, args.vision_profile, vision=True) if args.scenario=='electron' or args.vision_model else None
+        config = live_config(executor, vision, args.max_calls,args.max_tokens,args.authorize_budget_update,scenario=args.scenario,strategy=args.strategy)
         report.update(executor={k:executor[k] for k in ('model_profile_id','connection_id','model_id')},
-                      vision={k:vision[k] for k in ('model_profile_id','connection_id','model_id')}, limits=config['budget'])
-        from agent.desktop.session import require_interactive_session
-        require_interactive_session()
-        report['interactive_desktop'] = True
+                      vision={k:vision[k] for k in ('model_profile_id','connection_id','model_id')} if vision else None,
+                      scenario=args.scenario,limits=config['budget'])
+        if args.scenario=='electron':
+            from agent.desktop.session import require_interactive_session
+            require_interactive_session()
+            report['interactive_desktop'] = True
         if not args.live:
             report['reason'] = 'OFFLINE_PREFLIGHT_ONLY; use --live for explicitly bounded paid acceptance'
         else:
@@ -338,10 +361,10 @@ def main():
             with tempfile.TemporaryDirectory(prefix='lca-live-m5-') as temporary:
                 REPORT.parent.mkdir(exist_ok=True)
                 remaining = allocate_session(SESSION, args.model, args.max_calls,args.max_tokens,
-                                             args.max_full_attempts,args.authorize_budget_update,args.max_seconds)
+                                             args.max_full_attempts,args.authorize_budget_update,args.max_seconds,independent=args.scenario=='calculator')
                 allocated = True
                 manifest = prepare(args.data_dir, catalog, executor, vision, remaining['calls'], temporary,
-                                   tokens=remaining['tokens'],extended=args.authorize_budget_update)
+                                   tokens=remaining['tokens'],extended=args.authorize_budget_update,scenario=args.scenario,strategy=args.strategy)
                 document = json.loads(manifest.read_text(encoding='utf-8'))
                 document['config']['budget'].update(api_tokens=remaining['tokens'],global_api_tokens=remaining['tokens'],task_seconds=remaining['seconds'])
                 if args.authorize_budget_update:
@@ -379,7 +402,7 @@ def main():
         settle_session(SESSION, report)
     write_report(report)
     print(json.dumps({k:report.get(k) for k in ('result','reason','paid_requests','task_id','final_status')}, ensure_ascii=False))
-    return 0 if report['result'] == 'PASS' or (not args.live and report['interactive_desktop']) else 2
+    return 0 if report['result'] == 'PASS' or (not args.live and (report['interactive_desktop'] or args.scenario=='calculator')) else 2
 
 
 if __name__ == '__main__':

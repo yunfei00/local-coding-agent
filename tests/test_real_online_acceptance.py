@@ -35,6 +35,101 @@ def catalog():
 
 
 class LiveAcceptanceGuards(unittest.TestCase):
+    def test_calculator_api_only_uses_saved_profile_without_requiring_vision(self):
+        saved=catalog()
+        executor=saved['profiles'][1]
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            original=root/'original';original.mkdir()
+            (original/'model-secrets.json').write_bytes(b'opaque-OS-protected-data')
+            isolated=root/'isolated';isolated.mkdir()
+            manifest=json.loads(live.prepare(original,saved,executor,None,12,isolated,
+                scenario='calculator',strategy='api-only').read_text())
+            self.assertEqual(manifest['scenario'],'calculator')
+            self.assertEqual(manifest['config']['strategy'],'api-only')
+            self.assertNotIn('vision_profile_id',manifest['config'])
+            self.assertTrue(all(r['model_profile_id']=='glm' for r in manifest['config']['roles'].values()))
+            self.assertIn('return a - b',(isolated/'fixture/calculator.py').read_text())
+            self.assertEqual((isolated/'fixture/tests/test_calculator.py').read_bytes(),
+                (ROOT/'manual-fixtures/v04-local-first/tests/test_calculator.py').read_bytes())
+            self.assertEqual((original/'model-secrets.json').read_bytes(),b'opaque-OS-protected-data')
+            self.assertFalse((isolated/'data/model-secrets.json').exists())
+            self.assertIn('uv run --no-project python -m unittest discover -s tests -v',manifest['config']['verification_commands'])
+
+    @unittest.skipUnless(shutil.which('node'),'Node required for validation controller assertions')
+    def test_model_import_is_idempotent_connection_scoped_and_does_not_bind_roles(self):
+        source="""
+const assert=require('node:assert/strict');
+const {importProfiles,codingCandidate}=require('./scripts/validation/saved_model_probe.cjs');
+const original={connections:[{connection_id:'one'},{connection_id:'two'}],profiles:[]};
+const first=importProfiles(original,'one',['same-model']);
+const second=importProfiles(first.catalog,'one',['same-model']);
+const third=importProfiles(second.catalog,'two',['same-model']);
+assert.equal(original.profiles.length,0);
+assert.equal(second.added.length,0);
+assert.equal(third.catalog.profiles.length,2);
+assert.notEqual(third.catalog.profiles[0].model_profile_id,third.catalog.profiles[1].model_profile_id);
+assert.equal(third.catalog.profiles[0].supports_vision,false);
+assert.equal(third.catalog.profiles[0].credential_reference,undefined);
+assert.equal(third.catalog.roles,undefined);
+assert(codingCandidate('qwen3.7-plus'));
+for(const n of ['qwen-image-3.0','wan3.0-video','qwen3.8-omni-flash-realtime','text-embedding-v4']) assert(!codingCandidate(n));
+"""
+        subprocess.run(['node','-e',source],cwd=ROOT,check=True,capture_output=True)
+
+    @unittest.skipUnless(shutil.which('node'),'Node required for validation controller assertions')
+    def test_calculator_cannot_pass_without_real_mutation_usage_and_nonempty_independent_tests(self):
+        source="""
+const assert=require('node:assert/strict');
+const {finalResult,approvalAllowed}=require('./scripts/validation/real_online_agent_e2e.cjs');
+const command='uv run --no-project python -m unittest discover -s tests -v';
+const task={status:'awaiting_approval',verification:[{command,ok:true,stderr:'Ran 2 tests\\nOK'},{command:'git diff --check',ok:true}],
+calls:[{model:'real-model',status:'success',usage:{request_sent:true,http_status:200,estimated:false}}]};
+const tools=[{name:'apply_patch',ok:true}];
+assert.equal(finalResult(task,tools,'calculator').result,'PASS');
+assert.equal(finalResult(task,[],'calculator').result,'FAIL');
+task.verification[0].stderr='Ran 0 tests';
+assert.equal(finalResult(task,tools,'calculator').result,'FAIL');
+task.verification[0].stderr='Ran 2 tests';task.verification[0].ok=false;
+assert.equal(finalResult(task,tools,'calculator').result,'FAIL');
+assert(approvalAllowed({tool:'run_command',arguments:{command}},'.',new Set(),'executing','calculator'));
+assert(!approvalAllowed({tool:'run_command',arguments:{command:command+'; git push'}},'.',new Set(),'executing','calculator'));
+assert(!approvalAllowed({tool:'run_command',arguments:{command,cwd:'C:/outside'}},'.',new Set(),'executing','calculator'));
+"""
+        subprocess.run(['node','-e',source],cwd=ROOT,check=True,capture_output=True)
+
+    def test_authorized_independent_model_keeps_previous_models_usage(self):
+        with tempfile.TemporaryDirectory() as temp:
+            session=Path(temp)/'session.json'
+            session.write_text(json.dumps({'call_ceiling':100,'token_ceiling':1000000,'seconds_ceiling':7200,
+                'attempts':[{'model':'qwen3.8-max','state':'settled','result':'FAIL','calls':46,'tokens':741103,'seconds':823}]}))
+            remaining=live.allocate_session(session,'glm-5.3',100,1000000,independent=True)
+            self.assertEqual(remaining,{'calls':54,'tokens':258897,'seconds':6377})
+            self.assertEqual(json.loads(session.read_text())['attempts'][0]['calls'],46)
+
+    def test_calculator_disk_gate_allows_git_newlines_but_rejects_changed_assertions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            source=root/'source';source.mkdir()
+            workspace=root/'worktree';workspace.mkdir()
+            (workspace/'tests').mkdir()
+            original=(ROOT/'manual-fixtures/v04-local-first/tests/test_calculator.py').read_text()
+            (workspace/'tests/test_calculator.py').write_bytes(original.replace('\r\n','\n').encode())
+            (workspace/'calculator.py').write_text('def add(a,b): return a+b\n')
+            def commands(args,**kwargs):
+                return subprocess.CompletedProcess(args,0,stdout='' if 'status' in args else 'actual diff',stderr='')
+            for changed in (False,True):
+                if changed:
+                    (workspace/'tests/test_calculator.py').write_text(original.replace('5)','999)'))
+                report={'scenario':'calculator','source':str(source),'workspace':str(workspace),
+                    'result':'PASS','acceptance_baseline':{'tests/test_calculator.py':{'sha256':'test-baseline'}}}
+                with patch.object(live.subprocess,'run',side_effect=commands), \
+                        patch.object(live.subprocess,'check_output',return_value='calculator.py\n'), \
+                        patch.object(live,'acceptance_changes',return_value=[]):
+                    live.verify_disk(report)
+                self.assertEqual(report['result'],'FAIL' if changed else 'PASS')
+                self.assertEqual(report['disk_evidence']['tests_unchanged'],not changed)
+
     def test_startup_watchdog_terminates_owned_controller_without_resetting_session(self):
         with tempfile.TemporaryDirectory() as temp:
             report=Path(temp)/'report.json'

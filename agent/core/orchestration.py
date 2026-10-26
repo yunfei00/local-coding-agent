@@ -590,8 +590,15 @@ class TaskService:
                     plan_complete = all(s["state"] == "completed" for s in current_plan["steps"])
                     passed = bool(results) and all(r["ok"] for r in results) and diff_result.get("ok") and plan_complete and outcome["type"] == "turn.completed"
                     fingerprint = failure_fingerprint(results, diff)
+                    # A plan advancing through successful steps is progress even
+                    # when the resulting code/tests have not changed. Conversely,
+                    # passing tests must not hide an unchanged unfinished plan.
+                    plan_state = [(s['id'],s['state']) for s in current_plan['steps']]
+                    plan_fingerprint = hashlib.sha256(json.dumps([fingerprint,plan_state],sort_keys=True).encode()).hexdigest()
                     task = self.runtime.get(plan_id)
-                    history = [*task["attempt_history"], {"fingerprint": fingerprint, "reason": code or "verification", "attempt": task["attempts"]}][-30:]
+                    previous_history = task['attempt_history']
+                    history = [*previous_history, {"fingerprint": fingerprint, 'plan_fingerprint':plan_fingerprint,
+                        "reason": code or "verification", "attempt": task["attempts"]}][-30:]
                     task.update(verification=results, attempt_history=history)
                     task['verification_history'] = [*task.get('verification_history', []), {'attempt': task['attempts'], 'passed': bool(passed), 'at': time.time(), 'results': results}][-10:]
                     self.runtime.save(task)
@@ -614,6 +621,20 @@ class TaskService:
                     if any(r["category"] in {"environment", "configuration", "permission", "network", "timeout"} for r in results):
                         await update("paused", "Verification environment/configuration/permission/network/timeout issue. Resolve locally and resume; no diagnostic API request sent.")
                         return
+                    if all(r['ok'] for r in results) and diff_result.get('ok') and not plan_complete:
+                        if previous_history and previous_history[-1].get('plan_fingerprint') == plan_fingerprint:
+                            error = ProviderError('TASK_PLAN_NO_PROGRESS',
+                                'Independent commands passed, but the same plan steps remain unfinished. '
+                                'Stopped before another model request; inspect the current step verification and actual tool evidence.')
+                            error.context_details = {'completed_steps':sum(s['state']=='completed' for s in current_plan['steps']),
+                                'remaining_steps':sum(s['state']!='completed' for s in current_plan['steps']),
+                                'verification_passed':True,'request_sent':False}
+                            raise error
+                        # Continue the existing plan, not a new repair step or a
+                        # paid diagnosis of tests that are already passing.
+                        advice = 'Independent commands passed. Finish ONLY the current remaining plan step with fresh tool evidence; do not redo completed edits.'
+                        await update('repairing','Independent commands passed; continue the remaining plan without paid escalation')
+                        continue
                     task = self.runtime.get(plan_id)
                     task["repairs"] += 1
                     self.runtime.save(task)
@@ -626,7 +647,13 @@ class TaskService:
                         advice = "Repair the actual independent verification failures using the same model and real tools."
                         continue
                     if repeated or task["repairs"] >= max(1, task["config"]["budget"]["local_repairs"]) or code == "TOOL_LOOP_DETECTED":
+                        diagnosed = task.get('diagnosed_failure_fingerprints',[])
+                        if fingerprint in diagnosed:
+                            raise ProviderError('REPAIR_NO_PROGRESS','The same failure and Diff persisted after model diagnosis. Stopped before another diagnosis request; checkpoint and evidence retained.')
                         advice = await self.escalate(router, task, results, diff, "Repeated failure/no progress" if repeated else "Local repair limit or tool cycle", update)
+                        task = self.runtime.get(plan_id)
+                        task['diagnosed_failure_fingerprints'] = [*diagnosed,fingerprint][-30:]
+                        self.runtime.save(task)
                 await update("failed", "Orchestration safety iteration limit reached")
         except asyncio.CancelledError:
             with suppress(Exception):

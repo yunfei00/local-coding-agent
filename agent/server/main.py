@@ -2099,8 +2099,17 @@ class AgentServer:
                         runtime_observation = (execution_observation(guard,tools.processes,turn_id,single_agent=single_agent)
                             if single_agent or plan_id else None)
                         request_messages = [dict(m) for m in messages] + ([capture] if capture else [])
-                        if runtime_observation:
-                            request_messages[0]['content'] += '\n\n' + runtime_observation['content']
+                        runtime_suffix = '\n\n' + runtime_observation['content'] if runtime_observation else ''
+                        if plan_id and not single_agent and active_plan:
+                            current_step = self.store.task_plans.active_step(active_plan['id'])
+                            if current_step:
+                                runtime_suffix += ('\n\nCurrent autonomous plan step (runtime state): '
+                                    + json.dumps({k:current_step[k] for k in ('id','description','verification','state')},ensure_ascii=False)
+                                    + '\nExecute ONLY this step now. Do not implement later steps early. '
+                                    'After obtaining this step\'s real tool evidence, return a concise summary without more tools; '
+                                    'the runtime advances the persistent plan. A nonempty verification requires a successful '
+                                    'command in this step. Do not replay a completed mutation or undo a correct fix to recreate a baseline failure.')
+                        request_messages[0]['content'] += runtime_suffix
                         await ws.send_json(envelope('model.identity', {**getattr(provider,'chat_identity',{}), **(tools.desktop.image_metadata.get(turn_id,{}) if capture else {}), 'executor_profile_id':getattr(provider,'profile',{}).get('model_profile_id') if plan_id else None, 'image_attached':bool(capture), 'vision_profile_id':getattr(observer,'chat_identity',{}).get('chat_profile_id'), 'model_id':model, 'attachment_state':'queued' if capture else 'none'}, thread_id=thread_id,turn_id=turn_id))
                         schemas = tools.schemas(self.permissions.visible_tools(tools.names, tools.permission_metadata_map()), desktop_owner_id=turn_id)
                         if getattr(provider,'route',None) == 'api':
@@ -2113,8 +2122,8 @@ class AgentServer:
                             # This live snapshot is reconstructed each call, not
                             # accumulated as history or persisted as user intent.
                             messages = [dict(m) for m in retained]
-                            if runtime_observation:
-                                messages[0]['content'] = messages[0]['content'].removesuffix('\n\n'+runtime_observation['content'])
+                            if runtime_suffix:
+                                messages[0]['content'] = messages[0]['content'].removesuffix(runtime_suffix)
                             self.last_context_usage = fitted_request.usage.to_dict()
                             metrics.record_context(self.last_context_usage)
                             await ws.send_json(envelope('context.updated',self.last_context_usage,
@@ -2249,6 +2258,7 @@ class AgentServer:
                                  "next_step_id": next_step["id"]},
                                 thread_id=thread_id, turn_id=turn_id))
                             active_step_id = next_step["id"]
+                            guard.verified_plan_progress()
                             plan_tool_evidence.clear()
                             plan_commands_run.clear()
                             messages.append({"role": "assistant", "content": assistant_text})
