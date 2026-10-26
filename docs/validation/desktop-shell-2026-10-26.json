@@ -1,12 +1,33 @@
 {
   "date": "2026-10-26",
   "environment": "Windows 11, Electron, isolated HTTP mock and temporary projects",
+  "reference": "User-provided light/dark Appearance screenshots; dominant RGB of flat regions and visible foreground field",
+  "palette": {
+    "light": {
+      "chrome": "#ECF6F9",
+      "sidebar": "#F8FCFD",
+      "canvas": "#FFFFFF",
+      "surface": "#FFFFFF",
+      "selected": "#EBF0F1",
+      "ink": "#1A1C1E"
+    },
+    "dark": {
+      "chrome": "#1A2225",
+      "sidebar": "#191C1D",
+      "canvas": "#181818",
+      "surface": "#232323",
+      "selected": "#2C2E2E",
+      "ink": "#FFFFFF"
+    }
+  },
   "ok": true,
-  "check_count": 37,
+  "check_count": 39,
   "checks": [
     "Renderer connects to isolated Python Agent and opens project",
     "Readable shared typography: 16px composer, 14px sidebar and controls",
-    "Unified dark palette, single 48px native header, project menu keyboard/outside dismissal, no connection/provider badges",
+    "Unified dark palette, single 44px native header, project menu keyboard/outside dismissal, no connection/provider badges",
+    "Reference-derived cool chrome/near-white sidebar, #181818 dark canvas, one File/Edit/View/Help row, native Select All restores editor focus",
+    "Dedicated Settings view uses the reference palette without a second project sidebar; editor stays inside viewport",
     "Header Open menu resolves only the active backend project; file manager launch mocked",
     "Real Electron HWND/UIA screenshot through product Windows capture with valid dimensions, privacy masking and method diagnostics",
     "Newly updated project sorts ahead of alphabetically earlier calculator-project",

@@ -4,8 +4,8 @@ import {createPortal} from "react-dom";
 type Action = {label:string; onSelect:() => void; disabled?:boolean};
 
 /** Anchored menu with keyboard navigation and focus restoration. */
-export function ActionMenu({label, children, actions, disabled = false, className = ""}: {
-  label:string; children:ReactNode; actions:Action[]; disabled?:boolean; className?:string;
+export function ActionMenu({label, children, actions, disabled = false, className = "", menuBarItem = false}: {
+  label:string; children:ReactNode; actions:Action[]; disabled?:boolean; className?:string; menuBarItem?:boolean;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -37,7 +37,7 @@ export function ActionMenu({label, children, actions, disabled = false, classNam
   }, [position]);
   useEffect(() => {if (disabled) setPosition(null);}, [disabled]);
   return <>
-    <button ref={trigger} type="button" className={className} aria-label={label} title={label}
+    <button ref={trigger} type="button" role={menuBarItem ? "menuitem" : undefined} className={className} aria-label={label} title={label}
       aria-haspopup="menu" aria-expanded={Boolean(position)} aria-controls={position ? id : undefined} disabled={disabled}
       onClick={() => position ? close(true) : open()}
       onKeyDown={event => {if (event.key === "ArrowDown" || event.key === "ArrowUp") {event.preventDefault(); open();}}}>

@@ -229,6 +229,15 @@ function App() {
     } catch { return []; }
   });
   const [theme, setTheme] = useState(() => localStorage.getItem("lca-theme") ?? "dark");
+  const lastEditorRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const remember = (event:FocusEvent) => {
+      const element = event.target;
+      if (element instanceof HTMLElement && (element.matches("input, textarea") || element.isContentEditable)) lastEditorRef.current = element;
+    };
+    document.addEventListener("focusin", remember);
+    return () => document.removeEventListener("focusin", remember);
+  }, []);
   const [projectThreadCache, setProjectThreadCache] = useState<Record<string, ThreadRecord[]>>({});
   const [workspace, setWorkspace] = useState<ProjectInfo | null>(null);
   const [selectedModel, setSelectedModel] = useState("");
@@ -1256,8 +1265,67 @@ function App() {
     if (settingsOpen) void refreshModels();
   };
 
+  const editAction = (action:string) => {
+    if (lastEditorRef.current?.isConnected) lastEditorRef.current.focus({preventScroll:true});
+    void window.localAgent.menuAction(action).catch(cause => setUiError(String(cause)));
+  };
+
   return (
     <div className="app-shell">
+        <header className="topbar">
+          <nav className="app-menubar" role="menubar" aria-label="Application menu">
+            <ActionMenu label="文件" className="app-menu-button" menuBarItem actions={[
+              {label:"添加现有文件夹…", disabled:status.state !== "ready" || Boolean(runningTurnId), onSelect:() => void openProject()},
+              {label:"新建项目…", disabled:status.state !== "ready" || Boolean(runningTurnId), onSelect:() => setNewProjectOpen(true)},
+              {label:"新建会话", disabled:!workspace || Boolean(runningTurnId) || status.state !== "ready", onSelect:() => {if (workspace) void createThread(workspace);}},
+              {label:"退出", onSelect:() => void window.localAgent.menuAction("quit").catch(cause => setUiError(String(cause)))}
+            ]}>文件</ActionMenu>
+            <ActionMenu label="编辑" className="app-menu-button" menuBarItem actions={[
+              {label:"撤销", onSelect:() => editAction("undo")},
+              {label:"重做", onSelect:() => editAction("redo")},
+              {label:"剪切", onSelect:() => editAction("cut")},
+              {label:"复制", onSelect:() => editAction("copy")},
+              {label:"粘贴", onSelect:() => editAction("paste")},
+              {label:"全选", onSelect:() => editAction("selectAll")}
+            ]}>编辑</ActionMenu>
+            <ActionMenu label="视图" className="app-menu-button" menuBarItem actions={[
+              {label:"浅色模式", onSelect:() => setTheme("light")},
+              {label:"深色模式", onSelect:() => setTheme("dark")},
+              {label:"放大", onSelect:() => void window.localAgent.menuAction("zoomIn")},
+              {label:"缩小", onSelect:() => void window.localAgent.menuAction("zoomOut")},
+              {label:"实际大小", onSelect:() => void window.localAgent.menuAction("zoomReset")}
+            ]}>视图</ActionMenu>
+            <ActionMenu label="帮助" className="app-menu-button" menuBarItem actions={[
+              {label:"使用文档", onSelect:() => void window.localAgent.menuAction("guide").catch(cause => setUiError(String(cause)))},
+              {label:"诊断", onSelect:() => togglePanel("diagnostics")},
+              {label:"关于 Local Coding Agent", onSelect:() => void window.localAgent.menuAction("about").catch(cause => setUiError(String(cause)))}
+            ]}>帮助</ActionMenu>
+          </nav>
+          <div className="topbar-title">
+            <strong title={activeThread?.title ?? "Local Coding Agent"}>{activeThread?.title ?? "New chat"}</strong>
+            {workspace ? <span title={workspace.path}>{workspace.name}</span> : null}
+          </div>
+          <div className="topbar-actions">
+            <ActionMenu label="Open" className="header-open" disabled={!workspace}
+              actions={[{label:window.localAgent.platform === "win32" ? "Open in File Explorer" : "Open in file manager",
+                onSelect:() => {void window.localAgent.openProjectFolder().catch(cause => setUiError(String(cause)));}}]}>
+              <Icon name="open" /><span>Open</span><Icon name="chevron" />
+            </ActionMenu>
+            <button type="button" className={"icon-button" + (gitOpen ? " active" : "")} aria-label="Git" title="Review changes"
+              disabled={!workspace} onClick={() => togglePanel("git")}><Icon name="changes" /></button>
+            <button type="button" className={"icon-button" + (taskOpen ? " active" : "")} aria-label="Task" title="Tasks"
+              disabled={!activeThread} onClick={() => togglePanel("task")}><Icon name="task" /></button>
+            <button type="button" className={"icon-button" + (contextOpen ? " active" : "")} aria-label="Context" title="Context"
+              disabled={!activeThread} onClick={() => togglePanel("context")}><Icon name="context" /></button>
+            <ActionMenu label="More" className="icon-button" actions={[
+              {label:"Plan", disabled:!activeThread, onSelect:() => togglePanel("plan")},
+              {label:"Diagnostics", onSelect:() => togglePanel("diagnostics")},
+              {label:"Refresh models", onSelect:() => void refreshModels()},
+              {label:"Toggle color theme", onSelect:() => setTheme(theme === "dark" ? "light" : "dark")}
+            ]}><Icon name="more" /></ActionMenu>
+          </div>
+        </header>
+
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">LC</span>
@@ -1313,31 +1381,6 @@ function App() {
       </aside>
 
       <main className="workspace">
-        <header className="topbar">
-          <div className="topbar-title">
-            <strong title={activeThread?.title ?? "Local Coding Agent"}>{activeThread?.title ?? "New chat"}</strong>
-            {workspace ? <span title={workspace.path}>{workspace.name}</span> : null}
-          </div>
-          <div className="topbar-actions">
-            <ActionMenu label="Open" className="header-open" disabled={!workspace}
-              actions={[{label:window.localAgent.platform === "win32" ? "Open in File Explorer" : "Open in file manager",
-                onSelect:() => {void window.localAgent.openProjectFolder().catch(cause => setUiError(String(cause)));}}]}>
-              <Icon name="open" /><span>Open</span><Icon name="chevron" />
-            </ActionMenu>
-            <button type="button" className={"icon-button" + (gitOpen ? " active" : "")} aria-label="Git" title="Review changes"
-              disabled={!workspace} onClick={() => togglePanel("git")}><Icon name="changes" /></button>
-            <button type="button" className={"icon-button" + (taskOpen ? " active" : "")} aria-label="Task" title="Tasks"
-              disabled={!activeThread} onClick={() => togglePanel("task")}><Icon name="task" /></button>
-            <button type="button" className={"icon-button" + (contextOpen ? " active" : "")} aria-label="Context" title="Context"
-              disabled={!activeThread} onClick={() => togglePanel("context")}><Icon name="context" /></button>
-            <ActionMenu label="More" className="icon-button" actions={[
-              {label:"Plan", disabled:!activeThread, onSelect:() => togglePanel("plan")},
-              {label:"Diagnostics", onSelect:() => togglePanel("diagnostics")},
-              {label:"Refresh models", onSelect:() => void refreshModels()},
-              {label:"Toggle color theme", onSelect:() => setTheme(theme === "dark" ? "light" : "dark")}
-            ]}><Icon name="more" /></ActionMenu>
-          </div>
-        </header>
 
         <div className={"conversation-shell" + (gitOpen || planOpen || taskOpen || contextOpen || diagnosticsOpen ? " with-panel" : "")}>
           <section

@@ -1272,18 +1272,18 @@ body,
 
 .settings-button {
   padding: 4px 8px;
-  color: #aaa;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   background: transparent;
-  border: 1px solid #343434;
+  border: 1px solid var(--border);
   border-radius: 7px;
 }
 
 .settings-button:hover,
 .settings-button.active {
-  color: #eee;
-  background: #242424;
-  border-color: #4a4a4a;
+  color: var(--ink);
+  background: var(--hover);
+  border-color: var(--border);
 }
 
 .settings-panel {
@@ -1294,7 +1294,7 @@ body,
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
-  background: #101010;
+  background: var(--surface);
 }
 
 .settings-header {
@@ -1317,9 +1317,9 @@ body,
 .settings-inline-actions button,
 .settings-bottom-actions button {
   padding: 7px 11px;
-  color: #ddd;
-  background: #252525;
-  border: 1px solid #3b3b3b;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 7px;
 }
 
@@ -1328,7 +1328,7 @@ body,
 .settings-footer button:hover:not(:disabled),
 .settings-inline-actions button:hover:not(:disabled),
 .settings-bottom-actions button:hover:not(:disabled) {
-  background: #2d2d2d;
+  background: var(--hover);
 }
 
 .settings-header button:disabled,
@@ -1336,7 +1336,7 @@ body,
 .settings-footer button:disabled,
 .settings-inline-actions button:disabled,
 .settings-bottom-actions button:disabled {
-  color: #666;
+  color: var(--muted);
 }
 
 .settings-body {
@@ -1352,13 +1352,13 @@ body,
   padding: 18px 12px;
   overflow-y: auto;
   border-right: 1px solid #262626;
-  background: #141414;
+  background: var(--surface);
 }
 
 .settings-nav button {
   width: 100%;
   padding: 8px 10px;
-  color: #898989;
+  color: var(--muted);
   text-align: left;
   background: transparent;
   border: 0;
@@ -1367,8 +1367,8 @@ body,
 
 .settings-nav button:hover,
 .settings-nav button.active {
-  color: #eee;
-  background: #232323;
+  color: var(--ink);
+  background: var(--hover);
 }
 
 .settings-content {
@@ -1400,8 +1400,8 @@ body,
 .settings-summary-grid > div,
 .settings-safety-note {
   padding: 13px 14px;
-  background: #171717;
-  border: 1px solid #2d2d2d;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 9px;
 }
 
@@ -1411,7 +1411,7 @@ body,
 }
 
 .settings-summary-grid span {
-  color: #777;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   text-transform: uppercase;
 }
@@ -1419,7 +1419,7 @@ body,
 .settings-summary-grid strong {
   margin-top: 5px;
   overflow: hidden;
-  color: #ddd;
+  color: var(--ink);
   font-size: var(--font-size-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1439,13 +1439,13 @@ body,
 }
 
 .settings-field > span {
-  color: #c7c7c7;
+  color: var(--ink);
   font-size: var(--font-size-ui);
   font-weight: 600;
 }
 
 .settings-field small {
-  color: #747474;
+  color: var(--muted);
   font-size: var(--font-size-caption);
 }
 
@@ -1454,9 +1454,9 @@ body,
 .settings-rule-card textarea {
   width: 100%;
   padding: 8px 9px;
-  color: #ddd;
-  background: #191919;
-  border: 1px solid #343434;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 7px;
   outline: none;
 }
@@ -1464,13 +1464,13 @@ body,
 .settings-field input:focus,
 .settings-field select:focus,
 .settings-rule-card textarea:focus {
-  border-color: #555;
+  border-color: var(--border);
 }
 
 .settings-field input:disabled,
 .settings-field select:disabled,
 .settings-rule-card textarea:disabled {
-  color: #666;
+  color: var(--muted);
 }
 
 .settings-field-row {
@@ -1481,8 +1481,8 @@ body,
 
 .settings-rule-card {
   padding: 14px;
-  background: #151515;
-  border: 1px solid #2b2b2b;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 10px;
 }
 
@@ -1499,13 +1499,13 @@ body,
 }
 
 .settings-rule-header strong {
-  color: #ddd;
+  color: var(--ink);
   font-size: var(--font-size-ui);
 }
 
 .settings-rule-header span {
   margin-top: 2px;
-  color: #727272;
+  color: var(--muted);
   font-size: var(--font-size-caption);
 }
 
@@ -1521,7 +1521,7 @@ body,
   display: flex;
   gap: 6px;
   align-items: center;
-  color: #888;
+  color: var(--muted);
   font-size: var(--font-size-caption);
 }
 
@@ -1537,8 +1537,8 @@ body,
 }
 
 .settings-secondary {
-  color: #aaa !important;
-  background: #1c1c1c !important;
+  color: var(--muted) !important;
+  background: var(--surface) !important;
 }
 
 .settings-bottom-actions {
@@ -1585,15 +1585,15 @@ body,
   justify-content: space-between;
   gap: 18px;
   padding: 12px 22px;
-  color: #777;
+  color: var(--muted);
   font-size: var(--font-size-caption);
-  background: #151515;
+  background: var(--surface);
   border-top: 1px solid #282828;
 }
 
 .settings-loading {
   margin: auto;
-  color: #888;
+  color: var(--muted);
   font-size: var(--font-size-ui);
 }
 
@@ -1616,18 +1616,18 @@ body,
 /* Phase 18 Diagnostics. */
 .diagnostics-button {
   padding: 4px 8px;
-  color: #aaa;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   background: transparent;
-  border: 1px solid #343434;
+  border: 1px solid var(--border);
   border-radius: 7px;
 }
 
 .diagnostics-button:hover,
 .diagnostics-button.active {
-  color: #eee;
-  background: #242424;
-  border-color: #4a4a4a;
+  color: var(--ink);
+  background: var(--hover);
+  border-color: var(--border);
 }
 
 .diagnostics-panel {
@@ -1638,7 +1638,7 @@ body,
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-  background: #101010;
+  background: var(--surface);
 }
 
 .diagnostics-header {
@@ -1663,18 +1663,18 @@ body,
 
 .diagnostics-actions button {
   padding: 7px 11px;
-  color: #ddd;
-  background: #252525;
-  border: 1px solid #3b3b3b;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 7px;
 }
 
 .diagnostics-actions button:hover:not(:disabled) {
-  background: #2d2d2d;
+  background: var(--hover);
 }
 
 .diagnostics-actions button:disabled {
-  color: #666;
+  color: var(--muted);
 }
 
 .diagnostics-content {
@@ -1728,7 +1728,7 @@ body,
 }
 
 .diagnostics-card dt {
-  color: #707070;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   text-transform: uppercase;
 }
@@ -1737,7 +1737,7 @@ body,
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  color: #bbb;
+  color: var(--ink);
   font-size: var(--font-size-caption);
   text-overflow: ellipsis;
 }
@@ -1784,9 +1784,9 @@ body,
   min-width: 24px;
   height: 24px;
   place-items: center;
-  color: #888;
+  color: var(--muted);
   font-size: var(--font-size-caption);
-  border: 1px solid #333;
+  border: 1px solid var(--border);
   border-radius: 999px;
 }
 
@@ -1831,7 +1831,7 @@ body,
 .diagnostics-empty,
 .diagnostics-loading {
   padding: 18px;
-  color: #777;
+  color: var(--muted);
   font-size: var(--font-size-caption);
 }
 
@@ -1843,7 +1843,7 @@ body,
   padding: 10px 12px;
   color: #7b9c83;
   font-size: var(--font-size-caption);
-  background: #141b16;
+  background: var(--surface);
   border-color: #29402f;
 }
 
@@ -1858,7 +1858,7 @@ body,
 
 .diagnostics-report-preview summary {
   padding: 10px 12px;
-  color: #888;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   cursor: pointer;
 }
@@ -1868,11 +1868,11 @@ body,
   margin: 0;
   padding: 12px;
   overflow: auto;
-  color: #999;
+  color: var(--muted);
   font-family: "Cascadia Code", "Consolas", monospace;
   font-size: var(--font-size-caption);
   line-height: 1.5;
-  background: #111;
+  background: var(--surface);
   border-top: 1px solid #292929;
 }
 
@@ -2187,7 +2187,7 @@ summary:focus-visible {
 
 .settings-button,
 .diagnostics-button {
-  color: #818287;
+  color: var(--muted);
   background: transparent;
   border-color: transparent;
 }
@@ -2196,9 +2196,9 @@ summary:focus-visible {
 .settings-button.active,
 .diagnostics-button:hover,
 .diagnostics-button.active {
-  color: #d6d6d8;
-  background: #1c1c1e;
-  border-color: #303136;
+  color: var(--ink);
+  background: var(--hover);
+  border-color: var(--border);
 }
 
 .platform {
@@ -2446,9 +2446,9 @@ summary:focus-visible {
 
 .context-chip {
   padding: 3px 6px;
-  color: #85868b;
-  background: #1d1d1f;
-  border: 1px solid #2c2d30;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 999px;
 }
 
@@ -2493,19 +2493,19 @@ summary:focus-visible {
   gap: 11px;
   margin-top: 18px;
   padding: 13px 14px;
-  background: #151516;
-  border: 1px solid #2b2c2f;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 9px;
 }
 
 .settings-update-card > div:first-child strong {
-  color: #d1d1d3;
+  color: var(--ink);
   font-size: var(--font-size-ui);
 }
 
 .settings-update-card > div:first-child p {
   margin-top: 4px;
-  color: #77787d;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   line-height: 1.5;
 }
@@ -2518,9 +2518,9 @@ summary:focus-visible {
 
 .settings-update-actions button {
   padding: 7px 10px;
-  color: #ddd;
-  background: #252527;
-  border: 1px solid #37383c;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 7px;
 }
 
@@ -2532,7 +2532,7 @@ summary:focus-visible {
 
 .settings-update-result.ok {
   color: #8fb69a;
-  background: #152018;
+  background: var(--surface);
   border: 1px solid #294331;
 }
 
@@ -2587,7 +2587,7 @@ summary:focus-visible {
 
 .mcp-settings-heading p {
   max-width: 640px;
-  color: #7c7d82;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   line-height: 1.5;
 }
@@ -2597,14 +2597,14 @@ summary:focus-visible {
   grid-template-columns: 210px minmax(0, 1fr);
   min-height: 520px;
   overflow: hidden;
-  border: 1px solid #2b2c2f;
+  border: 1px solid var(--border);
   border-radius: 10px;
 }
 
 .mcp-server-list {
   padding: 8px;
   overflow-y: auto;
-  background: #131314;
+  background: var(--surface);
   border-right: 1px solid #292a2d;
 }
 
@@ -2615,7 +2615,7 @@ summary:focus-visible {
   align-items: flex-start;
   padding: 9px;
   margin-bottom: 4px;
-  color: #aaa;
+  color: var(--muted);
   text-align: left;
   background: transparent;
   border: 1px solid transparent;
@@ -2624,8 +2624,8 @@ summary:focus-visible {
 
 .mcp-server-item:hover,
 .mcp-server-item.active {
-  background: #1c1c1e;
-  border-color: #2f3034;
+  background: var(--hover);
+  border-color: var(--border);
 }
 
 .mcp-status-dot {
@@ -2660,18 +2660,18 @@ summary:focus-visible {
 }
 
 .mcp-server-copy strong {
-  color: #d2d2d4;
+  color: var(--ink);
   font-size: var(--font-size-caption);
 }
 
 .mcp-server-copy small {
-  color: #6f7075;
+  color: var(--muted);
   font-size: var(--font-size-caption);
 }
 
 .mcp-empty {
   padding: 14px 10px;
-  color: #66676b;
+  color: var(--muted);
   font-size: var(--font-size-caption);
 }
 
@@ -2685,20 +2685,20 @@ summary:focus-visible {
   width: 100%;
   min-height: 86px;
   padding: 8px 9px;
-  color: #ddd;
+  color: var(--ink);
   resize: vertical;
   font-family: "Cascadia Code", "Consolas", monospace;
   font-size: var(--font-size-caption);
   line-height: 1.5;
-  background: #191919;
-  border: 1px solid #343434;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 7px;
   outline: none;
 }
 
 .mcp-editor .settings-field textarea:focus,
 .mcp-textarea:focus {
-  border-color: #555;
+  border-color: var(--border);
 }
 
 .mcp-switches {
@@ -2713,20 +2713,20 @@ summary:focus-visible {
 .mcp-tool-preview {
   margin-top: 12px;
   padding: 11px 12px;
-  background: #151516;
-  border: 1px solid #2c2d30;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 
 .mcp-trust-note strong,
 .mcp-tool-preview > strong {
-  color: #c5c5c8;
+  color: var(--ink);
   font-size: var(--font-size-caption);
 }
 
 .mcp-trust-note p {
   margin-top: 4px;
-  color: #74757a;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   line-height: 1.5;
 }
@@ -2749,7 +2749,7 @@ summary:focus-visible {
 .mcp-tool-preview code {
   min-width: 0;
   overflow: hidden;
-  color: #aaa;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2757,7 +2757,7 @@ summary:focus-visible {
 
 .mcp-tool-preview span {
   flex: 0 0 auto;
-  color: #74757a;
+  color: var(--muted);
   font-size: var(--font-size-caption);
 }
 
@@ -2778,14 +2778,14 @@ summary:focus-visible {
 
 .diagnostics-mcp-list strong {
   overflow: hidden;
-  color: #aaa;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .diagnostics-mcp-list > div > span:last-child {
-  color: #66676b;
+  color: var(--muted);
   font-size: var(--font-size-caption);
 }
 
@@ -2824,8 +2824,8 @@ summary:focus-visible {
 }
 
 .context-button.active {
-  border-color: #4b4d53;
-  background: #242529;
+  border-color: var(--border);
+  background: var(--hover);
 }
 
 .context-overlay {
@@ -2842,7 +2842,7 @@ summary:focus-visible {
   height: 100%;
   padding: 18px;
   overflow-y: auto;
-  background: #111214;
+  background: var(--surface);
   border-left: 1px solid #2b2c30;
   box-shadow: -18px 0 48px rgba(0, 0, 0, 0.26);
 }
@@ -2857,13 +2857,13 @@ summary:focus-visible {
 
 .context-panel-header h2 {
   margin: 4px 0 6px;
-  color: #e0e0e2;
+  color: var(--ink);
   font-size: 17px;
 }
 
 .context-panel-header p {
   max-width: 500px;
-  color: #777980;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   line-height: 1.5;
 }
@@ -2886,19 +2886,19 @@ summary:focus-visible {
   flex-direction: column;
   gap: 4px;
   padding: 10px;
-  background: #17181a;
-  border: 1px solid #292a2e;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 
 .context-repo-summary span {
-  color: #717278;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   text-transform: uppercase;
 }
 
 .context-repo-summary strong {
-  color: #c9c9cc;
+  color: var(--ink);
   font-size: var(--font-size-ui);
 }
 
@@ -2911,18 +2911,18 @@ summary:focus-visible {
 
 .context-language-row span {
   padding: 4px 7px;
-  color: #888a90;
+  color: var(--muted);
   font-size: var(--font-size-caption);
-  background: #17181a;
-  border: 1px solid #292a2e;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 999px;
 }
 
 .context-section {
   margin-top: 14px;
   padding: 13px;
-  background: #151618;
-  border: 1px solid #292a2e;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 10px;
 }
 
@@ -2936,13 +2936,13 @@ summary:focus-visible {
 
 .context-section-heading h3 {
   margin: 0 0 4px;
-  color: #c9c9cc;
+  color: var(--ink);
   font-size: var(--font-size-ui);
 }
 
 .context-section-heading p {
   margin: 0;
-  color: #6f7177;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   line-height: 1.45;
 }
@@ -2957,16 +2957,16 @@ summary:focus-visible {
 .context-filter {
   width: 100%;
   padding: 8px 9px;
-  color: #d5d5d7;
-  background: #101113;
-  border: 1px solid #32343a;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 7px;
   outline: none;
 }
 
 .context-pin-input input:focus,
 .context-filter:focus {
-  border-color: #555860;
+  border-color: var(--border);
 }
 
 .context-pinned-list {
@@ -2981,8 +2981,8 @@ summary:focus-visible {
   justify-content: space-between;
   gap: 12px;
   padding: 8px 9px;
-  background: #111214;
-  border: 1px solid #27282c;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 7px;
 }
 
@@ -2995,7 +2995,7 @@ summary:focus-visible {
 
 .context-pinned-item strong {
   overflow: hidden;
-  color: #aaaeb5;
+  color: var(--muted);
   font-family: "Cascadia Code", "Consolas", monospace;
   font-size: var(--font-size-caption);
   text-overflow: ellipsis;
@@ -3003,7 +3003,7 @@ summary:focus-visible {
 }
 
 .context-file-status {
-  color: #767880;
+  color: var(--muted);
   font-size: var(--font-size-caption);
 }
 
@@ -3018,10 +3018,10 @@ summary:focus-visible {
 .context-empty {
   margin-top: 10px;
   padding: 12px;
-  color: #696b72;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   text-align: center;
-  border: 1px dashed #2d2e33;
+  border: 1px dashed var(--border);
   border-radius: 7px;
 }
 
@@ -3033,7 +3033,7 @@ summary:focus-visible {
   display: grid;
   max-height: 320px;
   overflow-y: auto;
-  border: 1px solid #27282c;
+  border: 1px solid var(--border);
   border-radius: 7px;
 }
 
@@ -3043,9 +3043,9 @@ summary:focus-visible {
   justify-content: space-between;
   gap: 10px;
   padding: 7px 9px;
-  color: #909299;
+  color: var(--muted);
   text-align: left;
-  background: #111214;
+  background: var(--surface);
   border: 0;
   border-bottom: 1px solid #232428;
   border-radius: 0;
@@ -3056,7 +3056,7 @@ summary:focus-visible {
 }
 
 .context-file-list button:hover:not(:disabled) {
-  background: #1b1c1f;
+  background: var(--hover);
 }
 
 .context-file-list code {
@@ -3069,7 +3069,7 @@ summary:focus-visible {
 
 .context-file-list span {
   flex: 0 0 auto;
-  color: #777a81;
+  color: var(--muted);
   font-size: var(--font-size-caption);
 }
 
@@ -3087,7 +3087,7 @@ summary:focus-visible {
 /* Phase 24 context UX clarification. */
 .context-pin-help {
   margin: 7px 0 0;
-  color: #696b72;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   line-height: 1.45;
 }
@@ -3108,7 +3108,7 @@ summary:focus-visible {
   width: fit-content;
   padding: 2px 6px;
   border-radius: 999px;
-  background: #232529;
+  background: var(--surface);
 }
 
 .context-file-status.status-ready {
@@ -3123,7 +3123,7 @@ summary:focus-visible {
   gap: 10px;
   align-items: center;
   padding: 7px 9px;
-  background: #111214;
+  background: var(--surface);
   border-bottom: 1px solid #232428;
 }
 
@@ -3132,13 +3132,13 @@ summary:focus-visible {
 }
 
 .context-file-row:hover {
-  background: #18191c;
+  background: var(--hover);
 }
 
 .context-file-row code {
   min-width: 0;
   overflow: hidden;
-  color: #96989f;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3147,22 +3147,22 @@ summary:focus-visible {
 .context-row-pin {
   min-width: 58px;
   padding: 5px 9px;
-  color: #c8c9cd;
+  color: var(--ink);
   font-size: var(--font-size-caption);
-  background: #24262a;
-  border: 1px solid #3a3c42;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 6px;
 }
 
 .context-row-pin:hover:not(:disabled) {
-  background: #303238;
-  border-color: #52555d;
+  background: var(--hover);
+  border-color: var(--border);
 }
 
 .context-row-pin:disabled {
-  color: #686a70;
-  background: #191a1d;
-  border-color: #292b30;
+  color: var(--muted);
+  background: var(--surface);
+  border-color: var(--border);
   cursor: default;
 }
 
@@ -3173,8 +3173,8 @@ summary:focus-visible {
 }
 
 .git-button.active {
-  border-color: #4b4d53;
-  background: #242529;
+  border-color: var(--border);
+  background: var(--hover);
 }
 
 .git-overlay {
@@ -3191,7 +3191,7 @@ summary:focus-visible {
   height: 100%;
   padding: 18px;
   overflow-y: auto;
-  background: #111214;
+  background: var(--surface);
   border-left: 1px solid #2b2c30;
   box-shadow: -18px 0 48px rgba(0, 0, 0, 0.26);
 }
@@ -3206,13 +3206,13 @@ summary:focus-visible {
 
 .git-panel-header h2 {
   margin: 4px 0 6px;
-  color: #e0e0e2;
+  color: var(--ink);
   font-size: 17px;
 }
 
 .git-panel-header p {
   max-width: 510px;
-  color: #777980;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   line-height: 1.5;
 }
@@ -3229,20 +3229,20 @@ summary:focus-visible {
   flex-direction: column;
   gap: 4px;
   padding: 10px;
-  background: #17181a;
-  border: 1px solid #292a2e;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 
 .git-summary-grid span {
-  color: #717278;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   text-transform: uppercase;
 }
 
 .git-summary-grid strong {
   overflow: hidden;
-  color: #c9c9cc;
+  color: var(--ink);
   font-size: var(--font-size-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3251,8 +3251,8 @@ summary:focus-visible {
 .git-section {
   margin-top: 14px;
   padding: 13px;
-  background: #151618;
-  border: 1px solid #292a2e;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 10px;
 }
 
@@ -3266,13 +3266,13 @@ summary:focus-visible {
 
 .git-section-heading h3 {
   margin: 0 0 4px;
-  color: #c9c9cc;
+  color: var(--ink);
   font-size: var(--font-size-ui);
 }
 
 .git-section-heading p {
   margin: 0;
-  color: #6f7177;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   line-height: 1.45;
 }
@@ -3304,8 +3304,8 @@ summary:focus-visible {
 .git-file-group {
   min-width: 0;
   padding: 9px;
-  background: #111214;
-  border: 1px solid #27282c;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 7px;
 }
 
@@ -3314,7 +3314,7 @@ summary:focus-visible {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 7px;
-  color: #85878e;
+  color: var(--muted);
   font-size: var(--font-size-caption);
 }
 
@@ -3329,7 +3329,7 @@ summary:focus-visible {
 .git-source-worktree code,
 .git-worktree-copy code {
   overflow: hidden;
-  color: #93959c;
+  color: var(--muted);
   font-family: "Cascadia Code", "Consolas", monospace;
   font-size: var(--font-size-caption);
   text-overflow: ellipsis;
@@ -3337,7 +3337,7 @@ summary:focus-visible {
 }
 
 .git-empty-small {
-  color: #62646a;
+  color: var(--muted);
   font-size: var(--font-size-caption);
 }
 
@@ -3354,15 +3354,15 @@ summary:focus-visible {
   justify-content: space-between;
   gap: 12px;
   padding: 8px 9px;
-  background: #111214;
-  border: 1px solid #27282c;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 7px;
 }
 
 .git-branch-row.current,
 .git-worktree-row.current {
-  border-color: #41444b;
-  background: #18191c;
+  border-color: var(--border);
+  background: var(--surface);
 }
 
 .git-branch-row > div {
@@ -3373,13 +3373,13 @@ summary:focus-visible {
 }
 
 .git-branch-row strong {
-  color: #aaaeb5;
+  color: var(--muted);
   font-size: var(--font-size-caption);
 }
 
 .git-branch-row small,
 .git-branch-row > span {
-  color: #6e7077;
+  color: var(--muted);
   font-size: var(--font-size-caption);
 }
 
@@ -3388,13 +3388,13 @@ summary:focus-visible {
   gap: 4px;
   margin-bottom: 8px;
   padding: 8px 9px;
-  background: #111214;
-  border: 1px solid #27282c;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 7px;
 }
 
 .git-source-worktree span {
-  color: #777980;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   text-transform: uppercase;
 }
@@ -3415,15 +3415,15 @@ summary:focus-visible {
 }
 
 .git-worktree-copy strong {
-  color: #aaaeb5;
+  color: var(--muted);
   font-size: var(--font-size-caption);
 }
 
 .git-worktree-copy span {
   padding: 2px 5px;
-  color: #73757c;
+  color: var(--muted);
   font-size: var(--font-size-caption);
-  background: #24262a;
+  background: var(--surface);
   border-radius: 999px;
 }
 
@@ -3434,19 +3434,19 @@ summary:focus-visible {
 .git-safety-note {
   margin-top: 14px;
   padding: 11px 12px;
-  background: #151516;
-  border: 1px solid #2c2d30;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 
 .git-safety-note strong {
-  color: #c5c5c8;
+  color: var(--ink);
   font-size: var(--font-size-caption);
 }
 
 .git-safety-note p {
   margin: 4px 0 0;
-  color: #74757a;
+  color: var(--muted);
   font-size: var(--font-size-caption);
   line-height: 1.5;
 }

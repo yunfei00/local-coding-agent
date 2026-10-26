@@ -14,6 +14,7 @@ declare global {
     localAgent: {
       platform: string;
       setWindowTheme: (theme: "light" | "dark") => Promise<void>;
+      menuAction: (action: string) => Promise<void>;
       openProjectFolder: () => Promise<void>;
       previewScreenshot: (path: string) => Promise<string>;
       copyText: (text: string) => Promise<{ok: boolean}>;

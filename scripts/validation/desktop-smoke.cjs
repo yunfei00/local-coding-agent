@@ -116,6 +116,11 @@ const provider = http.createServer((req, res) => {
   });
 });
 
+async function toggleSettings(page) {
+  if (await page.locator(".settings-panel").isVisible()) await page.locator(".settings-header").getByRole("button",{name:"Close",exact:true}).click();
+  else await page.getByRole("button",{name:"Settings",exact:true}).click();
+}
+
 async function main() {
   await new Promise(resolve => provider.listen(0, "127.0.0.1", resolve));
   const env = {...process.env, ELECTRON_RUN_AS_NODE: undefined, LCA_HEADLESS_SMOKE: process.platform === "win32" ? "0" : "1",
@@ -175,9 +180,9 @@ async function main() {
     assert.equal(await page.locator(".sidebar-actions").count(), 0);
     assert.equal(await page.locator(".sidebar-footer .status-dot").count(), 0);
     assert.equal(await page.locator(".provider-pill").count(), 0);
-    assert.equal(await page.locator(".topbar").evaluate(e => e.getBoundingClientRect().height), 48);
-    assert.equal(await page.locator(".workspace").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(33, 33, 33)");
-    assert.equal(await page.locator(".sidebar").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(24, 24, 24)");
+    assert.equal(await page.locator(".topbar").evaluate(e => e.getBoundingClientRect().height), 44);
+    assert.equal(await page.locator(".workspace").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(24, 24, 24)");
+    assert.equal(await page.locator(".sidebar").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(25, 28, 29)");
     if (process.platform === "win32") assert.equal(await application.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].isMenuBarVisible()), false);
     await page.locator(".projects-heading").getByRole("button",{name:"Add project",exact:true}).click();
     await page.getByRole("menuitem",{name:"Add existing folder",exact:true}).waitFor();
@@ -190,7 +195,56 @@ async function main() {
     await page.locator(".projects-heading").getByRole("button",{name:"Add project",exact:true}).click();
     await page.locator(".composer textarea").click();
     assert.equal(await page.getByRole("menu").count(), 0);
-    checks.push("Unified dark palette, single 48px native header, project menu keyboard/outside dismissal, no connection/provider badges");
+    checks.push("Unified dark palette, single 44px native header, project menu keyboard/outside dismissal, no connection/provider badges");
+    assert.equal(await page.locator(".workspace > .topbar").count(), 0);
+    assert.equal(await page.locator(".topbar").count(), 1);
+    assert.equal(await page.locator(".topbar").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(26, 34, 37)");
+    const appMenus = page.getByRole("menubar",{name:"Application menu"});
+    assert.deepEqual(await appMenus.getByRole("menuitem").allTextContents(), ["文件","编辑","视图","帮助"]);
+    await appMenus.getByRole("menuitem",{name:"文件",exact:true}).click();
+    await page.getByRole("menuitem",{name:"新建项目…",exact:true}).waitFor();
+    await page.keyboard.press("Escape");
+    await page.locator(".composer textarea").fill("Native edit menu selection");
+    await appMenus.getByRole("menuitem",{name:"编辑",exact:true}).click();
+    await page.getByRole("menuitem",{name:"全选",exact:true}).click();
+    await page.waitForFunction(() => {
+      const e = document.querySelector(".composer textarea");
+      return document.activeElement === e && e.selectionStart === 0 && e.selectionEnd === e.value.length;
+    });
+    await page.locator(".composer textarea").fill("");
+    await appMenus.getByRole("menuitem",{name:"视图",exact:true}).click();
+    await page.getByRole("menuitem",{name:"浅色模式",exact:true}).click();
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+    assert.equal(await page.locator(".topbar").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(236, 246, 249)");
+    assert.equal(await page.locator(".sidebar").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(248, 252, 253)");
+    assert.equal(await page.locator(".composer").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(255, 255, 255)");
+    assert.equal(await page.locator(".composer textarea").evaluate(e => getComputedStyle(e).color), "rgb(26, 28, 30)");
+    assert.equal(await page.locator(".welcome-card h1").evaluate(e => getComputedStyle(e).color), "rgb(26, 28, 30)");
+    assert(await page.locator(".composer").evaluate(e => e.getBoundingClientRect().bottom <= innerHeight), "Composer must fit the frame after moving the title bar");
+    await screenshot("desktop-reference-light.png");
+    await appMenus.getByRole("menuitem",{name:"视图",exact:true}).click();
+    await page.getByRole("menuitem",{name:"深色模式",exact:true}).click();
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    await screenshot("desktop-reference-dark.png");
+    checks.push("Reference-derived cool chrome/near-white sidebar, #181818 dark canvas, one File/Edit/View/Help row, native Select All restores editor focus");
+    await toggleSettings(page);
+    await page.getByRole("button",{name:"General",exact:true}).click();
+    await screenshot("desktop-settings-reference-dark.png");
+    assert.equal(await page.locator(".sidebar").isVisible(), false);
+    await appMenus.getByRole("menuitem",{name:"视图",exact:true}).click();
+    await page.getByRole("menuitem",{name:"浅色模式",exact:true}).click();
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+    await screenshot("desktop-settings-reference-light.png");
+    assert.equal(await page.locator(".settings-content").evaluate(e => getComputedStyle(e).color), "rgb(26, 28, 30)");
+    assert.equal(await page.locator(".settings-nav").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(248, 252, 253)");
+    assert.equal(await page.locator(".settings-update-card").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(255, 255, 255)");
+    assert.equal(await page.locator(".settings-footer").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(255, 255, 255)");
+    assert.equal(await page.locator(".settings-secondary").first().evaluate(e => getComputedStyle(e).backgroundColor), "rgb(255, 255, 255)");
+    await toggleSettings(page);
+    await appMenus.getByRole("menuitem",{name:"视图",exact:true}).click();
+    await page.getByRole("menuitem",{name:"深色模式",exact:true}).click();
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    checks.push("Dedicated Settings view uses the reference palette without a second project sidebar; editor stays inside viewport");
     const originalOpenPath = await application.evaluate(({shell}) => {
       globalThis.smokeOpenPath = shell.openPath;
       globalThis.smokeOpenWait = new Promise(resolve => {globalThis.smokeOpenResolve = resolve;});
@@ -335,7 +389,7 @@ async function main() {
     checks.push("Real file read and MCP stdio/HTTP calls through the Agent loop");
 
     // Exercise the actual Settings form, not only the IPC configuration endpoint.
-    await page.getByRole("button", {name:"Settings", exact:true}).click();
+    await toggleSettings(page);
     await page.getByRole("button", {name:"Models & Routing", exact:true}).click();
     await page.getByLabel("Model connection", {exact:true}).waitFor();
     const profileIds = {};
@@ -398,7 +452,7 @@ async function main() {
     checks.push("M4 Settings diagnostics: offline zero requests, explicit local Live Test sends real JPEG, HTTP200 wrong-image assertion FAIL, text/native functions PASS, exactly three requests");
     await application.close();
     page = await launch();
-    await page.getByRole("button", {name:"Settings", exact:true}).click();
+    await toggleSettings(page);
     await page.getByRole("button", {name:"Models & Routing", exact:true}).click();
     assert.equal(await page.getByLabel("Default api_tokens",{exact:true}).inputValue(),"10000000");
     for (const [role,name] of Object.entries(roleChoices)) {
@@ -415,7 +469,7 @@ async function main() {
       assert(!fs.readFileSync(path.join(data,"desktop","model-secrets.json"),"utf8").includes("mock-only-not-a-real-key"));
     } else skipped.push("OS protected model credentials unavailable; key is session-only as shown in Settings");
     checks.push("Restart restores four distinct role bindings; protected credential reaches the selected API connection");
-    await page.getByRole("button", {name:"Settings", exact:true}).click();
+    await toggleSettings(page);
     const initialChatProfile=await page.getByLabel("Chat model",{exact:true}).inputValue();
     await page.getByLabel("Search chat models",{exact:true}).fill("api-escalation");
     await page.getByLabel("Chat model",{exact:true}).selectOption("profile:"+profileIds["api-escalation"]);
@@ -501,7 +555,7 @@ async function main() {
     // mounted, covering stale caches from other configuration clients as well.
     const defaultsBeforeBudgetCheck = await page.evaluate(async () => (await window.localAgent.taskRequest("","task.settings.get")).payload.config);
     const saveOnlineDefaults = async calls => {
-      await page.getByRole("button",{name:"Settings",exact:true}).click();
+      await toggleSettings(page);
       await page.getByRole("button",{name:"Models & Routing",exact:true}).click();
       await page.getByLabel("Default execution policy",{exact:true}).selectOption("api-only");
       for (const role of ["planner","executor","reviewer"]) await page.getByLabel(role + " profile",{exact:true}).selectOption(profileIds["api-reviewer"]);
@@ -509,7 +563,7 @@ async function main() {
       await page.getByLabel("Default api_tokens",{exact:true}).fill("30000");
       await page.getByRole("button",{name:"Save model configuration",exact:true}).click();
       await page.getByText("Model configuration saved. Running task snapshots are unchanged.").waitFor();
-      await page.getByRole("button",{name:"Settings",exact:true}).click();
+      await toggleSettings(page);
     };
     await saveOnlineDefaults(0);
     await page.getByRole("button",{name:"Task",exact:true}).click();
@@ -685,13 +739,13 @@ async function main() {
     await page.getByRole("menuitem", {name:"Toggle color theme",exact:true}).click();
     await screenshot("desktop-light.png");
     assert.equal(await page.locator(".workspace").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(255, 255, 255)");
-    assert.equal(await page.locator(".sidebar").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(249, 249, 249)");
+    assert.equal(await page.locator(".sidebar").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(248, 252, 253)");
     checks.push("Light palette and native header follow the same theme");
     for (const width of [1180, 900]) {
       await application.evaluate(({BrowserWindow}, width) => BrowserWindow.getAllWindows()[0].setSize(width, 780), width);
       await page.getByRole("button", {name: "Context", exact: true}).click();
       await page.locator(".context-overlay").waitFor({state: "visible"});
-      assert.equal(await page.locator(".topbar").evaluate(e => e.getBoundingClientRect().height), 48);
+      assert.equal(await page.locator(".topbar").evaluate(e => e.getBoundingClientRect().height), 44);
       assert.equal(await page.locator(".topbar-actions").evaluate(e => getComputedStyle(e).flexWrap), "nowrap");
       const actionRects = await page.locator(".topbar-actions > button").evaluateAll(nodes => nodes.map(e => ({top:e.getBoundingClientRect().top, right:e.getBoundingClientRect().right})));
       assert(actionRects.every(rect => Math.abs(rect.top - actionRects[0].top) < 1), "Every header action must share one row");
@@ -701,13 +755,13 @@ async function main() {
       assert(await page.locator(".topbar-actions").evaluate(e => e.scrollWidth <= e.clientWidth + 1), "Single-row header controls must fit without scrolling");
       await page.getByRole("button", {name: "Context", exact: true}).click();
       await page.locator(".context-overlay").waitFor({state: "hidden"});
-      await page.getByRole("button",{name:"Settings",exact:true}).click();
+      await toggleSettings(page);
       await page.getByRole("button",{name:"Models & Routing",exact:true}).click();
       await page.getByLabel("Connection name",{exact:true}).waitFor();
       assert.equal(await page.getByLabel("Connection name",{exact:true}).evaluate(e => getComputedStyle(e).fontSize),"14px");
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Settings page overflow");
       await screenshot(`desktop-v041-settings-${width}.png`);
-      await page.getByRole("button",{name:"Settings",exact:true}).click();
+      await toggleSettings(page);
     }
     checks.push("Light/dark themes, 1180/900px window sizes and panel layout");
     await application.close();
@@ -718,7 +772,7 @@ async function main() {
     checks.push("Restart restores thread, message history, expansion and theme");
     assert(await page.locator(".project-tree-name").filter({hasText:"ui-created-project"}).count() === 1);
     checks.push("Restart restores the project created through the dialog");
-    await page.getByRole("button", {name:"Settings", exact:true}).click();
+    await toggleSettings(page);
     await page.getByRole("button", {name:"Models & Routing", exact:true}).click();
     await page.getByLabel("executor profile", {exact:true}).waitFor();
     assert.equal(await page.getByLabel("executor profile", {exact:true}).inputValue(), profileIds["task-executor"]);
@@ -726,7 +780,7 @@ async function main() {
     const afterRestart = await page.evaluate(async () => (await window.localAgent.taskRequest("", "task.catalog.get")).payload.catalog);
     assert.deepEqual(afterRestart, persistedRouting.catalog);
     checks.push("Restart restores multiple connections, model identities and role routing");
-    await page.getByRole("button", {name:"Settings", exact:true}).click();
+    await toggleSettings(page);
     await page.locator(".project-tree-header.active").click();
     await application.close();
     page = await launch();

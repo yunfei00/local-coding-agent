@@ -5,6 +5,7 @@ type AgentEventHandler = (event: unknown) => void;
 contextBridge.exposeInMainWorld("localAgent", {
   platform: process.platform,
   setWindowTheme: (theme: "light" | "dark") => ipcRenderer.invoke("window:theme", theme),
+  menuAction: (action: string) => ipcRenderer.invoke("window:menu-action", action),
   openProjectFolder: () => ipcRenderer.invoke("agent:project-folder"),
   previewScreenshot: (path: string) => ipcRenderer.invoke("agent:screenshot-preview", path),
   copyText: (text: string) => ipcRenderer.invoke("clipboard:copy-text", text),

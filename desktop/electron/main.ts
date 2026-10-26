@@ -899,10 +899,10 @@ function createWindow(): void {
     height: Math.min(780, workArea.height),
     minWidth: Math.min(900, workArea.width),
     minHeight: Math.min(600, workArea.height),
-    backgroundColor: "#212121",
+    backgroundColor: "#1a2225",
     ...(process.platform === "win32" || process.platform === "linux" ? {
       titleBarStyle: "hidden" as const,
-      titleBarOverlay: {color:"#212121", symbolColor:"#ececec", height:48}
+      titleBarOverlay: {color:"#1a2225", symbolColor:"#ffffff", height:44}
     } : {}),
     webPreferences: {
       offscreen: process.env.LCA_HEADLESS_SMOKE === "1",
@@ -1373,10 +1373,30 @@ ipcMain.handle("agent:project-get", async () => {
 });
 ipcMain.handle("window:theme", (_event, theme:unknown) => {
   if (theme !== "light" && theme !== "dark") throw new Error("Invalid window theme");
-  const color = theme === "light" ? "#ffffff" : "#212121";
+  const color = theme === "light" ? "#ecf6f9" : "#1a2225";
   mainWindow?.setBackgroundColor(color);
   if (process.platform === "win32" || process.platform === "linux") {
-    mainWindow?.setTitleBarOverlay({color, symbolColor:theme === "light" ? "#202020" : "#ececec", height:48});
+    mainWindow?.setTitleBarOverlay({color, symbolColor:theme === "light" ? "#1a1c1e" : "#ffffff", height:44});
+  }
+});
+ipcMain.handle("window:menu-action", async (_event, action:unknown) => {
+  const contents = mainWindow?.webContents;
+  if (!contents || contents.isDestroyed()) return;
+  // Fixed native editing/view actions only; no arbitrary command or renderer path.
+  switch (action) {
+    case "undo": contents.undo(); break;
+    case "redo": contents.redo(); break;
+    case "cut": contents.cut(); break;
+    case "copy": contents.copy(); break;
+    case "paste": contents.paste(); break;
+    case "selectAll": contents.selectAll(); break;
+    case "zoomIn": contents.setZoomFactor(Math.min(2, contents.getZoomFactor() + .1)); break;
+    case "zoomOut": contents.setZoomFactor(Math.max(.5, contents.getZoomFactor() - .1)); break;
+    case "zoomReset": contents.setZoomFactor(1); break;
+    case "guide": await shell.openExternal("https://github.com/yunfei00/local-coding-agent/blob/main/docs/v0.4/user-guide.md"); break;
+    case "about": await dialog.showMessageBox(mainWindow!, {type:"info", title:"Local Coding Agent", message:"Local Coding Agent", detail:"Version " + app.getVersion()}); break;
+    case "quit": app.quit(); break;
+    default: throw new Error("Unsupported menu action");
   }
 });
 ipcMain.handle("agent:project-folder", async () => {

@@ -60,12 +60,8 @@
 .composer textarea { color: var(--ink); font-size: var(--font-size-body); }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid #709be0; outline-offset: 3px; }
 button:disabled { opacity: .45; }
-[data-theme="light"] .sidebar *, [data-theme="light"] .topbar *, [data-theme="light"] .context-panel *, [data-theme="light"] .git-panel *, [data-theme="light"] .diagnostics-panel *, [data-theme="light"] .settings-panel *, [data-theme="light"] .empty-state * { color: var(--ink); border-color: var(--border); }
-[data-theme="light"] .project-tree-header.active, [data-theme="light"] .thread-item.active, [data-theme="light"] .project-tree-header:hover, [data-theme="light"] .thread-item:hover, [data-theme="light"] .new-thread { background: var(--surface); }
 [data-theme="light"] .context-section, [data-theme="light"] .git-section, [data-theme="light"] .diagnostics-card, [data-theme="light"] .settings-panel, [data-theme="light"] .settings-card, [data-theme="light"] .workspace-card { background: var(--canvas); }
-[data-theme="light"] button, [data-theme="light"] input, [data-theme="light"] textarea, [data-theme="light"] select { background-color: var(--surface); color: var(--ink); border-color: var(--border); }
 [data-theme="light"] .tool-card, [data-theme="light"] .terminal-command, [data-theme="light"] .terminal-output, [data-theme="light"] .diff-preview, [data-theme="light"] .diff-line { background: var(--code); color: var(--ink); }
-[data-theme="light"] .thread-item > span, [data-theme="light"] .thread-item.active > span, [data-theme="light"] .brand-mark { color: var(--ink); }
 [data-theme="light"] .brand-mark, [data-theme="light"] .context-chip, [data-theme="light"] .context-file-row, [data-theme="light"] .context-map-file, [data-theme="light"] .context-language-row span, [data-theme="light"] .git-summary-grid > div, [data-theme="light"] .git-file-row, [data-theme="light"] .git-safety-note { background: var(--surface); color: var(--ink); }
 [data-theme="light"] .diff-line-add { background: #e8f6e9; }
 [data-theme="light"] .diff-line-delete { background: #ffebea; }
