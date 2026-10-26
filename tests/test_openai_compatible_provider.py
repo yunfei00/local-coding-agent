@@ -156,12 +156,16 @@ class OpenAICompatibleProviderIntegrationTests(unittest.IsolatedAsyncioTestCase)
             }
         ]
         chunks = []
+        self.provider.max_output_tokens = 8192
         async for chunk in self.provider.stream_chat(
             model="coder-model",
             messages=[{"role": "user", "content": "Inspect README"}],
             tools=tools,
         ):
             chunks.append(chunk)
+        self.assertEqual(self.last_wire_body['max_tokens'],8192)
+        self.assertEqual(self.provider.response_metadata['requested_max_tokens'],8192)
+        self.assertNotIn('test-key',json.dumps(self.provider.response_metadata))
 
         self.assertEqual(
             "".join(chunk.content for chunk in chunks),

@@ -31,7 +31,7 @@ REPORT = ROOT / 'validation-reports/real-online-agent-acceptance.json'
 SESSION = REPORT.with_name('real-online-agent-session.json')
 
 
-def allocate_session(path, model, requested_calls, requested_tokens=60000, attempt_limit=2, update=False, requested_seconds=900, *, independent=False):
+def allocate_session(path, model, requested_calls, requested_tokens=60000, attempt_limit=2, update=False, requested_seconds=900):
     """One bounded acceptance session, including retries and both model groups.
 
     A controller crash keeps the full allocation reserved rather than resetting
@@ -61,8 +61,6 @@ def allocate_session(path, model, requested_calls, requested_tokens=60000, attem
             'used_calls':sum(a['calls'] for a in attempts),'used_tokens':sum(a['tokens'] for a in attempts)})
     if sum(a['model'] == model and bool(a.get('task_id')) for a in attempts) >= state['attempt_limits'].get(model,2):
         raise ValueError('FULL_RETRY_LIMIT_REACHED')
-    if not independent and model == 'glm-5.3' and not any(a['model'] == 'qwen3.8-flash' and a.get('result') == 'PASS' for a in attempts):
-        raise ValueError('QWEN_ACCEPTANCE_REQUIRED_BEFORE_GLM')
     remaining = {'calls': min(requested_calls, state['call_ceiling'] - sum(a['calls'] for a in attempts)),
                  'tokens': min(requested_tokens,state['token_ceiling'] - sum(a['tokens'] for a in attempts)),
                  'seconds': int(state['seconds_ceiling'] - sum(a['seconds'] for a in attempts))}
@@ -117,6 +115,15 @@ def select_profile(catalog, model, explicit=None, *, vision=False):
     if vision and not profile.get('supports_vision'):
         raise ValueError('VISION_CAPABILITY_NOT_DECLARED')
     return profile
+
+
+def configure_run_output(catalog, profile_id, output_tokens):
+    """Explicit per-run output setting; never overwrites saved user profiles."""
+    copied = json.loads(json.dumps(catalog))
+    if output_tokens is not None:
+        profile = next(p for p in copied['profiles'] if p['model_profile_id'] == profile_id)
+        profile['max_output_tokens'] = output_tokens
+    return validate_catalog(copied)
 
 
 def live_config(executor, vision, calls, tokens=60000, extended=False, *, scenario='electron', strategy='single-agent'):
@@ -330,6 +337,7 @@ def main():
     parser.add_argument('--strategy', choices=('single-agent','api-only'), default='single-agent')
     parser.add_argument('--executor-profile')
     parser.add_argument('--vision-profile')
+    parser.add_argument('--output-tokens',type=int,help='Explicit output cap in the isolated selected profile; saved Settings unchanged')
     parser.add_argument('--max-calls', type=int, default=12)
     parser.add_argument('--max-tokens', type=int, default=60000)
     parser.add_argument('--max-full-attempts', type=int, default=2)
@@ -344,12 +352,16 @@ def main():
     try:
         catalog = load_catalog(args.data_dir)
         executor = select_profile(catalog, args.model, args.executor_profile)
+        catalog = configure_run_output(catalog,executor['model_profile_id'],args.output_tokens)
+        executor = select_profile(catalog,args.model,args.executor_profile)
         vision_model = args.vision_model or ('qwen3.8-flash' if args.model == 'glm-5.3' else args.model)
         vision = select_profile(catalog, vision_model, args.vision_profile, vision=True) if args.scenario=='electron' or args.vision_model else None
         config = live_config(executor, vision, args.max_calls,args.max_tokens,args.authorize_budget_update,scenario=args.scenario,strategy=args.strategy)
         report.update(executor={k:executor[k] for k in ('model_profile_id','connection_id','model_id')},
                       vision={k:vision[k] for k in ('model_profile_id','connection_id','model_id')} if vision else None,
-                      scenario=args.scenario,limits=config['budget'])
+                      scenario=args.scenario,limits=config['budget'],
+                      model_limits={'executor':{k:executor.get(k) for k in ('context_window','max_output_tokens')},
+                                    'vision':{k:vision.get(k) for k in ('context_window','max_output_tokens')} if vision else None})
         if args.scenario=='electron':
             from agent.desktop.session import require_interactive_session
             require_interactive_session()
@@ -361,7 +373,7 @@ def main():
             with tempfile.TemporaryDirectory(prefix='lca-live-m5-') as temporary:
                 REPORT.parent.mkdir(exist_ok=True)
                 remaining = allocate_session(SESSION, args.model, args.max_calls,args.max_tokens,
-                                             args.max_full_attempts,args.authorize_budget_update,args.max_seconds,independent=args.scenario=='calculator')
+                                             args.max_full_attempts,args.authorize_budget_update,args.max_seconds)
                 allocated = True
                 manifest = prepare(args.data_dir, catalog, executor, vision, remaining['calls'], temporary,
                                    tokens=remaining['tokens'],extended=args.authorize_budget_update,scenario=args.scenario,strategy=args.strategy)

@@ -243,6 +243,7 @@ class OpenAICompatibleProvider:
         tool_states: dict[int, dict[str, str]] = {}
         emitted_done = False
         self.response_metadata = {"http_status":None, "response_type":None, "request_sent":False,
+                                  "requested_max_tokens":request_body.get('max_tokens'),
                                   "wire_images":request_image_evidence(request_body['messages']),
                                   "tool_schema_count":len(tools or [])}
 

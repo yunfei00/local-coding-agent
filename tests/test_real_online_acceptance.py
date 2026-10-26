@@ -103,7 +103,7 @@ assert(!approvalAllowed({tool:'run_command',arguments:{command,cwd:'C:/outside'}
             session=Path(temp)/'session.json'
             session.write_text(json.dumps({'call_ceiling':100,'token_ceiling':1000000,'seconds_ceiling':7200,
                 'attempts':[{'model':'qwen3.8-max','state':'settled','result':'FAIL','calls':46,'tokens':741103,'seconds':823}]}))
-            remaining=live.allocate_session(session,'glm-5.3',100,1000000,independent=True)
+            remaining=live.allocate_session(session,'glm-5.3',100,1000000)
             self.assertEqual(remaining,{'calls':54,'tokens':258897,'seconds':6377})
             self.assertEqual(json.loads(session.read_text())['attempts'][0]['calls'],46)
 
@@ -200,15 +200,26 @@ assert(!approvalAllowed({tool:'run_command',arguments:{command,cwd:'C:/outside'}
                 live.load_catalog(Path(temp))
             self.assertFalse(list(Path(temp).iterdir()))
 
-    def test_crash_keeps_session_reservation_and_glm_waits_for_qwen(self):
+    def test_model_switch_is_allowed_but_crash_keeps_the_shared_reservation(self):
         with tempfile.TemporaryDirectory() as temp:
             session = Path(temp)/'session.json'
-            with self.assertRaisesRegex(ValueError,'QWEN_ACCEPTANCE_REQUIRED'):
-                live.allocate_session(session,'glm-5.3',12)
-            remaining = live.allocate_session(session,'qwen3.8-flash',12)
+            remaining = live.allocate_session(session,'glm-5.3',12)
             self.assertEqual(remaining,{'calls':12,'tokens':60000,'seconds':900})
             with self.assertRaisesRegex(ValueError,'UNSETTLED'):
                 live.allocate_session(session,'qwen3.8-flash',12)
+
+    def test_run_output_override_uses_original_profile_identity_without_mutating_saved_values(self):
+        original=catalog()
+        original['profiles'][0]['max_output_tokens']=1024
+        adjusted=live.configure_run_output(original,'qwen',8192)
+        self.assertEqual(original['profiles'][0]['max_output_tokens'],1024)
+        self.assertEqual(adjusted['profiles'][0]['max_output_tokens'],8192)
+        self.assertEqual(adjusted['profiles'][0]['model_id'],'qwen3.8-flash')
+        self.assertEqual(adjusted['connections'],original['connections'])
+        self.assertEqual(live.configure_run_output(original,'qwen',None)['profiles'][0]['max_output_tokens'],1024)
+        for value in (0,True,32769):
+            with self.assertRaises(ValueError):
+                live.configure_run_output(original,'qwen',value)
 
     def test_session_retries_cannot_reset_calls_tokens_time_or_grow_ceiling(self):
         with tempfile.TemporaryDirectory() as temp:

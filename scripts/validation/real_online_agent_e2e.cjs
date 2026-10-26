@@ -56,7 +56,7 @@ function safeCall(call) {
     'request_sent','request_dispatched','finish_reason','response_form','failure_reason','error_code',
     'connection_id','provider','provider_type','model_profile_id','input_tokens','output_tokens',
     'cached_tokens','estimated','actual_cost','initial_reserved_tokens','released_tokens','settlement',
-    'wire_images','tool_schema_count'];
+    'wire_images','tool_schema_count','requested_max_tokens'];
   return {id:call.id, model:call.model, role:call.role, status:call.status,
     reserved_tokens:call.reserved_tokens, ...Object.fromEntries(keys.filter(k => call.usage?.[k] !== undefined).map(k => [k,call.usage[k]]))};
 }
