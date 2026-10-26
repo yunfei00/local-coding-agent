@@ -1353,8 +1353,8 @@ ipcMain.handle("agent:project-open", async (_event, model?: string) => {
     "project.open",
     "project.opened",
     model
-      ? { path: selection.filePaths[0], model }
-      : { path: selection.filePaths[0] }
+      ? { path: selection.filePaths[0], model, defer_thread:true }
+      : { path: selection.filePaths[0], defer_thread:true }
   );
   return { canceled: false, event };
 });
@@ -1367,7 +1367,7 @@ ipcMain.handle("agent:project-choose-parent", async (_event, defaultPath?: strin
   return {canceled:selected.canceled, path:selected.filePaths[0]};
 });
 ipcMain.handle("agent:project-create", async (_event, options: Record<string, unknown>) =>
-  sendRequest("project.create", "project.opened", options, {}, 30000));
+  sendRequest("project.create", "project.opened", {...options, defer_thread:true}, {}, 30000));
 ipcMain.handle("agent:project-get", async () => {
   return sendRequest("project.get", "project.loaded");
 });
@@ -1416,7 +1416,7 @@ ipcMain.handle(
     return sendRequest(
       "project.select",
       "project.selected",
-      model ? { project_id: projectId, model } : { project_id: projectId }
+      model ? { project_id: projectId, model, defer_thread:true } : { project_id: projectId, defer_thread:true }
     );
   }
 );
@@ -1426,11 +1426,11 @@ ipcMain.handle("agent:model-list", async () => {
 ipcMain.handle("agent:model-select", async (_event, threadId: string, model: string) => {
   return sendRequest("model.select", "model.selected", { model }, { threadId });
 });
-ipcMain.handle("agent:thread-create", async (_event, model?: string) => {
+ipcMain.handle("agent:thread-create", async (_event, model?: string, initialPrompt?: string) => {
   return sendRequest(
     "thread.create",
     "thread.created",
-    model ? { model } : {}
+    {model, initial_prompt:initialPrompt}
   );
 });
 ipcMain.handle("agent:thread-list", async () => {
@@ -1463,6 +1463,8 @@ ipcMain.handle("agent:plan-request", async (_event, threadId: string, operation:
 ipcMain.handle("agent:thread-rename", async (_event, threadId: string, title: string, projectId?: string) => {
   return sendRequest("thread.rename", "thread.updated", { title, project_id:projectId }, { threadId });
 });
+ipcMain.handle("agent:thread-delete", async (_event, threadId:string, projectId:string) =>
+  sendRequest("thread.delete", "thread.deleted", {project_id:projectId}, {threadId}));
 ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
   return sendRequest(
     "thread.get",

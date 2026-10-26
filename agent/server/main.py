@@ -1020,6 +1020,7 @@ class AgentServer:
                             warning = f"Project folder created, but Git initialization failed ({exc.code}). No commit was created."
                 project, thread, created = self.projects.open(
                     raw_path,
+                    defer_thread=payload.get("defer_thread") is True,
                     active_model=(
                         requested_model
                         or self.default_model
@@ -1051,7 +1052,7 @@ class AgentServer:
                     "project.opened",
                     response_payload,
                     request_id=request_id,
-                    thread_id=thread.id,
+                    thread_id=thread.id if thread else None,
                 )
             )
             return
@@ -1078,6 +1079,7 @@ class AgentServer:
             project_id = str(payload.get("project_id") or "").strip()
             selected = self.projects.select(
                 project_id,
+                defer_thread=payload.get("defer_thread") is True,
                 active_model=(
                     str(payload.get("model") or "").strip()
                     or self.default_model
@@ -1102,7 +1104,7 @@ class AgentServer:
                     "project.selected",
                     self.projects.project_payload(project),
                     request_id=request_id,
-                    thread_id=thread.id,
+                    thread_id=thread.id if thread else None,
                 )
             )
             return
@@ -1173,6 +1175,10 @@ class AgentServer:
                     request_id=request_id,
                 )
                 return
+            initial_prompt = payload.get("initial_prompt")
+            if initial_prompt is not None and (not isinstance(initial_prompt, str) or not initial_prompt.strip()):
+                await self.send_error(ws, "INVALID_PROMPT", "Enter content before creating a conversation.", request_id=request_id)
+                return
             requested_model = str(payload.get("model") or "").strip() or None
             thread = project.state.create_thread(
                 payload.get("title"),
@@ -1183,6 +1189,8 @@ class AgentServer:
                 ),
             )
             project.active_thread_id = thread.id
+            if initial_prompt:
+                project.state.summarize_thread_title(thread.id, initial_prompt)
             project.touch()
             await ws.send_json(
                 envelope(
@@ -1195,6 +1203,26 @@ class AgentServer:
                     thread_id=thread.id,
                 )
             )
+            return
+
+        if message_type == "thread.delete":
+            project_id = str(payload.get("project_id") or "")
+            project = self.projects.get(project_id) if project_id else self.projects.active
+            thread_id = str(data.get("thread_id") or payload.get("thread_id") or "")
+            if not project or not project.state.get_thread(thread_id):
+                await self.send_error(ws, "THREAD_NOT_FOUND", "Select a valid conversation.", request_id=request_id)
+                return
+            unfinished = [task for task in self.store.task_runtime.list(thread_id) if task.get("status") not in {"completed", "failed", "cancelled"}]
+            if any(not task.done() for task in self.active_turns.values()) or unfinished:
+                await self.send_error(ws, "THREAD_BUSY", "Stop or cancel unfinished tasks before deleting this conversation. Project files and task records will be retained.", request_id=request_id)
+                return
+            project.state.delete_thread(thread_id)
+            if project.active_thread_id == thread_id:
+                remaining = project.state.list_threads()
+                project.active_thread_id = remaining[0].id if remaining else None
+            project.touch()
+            await ws.send_json(envelope("thread.deleted", {"deleted_thread_id":thread_id, "project_id":project.id,
+                **self.projects.project_payload(project)}, request_id=request_id, thread_id=thread_id))
             return
 
         if message_type == "thread.rename":

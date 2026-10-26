@@ -190,7 +190,8 @@ declare global {
       selectProject: (projectId: string, model?: string) => Promise<AgentEnvelope>;
       listModels: () => Promise<AgentEnvelope>;
       selectModel: (threadId: string, model: string) => Promise<AgentEnvelope>;
-      createThread: (model?: string) => Promise<AgentEnvelope>;
+      createThread: (model?: string, initialPrompt?:string) => Promise<AgentEnvelope>;
+      deleteThread: (threadId:string, projectId:string) => Promise<AgentEnvelope>;
       listThreads: () => Promise<AgentEnvelope>;
       renameThread: (threadId: string, title: string, projectId?:string) => Promise<AgentEnvelope>;
       getThread: (threadId: string) => Promise<AgentEnvelope>;

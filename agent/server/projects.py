@@ -92,7 +92,7 @@ class ProjectSession:
             return None
         return self.state.get_thread(self.active_thread_id)
 
-    def ensure_thread(self, *, active_model: str | None) -> ThreadRecord:
+    def ensure_thread(self, *, active_model: str | None, create: bool = True) -> ThreadRecord | None:
         thread = self.active_thread()
         if thread:
             return thread
@@ -103,6 +103,10 @@ class ProjectSession:
             self.persist()
             return existing[0]
 
+        if not create:
+            self.active_thread_id = None
+            self.persist()
+            return None
         thread = self.state.create_thread(active_model=active_model)
         self.active_thread_id = thread.id
         self.touch()
@@ -189,7 +193,8 @@ class ProjectRegistry:
         path: str | Path,
         *,
         active_model: str | None,
-    ) -> tuple[ProjectSession, ThreadRecord, bool]:
+        defer_thread: bool = False,
+    ) -> tuple[ProjectSession, ThreadRecord | None, bool]:
         workspace = Workspace(path)
         key = os.path.normcase(str(workspace.root))
         existing_id = self._path_index.get(key)
@@ -222,7 +227,7 @@ class ProjectRegistry:
             created = True
 
         self._set_active(project.id)
-        thread = project.ensure_thread(active_model=active_model)
+        thread = project.ensure_thread(active_model=active_model, create=not defer_thread)
         return project, thread, created
 
     def select(
@@ -230,13 +235,14 @@ class ProjectRegistry:
         project_id: str,
         *,
         active_model: str | None,
-    ) -> tuple[ProjectSession, ThreadRecord] | None:
+        defer_thread: bool = False,
+    ) -> tuple[ProjectSession, ThreadRecord | None] | None:
         project = self._projects.get(project_id)
         if not project:
             return None
         self._set_active(project.id)
         project.touch()
-        thread = project.ensure_thread(active_model=active_model)
+        thread = project.ensure_thread(active_model=active_model, create=not defer_thread)
         return project, thread
 
     def list_projects(self) -> list[ProjectSession]:

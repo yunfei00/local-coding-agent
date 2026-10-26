@@ -130,7 +130,8 @@ contextBridge.exposeInMainWorld("localAgent", {
   listModels: () => ipcRenderer.invoke("agent:model-list"),
   selectModel: (threadId: string, model: string) =>
     ipcRenderer.invoke("agent:model-select", threadId, model),
-  createThread: (model?: string) => ipcRenderer.invoke("agent:thread-create", model),
+  createThread: (model?: string, initialPrompt?: string) => ipcRenderer.invoke("agent:thread-create", model, initialPrompt),
+  deleteThread: (threadId:string, projectId:string) => ipcRenderer.invoke("agent:thread-delete", threadId, projectId),
   listThreads: () => ipcRenderer.invoke("agent:thread-list"),
   taskRequest: (threadId: string, operation: string, payload: Record<string, unknown> = {}) =>
     ipcRenderer.invoke("agent:task-request", threadId, operation, payload),
