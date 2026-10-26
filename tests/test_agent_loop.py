@@ -9,6 +9,23 @@ from agent.core.agent_loop import (
 
 
 class AgentLoopTests(unittest.TestCase):
+    def test_verified_step_allows_fresh_checks_but_keeps_evidence_and_failure_state(self):
+        guard=ToolLoopGuard(max_identical_calls=2)
+        for _ in range(2):
+            self.assertTrue(guard.register_call('read_file',{'path':'calculator.py'})[0])
+        self.assertFalse(guard.register_call('read_file',{'path':'calculator.py'})[0])
+        guard.record_result('apply_patch',{'ok':True,'changed_paths':['calculator.py']})
+        guard.record_result('git_diff',{'ok':True})
+        guard.record_result('run_command',{'ok':False,'exit_code':1,'error':{'code':'TEST_FAILED'}})
+        prior=(guard.result_sequence,guard.last_change_sequence,guard.last_diff_sequence,guard.consecutive_failures)
+        guard.verified_plan_progress()
+        self.assertEqual((guard.result_sequence,guard.last_change_sequence,guard.last_diff_sequence,guard.consecutive_failures),prior)
+        self.assertEqual(guard.changed_paths,{'calculator.py'})
+        self.assertTrue(guard.register_call('read_file',{'path':'calculator.py'})[0])
+        self.assertTrue(guard.register_call('read_file',{'path':'calculator.py'})[0])
+        self.assertFalse(guard.register_call('read_file',{'path':'calculator.py'})[0],
+            'Within an unchanged step, repetition must still stop')
+
     def test_gui_action_allows_fresh_observation_without_resetting_action_limits(self):
         guard=ToolLoopGuard()
         args={'window_id':'owned'}

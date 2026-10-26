@@ -2,7 +2,7 @@ import {useEffect, useState} from "react";
 import {RecentExecutions} from "./RecentExecutions";
 import {TaskEvidence} from "./TaskEvidence";
 import {mergeTaskSnapshot, TaskSnapshot, taskIsActive} from "../lib/autonomousTask";
-import {TaskConfig as Config, ModelCatalog, modelLabel, taskConfigOverrides} from "../lib/modelCatalog";
+import {TaskConfig as Config, ModelCatalog, modelLabel, taskConfigOverrides, longTaskBudget} from "../lib/modelCatalog";
 
 export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
   threadId: string; running: boolean; onClose: () => void; onSettings: () => void;
@@ -111,6 +111,8 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
           {Object.entries(config.roles).filter(([role]) => config.strategy !== "single-agent" || role === "executor").map(([role, profile]) => <div className="task-role" key={role}>
             <label>{role}<select aria-label={role + " task profile"} value={profile.model_profile_id ?? ""} onChange={e => setConfig({...config, roles:{...config.roles, [role]:{...profile, model_profile_id:e.target.value}}})}><option value="">Legacy: {profile.model || "Not configured"}</option>{catalog.profiles.map(p => <option key={p.model_profile_id} value={p.model_profile_id}>{modelLabel(catalog,p)}</option>)}</select></label>
           </div>)}
+          <button disabled={busy || running} onClick={() => setConfig(longTaskBudget(config))}>Use long task budget</button>
+          <p>长任务额度：每任务至少 200 次 API、1,000 万 Token、2 小时；全局至少 2,000 次、1 亿 Token。可能增加费用。新任务直接使用；暂停任务需应用配置。保留已用额度、费用上限和循环保护。</p>
           {Object.entries(config.budget).map(([key, value]) => <label key={key}>{key}<input aria-label={key} type="number" min="0" value={value ?? ""} placeholder="No cost cap" onChange={e => setConfig({...config, budget:{...config.budget, [key]:e.target.value === "" ? null : Number(e.target.value)}})} /></label>)}
           <p>Global usage is cumulative across tasks and restarts: API {String(globalUsage.api_calls ?? 0)}, reserved Tokens {String(globalUsage.reserved_tokens ?? 0)}.</p>
           <p>Token and cost caps use conservative reservations, output limits and timeouts. Provider tokenization/billing may differ. Unknown requests retain reservations. Prices are per million Tokens in your chosen billing currency.</p>

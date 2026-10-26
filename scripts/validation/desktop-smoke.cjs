@@ -313,14 +313,32 @@ async function main() {
       }
     }
     const roleChoices = {planner:"task-planner",executor:"task-executor",reviewer:"api-reviewer",escalation:"api-escalation"};
+    await page.getByLabel('Profile output limit',{exact:true}).fill('1024');
+    await page.getByRole('button',{name:'Use coding output limit',exact:true}).click();
+    assert.equal(await page.getByLabel('Profile output limit',{exact:true}).inputValue(),'8192');
+    await page.getByLabel('Profile output limit',{exact:true}).fill('16384');
+    await page.getByRole('button',{name:'Use coding output limit',exact:true}).click();
+    assert.equal(await page.getByLabel('Profile output limit',{exact:true}).inputValue(),'16384');
+    await page.getByLabel('Profile output limit',{exact:true}).fill('8192');
     for (const [role,name] of Object.entries(roleChoices)) await page.getByLabel(role + " profile", {exact:true}).selectOption(profileIds[name]);
+    await page.getByLabel("Default api_calls",{exact:true}).fill("3");
+    await page.getByLabel("Default api_tokens",{exact:true}).fill("30000");
+    const beforeLongBudget = modelRequests.length;
+    await page.getByRole("button",{name:"Use long task budget",exact:true}).click();
+    assert.equal(await page.getByLabel("Default api_calls",{exact:true}).inputValue(),"200");
+    assert.equal(await page.getByLabel("Default api_tokens",{exact:true}).inputValue(),"10000000");
+    assert.equal(await page.getByLabel("Default global_api_tokens",{exact:true}).inputValue(),"100000000");
+    assert.equal(modelRequests.length,beforeLongBudget,"Editing budget must not send model requests");
     await page.getByRole("button", {name:"Save model configuration", exact:true}).click();
     await page.getByText("Model configuration saved. Running task snapshots are unchanged.").waitFor();
     await page.getByRole("button", {name:"Fetch model list (does not verify capabilities)", exact:true}).click();
     await page.getByRole("button", {name:"Add model: smoke-coder", exact:true}).waitFor();
     await screenshot("desktop-mixed-provider-settings.png");
     const persistedRouting = await page.evaluate(async () => (await window.localAgent.taskRequest("", "task.catalog.get")).payload);
+    assert.equal(persistedRouting.catalog.profiles.find(p=>p.model_id==='api-escalation').max_output_tokens,8192);
     assert.equal(new Set(Object.values(persistedRouting.config.roles).map(p => p.model_profile_id)).size, 4);
+    assert.equal(persistedRouting.config.budget.api_tokens,10000000);
+    checks.push("Actual Settings long-task preset saves large budgets without changing role bindings or sending model requests");
     checks.push("Settings creates local/API connections, four model profiles, distinct role bindings and protected key");
     const beforeDiagnosis = modelRequests.length;
     await page.getByRole("button", {name:"Test Vision", exact:true}).click();
@@ -337,6 +355,7 @@ async function main() {
     page = await launch();
     await page.getByRole("button", {name:"Settings", exact:true}).click();
     await page.getByRole("button", {name:"Models & Routing", exact:true}).click();
+    assert.equal(await page.getByLabel("Default api_tokens",{exact:true}).inputValue(),"10000000");
     for (const [role,name] of Object.entries(roleChoices)) {
       await page.getByLabel(role + " profile", {exact:true}).waitFor();
       assert.equal(await page.getByLabel(role + " profile", {exact:true}).inputValue(), profileIds[name]);
@@ -491,6 +510,9 @@ async function main() {
     await page.getByLabel("Task strategy",{exact:true}).selectOption("single-agent");
     await page.getByText("Models and budget",{exact:true}).click();
     await page.getByLabel("executor task profile",{exact:true}).selectOption(profileIds["api-reviewer"]);
+    await page.getByRole("button",{name:"Use long task budget",exact:true}).click();
+    assert.equal(await page.getByLabel("api_tokens",{exact:true}).inputValue(),"10000000");
+    assert.equal(await page.getByLabel("executor task profile",{exact:true}).inputValue(),profileIds["api-reviewer"]);
     await page.getByLabel("api_calls",{exact:true}).fill("12");
     await page.getByLabel("api_tokens",{exact:true}).fill("250000");
     assert.equal(await page.getByLabel("planner task profile",{exact:true}).count(),0);

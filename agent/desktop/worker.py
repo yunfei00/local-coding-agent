@@ -26,6 +26,30 @@ def fail(code, message):
     raise DesktopError(code, message)
 
 
+def acknowledge_edit(read_value, verify_focus, expected, *, timeout=3, stage='prefix'):
+    """Require two observed values; a slow successful probe is still evidence.
+
+    The outer worker deadline bounds slow UIA RPCs. Never send/replay input here,
+    and never include actual text in a failure message.
+    """
+    deadline=time.monotonic()+timeout
+    matched=0
+    while True:
+        verify_focus()
+        observed=read_value()
+        matched=matched+1 if observed==expected else 0
+        # Check the successful observation before the polling deadline. UIA RPCs
+        # can finish late under load; two matching reads must not be reported as
+        # a value mismatch just because the second RPC crossed that deadline.
+        if matched>=2:
+            return
+        if time.monotonic()>=deadline:
+            fail('DESKTOP_VALUE_MISMATCH',
+                f'Edit acknowledgement failed: stage={stage}, expected_length={len(expected)}, '
+                f'observed_length={len(observed)}, matching_reads={matched}; no text logged or input replayed')
+        time.sleep(.03)
+
+
 def require_session():
     from agent.desktop.session import require_interactive_session
     try:
@@ -559,20 +583,21 @@ def execute(request):
             check(binding)
             if gui.GetForegroundWindow()!=hwnd:
                 fail('DESKTOP_FOCUS_FAILED','Window lost focus; no input sent')
-            if len(text)*.01+3 > a.get('timeout_seconds',15):
+            if len(text)*.06+3 > a.get('timeout_seconds',15):
                 fail('DESKTOP_INPUT_LIMIT','Ordinary text requires a larger explicit timeout_seconds (maximum 60); no input sent')
-            input_batch([(1,17,0),(1,65,0),(1,65,2),(1,17,2),(1,8,0),(1,8,2)])
-            clear_deadline=time.monotonic()+2
-            while value_pattern.CurrentValue:
+            def verify_edit_focus():
                 check(binding)
-                if time.monotonic()>=clear_deadline:
-                    fail('DESKTOP_VALUE_MISMATCH','Edit did not acknowledge clearing; no text sent or replayed')
-                time.sleep(.02)
-            # A single large clear+Unicode batch can lose the first character
-            # in Chromium under load. Let the clear/input event settle, then
-            # send balanced character batches; never hold modifiers between
-            # batches, use the clipboard, or retry a partially applied write.
+                focused=IUIA().iuia.GetFocusedElement()
+                if gui.GetForegroundWindow()!=hwnd or tuple(focused.GetRuntimeId())!=tuple(control.element_info.runtime_id):
+                    fail('DESKTOP_FOCUS_FAILED','Edit lost focus while awaiting input acknowledgement; no further characters sent')
+            input_batch([(1,17,0),(1,65,0),(1,65,2),(1,17,2),(1,8,0),(1,8,2)])
+            acknowledge_edit(lambda:value_pattern.CurrentValue,verify_edit_focus,'',timeout=2,stage='clear')
+            # A fixed pacing sleep still drops characters when Chromium/React
+            # is busy. Require the actual Edit to acknowledge each prefix before
+            # sending the next character. Each character is sent exactly once;
+            # no clipboard, held modifiers or replay of partially applied input.
             time.sleep(.05)
+            prefix=''
             for character in text:
                 check(binding)
                 focused=IUIA().iuia.GetFocusedElement()
@@ -581,7 +606,8 @@ def execute(request):
                 encoded=character.encode('utf-16-le')
                 units=[int.from_bytes(encoded[i:i+2],'little') for i in range(0,len(encoded),2)]
                 input_batch([event for unit in units for event in ((1,unit,4),(1,unit,6))])
-                time.sleep(.01)
+                prefix+=character
+                acknowledge_edit(lambda:value_pattern.CurrentValue,verify_edit_focus,prefix)
         else:
             try:
                 value_pattern.SetValue(text)
@@ -603,6 +629,7 @@ def execute(request):
         if not verified:
             fail('DESKTOP_VALUE_MISMATCH',f'Edit value did not stabilize: requested {len(text)} characters, observed {observed_length}; no text logged or input replayed')
         return {'entered':True,'characters':len(text),'value_verified':True,'input_logged':False,
+                'acknowledgement':'each_prefix' if chromium else 'complete_value',
                 'method':'uia_edit_unicode_input' if chromium else 'uia_value'}
     if op == 'desktop_keypress':
         keys = a.get('keys','').upper().split('+')

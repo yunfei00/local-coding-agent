@@ -10,13 +10,35 @@ from agent.llm.base import ProviderError
 def execution_policy():
     result = {}
     for name, default, minimum, maximum in (
-        ('max_continuations', 2, 0, 8), ('model_calls', 64, 1, 512),
-        ('tokens', 2000000, 1, 20000000), ('seconds', 900, 1, 7200)):
+        ('max_continuations', 2, 0, 8), ('model_calls', 512, 1, 512),
+        ('tokens', 200000000, 1, 1000000000), ('seconds', 7200, 1, 86400)):
         value = int(os.getenv('LCA_EXECUTION_' + name.upper(), str(default)))
         if not minimum <= value <= maximum:
             raise ValueError('Invalid bounded execution policy: ' + name)
         result[name] = value
     return result
+
+
+def execution_observation(guard, processes, owner, *, single_agent=False):
+    """Small live metadata survives prompt compaction; never commands or output.
+
+    Process IDs are opaque scope handles, not OS PIDs. Do not expose another
+    turn's sessions, command text, working directories, environment or logs.
+    """
+    owned = [{'process_id':s.id, 'pid':s.process.pid, 'state':s.state}
+             for s in processes.sessions.values()
+             if s.owner == owner and s.process.returncode is None][:16]
+    state = {'owned_processes':owned, 'changed_file_count':len(guard.changed_paths),
+             'required_checks':guard.completion_gaps(),
+             'consecutive_tool_failures':guard.consecutive_failures,
+             'tool_results_seen':guard.result_sequence}
+    note = ('Current execution metadata, not a new task. Use only the listed process_id '
+            'for read_process/stop_process; an OS PID is not a process handle. '
+            'Do not replay completed work or delete persistence data just to finish. ')
+    if single_agent:
+        note += ('When the requested changes and checks are complete, return your final report. '
+                 'The Task framework then performs independent verification before approval. ')
+    return {'role':'system', 'content':note + json.dumps(state,ensure_ascii=False)}
 
 
 def failure_diagnosis(tool, code):

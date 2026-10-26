@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import json
 import os
 import time
@@ -41,6 +43,33 @@ def choose_default_model(models: list[ModelInfo], preferred: str) -> str | None:
 
 def _optional_int(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def request_image_evidence(messages: list[dict]) -> list[dict]:
+    """Non-content evidence of the actual wire images, never URLs or pixels."""
+    images = []
+    for message in messages:
+        content = message.get('content')
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict) or part.get('type') != 'image_url':
+                continue
+            reference = part.get('image_url')
+            if not isinstance(reference, dict):
+                continue
+            url = reference.get('url', '')
+            if not isinstance(url, str):
+                continue
+            header, separator, encoded = url.partition(',')
+            if separator and header in {'data:image/jpeg;base64','data:image/png;base64','data:image/webp;base64'}:
+                try:
+                    pixels = base64.b64decode(encoded, validate=True)
+                except ValueError:
+                    continue
+                images.append({'mime_type':header[5:-7], 'bytes':len(pixels),
+                               'sha256':hashlib.sha256(pixels).hexdigest()})
+    return images
 
 
 def _error_message(payload: dict[str, Any], fallback: str) -> str:
@@ -213,7 +242,10 @@ class OpenAICompatibleProvider:
         actual_cost: float | None = None
         tool_states: dict[int, dict[str, str]] = {}
         emitted_done = False
-        self.response_metadata = {"http_status":None, "response_type":None, "request_sent":False}
+        self.response_metadata = {"http_status":None, "response_type":None, "request_sent":False,
+                                  "requested_max_tokens":request_body.get('max_tokens'),
+                                  "wire_images":request_image_evidence(request_body['messages']),
+                                  "tool_schema_count":len(tools or [])}
 
         try:
             async with aiohttp.ClientSession(

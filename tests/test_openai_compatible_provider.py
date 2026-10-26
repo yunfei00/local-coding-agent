@@ -1,4 +1,6 @@
 import json
+import base64
+import hashlib
 import os
 import unittest
 from unittest.mock import patch
@@ -31,6 +33,7 @@ class OpenAICompatibleProviderIntegrationTests(unittest.IsolatedAsyncioTestCase)
                 "Bearer test-key",
             )
             body = await request.json()
+            self.last_wire_body = body
             self.assertEqual(body["model"], "coder-model")
             self.assertTrue(body["stream"])
             self.assertEqual(
@@ -153,12 +156,16 @@ class OpenAICompatibleProviderIntegrationTests(unittest.IsolatedAsyncioTestCase)
             }
         ]
         chunks = []
+        self.provider.max_output_tokens = 8192
         async for chunk in self.provider.stream_chat(
             model="coder-model",
             messages=[{"role": "user", "content": "Inspect README"}],
             tools=tools,
         ):
             chunks.append(chunk)
+        self.assertEqual(self.last_wire_body['max_tokens'],8192)
+        self.assertEqual(self.provider.response_metadata['requested_max_tokens'],8192)
+        self.assertNotIn('test-key',json.dumps(self.provider.response_metadata))
 
         self.assertEqual(
             "".join(chunk.content for chunk in chunks),
@@ -176,6 +183,22 @@ class OpenAICompatibleProviderIntegrationTests(unittest.IsolatedAsyncioTestCase)
             final.tool_calls[0].arguments,
             {"path": "README.md"},
         )
+        self.assertEqual(self.provider.response_metadata['http_status'],200)
+        self.assertEqual(self.provider.response_metadata['tool_schema_count'],1)
+        self.assertEqual(self.provider.response_metadata['wire_images'],[])
+        pixels = b'controlled-local-HTTP-image'
+        encoded = base64.b64encode(pixels).decode()
+        async for _ in self.provider.stream_chat(model='coder-model', tools=tools,
+                messages=[{'role':'user','content':[{'type':'text','text':'Observe controlled fixture'},
+                    {'type':'image_url','image_url':{'url':'data:image/jpeg;base64,'+encoded}}]}]):
+            pass
+        self.assertEqual(self.provider.response_metadata['wire_images'],[
+            {'mime_type':'image/jpeg','bytes':len(pixels),'sha256':hashlib.sha256(pixels).hexdigest()}])
+        self.assertEqual(self.last_wire_body['messages'][0]['content'][1]['image_url']['url'],
+                         'data:image/jpeg;base64,'+encoded)
+        metadata = json.dumps(self.provider.response_metadata)
+        self.assertNotIn(encoded,metadata)
+        self.assertNotIn('test-key',metadata)
 
 
 class ProviderFactoryTests(unittest.TestCase):

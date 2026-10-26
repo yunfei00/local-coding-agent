@@ -94,7 +94,8 @@ class ElectronE2ETests(unittest.IsolatedAsyncioTestCase):
         if tasks:
             (ROOT/'validation-reports').mkdir(exist_ok=True)
             execution=self.server.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',(tasks[0]['id'],)).fetchone()
-            (ROOT/('validation-reports/m5-debug-'+self._testMethodName+'.json')).write_text(json.dumps({'task':self.server.tasks.public(tasks[0]),'execution':json.loads(execution[0]) if execution else None,'tools':[e['payload'] for e in self.client.messages if e['type']=='tool.completed']},ensure_ascii=False,indent=2),encoding='utf-8')
+            process_metadata=[json.loads(p.read_text(encoding='utf-8')) for p in (self.root/'data'/'command-logs').glob('*/process.json')]
+            (ROOT/('validation-reports/m5-debug-'+self._testMethodName+'.json')).write_text(json.dumps({'task':self.server.tasks.public(tasks[0]),'execution':json.loads(execution[0]) if execution else None,'processes':process_metadata,'tools':[e['payload'] for e in self.client.messages if e['type']=='tool.completed']},ensure_ascii=False,indent=2),encoding='utf-8')
         self.model.release.set()
         for run in list(self.server.active_turns.values()):run.cancel()
         await asyncio.gather(*list(self.server.active_turns.values()),return_exceptions=True)
@@ -149,6 +150,8 @@ class ElectronE2ETests(unittest.IsolatedAsyncioTestCase):
             self.action('desktop_screenshot',share_with_model=True),self.stop,tool('git_diff'),ProviderChunk(content='Input repaired; independently verify saving',done=True),
             feedback,tool('apply_patch',path='src/App.tsx',old_text="setStatus('Not saved');",new_text="setStatus('Saved: '+value);"),*checks,tool('git_diff'),ProviderChunk(content='Second repair; run the frozen GUI contract',done=True)])
         failures=[{'tool':e['payload']['name'],'error':e['payload']['result'].get('error'),
+                   'cleanup_stage':e['payload']['result'].get('cleanup_stage'),
+                   'job_cleanup':e['payload']['result'].get('job_cleanup'),
                    'summary':e['payload']['result'].get('summary','')[:500]}
                   for e in self.client.messages if e['type']=='tool.completed' and not e['payload']['result'].get('ok')]
         self.assertEqual(task['status'],'awaiting_approval',{'task_error':task.get('last_error') or task['reason'],'failed_tools':failures})
@@ -162,6 +165,11 @@ class ElectronE2ETests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.images);self.assertTrue(all(v['model']=='m5-vision' for v in self.images))
         self.assertTrue(any(cid=='coder' for cid,_ in self.requests));self.assertTrue(any(cid=='vision' for cid,_ in self.requests))
         self.assertTrue(any(c['role']=='vision-observer' for c in self.server.tasks.runtime.calls(task['id'])))
+        typed=[e['payload']['result'] for e in self.client.messages if e['type']=='tool.completed'
+               and e['payload']['name']=='desktop_type_text' and e['payload']['result'].get('ok')]
+        self.assertTrue(typed)
+        self.assertTrue(all(r['data']['acknowledgement']=='each_prefix' for r in typed),
+                        'Actual Chromium input must acknowledge every prefix, not only use a pacing sleep')
         initial_history=task['verification_history']
         self.assertFalse(initial_history[0]['passed']);self.assertTrue(initial_history[1]['passed'])
         captures=[e for r in initial_history for v in r['results'] for e in v.get('evidence',[]) if e['tool']=='desktop_screenshot' and e.get('ok')]

@@ -1,5 +1,9 @@
 # 公司环境验证流程
 
+最新解锁后已取得两种真实 Electron 编码/视觉验收证据，详见[完整结果、已知限制与更新命令](../validation/unlocked-real-online-acceptance-2026-10-26.md)。公司请核对 PR #22 是否合并：合并后更新 main，合并前用功能分支。旧 API Profile 可使用 Use coding output limit（8192）并保存；此值与 Task 总预算不同，旧快照不会自动改变。
+
+历史记录（2026-10-26 解锁前）：当时修复在功能分支，只有 calculator 在线闭环通过，原生桌面被锁屏阻断。[该阶段记录](../validation/alibaba-model-validation-2026-10-26.md)继续保留；当前结果和安装分支以本页顶部新报告及 PR 合并状态为准。
+
 本流程使用现有 manual-fixtures/v04-local-first，不要求自己编写工程。真实模型能力与路由框架验收分开记录；没有付费 API 凭据时使用下面的 HTTP Mock 自动化。
 
 ## Planning 修复的本轮验证约定
@@ -77,7 +81,7 @@ ollama list
 4. 密码框输入公司分配的 Key，Save / clear connection key，再 Save model configuration。Key 不写入工程或配置 JSON。无 Key 的网关可保留空凭据。
 5. 获取模型列表，添加两个获准的 API 模型；网关不支持列表时手动填实际 Model ID。根据服务文档配置上下文、输出限制、工具模式和价格。
 6. 四个下拉框均能看到全部模型。推荐 Planner/Executor 选择本地编码模型、Reviewer 选择另一本地模型、Escalation 选择强 API 模型。允许多个角色共享模型；可临时选择四个不同配置确认独立绑定，再恢复本地 Reviewer。
-7. Execution Policy 选 Local-first。预算初始 3 次、30000 Token、120 秒请求、3 次本地修复、1800 秒任务。费用上限需要两个价格；未知价格不虚构费用精度。
+7. Execution Policy 选 Local-first。本轮源码未配置预算时默认 200 次、1,000 万 Token、120 秒请求、3 次本地修复、7200 秒任务；全局默认 2,000 次、1 亿 Token。旧配置不会自动覆盖，可点击 Use long task budget 并保存；Settings → Agent 的 Use long task execution limits 提高旧步骤/工具额度。价格和费用上限保持原值，未知价格不虚构费用精度。
 8. Save model configuration，关闭并重新启动软件，核对连接、模型和四角色。切换旧 Provider 页不应改变这些角色。模型/连接删除前先解除角色引用。
 
 ## 场景 A：本地修复
@@ -137,4 +141,6 @@ Task 按需展开查看阶段、真实 Model call journal、API 次数/预留 To
 框架通过条件：自动化零失败、指定服务真实 HTTP 调用与回交成立、预算前置阻断成立、Windows UI 保存/重启成立、安装版和 Portable 可启动，文档及产物一致。公司业务能力另记：公司实际模型、网关认证/计费、网络代理与具体工程任务必须在公司环境核验。未运行的真实付费调用明确记“未验收”，不能用 Mock 数字冒充真实费用。
 ## M4/M5 源码更新
 
-当前源码的 Provider 与模型目录已统一；Single Agent、独立视觉、真实 Electron 实验工程和最新运行命令见 [M5 公司源码使用](../m5/user-guide.md) 和 [可复现实验工程](../../manual-fixtures/m5-electron-e2e/README.md)。M4/M5 不发布安装包，原 v0.4.2 安装版不包含本轮源码。真实付费推理本轮 NOT RUN，历史用户模型结果与本机 HTTP Mock/真实 GUI 分开记录。
+2026-10-24 后续验收使用用户已配置的 `qwen3.8-max`，执行与视觉使用同一在线 Profile。真实 Max 已完成 46 次请求、741,103 服务端 Token、2 次源码修改及 npm 工程检查，但 Task 因工具失败暂停，Max 视觉尚未运行；不得写成完整通过。Windows/Ubuntu CI 已通过的准确提交、当前命令、已用量和未完成事项见[在线验收最新结论](../validation/real-online-agent-acceptance.md#最新结论2026-10-24qwen-max)。本机另有约 12.37 GiB 非分页内核池异常及 Electron 退出确认失败，见[环境阻断与安全恢复](../validation/windows-kernel-memory-blocker.md)。保存工作并恢复环境后由 Agent 继续验证，不要求重新配模型、粘贴 Key 或增加预算。
+
+当前源码的 Provider 与模型目录已统一；Single Agent、独立视觉、真实 Electron 实验工程和运行命令见 [M5 公司源码使用](../m5/user-guide.md) 和 [可复现实验工程](../../manual-fixtures/m5-electron-e2e/README.md)。M4/M5 不发布安装包，原 v0.4.2 安装版不包含本轮源码。最新真实 Task、服务端 Token、GUI 及控制器报告复核见顶部解锁后报告；此前未通过记录作为历史保留，Mock 与真实结果不能互相替代。

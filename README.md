@@ -1,6 +1,6 @@
 # Local Coding Agent
 
-M5 增加真实 Electron + React + TypeScript 双缺陷验收工程、Task Timeline 与失败/成功截图入口；修复 Chromium 受控输入、观察刷新及 GUI 启动契约保护。见 [M5 使用](docs/m5/user-guide.md)、[端到端验收](docs/m5/end-to-end-acceptance.md)、[实验工程](manual-fixtures/m5-electron-e2e/README.md)。真实在线自主推理本轮 NOT RUN，不发布 Tag/安装包。
+M5 增加真实 Electron + React + TypeScript 双缺陷验收工程、Task Timeline 与失败/成功截图入口；修复 Chromium 受控输入、观察刷新及 GUI 启动契约保护。见 [M5 使用](docs/m5/user-guide.md)、[端到端验收](docs/m5/end-to-end-acceptance.md)、[实验工程](manual-fixtures/m5-electron-e2e/README.md)。[最新真实在线验收](docs/validation/unlocked-real-online-acceptance-2026-10-26.md)记录 Omni 单模型完整闭环、GLM + Omni 的真实后台通过及控制器终态竞态修复/记录重放；失败与精确边界分别保留。本轮不发布 Tag/安装包。
 
 M4 全面修复统一了 Chat/Task 的连接和模型目录，支持独立 Vision Observer、真实窗口截图与冻结任务配置。见 [修复与用法](docs/m4/complete-fixes.md)、[验收分类](docs/m4/complete-validation.md)、[阶段能力矩阵](docs/capability-matrix.md)。真实在线推理与 HTTP Mock/真实 GUI 分开记录，本轮不发布安装包。
 
@@ -26,7 +26,7 @@ M2 增加统一终端与受管理进程工具 `start_process` / `read_process` /
 
 Task → Task strategy 选择 **Single Agent (online)**，在 Models and budget 中绑定一个 OpenAI Compatible 的 **executor task profile**，填写目标后启动。模型直接读取文件、执行终端、修改代码、接收真实工具结果并继续调用工具；无需配置 Planner、Reviewer 或本地模型。任务仍在受管理 Worktree 中执行，完成后由真实命令独立验证并展示 Diff；支持暂停、取消、检查后恢复。
 
-沿用已有 API 调用上限；多轮工具任务需要足够的调用次数，默认 3 次可能提前停止。切换模式不修改用户显式预算。Key 继续使用桌面安全存储，不写入任务配置。详见 [M1 能力与架构审计](docs/m1/architecture-audit.md)、[验收记录](docs/m1/acceptance.md)、[M2–M5 接口规划](docs/m1/roadmap.md)。本阶段不创建 Tag、Release 或安装包。
+已有显式预算继续保留；本轮源码的长任务默认额度为每任务 200 次 API、1,000 万 Token、2 小时。旧小额度可在 Settings/Task 点击 Use long task budget；旧步骤/工具上限在 Settings → Agent 点击 Use long task execution limits 后保存。循环、失败、审批与停止保护保留，切换模式不修改用户显式预算。Key 继续使用桌面安全存储，不写入任务配置。详见 [预算说明](docs/v0.4/budget-control.md)、[M1 能力与架构审计](docs/m1/architecture-audit.md)、[验收记录](docs/m1/acceptance.md)、[M2–M5 接口规划](docs/m1/roadmap.md)。本阶段不创建 Tag、Release 或安装包。
 
 ## v0.4 Local-first Autonomous Coding
 
@@ -36,11 +36,11 @@ Settings → Models & Routing 同时配置多个 Ollama/API 连接和模型，�
 
 v0.4.2 修复旧会话模型与底部显示不一致：发送请求携带当前 Chat model，后端验证后保存并执行，不再误用上一个 Provider 的模型名。不可用的旧模型会明确标注并阻止发送。见 [聊天模型同步修复](docs/v0.4/chat-model-sync.md)。
 
-main 另包含 Planning 重试与诊断修复（尚未发布安装包）：独立持久化规划上限、JSON/工具计划兼容、真实 Usage 结算和 Task 顶部取消入口。见 [根因与调用链](docs/validation/planning-api-root-cause.md) / [测试与公司源码更新](docs/validation/planning-api-test-results.md)。本轮真实 API 按用户要求 NOT RUN。
+main 另包含 Planning 重试与诊断修复（尚未发布安装包）：独立持久化规划上限、JSON/工具计划兼容、真实 Usage 结算和 Task 顶部取消入口。见 [根因与调用链](docs/validation/planning-api-root-cause.md) / [测试与公司源码更新](docs/validation/planning-api-test-results.md)。该历史修复阶段的真实 DeepSeek API 按用户要求 NOT RUN；后续阿里模型实测单独记录。
 
 Task 启动预算检查也已补充具体任务/全局字段、限额、已用/预留、本次所需及模型输出上限；新任务读取最新 Settings，仅覆盖 Task 面板中主动编辑的字段，旧任务保留快照。见 [预算启动审计](docs/validation/task-start-budget-root-cause.md) / [测试记录](docs/validation/task-start-budget-test-results.md)。此修复同样只在源码 main，旧 v0.4.2 安装包不含修复。
 
-真实 CPU Ollama 已验证新路由、规划与实际工具调用，但小模型未完成修复；真实付费 API 尚未验收。跨 Provider、升级回交、Usage、预算和恢复通过实际 HTTP Mock 验证，不能将其视为真实付费消费或公司模型能力证明。构建和发布状态见 [验收记录](docs/v0.4/acceptance.md)。
+真实 CPU Ollama 已验证路由、规划与工具调用，但小模型未完成修复；v0.4 初次验收时真实付费 API 未验收。后续真实 Single Agent/视觉结果见顶部新报告；它不替代 Local-first 困难升级的真实组合验收。跨 Provider、升级回交、Usage、预算和恢复另有 HTTP Mock 证据。构建和发布状态见 [验收记录](docs/v0.4/acceptance.md)。
 
 - [架构审计](docs/v0.4/architecture-audit.md) / [设计](docs/v0.4/design.md)
 - [模型路由](docs/v0.4/model-routing.md) / [预算](docs/v0.4/budget-control.md)
@@ -289,5 +289,7 @@ Python Agent Server
 M3 Windows 桌面工具：[架构与能力矩阵](docs/m3/architecture.md)、[工具接口](docs/m3/tools.md)、[权限与安全](docs/m3/security.md)、[自动验收](docs/m3/acceptance.md)、[M4 准备](docs/m3/m4-readiness.md)。
 
 M4 收尾：[长任务续跑、阻塞恢复与能力矩阵](docs/m4/continuation-recovery.md)、[验收记录](docs/m4/closure-acceptance.md)、[离线真实工具/GUI 演示](manual-fixtures/m4-continuation/README.md)。
+
+真实在线模型验收：[有界 Qwen / GLM + Qwen 自主 Electron 修复入口、凭据安全与实测记录](docs/validation/real-online-agent-acceptance.md)。默认离线检查，只有显式 `--live` 才允许付费请求；Mock 与在线结果分别报告。
 
 暂未确定。

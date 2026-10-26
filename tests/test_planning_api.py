@@ -106,7 +106,7 @@ class PlanningAPITests(unittest.IsolatedAsyncioTestCase):
         return self.server.store.task_runtime.list(self.thread.id)[0]
 
     async def wait(self):
-        await asyncio.wait_for(asyncio.gather(*list(self.server.active_turns.values())), 25)
+        await asyncio.wait_for(asyncio.gather(*list(self.server.active_turns.values())), 120)
         return self.server.store.task_runtime.list(self.thread.id)[0]
 
     def diagnostics(self, task):

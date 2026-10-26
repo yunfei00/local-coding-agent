@@ -1,0 +1,422 @@
+{
+  "date": "2026-10-26",
+  "code_sha": "fac8be67b31f53a84c0259e0d78629bcfd6de0dd",
+  "fetched_model_count": 180,
+  "added_profile_count": 5,
+  "capability_probe_requests": 23,
+  "capability_probes": [
+    {
+      "model_id": "qwen3.8-max",
+      "text": "PASS",
+      "vision": "PASS",
+      "tools": "PASS",
+      "requests": 3,
+      "usage": [
+        {
+          "stage": "text",
+          "http_status": 200,
+          "input_tokens": 68,
+          "output_tokens": 32,
+          "actual_cost": null
+        },
+        {
+          "stage": "vision",
+          "http_status": 200,
+          "input_tokens": 283,
+          "output_tokens": 222,
+          "actual_cost": null
+        },
+        {
+          "stage": "tools",
+          "http_status": 200,
+          "input_tokens": 341,
+          "output_tokens": 83,
+          "actual_cost": null
+        }
+      ],
+      "errors": []
+    },
+    {
+      "model_id": "qwen3.7-plus",
+      "text": "PASS",
+      "vision": "PASS",
+      "tools": "PASS",
+      "requests": 3,
+      "usage": [
+        {
+          "stage": "text",
+          "http_status": 200,
+          "input_tokens": 17,
+          "output_tokens": 121,
+          "actual_cost": null
+        },
+        {
+          "stage": "vision",
+          "http_status": 200,
+          "input_tokens": 270,
+          "output_tokens": 246,
+          "actual_cost": null
+        },
+        {
+          "stage": "tools",
+          "http_status": 200,
+          "input_tokens": 294,
+          "output_tokens": 89,
+          "actual_cost": null
+        }
+      ],
+      "errors": []
+    },
+    {
+      "model_id": "glm-5.3",
+      "text": "PASS",
+      "vision": "FAIL",
+      "tools": "PASS",
+      "requests": 3,
+      "usage": [
+        {
+          "stage": "text",
+          "http_status": 200,
+          "input_tokens": 19,
+          "output_tokens": 195,
+          "actual_cost": null
+        },
+        {
+          "stage": "vision",
+          "http_status": 200,
+          "input_tokens": 50,
+          "output_tokens": 231,
+          "actual_cost": null
+        },
+        {
+          "stage": "tools",
+          "http_status": 200,
+          "input_tokens": 181,
+          "output_tokens": 75,
+          "actual_cost": null
+        }
+      ],
+      "errors": [
+        {
+          "stage": "vision",
+          "code": "CAPABILITY_ASSERTION_FAILED"
+        }
+      ]
+    },
+    {
+      "model_id": "deepseek-v4.1-flash",
+      "text": "PASS",
+      "vision": "FAIL",
+      "tools": "PASS",
+      "requests": 3,
+      "usage": [
+        {
+          "stage": "text",
+          "http_status": 200,
+          "input_tokens": 37,
+          "output_tokens": 32,
+          "actual_cost": null
+        },
+        {
+          "stage": "vision",
+          "http_status": 200,
+          "input_tokens": 264,
+          "output_tokens": 256,
+          "actual_cost": null
+        },
+        {
+          "stage": "tools",
+          "http_status": 200,
+          "input_tokens": 318,
+          "output_tokens": 180,
+          "actual_cost": null
+        }
+      ],
+      "errors": [
+        {
+          "stage": "vision",
+          "code": "MODEL_INVALID_RESULT"
+        }
+      ]
+    },
+    {
+      "model_id": "kimi-k3",
+      "text": "FAIL",
+      "vision": "NOT RUN",
+      "tools": "NOT RUN",
+      "requests": 1,
+      "usage": [
+        {
+          "stage": "text",
+          "http_status": 400
+        }
+      ],
+      "errors": [
+        {
+          "stage": "text",
+          "code": "OPENAI_COMPATIBLE_REQUEST_FAILED"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen3.8-omni-flash",
+      "text": "PASS",
+      "vision": "PASS",
+      "tools": "PASS",
+      "requests": 3,
+      "usage": [
+        {
+          "stage": "text",
+          "http_status": 200,
+          "input_tokens": 59,
+          "output_tokens": 33,
+          "actual_cost": null
+        },
+        {
+          "stage": "vision",
+          "http_status": 200,
+          "input_tokens": 312,
+          "output_tokens": 175,
+          "actual_cost": null
+        },
+        {
+          "stage": "tools",
+          "http_status": 200,
+          "input_tokens": 332,
+          "output_tokens": 110,
+          "actual_cost": null
+        }
+      ],
+      "errors": []
+    },
+    {
+      "model_id": "qwen3.7-plus",
+      "text": "PASS",
+      "vision": "PASS",
+      "tools": "FAIL",
+      "requests": 3,
+      "usage": [
+        {
+          "stage": "text",
+          "http_status": 200,
+          "input_tokens": 17,
+          "output_tokens": 177,
+          "actual_cost": null
+        },
+        {
+          "stage": "vision",
+          "http_status": 200,
+          "input_tokens": 270,
+          "output_tokens": 243,
+          "actual_cost": null
+        },
+        {
+          "stage": "tools",
+          "http_status": 200,
+          "input_tokens": 294,
+          "output_tokens": 243,
+          "actual_cost": null
+        }
+      ],
+      "errors": [
+        {
+          "stage": "tools",
+          "code": "CAPABILITY_ASSERTION_FAILED"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen3.8-omni-flash",
+      "text": "PASS",
+      "vision": "PASS",
+      "tools": "PASS",
+      "requests": 3,
+      "usage": [
+        {
+          "stage": "text",
+          "http_status": 200,
+          "input_tokens": 59,
+          "output_tokens": 32,
+          "actual_cost": null
+        },
+        {
+          "stage": "vision",
+          "http_status": 200,
+          "input_tokens": 312,
+          "output_tokens": 542,
+          "actual_cost": null
+        },
+        {
+          "stage": "tools",
+          "http_status": 200,
+          "input_tokens": 332,
+          "output_tokens": 142,
+          "actual_cost": null
+        }
+      ],
+      "errors": []
+    },
+    {
+      "model_id": "kimi/kimi-k3",
+      "text": "FAIL",
+      "vision": "NOT RUN",
+      "tools": "NOT RUN",
+      "requests": 1,
+      "usage": [
+        {
+          "stage": "text",
+          "http_status": 400
+        }
+      ],
+      "errors": [
+        {
+          "stage": "text",
+          "code": "OPENAI_COMPATIBLE_REQUEST_FAILED"
+        }
+      ]
+    }
+  ],
+  "real_calculator_tasks": [
+    {
+      "task_id": "083b28a7-1e3a-4913-9f8f-2d76d9cf3ada",
+      "result": "PASS",
+      "model": "glm-5.3",
+      "calls": 12,
+      "usage": {
+        "api_calls": 12,
+        "local_calls": 0,
+        "reserved_tokens": 61158,
+        "reserved_cost": 0,
+        "input_tokens": 57639,
+        "output_tokens": 3519,
+        "cached_tokens": 30464,
+        "actual_cost": 0,
+        "actual_cost_known": false,
+        "estimated": false,
+        "released_tokens": 210230,
+        "in_flight_tokens": 0,
+        "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+      },
+      "disk_evidence": {
+        "source_unchanged": true,
+        "acceptance_changes": [],
+        "diff": "diff --git a/calculator.py b/calculator.py\nindex 12ee743..4693ad3 100644\n--- a/calculator.py\n+++ b/calculator.py\n@@ -1,2 +1,2 @@\n def add(a, b):\n-    return a - b\n+    return a + b\n",
+        "diff_truncated": false,
+        "changed_files": [
+          "calculator.py"
+        ],
+        "tests_unchanged": true,
+        "calculator_sha256": "680df8de3e5c095d92660cec6dbc7bc25af0ccd1151d6666441cca6f1d19a725"
+      },
+      "transitions": [
+        {
+          "from": "pending",
+          "to": "planning"
+        },
+        {
+          "from": "planning",
+          "to": "executing"
+        },
+        {
+          "from": "executing",
+          "to": "verifying"
+        },
+        {
+          "from": "verifying",
+          "to": "awaiting_approval"
+        }
+      ],
+      "verification": [
+        {
+          "command": "uv run --no-project python -m unittest discover -s tests -v",
+          "ok": true,
+          "exit_code": 0,
+          "category": "passed"
+        },
+        {
+          "command": "git diff --check",
+          "ok": true,
+          "exit_code": 0,
+          "category": "passed"
+        }
+      ]
+    },
+    {
+      "task_id": "9a3a0681-f82a-45e7-92a3-e1ffa41dc566",
+      "result": "PASS",
+      "model": "qwen3.8-omni-flash",
+      "calls": 6,
+      "usage": {
+        "api_calls": 6,
+        "local_calls": 0,
+        "reserved_tokens": 34071,
+        "reserved_cost": 0,
+        "input_tokens": 33275,
+        "output_tokens": 796,
+        "cached_tokens": 3584,
+        "actual_cost": 0,
+        "actual_cost_known": false,
+        "estimated": false,
+        "released_tokens": 106342,
+        "in_flight_tokens": 0,
+        "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+      },
+      "disk_evidence": {
+        "source_unchanged": true,
+        "acceptance_changes": [],
+        "diff": "diff --git a/calculator.py b/calculator.py\nindex 12ee743..4693ad3 100644\n--- a/calculator.py\n+++ b/calculator.py\n@@ -1,2 +1,2 @@\n def add(a, b):\n-    return a - b\n+    return a + b\n",
+        "diff_truncated": false,
+        "changed_files": [
+          "calculator.py"
+        ],
+        "tests_unchanged": true,
+        "calculator_sha256": "680df8de3e5c095d92660cec6dbc7bc25af0ccd1151d6666441cca6f1d19a725"
+      },
+      "transitions": [
+        {
+          "from": "pending",
+          "to": "executing"
+        },
+        {
+          "from": "executing",
+          "to": "verifying"
+        },
+        {
+          "from": "verifying",
+          "to": "awaiting_approval"
+        }
+      ],
+      "verification": [
+        {
+          "command": "uv run --no-project python -m unittest discover -s tests -v",
+          "ok": true,
+          "exit_code": 0,
+          "category": "passed"
+        },
+        {
+          "command": "git diff --check",
+          "ok": true,
+          "exit_code": 0,
+          "category": "passed"
+        }
+      ]
+    }
+  ],
+  "native_online_m5_acceptance": "NOT RUN this turn: DESKTOP_SESSION_LOCKED; previous attempts FAIL",
+  "overall_online_m5_acceptance": "NOT PASSED",
+  "cost": "UNKNOWN",
+  "ci_run": "https://github.com/yunfei00/local-coding-agent/actions/runs/40258421855",
+  "ci_conclusion": "success",
+  "local_full_regression": {
+    "run_id": "20261026-102306-909169",
+    "python_total": 406,
+    "passed": 391,
+    "skipped": 15,
+    "failures": 0,
+    "errors": 0,
+    "frontend_passed": 46,
+    "typecheck": "PASS",
+    "build": "PASS",
+    "standalone_desktop_smoke": "FAILED preflight: Windows session locked; not a native GUI PASS"
+  }
+}

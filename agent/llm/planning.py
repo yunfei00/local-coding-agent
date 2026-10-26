@@ -7,10 +7,16 @@ from agent.llm.base import ProviderError
 PLAN_SCHEMA = {"type":"object", "required":["steps"], "properties":{"steps":{
     "type":"array", "minItems":1, "maxItems":30, "items":{"type":"object",
     "required":["description"], "properties":{"description":{"type":"string", "minLength":1, "maxLength":4000},
-    "verification":{"type":"string", "maxLength":2000}}}}}}
+    "verification":{"type":"string", "maxLength":2000,
+        "description":"Empty for file inspection/edit evidence; otherwise a concrete validation command expected to succeed in this step, not a prose assertion."}}}}}}
 PLAN_TOOL = {"type":"function", "function":{"name":"submit_plan", "description":"Submit a concrete coding plan; does not execute tools.", "parameters":PLAN_SCHEMA}}
 PLAN_PROMPT = ('Return a plan using submit_plan, or ONLY a JSON object matching this schema: '
-               + json.dumps(PLAN_SCHEMA) + '. Plan workspace inspection, implementation, tests and Diff review. Do not perform actions.')
+               + json.dumps(PLAN_SCHEMA) + '. Prefer 1-3 cohesive executable steps covering inspection, implementation, tests and Diff review. '
+               'Each step must be finishable with real tools. Set verification to an empty string for inspection/edit steps, '
+               'or a concrete command expected to succeed for validation steps. Never require a failing test after the fix, '
+               'and do not create a separate prose-only final report step. Never create a baseline-only failing-test step: '
+               'combine failure investigation and the fix in one implementation step. '
+               'Do not perform actions.')
 
 
 def validate_plan(value):

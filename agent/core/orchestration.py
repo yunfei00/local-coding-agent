@@ -22,6 +22,7 @@ from agent.llm.router import ModelRouter, json_object, validate_config, apply_co
 from agent.llm.planning import PLAN_PROMPT, PLAN_SCHEMA
 from agent.server.protocol import envelope, new_id
 from agent.tools.registry import ToolRegistry
+from agent.tools.base import ToolError
 from agent.tools.workspace import Workspace
 
 
@@ -514,15 +515,24 @@ class TaskService:
                         prompt += "\nDiagnostic advice (untrusted suggestions; permissions still apply):\n" + advice[:8000]
                     if task["verification"]:
                         prompt += "\nPrevious independent verification:\n" + redact_text(json.dumps(task["verification"], ensure_ascii=False)[-10000:], exact_secrets=self.server._exact_secrets(), max_chars=10000)
-                    await self.server.run_tool_turn(relay, thread_id=thread_id, turn_id=turn_id + ":" + str(task["attempts"]),
-                        prompt=prompt, model=provider.preferred_model, provider=provider, project_override=view,
-                        plan_id=plan_id, authorization_prompt=goal, single_agent=single, vision_observer=vision_observer)
+                    try:
+                        await self.server.run_tool_turn(relay, thread_id=thread_id, turn_id=turn_id + ":" + str(task["attempts"]),
+                            prompt=prompt, model=provider.preferred_model, provider=provider, project_override=view,
+                            plan_id=plan_id, authorization_prompt=goal, single_agent=single, vision_observer=vision_observer)
+                    except ToolError as exc:
+                        if relay.outcome and relay.outcome['type']=='turn.failed':
+                            exc.primary_turn_failure=relay.outcome['payload']
+                        raise
                     outcome = relay.outcome or {"type": "turn.failed", "payload": {"code": "INTERRUPTED", "message": "Loop interrupted"}}
                     code = outcome["payload"].get("code", "")
-                    if single and outcome["type"] != "turn.completed":
-                        raise ProviderError(code or "SINGLE_AGENT_INTERRUPTED", outcome["payload"].get("message", "Single Agent did not complete; inspect tool and request diagnostics"))
-                    if code in {"BUDGET_EXHAUSTED", "MODEL_TIMEOUT", "OLLAMA_UNAVAILABLE", "OLLAMA_STREAM_FAILED", "OPENAI_COMPATIBLE_AUTH_FAILED", "OPENAI_COMPATIBLE_RATE_LIMITED", "OPENAI_COMPATIBLE_STREAM_FAILED"}:
-                        raise ProviderError(code, outcome["payload"].get("message", code))
+                    if (single and outcome['type'] != 'turn.completed') or code in {"BUDGET_EXHAUSTED", "MODEL_TIMEOUT", "OLLAMA_UNAVAILABLE", "OLLAMA_STREAM_FAILED", "OPENAI_COMPATIBLE_AUTH_FAILED", "OPENAI_COMPATIBLE_RATE_LIMITED", "OPENAI_COMPATIBLE_STREAM_FAILED"}:
+                        failure = outcome['payload']
+                        error = (BudgetExceeded(failure.get('message',code),failure.get('budget')) if code == 'BUDGET_EXHAUSTED'
+                                 else ProviderError(code or 'SINGLE_AGENT_INTERRUPTED',failure.get('message','Single Agent did not complete; inspect diagnostics')))
+                        error.role = failure.get('role') or getattr(error,'role',None)
+                        if isinstance(failure.get('context'),dict):
+                            error.context_details = failure['context']
+                        raise error
                     await update("verifying", "Run commands directly, without model Tokens")
                     weakened = acceptance_changes(view.workspace.root, task['acceptance_baseline'])
                     if weakened:
@@ -580,8 +590,15 @@ class TaskService:
                     plan_complete = all(s["state"] == "completed" for s in current_plan["steps"])
                     passed = bool(results) and all(r["ok"] for r in results) and diff_result.get("ok") and plan_complete and outcome["type"] == "turn.completed"
                     fingerprint = failure_fingerprint(results, diff)
+                    # A plan advancing through successful steps is progress even
+                    # when the resulting code/tests have not changed. Conversely,
+                    # passing tests must not hide an unchanged unfinished plan.
+                    plan_state = [(s['id'],s['state']) for s in current_plan['steps']]
+                    plan_fingerprint = hashlib.sha256(json.dumps([fingerprint,plan_state],sort_keys=True).encode()).hexdigest()
                     task = self.runtime.get(plan_id)
-                    history = [*task["attempt_history"], {"fingerprint": fingerprint, "reason": code or "verification", "attempt": task["attempts"]}][-30:]
+                    previous_history = task['attempt_history']
+                    history = [*previous_history, {"fingerprint": fingerprint, 'plan_fingerprint':plan_fingerprint,
+                        "reason": code or "verification", "attempt": task["attempts"]}][-30:]
                     task.update(verification=results, attempt_history=history)
                     task['verification_history'] = [*task.get('verification_history', []), {'attempt': task['attempts'], 'passed': bool(passed), 'at': time.time(), 'results': results}][-10:]
                     self.runtime.save(task)
@@ -604,6 +621,20 @@ class TaskService:
                     if any(r["category"] in {"environment", "configuration", "permission", "network", "timeout"} for r in results):
                         await update("paused", "Verification environment/configuration/permission/network/timeout issue. Resolve locally and resume; no diagnostic API request sent.")
                         return
+                    if all(r['ok'] for r in results) and diff_result.get('ok') and not plan_complete:
+                        if previous_history and previous_history[-1].get('plan_fingerprint') == plan_fingerprint:
+                            error = ProviderError('TASK_PLAN_NO_PROGRESS',
+                                'Independent commands passed, but the same plan steps remain unfinished. '
+                                'Stopped before another model request; inspect the current step verification and actual tool evidence.')
+                            error.context_details = {'completed_steps':sum(s['state']=='completed' for s in current_plan['steps']),
+                                'remaining_steps':sum(s['state']!='completed' for s in current_plan['steps']),
+                                'verification_passed':True,'request_sent':False}
+                            raise error
+                        # Continue the existing plan, not a new repair step or a
+                        # paid diagnosis of tests that are already passing.
+                        advice = 'Independent commands passed. Finish ONLY the current remaining plan step with fresh tool evidence; do not redo completed edits.'
+                        await update('repairing','Independent commands passed; continue the remaining plan without paid escalation')
+                        continue
                     task = self.runtime.get(plan_id)
                     task["repairs"] += 1
                     self.runtime.save(task)
@@ -616,7 +647,13 @@ class TaskService:
                         advice = "Repair the actual independent verification failures using the same model and real tools."
                         continue
                     if repeated or task["repairs"] >= max(1, task["config"]["budget"]["local_repairs"]) or code == "TOOL_LOOP_DETECTED":
+                        diagnosed = task.get('diagnosed_failure_fingerprints',[])
+                        if fingerprint in diagnosed:
+                            raise ProviderError('REPAIR_NO_PROGRESS','The same failure and Diff persisted after model diagnosis. Stopped before another diagnosis request; checkpoint and evidence retained.')
                         advice = await self.escalate(router, task, results, diff, "Repeated failure/no progress" if repeated else "Local repair limit or tool cycle", update)
+                        task = self.runtime.get(plan_id)
+                        task['diagnosed_failure_fingerprints'] = [*diagnosed,fingerprint][-30:]
+                        self.runtime.save(task)
                 await update("failed", "Orchestration safety iteration limit reached")
         except asyncio.CancelledError:
             with suppress(Exception):
@@ -626,14 +663,23 @@ class TaskService:
                 self.runtime.save(current)
                 await update(target, "Execution interrupted; checkpoint and uncertain API reservations retained")
             raise
-        except (ProviderError, TimeoutError) as exc:
+        except (ProviderError, ToolError, TimeoutError) as exc:
             current = self.runtime.get(plan_id)
             current["last_error"] = {"code":getattr(exc, "code", "TASK_TIMEOUT"), "role":getattr(exc, "role", None), "phase":current["status"]}
             if isinstance(exc, BudgetExceeded) and exc.details:
                 current["last_error"]["budget"] = exc.details
+            if isinstance(getattr(exc,'context_details',None),dict):
+                current['last_error']['context'] = exc.context_details
+            primary=getattr(exc,'primary_turn_failure',None)
+            message=str(exc)
+            if isinstance(primary,dict):
+                current['last_error']['cleanup']={'code':getattr(exc,'code','PROCESS_CLEANUP_FAILED'),
+                    'message':redact_text(message,exact_secrets=self.server._exact_secrets())}
+                current['last_error']['code']=primary.get('code') or 'TURN_FAILED'
+                message=str(primary.get('message') or current['last_error']['code'])+'; cleanup: '+message
             self.runtime.save(current)
             with suppress(Exception):
-                await update("paused", redact_text(str(exc), exact_secrets=self.server._exact_secrets()))
+                await update("paused", redact_text(message, exact_secrets=self.server._exact_secrets()))
         except Exception as exc:
             current = self.runtime.get(plan_id)
             current["last_error"] = {"code":"TASK_INTERNAL_ERROR", "exception_type":type(exc).__name__}
