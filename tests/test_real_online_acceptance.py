@@ -53,9 +53,9 @@ const {createReportWriter,cleanupFailureReport}=require('./scripts/validation/re
 let stored;
 const writer=createReportWriter(value=>{stored=value;});
 writer.progress({result:'RUNNING',calls:39});
-writer.finalize({result:'PASS',calls:40});
+writer.finalize({result:'PASS',calls:40,active_seconds:123,events:['vision.observed']});
 writer.progress({result:'RUNNING',calls:39});
-assert.deepEqual(stored,{result:'PASS',calls:40});
+assert.deepEqual(stored,{result:'PASS',calls:40,active_seconds:123,events:['vision.observed']});
 writer.finalize({...stored,result:'FAIL',reason:'OWNED_PROCESS_CLEANUP_FAILED'});
 writer.progress({result:'RUNNING'});
 assert.equal(stored.result,'FAIL');

@@ -1,5 +1,7 @@
 # 阿里模型真实验证（2026-10-26）
 
+以下为同日解锁前的阶段记录。解锁后的 Omni 完整 Electron 任务、GLM + Omni 后台验收与控制器终态复核见[最新报告](unlocked-real-online-acceptance-2026-10-26.md)；以下锁屏阻断和 Git 状态不再作为当前最终结论。
+
 代码基线：`feature/real-online-agent-validation` / `fac8be67b31f53a84c0259e0d78629bcfd6de0dd`。本轮复用现有 Electron IPC、ModelCatalog、Provider、TaskService、Task Plans、审批及 Worktree，没有第二套 Agent Loop。
 
 **GLM API-only 和 Qwen Omni Single Agent 的真实 Python 修复闭环已通过。完整 M5 原生桌面在线闭环仍未通过，不合并 main。** 当前本机 Windows 会话锁定，原生 GUI 用例明确跳过；没有解锁、切换桌面或用合成图代替真实桌面截图。

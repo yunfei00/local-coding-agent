@@ -96,6 +96,7 @@ function finalResult(task, tools, scenario='electron') {
     last_error:task.last_error || null,
     status_reason:task.reason,
     task_id:task.id, final_status:task.status, workspace:task.workspace,
+    active_seconds:Math.max(0,task.elapsed_seconds || 0) + (task.active_since ? Math.max(0,Date.now()/1000-task.active_since) : 0),
     acceptance_baseline:task.acceptance_baseline, usage:task.usage, calls,
     paid_requests:calls.filter(c => c.request_sent).length,
     attempts:task.attempts, repairs:task.repairs,

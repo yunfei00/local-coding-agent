@@ -1,5 +1,7 @@
 # M5 综合验收
 
+本页保留 M5 阶段的 HTTP Mock / 真桌面历史门禁。后续真正在线模型的 Omni 单模型闭环、GLM + Omni 后台验收及报告终态复核见[解锁后真实验收](../validation/unlocked-real-online-acceptance-2026-10-26.md)；下文 NOT RUN 只指当时的阶段，不代表后续结果。
+
 模型决策采用本机 HTTP Mock，实际文件、Worktree、npm、Electron、Windows UIA/输入/截图、独立断言均执行。真实付费模型推理 NOT RUN；用户历史百炼五项 PASS 不作为本轮测试。
 
 | 场景 | 自动证据 |

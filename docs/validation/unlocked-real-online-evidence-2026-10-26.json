@@ -1,0 +1,381 @@
+{
+  "date": "2026-10-26",
+  "scope": "Real online Electron coding, native GUI and independent verification; no mock business decisions",
+  "main_start_sha": "4d89487181e7e6ab21ca1642d6e3de625bdefeda",
+  "case_a": {
+    "task_id": "db26d728-1037-4ef8-aae8-b9075a386285",
+    "backend_status": "awaiting_approval",
+    "raw_controller_result": "PASS",
+    "original_cli_exit": 0,
+    "paid_requests": 36,
+    "role_calls": {
+      "executor": 33,
+      "vision-observer": 3
+    },
+    "usage": {
+      "api_calls": 36,
+      "local_calls": 0,
+      "reserved_tokens": 416203,
+      "reserved_cost": 0,
+      "input_tokens": 404082,
+      "output_tokens": 12121,
+      "cached_tokens": 0,
+      "actual_cost": 0,
+      "actual_cost_known": false,
+      "estimated": false,
+      "released_tokens": 1346610,
+      "in_flight_tokens": 0,
+      "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+    },
+    "tool_records": 43,
+    "changed_files": [
+      "src/App.tsx"
+    ],
+    "independent_checks": [
+      {
+        "command": "npm run typecheck",
+        "ok": true,
+        "exit_code": 0,
+        "category": "passed",
+        "duration_ms": 2463
+      },
+      {
+        "command": "npm test",
+        "ok": true,
+        "exit_code": 0,
+        "category": "passed",
+        "duration_ms": 2180
+      },
+      {
+        "command": "npm run build",
+        "ok": true,
+        "exit_code": 0,
+        "category": "passed",
+        "duration_ms": 2249
+      },
+      {
+        "command": "git diff --check",
+        "ok": true,
+        "exit_code": 0,
+        "category": "passed",
+        "duration_ms": 451
+      },
+      {
+        "command": "GUI acceptance",
+        "ok": true,
+        "exit_code": 0,
+        "category": "passed",
+        "duration_ms": 25140
+      }
+    ],
+    "disk_evidence": {
+      "source_unchanged": true,
+      "acceptance_changes": [],
+      "diff": "diff --git a/src/App.tsx b/src/App.tsx\nindex 8e5dd98..df68bca 100644\n--- a/src/App.tsx\n+++ b/src/App.tsx\n@@ -11,13 +11,14 @@ export function App() {\n   async function save() {\n     const value=await window.fixture.save(normalizeName(draft));\n     setSaved(value);\n-    setStatus('Not saved');\n+    setDraft(value);\n+    setStatus(`Saved: ${value}`);\n   }\n   return <main style={{fontFamily:'Segoe UI, sans-serif',fontSize:18,padding:28}}>\n     <nav><button onClick={()=>setPage('Home')}>Home</button> <button onClick={()=>setPage('Settings')}>Settings</button></nav>\n     <h1>{page}</h1>\n     {page==='Settings' ? <section>\n-      <label>Display name <input aria-label=\"Display name\" disabled={true} value={draft} onChange={e=>setDraft(e.target.value)} /></label>\n+      <label>Display name <input aria-label=\"Display name\" value={draft} onChange={e=>setDraft(e.target.value)} /></label>\n       <button onClick={()=>void save()}>Save</button>\n       <p role=\"status\" aria-label={'Status: '+status}>{status}</p>\n     </section> : <p>Open Settings to update your display name.</p>}\n",
+      "diff_truncated": false,
+      "app_sha256": "b890ba9e6c8838736ce10e7ab1c52992f0e285786a90e3e3d13bb28600639346",
+      "persisted_value": "M5 verified B"
+    },
+    "vision_observation": {
+      "observations": [
+        "Top menu bar contains 'File', 'Edit', 'View', 'Window', 'Help'.",
+        "Two tab-like buttons below the menu: 'Home' and 'Settings'.",
+        "Large bold header text reading 'Settings'.",
+        "A form row with the label 'Display name'.",
+        "An input field next to 'Display name' containing faint text '[EDIT CONTENT REDACTED]'.",
+        "A 'Save' button with an orange outline to the right of the input field.",
+        "Text below the form reading 'Saved: M5 verified B'.",
+        "Text further down reading 'M5 verified B'."
+      ],
+      "errors": []
+    },
+    "visual_review": {
+      "result": "PASS",
+      "reviewer": "Codex",
+      "artifact_id": "capture_df41120a7a2247e6a0e6a0d074c4665b",
+      "sha256": "56e31de9f2643e3f33c8057ad7eb69eba110026b569df9859ec834bd5d7c2922",
+      "wire_jpeg_sha256": "9f38750ad9fd263f12d372093e614b619b34c20ecf1a5866da69c47cfce9b3d9",
+      "wire_request_matched": true,
+      "matched": [
+        "Settings",
+        "Display name",
+        "Save orange outline",
+        "Saved: M5 verified B",
+        "M5 verified B persisted label"
+      ],
+      "input_mask_preserved": true
+    },
+    "all_recorded_pids_exited": true,
+    "recorded_pid_count": 15,
+    "executor_wire_images": 0,
+    "image_calls": [
+      {
+        "id": "861040d6-223d-478c-8cb7-c9760726e6bf",
+        "role": "vision-observer",
+        "model": "qwen3.8-omni-flash",
+        "http_status": 200,
+        "request_sent": true,
+        "tool_schema_count": 0,
+        "wire_images": [
+          {
+            "mime_type": "image/jpeg",
+            "bytes": 14090,
+            "sha256": "0584429f2bbb37590e81d14538ccde8baf566aac7764d327f8035503bbf6ff9c"
+          }
+        ],
+        "estimated": false
+      },
+      {
+        "id": "a8fa9b95-061c-4a09-8a39-b131b7fa4aab",
+        "role": "vision-observer",
+        "model": "qwen3.8-omni-flash",
+        "http_status": 200,
+        "request_sent": true,
+        "tool_schema_count": 0,
+        "wire_images": [
+          {
+            "mime_type": "image/jpeg",
+            "bytes": 13979,
+            "sha256": "86d671a97236d81786a2f1442464629ed16dd7b103ca9303d12ad54d511f89ab"
+          }
+        ],
+        "estimated": false
+      },
+      {
+        "id": "f0011dfb-ee4a-494e-b9be-c102d55e1b7a",
+        "role": "vision-observer",
+        "model": "qwen3.8-omni-flash",
+        "http_status": 200,
+        "request_sent": true,
+        "tool_schema_count": 0,
+        "wire_images": [
+          {
+            "mime_type": "image/jpeg",
+            "bytes": 14390,
+            "sha256": "9f38750ad9fd263f12d372093e614b619b34c20ecf1a5866da69c47cfce9b3d9"
+          }
+        ],
+        "estimated": false
+      }
+    ],
+    "observer_followed_by_executor": [
+      {
+        "observer_call_id": "861040d6-223d-478c-8cb7-c9760726e6bf",
+        "observer_model": "qwen3.8-omni-flash",
+        "next_executor_call_id": "f761e90d-9725-41c0-b534-1e40271435dc",
+        "executor_model": "qwen3.8-omni-flash"
+      },
+      {
+        "observer_call_id": "a8fa9b95-061c-4a09-8a39-b131b7fa4aab",
+        "observer_model": "qwen3.8-omni-flash",
+        "next_executor_call_id": "a15506a3-fe32-46c6-b65c-552720d1bae3",
+        "executor_model": "qwen3.8-omni-flash"
+      }
+    ]
+  },
+  "case_b": {
+    "task_id": "071f330b-7106-4422-94d5-99e6eaf768c4",
+    "backend_status": "awaiting_approval",
+    "raw_controller_result": "RUNNING",
+    "original_cli_exit": 2,
+    "paid_requests": 40,
+    "role_calls": {
+      "executor": 37,
+      "vision-observer": 3
+    },
+    "usage": {
+      "api_calls": 40,
+      "local_calls": 0,
+      "reserved_tokens": 432166,
+      "reserved_cost": 0,
+      "input_tokens": 424052,
+      "output_tokens": 8114,
+      "cached_tokens": 175616,
+      "actual_cost": 0,
+      "actual_cost_known": false,
+      "estimated": false,
+      "released_tokens": 1594527,
+      "in_flight_tokens": 0,
+      "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+    },
+    "tool_records": 61,
+    "changed_files": [
+      "src/App.tsx"
+    ],
+    "independent_checks": [
+      {
+        "command": "npm run typecheck",
+        "ok": true,
+        "exit_code": 0,
+        "category": "passed",
+        "duration_ms": 3089
+      },
+      {
+        "command": "npm test",
+        "ok": true,
+        "exit_code": 0,
+        "category": "passed",
+        "duration_ms": 4680
+      },
+      {
+        "command": "npm run build",
+        "ok": true,
+        "exit_code": 0,
+        "category": "passed",
+        "duration_ms": 5461
+      },
+      {
+        "command": "git diff --check",
+        "ok": true,
+        "exit_code": 0,
+        "category": "passed",
+        "duration_ms": 1668
+      },
+      {
+        "command": "GUI acceptance",
+        "ok": true,
+        "exit_code": 0,
+        "category": "passed",
+        "duration_ms": 50078
+      }
+    ],
+    "disk_evidence": {
+      "source_unchanged": true,
+      "acceptance_changes": [],
+      "diff": "diff --git a/src/App.tsx b/src/App.tsx\nindex 8e5dd98..8bbf017 100644\n--- a/src/App.tsx\n+++ b/src/App.tsx\n@@ -11,13 +11,13 @@ export function App() {\n   async function save() {\n     const value=await window.fixture.save(normalizeName(draft));\n     setSaved(value);\n-    setStatus('Not saved');\n+    setStatus('Saved: '+value);\n   }\n   return <main style={{fontFamily:'Segoe UI, sans-serif',fontSize:18,padding:28}}>\n     <nav><button onClick={()=>setPage('Home')}>Home</button> <button onClick={()=>setPage('Settings')}>Settings</button></nav>\n     <h1>{page}</h1>\n     {page==='Settings' ? <section>\n-      <label>Display name <input aria-label=\"Display name\" disabled={true} value={draft} onChange={e=>setDraft(e.target.value)} /></label>\n+      <label>Display name <input aria-label=\"Display name\" value={draft} onChange={e=>setDraft(e.target.value)} /></label>\n       <button onClick={()=>void save()}>Save</button>\n       <p role=\"status\" aria-label={'Status: '+status}>{status}</p>\n     </section> : <p>Open Settings to update your display name.</p>}\n",
+      "diff_truncated": false,
+      "app_sha256": "0e0f0d9bed75ab856ebc7c8881b01261443dfbca9c2d26d1c6e87640905f96ca",
+      "persisted_value": "M5 verified B"
+    },
+    "vision_observation": {
+      "observations": [
+        "Top menu bar contains options: File, Edit, View, Window, Help.",
+        "Two tab-like buttons are visible below the menu: 'Home' and 'Settings'.",
+        "A large bold heading reads 'Settings'.",
+        "There is a label 'Display name' next to a text input field.",
+        "Inside the text input field, small grey text reads 'EDIT CONTENT REDACTED'.",
+        "To the right of the input field is a button labeled 'Save' with an orange outline.",
+        "Below the input area, text reads 'Saved: M5 verified B'.",
+        "Further down, standalone text reads 'M5 verified B'."
+      ],
+      "errors": []
+    },
+    "visual_review": {
+      "result": "PASS",
+      "reviewer": "Codex",
+      "artifact_id": "capture_5bf0a7f0a5b44ef0aadb330fa1c2fde4",
+      "sha256": "56e31de9f2643e3f33c8057ad7eb69eba110026b569df9859ec834bd5d7c2922",
+      "wire_jpeg_sha256": "9f38750ad9fd263f12d372093e614b619b34c20ecf1a5866da69c47cfce9b3d9",
+      "wire_request_matched": true,
+      "matched": [
+        "Settings",
+        "Display name",
+        "Save orange outline",
+        "Saved: M5 verified B",
+        "M5 verified B persisted label"
+      ],
+      "input_mask_preserved": true
+    },
+    "all_recorded_pids_exited": true,
+    "recorded_pid_count": 10,
+    "executor_wire_images": 0,
+    "image_calls": [
+      {
+        "id": "349927ca-b83c-476b-9aec-099dd2776aa7",
+        "role": "vision-observer",
+        "model": "qwen3.8-omni-flash",
+        "http_status": 200,
+        "request_sent": true,
+        "tool_schema_count": 0,
+        "wire_images": [
+          {
+            "mime_type": "image/jpeg",
+            "bytes": 14463,
+            "sha256": "d9c5ebb180c0d5adbf974a7c7f41a823f39322fd55a48adbf0dc873cd3f6c48f"
+          }
+        ],
+        "estimated": false
+      },
+      {
+        "id": "b00061fb-23c5-4b2c-aa27-2e0f859ba560",
+        "role": "vision-observer",
+        "model": "qwen3.8-omni-flash",
+        "http_status": 200,
+        "request_sent": true,
+        "tool_schema_count": 0,
+        "wire_images": [
+          {
+            "mime_type": "image/jpeg",
+            "bytes": 14919,
+            "sha256": "06a16be21c11de7596e6f4a2019016c0c3136539d4fc2ae26d2625a7daa0ddbe"
+          }
+        ],
+        "estimated": false
+      },
+      {
+        "id": "f82e1f8b-fa1c-47ea-9c4c-158af277db40",
+        "role": "vision-observer",
+        "model": "qwen3.8-omni-flash",
+        "http_status": 200,
+        "request_sent": true,
+        "tool_schema_count": 0,
+        "wire_images": [
+          {
+            "mime_type": "image/jpeg",
+            "bytes": 14390,
+            "sha256": "9f38750ad9fd263f12d372093e614b619b34c20ecf1a5866da69c47cfce9b3d9"
+          }
+        ],
+        "estimated": false
+      }
+    ],
+    "observer_followed_by_executor": [
+      {
+        "observer_call_id": "349927ca-b83c-476b-9aec-099dd2776aa7",
+        "observer_model": "qwen3.8-omni-flash",
+        "next_executor_call_id": "328ae22a-ddc5-46bf-869c-543d5e5c8fd1",
+        "executor_model": "glm-5.3"
+      },
+      {
+        "observer_call_id": "b00061fb-23c5-4b2c-aa27-2e0f859ba560",
+        "observer_model": "qwen3.8-omni-flash",
+        "next_executor_call_id": "c9e1592c-6ed3-4fb8-9e6f-eaaf71a6722b",
+        "executor_model": "glm-5.3"
+      }
+    ]
+  },
+  "controller_report_replay": {
+    "result": "PASS",
+    "raw_report_sha256": "718979e2b9bab6c16681f6bc1d819c5d8798d0f216de81029c795652a7fed0d5",
+    "raw_result": "RUNNING",
+    "replayed_result": "PASS",
+    "new_model_requests": 0,
+    "note": "Original RUNNING/exit2 retained. Reused the same finalResult criteria with recorded real Task data; replayed late write ordering after the latch fix."
+  },
+  "regressions": {
+    "native_m5": {
+      "total": 3,
+      "passed": 3,
+      "duration_seconds": 142.273
+    },
+    "desktop_smoke": {
+      "checks": 32,
+      "skipped": 0,
+      "result": "PASS"
+    },
+    "unified_profiles": {
+      "total": 11,
+      "passed": 11
+    },
+    "provider": {
+      "total": 3,
+      "passed": 3
+    },
+    "entry_guards": {
+      "total": 26,
+      "passed": 26
+    }
+  },
+  "cost": "UNKNOWN",
+  "no_tag_release_or_installer": true
+}

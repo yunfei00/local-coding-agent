@@ -1,6 +1,6 @@
 # Local Coding Agent
 
-M5 增加真实 Electron + React + TypeScript 双缺陷验收工程、Task Timeline 与失败/成功截图入口；修复 Chromium 受控输入、观察刷新及 GUI 启动契约保护。见 [M5 使用](docs/m5/user-guide.md)、[端到端验收](docs/m5/end-to-end-acceptance.md)、[实验工程](manual-fixtures/m5-electron-e2e/README.md)。新增真实在线实测见 [有界在线验收](docs/validation/real-online-agent-acceptance.md)：已发生真实推理和源码修改，完整闭环尚未通过，不发布 Tag/安装包。
+M5 增加真实 Electron + React + TypeScript 双缺陷验收工程、Task Timeline 与失败/成功截图入口；修复 Chromium 受控输入、观察刷新及 GUI 启动契约保护。见 [M5 使用](docs/m5/user-guide.md)、[端到端验收](docs/m5/end-to-end-acceptance.md)、[实验工程](manual-fixtures/m5-electron-e2e/README.md)。[最新真实在线验收](docs/validation/unlocked-real-online-acceptance-2026-10-26.md)记录 Omni 单模型完整闭环、GLM + Omni 的真实后台通过及控制器终态竞态修复/记录重放；失败与精确边界分别保留。本轮不发布 Tag/安装包。
 
 M4 全面修复统一了 Chat/Task 的连接和模型目录，支持独立 Vision Observer、真实窗口截图与冻结任务配置。见 [修复与用法](docs/m4/complete-fixes.md)、[验收分类](docs/m4/complete-validation.md)、[阶段能力矩阵](docs/capability-matrix.md)。真实在线推理与 HTTP Mock/真实 GUI 分开记录，本轮不发布安装包。
 
@@ -36,11 +36,11 @@ Settings → Models & Routing 同时配置多个 Ollama/API 连接和模型，�
 
 v0.4.2 修复旧会话模型与底部显示不一致：发送请求携带当前 Chat model，后端验证后保存并执行，不再误用上一个 Provider 的模型名。不可用的旧模型会明确标注并阻止发送。见 [聊天模型同步修复](docs/v0.4/chat-model-sync.md)。
 
-main 另包含 Planning 重试与诊断修复（尚未发布安装包）：独立持久化规划上限、JSON/工具计划兼容、真实 Usage 结算和 Task 顶部取消入口。见 [根因与调用链](docs/validation/planning-api-root-cause.md) / [测试与公司源码更新](docs/validation/planning-api-test-results.md)。本轮真实 API 按用户要求 NOT RUN。
+main 另包含 Planning 重试与诊断修复（尚未发布安装包）：独立持久化规划上限、JSON/工具计划兼容、真实 Usage 结算和 Task 顶部取消入口。见 [根因与调用链](docs/validation/planning-api-root-cause.md) / [测试与公司源码更新](docs/validation/planning-api-test-results.md)。该历史修复阶段的真实 DeepSeek API 按用户要求 NOT RUN；后续阿里模型实测单独记录。
 
 Task 启动预算检查也已补充具体任务/全局字段、限额、已用/预留、本次所需及模型输出上限；新任务读取最新 Settings，仅覆盖 Task 面板中主动编辑的字段，旧任务保留快照。见 [预算启动审计](docs/validation/task-start-budget-root-cause.md) / [测试记录](docs/validation/task-start-budget-test-results.md)。此修复同样只在源码 main，旧 v0.4.2 安装包不含修复。
 
-真实 CPU Ollama 已验证新路由、规划与实际工具调用，但小模型未完成修复；真实付费 API 尚未验收。跨 Provider、升级回交、Usage、预算和恢复通过实际 HTTP Mock 验证，不能将其视为真实付费消费或公司模型能力证明。构建和发布状态见 [验收记录](docs/v0.4/acceptance.md)。
+真实 CPU Ollama 已验证路由、规划与工具调用，但小模型未完成修复；v0.4 初次验收时真实付费 API 未验收。后续真实 Single Agent/视觉结果见顶部新报告；它不替代 Local-first 困难升级的真实组合验收。跨 Provider、升级回交、Usage、预算和恢复另有 HTTP Mock 证据。构建和发布状态见 [验收记录](docs/v0.4/acceptance.md)。
 
 - [架构审计](docs/v0.4/architecture-audit.md) / [设计](docs/v0.4/design.md)
 - [模型路由](docs/v0.4/model-routing.md) / [预算](docs/v0.4/budget-control.md)
