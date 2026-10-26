@@ -28,6 +28,20 @@ const CALCULATOR_GOAL = `检查当前 Python 工程，修复 calculator.py 的 a
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const TERMINAL = new Set(['paused','failed','cancelled','completed','awaiting_approval']);
 
+function createReportWriter(write) {
+  let finalized=false;
+  return {
+    get finalized() {return finalized;},
+    progress(value) {if (!finalized) write(value);},
+    finalize(value) {finalized=true;write(value);}
+  };
+}
+
+function cleanupFailureReport(report, code, details) {
+  return {...report,result:'FAIL',reason:report.result==='FAIL' ? report.reason : code,
+    cleanup_error:{code,...details}};
+}
+
 function approvalAllowed(payload, workspace, ownedPids, phase, scenario='electron') {
   const a = payload.arguments || {}, tool = payload.tool;
   if (tool === 'git_worktree_create') return /^lca\/task-[a-zA-Z0-9_-]+$/.test(a.branch || '');
@@ -109,7 +123,9 @@ async function main(manifest) {
       for (const pid of [value.pid, ...(value.children || [])]) if (Number.isInteger(pid)) ownedPids.add(pid);
     }
   };
-  const save = extra => fs.writeFileSync(manifest.report,JSON.stringify({...initial,...extra},null,2));
+  const writer=createReportWriter(extra=>fs.writeFileSync(manifest.report,JSON.stringify({...initial,...extra},null,2)));
+  const save=extra=>writer.progress(extra);
+  const finish=extra=>writer.finalize(extra);
   const mark = value => {
     stage=value;
     save({result:'NOT RUN',reason:'STARTING',controller_stage:stage,paid_requests:0});
@@ -148,7 +164,7 @@ async function main(manifest) {
     }
     await page.exposeFunction('lcaAcceptanceEvent', async event => {
       const p = event.payload || {};
-      if (event.type === 'task.updated' && p.task) {
+      if (event.type === 'task.updated' && p.task && !writer.finalized) {
         task = p.task;
         save({...resultOf(task,tools),result:'RUNNING',source:manifest.source,controller_stage:stage});
       }
@@ -211,12 +227,12 @@ async function main(manifest) {
       task = (await page.evaluate(thread=>window.localAgent.taskRequest(thread,'task.list'),thread)).payload.tasks.find(t=>t.id===task.id);
     }
     const result = resultOf(task,tools);
-    save({...result, source:manifest.source, events, approvals, active_seconds:(Date.now()-started)/1000});
+    finish({...result, source:manifest.source, events, approvals, active_seconds:(Date.now()-started)/1000});
     console.log(JSON.stringify({task_id:task.id,result:result.result,reason:result.reason,paid_requests:result.paid_requests}));
   } catch (error) {
     // Error strings/stacks from requests or Electron may contain private data.
     const uncertain = !task && stage === 'task_start';
-    save({...(task ? resultOf(task,tools):{}), result:task || uncertain ? 'FAIL':'NOT RUN',
+    finish({...(task ? resultOf(task,tools):{}), result:task || uncertain ? 'FAIL':'NOT RUN',
       paid_requests:uncertain ? null : task ? resultOf(task,tools).paid_requests : 0,
       usage_uncertain:uncertain,reason:'CONTROLLER_'+error.name, controller_stage:stage, events, approvals, source:manifest.source});
     process.exitCode = 2;
@@ -226,13 +242,20 @@ async function main(manifest) {
         await page.evaluate(({thread,id})=>window.localAgent.taskRequest(thread,'task.pause',{task_id:id}),{thread,id:task.id});
         const latest = (await page.evaluate(thread=>window.localAgent.taskRequest(thread,'task.list'),thread)).payload.tasks.find(t=>t.id===task.id);
         const last = JSON.parse(fs.readFileSync(manifest.report,'utf8'));
-        save({...last,...resultOf(latest,tools),result:'FAIL',reason:last.reason,events,approvals});
+        finish({...last,...resultOf(latest,tools),result:'FAIL',reason:last.reason,events,approvals});
       } catch {
         const last = JSON.parse(fs.readFileSync(manifest.report,'utf8'));
-        save({...last,result:'FAIL',paid_requests:null,usage_uncertain:true});
+        finish({...last,result:'FAIL',paid_requests:null,usage_uncertain:true});
       }
     }
-    if (app) await app.close(); // existing shutdown kills managed Task Job trees
+    if (app) {
+      try {await app.close();} // existing shutdown kills managed Task Job trees
+      catch (error) {
+        const last=JSON.parse(fs.readFileSync(manifest.report,'utf8'));
+        finish(cleanupFailureReport(last,'CONTROLLER_SHUTDOWN_FAILED',{stage:'application_shutdown',error_type:error.name}));
+        process.exitCode=2;
+      }
+    }
     const cleanup = [];
     for (const pid of ownedPids) {
       let alive = true;
@@ -242,11 +265,11 @@ async function main(manifest) {
       }
       cleanup.push({pid,exited:!alive});
     }
-    const last = JSON.parse(fs.readFileSync(manifest.report,'utf8'));
-    if (cleanup.some(p=>!p.exited)) {last.result='FAIL';last.reason='OWNED_PROCESS_CLEANUP_FAILED';}
-    fs.writeFileSync(manifest.report,JSON.stringify({...last,cleanup},null,2));
+    let last = JSON.parse(fs.readFileSync(manifest.report,'utf8'));
+    if (cleanup.some(p=>!p.exited)) last=cleanupFailureReport(last,'OWNED_PROCESS_CLEANUP_FAILED',{stage:'owned_process_exit_confirmation'});
+    finish({...last,cleanup});
   }
 }
 
-module.exports = {approvalAllowed, safeCall, finalResult, GOAL};
+module.exports = {approvalAllowed, safeCall, finalResult, GOAL, createReportWriter, cleanupFailureReport};
 if (require.main === module) main(JSON.parse(fs.readFileSync(process.argv[2],'utf8'))).catch(() => {process.exitCode=2;});

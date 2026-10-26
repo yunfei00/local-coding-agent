@@ -35,6 +35,36 @@ def catalog():
 
 
 class LiveAcceptanceGuards(unittest.TestCase):
+    def test_incomplete_terminal_report_is_failure_not_a_hanging_running_result(self):
+        report={'result':'RUNNING','final_status':'awaiting_approval'}
+        live.normalize_controller_result(report,0)
+        self.assertEqual(report['result'],'FAIL')
+        self.assertEqual(report['reason'],'CONTROLLER_REPORT_INCOMPLETE')
+        report={'result':'PASS'}
+        live.normalize_controller_result(report,2)
+        self.assertEqual(report['result'],'FAIL')
+        self.assertEqual(report['reason'],'CONTROLLER_EXIT_FAILED')
+
+    @unittest.skipUnless(shutil.which('node'),'Node required for report event ordering')
+    def test_late_task_events_cannot_overwrite_terminal_report_but_cleanup_failure_can(self):
+        script="""
+const assert=require('node:assert/strict');
+const {createReportWriter,cleanupFailureReport}=require('./scripts/validation/real_online_agent_e2e.cjs');
+let stored;
+const writer=createReportWriter(value=>{stored=value;});
+writer.progress({result:'RUNNING',calls:39});
+writer.finalize({result:'PASS',calls:40});
+writer.progress({result:'RUNNING',calls:39});
+assert.deepEqual(stored,{result:'PASS',calls:40});
+writer.finalize({...stored,result:'FAIL',reason:'OWNED_PROCESS_CLEANUP_FAILED'});
+writer.progress({result:'RUNNING'});
+assert.equal(stored.result,'FAIL');
+assert.equal(stored.reason,'OWNED_PROCESS_CLEANUP_FAILED');
+const primary=cleanupFailureReport({result:'FAIL',reason:'MODEL_TIMEOUT'},'CONTROLLER_SHUTDOWN_FAILED',{stage:'shutdown'});
+assert.equal(primary.reason,'MODEL_TIMEOUT');
+assert.equal(primary.cleanup_error.code,'CONTROLLER_SHUTDOWN_FAILED');
+"""
+        subprocess.run(['node','-e',script],cwd=ROOT,check=True,capture_output=True)
     def test_calculator_api_only_uses_saved_profile_without_requiring_vision(self):
         saved=catalog()
         executor=saved['profiles'][1]

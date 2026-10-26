@@ -327,6 +327,13 @@ def write_report(report):
     REPORT.with_suffix('.md').write_text('\n'.join(lines), encoding='utf-8')
 
 
+def normalize_controller_result(report, exit_code):
+    if report.get('result') not in {'PASS','FAIL','NOT RUN'}:
+        report.update(controller_reported_result=report.get('result'),result='FAIL',reason='CONTROLLER_REPORT_INCOMPLETE')
+    elif exit_code and report['result']=='PASS':
+        report.update(result='FAIL',reason='CONTROLLER_EXIT_FAILED')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data-dir', type=Path, default=Path(os.getenv('APPDATA', str(Path.home()))) / 'local-coding-agent-desktop')
@@ -402,8 +409,7 @@ def main():
                                           timeout=remaining['seconds']+120,report_path=REPORT)
                 report = json.loads(REPORT.read_text(encoding='utf-8'))
                 verify_disk(report)
-                if exit_code and report['result'] == 'PASS':
-                    report.update(result='FAIL', reason='CONTROLLER_EXIT_FAILED')
+                normalize_controller_result(report,exit_code)
     except Exception as exc:
         # No traceback/request objects/environment dump (may contain secrets).
         if controller_started and REPORT.exists():
