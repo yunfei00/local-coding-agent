@@ -899,7 +899,11 @@ function createWindow(): void {
     height: Math.min(780, workArea.height),
     minWidth: Math.min(900, workArea.width),
     minHeight: Math.min(600, workArea.height),
-    backgroundColor: "#111111",
+    backgroundColor: "#212121",
+    ...(process.platform === "win32" || process.platform === "linux" ? {
+      titleBarStyle: "hidden" as const,
+      titleBarOverlay: {color:"#212121", symbolColor:"#ececec", height:48}
+    } : {}),
     webPreferences: {
       offscreen: process.env.LCA_HEADLESS_SMOKE === "1",
       backgroundThrottling: process.env.LCA_HEADLESS_SMOKE !== "1",
@@ -908,6 +912,8 @@ function createWindow(): void {
       nodeIntegration: false
     }
   });
+  // The renderer's header and native window buttons share one row.
+  mainWindow.setMenu(null);
 
   mainWindow.webContents.on("did-finish-load", () => {
     appendRuntimeLog(
@@ -1364,6 +1370,22 @@ ipcMain.handle("agent:project-create", async (_event, options: Record<string, un
   sendRequest("project.create", "project.opened", options, {}, 30000));
 ipcMain.handle("agent:project-get", async () => {
   return sendRequest("project.get", "project.loaded");
+});
+ipcMain.handle("window:theme", (_event, theme:unknown) => {
+  if (theme !== "light" && theme !== "dark") throw new Error("Invalid window theme");
+  const color = theme === "light" ? "#ffffff" : "#212121";
+  mainWindow?.setBackgroundColor(color);
+  if (process.platform === "win32" || process.platform === "linux") {
+    mainWindow?.setTitleBarOverlay({color, symbolColor:theme === "light" ? "#202020" : "#ececec", height:48});
+  }
+});
+ipcMain.handle("agent:project-folder", async () => {
+  // Resolve from the active backend workspace, never an arbitrary renderer path.
+  const event = await sendRequest("project.get", "project.loaded");
+  const project = event.payload?.project as {path?:unknown} | undefined;
+  if (typeof project?.path !== "string" || !path.isAbsolute(project.path)) throw new Error("No active project folder");
+  const error = await shell.openPath(project.path);
+  if (error) throw new Error(error);
 });
 ipcMain.handle("agent:project-list", async () => {
   return sendRequest("project.list", "project.listed");

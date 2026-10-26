@@ -20,6 +20,8 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { ThreadItem } from "./components/ThreadItem";
 import { RenameThreadDialog } from "./components/RenameThreadDialog";
 import { NewProjectDialog } from "./components/NewProjectDialog";
+import { ActionMenu } from "./components/ActionMenu";
+import { Icon } from "./components/Icon";
 import {
   DiffFile,
   DiffReviewMeta,
@@ -28,7 +30,7 @@ import {
 } from "./components/ToolCard";
 import { appendOrderedToolChunk } from "./lib/toolStream";
 import { shouldSubmitComposer } from "./lib/composer";
-import { AgentState, formatAgentStatus } from "./lib/status";
+import { AgentState } from "./lib/status";
 
 type Status = {
   state: AgentState;
@@ -151,7 +153,15 @@ function readPermission(event: AgentEnvelope): PermissionMode | null {
 
 function readProjectList(event: AgentEnvelope): ProjectInfo[] {
   const value = event.payload?.projects;
-  return Array.isArray(value) ? [...(value as ProjectInfo[])].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id)) : [];
+  return Array.isArray(value) ? sortProjectsByActivity(value as ProjectInfo[]) : [];
+}
+
+function sortProjectsByActivity(projects: ProjectInfo[]): ProjectInfo[] {
+  const timestamp = (value?:string) => {const parsed = Date.parse(value ?? ""); return Number.isFinite(parsed) ? parsed : 0;};
+  const activity = (project:ProjectInfo) => Math.max(timestamp(project.updated_at) || timestamp(project.created_at),
+    ...(project.threads ?? []).map(thread => timestamp(thread.updated_at)));
+  // Stable ties retain the server order. Never fall back to alphabetical sorting.
+  return [...projects].sort((a, b) => activity(b) - activity(a));
 }
 
 function readProjectSession(event: AgentEnvelope): ProjectSessionPayload | null {
@@ -244,7 +254,12 @@ function App() {
   const sendingRef = useRef(false);
 
   useEffect(() => { localStorage.setItem("lca-expanded-projects", JSON.stringify(expandedProjectIds)); }, [expandedProjectIds]);
-  useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem("lca-theme", theme); }, [theme]);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.platform = window.localAgent.platform;
+    localStorage.setItem("lca-theme", theme);
+    void window.localAgent.setWindowTheme(theme === "light" ? "light" : "dark").catch(cause => setUiError(String(cause)));
+  }, [theme]);
   useEffect(() => {
     setProjectThreadCache(cache => ({ ...cache, ...Object.fromEntries(projects
       .filter(project => project.threads).map(project => [project.id, project.threads!])) }));
@@ -314,7 +329,7 @@ function App() {
       const next = current
         .filter((project) => project.id !== activeProject.id)
         .map((project) => ({ ...project, active: false }));
-      return [...next, activeProject].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id));
+      return sortProjectsByActivity([...next, activeProject]);
     });
   }, []);
 
@@ -368,6 +383,9 @@ function App() {
 
   useEffect(() => {
     return window.localAgent.onAgentEvent((event) => {
+      if (["thread.created", "thread.updated", "turn.started", "turn.completed", "turn.cancelled", "turn.failed"].includes(event.type)) {
+        void window.localAgent.listProjects().then(list => setProjects(readProjectList(list))).catch(cause => setUiError(String(cause)));
+      }
       if (
         event.type === "project.opened" ||
         event.type === "project.selected"
@@ -952,17 +970,6 @@ function App() {
     void load();
   }, [status.state, applyProjectSession]);
 
-  const detail = useMemo(() => {
-    if (status.state === "ready") {
-      const endpoint =
-        status.host && status.port
-          ? status.host + ":" + status.port
-          : "local process";
-      return "Local runtime · " + endpoint;
-    }
-    return status.error ?? "Waiting for the local Agent process…";
-  }, [status]);
-
   const contextLabel = useMemo(() => {
     if (!provider?.context_window) {
       return "";
@@ -1066,9 +1073,14 @@ function App() {
     }
   };
 
-  const createThread = async () => {
+  const createThread = async (project: ProjectInfo) => {
+    if (runningTurnId || status.state !== "ready") return;
     setUiError(null);
     try {
+      if (workspace?.id !== project.id) {
+        applyProjectSession(await window.localAgent.selectProject(project.id));
+      }
+      setExpandedProjectIds(ids => ids.includes(project.id) ? ids : [...ids, project.id]);
       await window.localAgent.createThread();
     } catch (error) {
       setUiError(String(error));
@@ -1234,61 +1246,50 @@ function App() {
     }
   };
 
+  const togglePanel = (panel: "git" | "task" | "plan" | "context" | "diagnostics" | "settings") => {
+    setGitOpen(panel === "git" && !gitOpen);
+    setTaskOpen(panel === "task" && !taskOpen);
+    setPlanOpen(panel === "plan" && !planOpen);
+    setContextOpen(panel === "context" && !contextOpen);
+    setDiagnosticsOpen(panel === "diagnostics" && !diagnosticsOpen);
+    setSettingsOpen(panel === "settings" && !settingsOpen);
+    if (settingsOpen) void refreshModels();
+  };
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">LC</span>
-          <span className="brand-copy">
-            <strong>Local Coding Agent</strong>
-            <small>Local-first coding workspace</small>
-          </span>
-        </div>
-
-        <div className="sidebar-actions">
-          <button className="new-project" disabled={status.state !== "ready" || Boolean(runningTurnId)} onClick={() => setNewProjectOpen(true)}>
-            <span aria-hidden="true">＋</span>New project
-          </button>
-          <button
-            className="open-project"
-            disabled={status.state !== "ready" || Boolean(runningTurnId)}
-            onClick={() => void openProject()}
-          >
-            <span aria-hidden="true">＋</span>
-            Open project
-          </button>
-
-          <button
-            className="new-thread"
-            disabled={
-              status.state !== "ready" ||
-              !providerReady ||
-              !workspace ||
-              Boolean(runningTurnId)
-            }
-            onClick={() => void createThread()}
-          >
-            <span aria-hidden="true">＋</span>
-            New thread
-          </button>
+          <span className="brand-copy"><strong>Local Coding Agent</strong></span>
         </div>
 
         <div className="sidebar-scroll">
-          <div className="section-label">PROJECTS</div>
+          <div className="projects-heading">
+            <span>Projects</span>
+            <ActionMenu label="Add project" className="icon-button" disabled={status.state !== "ready" || Boolean(runningTurnId)}
+              actions={[
+                {label:"Add existing folder", onSelect:() => void openProject()},
+                {label:"Create new project", onSelect:() => setNewProjectOpen(true)}
+              ]}><Icon name="plus" /></ActionMenu>
+          </div>
           <div className="project-tree">
             {projects.length === 0 ? (
               <div className="empty-list">No projects opened</div>
             ) : projects.map((project) => (
               <div className="project-group" key={project.id}>
+                <div className="project-row">
                 <button className={"project-tree-header " + (workspace?.id === project.id ? "active" : "")}
                   disabled={Boolean(runningTurnId)} title={project.path}
                   aria-expanded={expandedProjectIds.includes(project.id)}
                   onClick={() => toggleProject(project)}>
-                  <span className="project-tree-folder" aria-hidden="true">📁</span>
+                  <Icon name="folder" />
                   <span className="project-tree-name">{project.name}</span>
-                  <span className="project-tree-count">{project.thread_count}</span>
                   <span className="project-tree-chevron" aria-hidden="true">{expandedProjectIds.includes(project.id) ? "⌄" : "›"}</span>
                 </button>
+                <button type="button" className="icon-button project-new-chat" aria-label={"New chat in " + project.name} title="New chat"
+                  disabled={status.state !== "ready" || Boolean(runningTurnId)} onClick={() => void createThread(project)}><Icon name="plus" /></button>
+                </div>
                 {expandedProjectIds.includes(project.id) && (
                   <div className="project-tree-threads">
                     {(workspace?.id === project.id ? threads : (projectThreadCache[project.id] ?? [])).length === 0 ? (
@@ -1306,114 +1307,35 @@ function App() {
         </div>
 
         <div className="sidebar-footer">
-          <div className={"status-dot status-" + status.state} />
-          <div>
-            <div className="status-title">
-              {formatAgentStatus(status.state)}
-            </div>
-            <div className="status-detail">{detail}</div>
-          </div>
+          <button type="button" className={"sidebar-settings" + (settingsOpen ? " active" : "")}
+            onClick={() => togglePanel("settings")}><Icon name="settings" />Settings</button>
         </div>
       </aside>
 
       <main className="workspace">
         <header className="topbar">
           <div className="topbar-title">
-            <strong>{workspace?.name ?? "No project open"}</strong>
-            <span>
-              {activeThread
-                ? activeThread.title
-                : workspace
-                  ? "Create or select a thread"
-                  : "Open a local workspace to begin"}
-            </span>
+            <strong title={activeThread?.title ?? "Local Coding Agent"}>{activeThread?.title ?? "New chat"}</strong>
+            {workspace ? <span title={workspace.path}>{workspace.name}</span> : null}
           </div>
           <div className="topbar-actions">
-            <button
-              className={
-                "provider-pill " +
-                (provider?.online ? "provider-online" : "provider-offline")
-              }
-              onClick={() => void refreshModels()}
-              title="Refresh provider status and models"
-            >
-              <span className="provider-status-dot" aria-hidden="true" />
-              <span className="provider-name">
-                {provider?.provider ?? "Provider"}
-              </span>
-              <span className="provider-model">
-                {selectedLabel || (provider?.online ? "No model" : "Offline")}
-              </span>
-            </button>
-            <button
-              type="button"
-              className={"git-button" + (gitOpen ? " active" : "")}
-              disabled={!workspace}
-              onClick={() => {
-                setGitOpen((current) => !current);
-                setPlanOpen(false); setTaskOpen(false);
-                setContextOpen(false);
-                setDiagnosticsOpen(false);
-                setSettingsOpen(false);
-              }}
-              title="Git workflow and worktrees"
-            >
-              Git
-            </button>
-            <button type="button" className={"context-button" + (taskOpen ? " active" : "")} disabled={!activeThread}
-              onClick={() => {setTaskOpen(current => !current); setPlanOpen(false); setGitOpen(false); setContextOpen(false); setDiagnosticsOpen(false); setSettingsOpen(false);}}
-              title="Local-first autonomous task">Task</button>
-            <button type="button" className={"context-button" + (planOpen ? " active" : "")}
-              disabled={!activeThread}
-              onClick={() => { setPlanOpen((current) => !current); setTaskOpen(false); setGitOpen(false); setContextOpen(false); setDiagnosticsOpen(false); setSettingsOpen(false); }}
-              title="Persistent task plans and checkpoints">Plan</button>
-            <button
-              type="button"
-              className={"context-button" + (contextOpen ? " active" : "")}
-              disabled={!activeThread}
-              onClick={() => {
-                setContextOpen((current) => !current);
-                setPlanOpen(false); setTaskOpen(false);
-                setGitOpen(false);
-                setDiagnosticsOpen(false);
-                setSettingsOpen(false);
-              }}
-              title="Repository and pinned context"
-            >
-              Context
-            </button>
-            <button
-              type="button"
-              className={
-                "diagnostics-button" + (diagnosticsOpen ? " active" : "")
-              }
-              onClick={() => {
-                setDiagnosticsOpen((current) => !current);
-                setPlanOpen(false); setTaskOpen(false);
-                setGitOpen(false);
-                setSettingsOpen(false);
-                setContextOpen(false);
-              }}
-              title="Diagnostics"
-            >
-              Diagnostics
-            </button>
-            <button
-              type="button"
-              className={"settings-button" + (settingsOpen ? " active" : "")}
-              onClick={() => {
-                setSettingsOpen((current) => !current);
-                if (settingsOpen) void refreshModels();
-                setPlanOpen(false); setTaskOpen(false);
-                setGitOpen(false);
-                setDiagnosticsOpen(false);
-                setContextOpen(false);
-              }}
-              title="Settings"
-            >
-              Settings
-            </button>
-            <button type="button" className="theme-button" aria-label="Toggle color theme" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? "☀" : "☾"}</button>
+            <ActionMenu label="Open" className="header-open" disabled={!workspace}
+              actions={[{label:window.localAgent.platform === "win32" ? "Open in File Explorer" : "Open in file manager",
+                onSelect:() => {void window.localAgent.openProjectFolder().catch(cause => setUiError(String(cause)));}}]}>
+              <Icon name="open" /><span>Open</span><Icon name="chevron" />
+            </ActionMenu>
+            <button type="button" className={"icon-button" + (gitOpen ? " active" : "")} aria-label="Git" title="Review changes"
+              disabled={!workspace} onClick={() => togglePanel("git")}><Icon name="changes" /></button>
+            <button type="button" className={"icon-button" + (taskOpen ? " active" : "")} aria-label="Task" title="Tasks"
+              disabled={!activeThread} onClick={() => togglePanel("task")}><Icon name="task" /></button>
+            <button type="button" className={"icon-button" + (contextOpen ? " active" : "")} aria-label="Context" title="Context"
+              disabled={!activeThread} onClick={() => togglePanel("context")}><Icon name="context" /></button>
+            <ActionMenu label="More" className="icon-button" actions={[
+              {label:"Plan", disabled:!activeThread, onSelect:() => togglePanel("plan")},
+              {label:"Diagnostics", onSelect:() => togglePanel("diagnostics")},
+              {label:"Refresh models", onSelect:() => void refreshModels()},
+              {label:"Toggle color theme", onSelect:() => setTheme(theme === "dark" ? "light" : "dark")}
+            ]}><Icon name="more" /></ActionMenu>
           </div>
         </header>
 
@@ -1442,10 +1364,6 @@ function App() {
               {workspace ? (
                 <div className="welcome-status-grid">
                   <div>
-                    <span>Provider</span>
-                    <strong>{provider?.provider ?? "—"}</strong>
-                  </div>
-                  <div>
                     <span>Model</span>
                     <strong>{selectedLabel || "—"}</strong>
                   </div>
@@ -1460,13 +1378,11 @@ function App() {
                 </div>
               ) : (
                 <div className="welcome-actions">
-                  <button
-                    type="button"
-                    disabled={status.state !== "ready"}
-                    onClick={() => void openProject()}
-                  >
-                    Open project
-                  </button>
+                  <ActionMenu label="Add project" className="welcome-add-project" disabled={status.state !== "ready"}
+                    actions={[
+                      {label:"Add existing folder", onSelect:() => void openProject()},
+                      {label:"Create new project", onSelect:() => setNewProjectOpen(true)}
+                    ]}><Icon name="plus" />Add project</ActionMenu>
                 </div>
               )}
 
@@ -1575,6 +1491,9 @@ function App() {
         </div>
 
         <form className="composer" onSubmit={submit}>
+          {status.state === "error" || status.state === "stopped" ? <div className="error-banner" role="alert">
+            {status.error ?? "Agent unavailable. Open More → Diagnostics for details."}
+          </div> : null}
           {uiError ? <div className="error-banner">{uiError}</div> : null}
           <textarea
             value={input}

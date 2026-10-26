@@ -127,6 +127,10 @@ async function main() {
   const screenshot = async filename => {
     const page = application.windows()[0];
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.evaluate(() => Promise.race([
+      Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))),
+      new Promise(resolve => setTimeout(resolve, 1000))
+    ]));
     const base64 = await application.evaluate(async ({BrowserWindow}) => {
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Desktop capture timed out")), 8000));
       return await Promise.race([timeout, (async () => {
@@ -168,6 +172,42 @@ async function main() {
     assert.equal(await page.locator(".project-tree-name").first().evaluate(e => getComputedStyle(e).fontSize), "14px");
     assert.equal(await page.getByRole("button",{name:"Settings",exact:true}).evaluate(e => getComputedStyle(e).fontSize), "14px");
     checks.push("Readable shared typography: 16px composer, 14px sidebar and controls");
+    assert.equal(await page.locator(".sidebar-actions").count(), 0);
+    assert.equal(await page.locator(".sidebar-footer .status-dot").count(), 0);
+    assert.equal(await page.locator(".provider-pill").count(), 0);
+    assert.equal(await page.locator(".topbar").evaluate(e => e.getBoundingClientRect().height), 48);
+    assert.equal(await page.locator(".workspace").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(33, 33, 33)");
+    assert.equal(await page.locator(".sidebar").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(24, 24, 24)");
+    if (process.platform === "win32") assert.equal(await application.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].isMenuBarVisible()), false);
+    await page.locator(".projects-heading").getByRole("button",{name:"Add project",exact:true}).click();
+    await page.getByRole("menuitem",{name:"Add existing folder",exact:true}).waitFor();
+    await screenshot("desktop-project-menu.png");
+    await page.keyboard.press("ArrowDown");
+    assert.equal(await page.evaluate(() => document.activeElement.textContent), "Create new project");
+    await page.keyboard.press("Escape");
+    assert.equal(await page.getByRole("menu").count(), 0);
+    assert.equal(await page.evaluate(() => document.activeElement.getAttribute("aria-label")), "Add project");
+    await page.locator(".projects-heading").getByRole("button",{name:"Add project",exact:true}).click();
+    await page.locator(".composer textarea").click();
+    assert.equal(await page.getByRole("menu").count(), 0);
+    checks.push("Unified dark palette, single 48px native header, project menu keyboard/outside dismissal, no connection/provider badges");
+    const originalOpenPath = await application.evaluate(({shell}) => {
+      globalThis.smokeOpenPath = shell.openPath;
+      globalThis.smokeOpenWait = new Promise(resolve => {globalThis.smokeOpenResolve = resolve;});
+      shell.openPath = async folder => {globalThis.smokeOpenResolve(folder); return "";};
+      return true;
+    });
+    try {
+      await page.getByRole("button",{name:"Open",exact:true}).click();
+      await page.getByRole("menuitem",{name:process.platform === "win32" ? "Open in File Explorer" : "Open in file manager",exact:true}).click();
+      await page.waitForFunction(() => !document.querySelector('[role="menu"]'));
+      const opened = await application.evaluate(() => globalThis.smokeOpenWait);
+      assert.equal(fs.realpathSync.native(opened), fs.realpathSync.native(project));
+    } finally {
+      if (originalOpenPath) await application.evaluate(({shell}) => {shell.openPath = globalThis.smokeOpenPath;});
+    }
+    checks.push("Header Open menu resolves only the active backend project; file manager launch mocked");
+
     if (process.platform === "win32") {
       const captureTitle="LCA M4 controlled Electron capture";
       const beforeCaptureBounds=await application.evaluate(({BrowserWindow,screen},title)=>{const w=BrowserWindow.getAllWindows()[0];const bounds=w.getBounds();const min=w.getMinimumSize();const area=screen.getPrimaryDisplay().workArea;w.setMinimumSize(0,0);w.setTitle(title);w.setBounds({x:area.x+20,y:area.y+20,width:Math.min(1000,area.width-40),height:Math.min(650,area.height-40)});w.setAlwaysOnTop(true);w.show();w.focus();return {bounds,min};},captureTitle);
@@ -180,14 +220,16 @@ async function main() {
       await application.evaluate(({BrowserWindow},{bounds,min})=>{const w=BrowserWindow.getAllWindows()[0];w.setAlwaysOnTop(false);w.setBounds(bounds);w.setMinimumSize(...min);},beforeCaptureBounds);
       checks.push("Real Electron HWND/UIA screenshot through product Windows capture with valid dimensions, privacy masking and method diagnostics");
     }
-    await page.getByRole("button", {name:"New project",exact:true}).click();
+    await page.locator(".projects-heading").getByRole("button", {name:"Add project",exact:true}).click();
+    await page.getByRole("menuitem", {name:"Create new project",exact:true}).click();
     let projectDialog = page.getByRole("dialog",{name:"New project",exact:true});
     await projectDialog.waitFor();
     await page.getByLabel("Project name",{exact:true}).fill("do-not-create");
     await page.getByLabel("Project name",{exact:true}).press("Escape");
     await projectDialog.waitFor({state:"hidden"});
     assert(!fs.existsSync(path.join(data,"do-not-create")));
-    await page.getByRole("button", {name:"New project",exact:true}).click();
+    await page.locator(".projects-heading").getByRole("button", {name:"Add project",exact:true}).click();
+    await page.getByRole("menuitem", {name:"Create new project",exact:true}).click();
     projectDialog = page.getByRole("dialog",{name:"New project",exact:true});
     await page.getByLabel("Project name",{exact:true}).fill("calculator-project");
     await projectDialog.getByRole("button",{name:"Choose…",exact:true}).click();
@@ -205,11 +247,14 @@ async function main() {
     await screenshot("desktop-v041-new-project.png");
     await projectDialog.getByRole("button",{name:"Create project",exact:true}).click();
     await projectDialog.waitFor({state:"hidden"});
-    await page.getByRole("button",{name:/ui-created-project/}).first().waitFor();
+    await page.locator(".project-tree-name").filter({hasText:"ui-created-project"}).waitFor();
+    await page.waitForFunction(() => document.querySelector(".project-tree-name")?.textContent === "ui-created-project");
+    checks.push("Newly updated project sorts ahead of alphabetically earlier calculator-project");
     assert(fs.existsSync(path.join(data,"ui-created-project",".git")));
     const newSession = await page.evaluate(() => window.localAgent.getProject());
     assert.equal(fs.realpathSync.native(newSession.payload.project.path), fs.realpathSync.native(path.join(data,"ui-created-project")));
-    await page.getByRole("button",{name:"Open project",exact:true}).click();
+    await page.locator(".projects-heading").getByRole("button", {name:"Add project",exact:true}).click();
+    await page.getByRole("menuitem", {name:"Add existing folder",exact:true}).click();
     checks.push("Centered New project dialog: cancellation, location picker, collision protection, Git init and registry open");
 
     // Reproduce a persisted API model in a thread after switching chat to Ollama.
@@ -546,7 +591,10 @@ async function main() {
     await page.getByRole("button", {name:"Task", exact:true}).click();
 
     for (const panel of ["Task", "Context", "Git", "Plan", "Diagnostics"]) {
-      await page.getByRole("button", {name: panel, exact: true}).click();
+      if (["Plan", "Diagnostics"].includes(panel)) {
+        await page.getByRole("button", {name:"More",exact:true}).click();
+        await page.getByRole("menuitem", {name:panel,exact:true}).click();
+      } else await page.getByRole("button", {name: panel, exact: true}).click();
       const composer = await page.locator(".composer").boundingBox();
       const drawer = await page.locator(".conversation-shell > aside, .conversation-shell > .diagnostics-panel").boundingBox();
       assert(drawer.y + drawer.height <= composer.y + 2, `${panel} overlaps composer`);
@@ -557,7 +605,8 @@ async function main() {
       await page.locator(".send-button").waitFor({state: "visible"});
       checks.push(`Send works with ${panel} open and composer remains unobstructed`);
     }
-    await page.getByRole("button", {name: "Diagnostics", exact: true}).click();
+    await page.getByRole("button", {name:"More",exact:true}).click();
+    await page.getByRole("menuitem", {name:"Diagnostics",exact:true}).click();
     assert(await page.locator(".message.agent h3").count() > 0);
     assert(await page.locator(".message.agent table").count() > 0);
     const codeBlock = page.locator(".message.agent .code-block").filter({hasText:"print('local agent')"}).first();
@@ -605,7 +654,7 @@ async function main() {
     await page.locator(".send-button").waitFor({state: "visible"});
     checks.push("Stop cancels an active provider stream");
 
-    await page.locator(".sidebar-actions").getByRole("button", {name: "New thread", exact: true}).click();
+    await page.getByRole("button", {name: "New chat in calculator-project", exact: true}).click();
     await page.locator(".composer textarea").fill("A fresh thread can send messages");
     await page.locator(".composer textarea").press("Enter");
     await page.locator(".message.agent h3").waitFor();
@@ -632,15 +681,24 @@ async function main() {
     checks.push("New thread sends; context/ellipsis menu opens centered rename, Enter saves and Escape cancels");
 
     await screenshot("desktop-dark.png");
-    await page.getByRole("button", {name: "Toggle color theme"}).click();
+    await page.getByRole("button", {name:"More",exact:true}).click();
+    await page.getByRole("menuitem", {name:"Toggle color theme",exact:true}).click();
     await screenshot("desktop-light.png");
+    assert.equal(await page.locator(".workspace").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(255, 255, 255)");
+    assert.equal(await page.locator(".sidebar").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(249, 249, 249)");
+    checks.push("Light palette and native header follow the same theme");
     for (const width of [1180, 900]) {
       await application.evaluate(({BrowserWindow}, width) => BrowserWindow.getAllWindows()[0].setSize(width, 780), width);
       await page.getByRole("button", {name: "Context", exact: true}).click();
       await page.locator(".context-overlay").waitFor({state: "visible"});
+      assert.equal(await page.locator(".topbar").evaluate(e => e.getBoundingClientRect().height), 48);
+      assert.equal(await page.locator(".topbar-actions").evaluate(e => getComputedStyle(e).flexWrap), "nowrap");
+      const actionRects = await page.locator(".topbar-actions > button").evaluateAll(nodes => nodes.map(e => ({top:e.getBoundingClientRect().top, right:e.getBoundingClientRect().right})));
+      assert(actionRects.every(rect => Math.abs(rect.top - actionRects[0].top) < 1), "Every header action must share one row");
+      if (process.platform === "win32") assert(actionRects.every(rect => rect.right <= width - 138), "Header controls overlap native window buttons");
       await screenshot(`desktop-context-${width}.png`);
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Horizontal page overflow");
-      assert(await page.locator(".topbar-actions").evaluate(e => e.scrollWidth <= e.clientWidth + 1), "Header controls should wrap instead of requiring horizontal scrolling");
+      assert(await page.locator(".topbar-actions").evaluate(e => e.scrollWidth <= e.clientWidth + 1), "Single-row header controls must fit without scrolling");
       await page.getByRole("button", {name: "Context", exact: true}).click();
       await page.locator(".context-overlay").waitFor({state: "hidden"});
       await page.getByRole("button",{name:"Settings",exact:true}).click();
@@ -674,6 +732,21 @@ async function main() {
     page = await launch();
     assert.equal(await page.locator(".project-tree-header.active").getAttribute("aria-expanded"), "false");
     checks.push("Collapsed project remains collapsed after restart");
+    // Create a chat in an inactive project: target selection must precede creation.
+    const currentSession = await page.evaluate(() => window.localAgent.getProject());
+    const currentCount = currentSession.payload.threads.length;
+    await page.getByRole("button",{name:"New chat in ui-created-project",exact:true}).click();
+    await page.waitForFunction(() => document.querySelector(".project-tree-header.active .project-tree-name")?.textContent === "ui-created-project");
+    const otherSession = await page.evaluate(() => window.localAgent.getProject());
+    assert(otherSession.payload.threads.length >= 2);
+    assert.equal((await page.evaluate(() => window.localAgent.listProjects())).payload.projects.find(p => p.name === "calculator-project").thread_count, currentCount);
+    await page.waitForFunction(() => document.querySelector(".project-tree-name")?.textContent === "ui-created-project");
+    await application.close();
+    page = await launch();
+    await page.waitForFunction(() => document.querySelector(".project-tree-name")?.textContent === "ui-created-project");
+    assert.equal(await page.locator(".thread-item.active").count(), 1);
+    assert.equal(await page.locator(".sidebar-footer .status-title").count(), 0);
+    checks.push("Per-project plus creates chat in the correct project; activity order and active chat survive restart");
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ok: true, checks, skipped}, null, 2));
     fs.writeFileSync(path.join(reportDir, "desktop-smoke.json"), JSON.stringify({ok: true, checks, skipped}, null, 2));

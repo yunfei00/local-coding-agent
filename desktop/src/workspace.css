@@ -1,6 +1,6 @@
 /* Shared layout and interaction rules for the v0.3 desktop workspace. */
-:root { color-scheme: dark; --canvas: #171717; --sidebar: #121212; --surface: #222; --border: #383838; --ink: #ededed; --muted: #a3a3a3; --code: #111; }
-:root[data-theme="light"] { color-scheme: light; --canvas: #fff; --sidebar: #f5f5f4; --surface: #f1f1ef; --border: #d6d6d2; --ink: #242424; --muted: #666; --code: #f5f5f3; }
+:root { color-scheme: dark; }
+:root[data-theme="light"] { color-scheme: light; }
 .app-shell, .workspace, .topbar, .conversation, .diagnostics-panel { background: var(--canvas); color: var(--ink); }
 .sidebar { background: var(--sidebar); min-height: 0; min-width: 0; }
 .sidebar-scroll { overflow-y: auto; min-height: 0; }

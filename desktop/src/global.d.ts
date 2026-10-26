@@ -13,6 +13,8 @@ declare global {
   interface Window {
     localAgent: {
       platform: string;
+      setWindowTheme: (theme: "light" | "dark") => Promise<void>;
+      openProjectFolder: () => Promise<void>;
       previewScreenshot: (path: string) => Promise<string>;
       copyText: (text: string) => Promise<{ok: boolean}>;
       notifyRendererReady: () => void;

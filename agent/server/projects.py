@@ -32,7 +32,7 @@ def create_project_folder(parent_path: str, name: str) -> Path:
     try:
         target.mkdir()  # Exclusive, nonrecursive; rejects files, directories and symlinks.
     except FileExistsError as exc:
-        raise ToolError("PROJECT_EXISTS", "That folder already exists. Choose another name or use Open project.") from exc
+        raise ToolError("PROJECT_EXISTS", "That folder already exists. Choose another name or use Projects + → Add existing folder.") from exc
     return target
 
 

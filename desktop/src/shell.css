@@ -1,0 +1,100 @@
+/* Desktop chrome: one shared palette and one title row, including native controls. */
+:root {
+  --canvas: #212121;
+  --sidebar: #181818;
+  --surface: #2f2f2f;
+  --border: #353535;
+  --ink: #ececec;
+  --muted: #9b9b9b;
+  --code: #181818;
+  background: var(--canvas);
+  color: var(--ink);
+}
+:root[data-theme="light"] {
+  --canvas: #ffffff;
+  --sidebar: #f9f9f9;
+  --surface: #f0f0f0;
+  --border: #e5e5e5;
+  --ink: #202020;
+  --muted: #707070;
+  --code: #f7f7f7;
+}
+.app-shell, .workspace, .topbar, .conversation, .conversation-shell { background: var(--canvas); color: var(--ink); }
+.sidebar { padding: 0 12px 12px; gap: 14px; background: var(--sidebar); border-color: var(--border); }
+.brand { height: 48px; flex: 0 0 48px; padding: 0 6px; -webkit-app-region: drag; }
+.brand-mark { width: 24px; height: 24px; background: transparent; border: 0; color: var(--ink); }
+.brand-copy strong { color: var(--ink); font-weight: 600; }
+.workspace { grid-template-rows: 48px minmax(0, 1fr) auto; }
+.topbar {
+  height: 48px; min-height: 48px; padding: 0 16px; gap: 12px;
+  border-bottom: 0; -webkit-app-region: drag;
+}
+:root[data-platform="win32"] .topbar, :root[data-platform="linux"] .topbar { padding-right: 150px; }
+.topbar-title { display: flex; flex: 1 1 0; flex-direction: row; align-items: center; gap: 10px; min-width: 0; }
+.topbar-title strong { min-width: 0; color: var(--ink); font-size: var(--font-size-ui); font-weight: 600; }
+.topbar-title span { max-width: 110px; min-width: 0; color: var(--muted); font-size: var(--font-size-ui); }
+.topbar-actions { display: flex; flex: 0 0 auto; flex-wrap: nowrap; align-items: center; gap: 4px; overflow: visible; max-width: none; }
+.topbar button, .brand button { -webkit-app-region: no-drag; }
+.topbar button, .icon-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  width: 30px; height: 30px; min-height: 30px; padding: 0; flex: 0 0 auto;
+  border: 0; border-radius: 7px; color: var(--muted); background: transparent;
+}
+.topbar button.header-open { width: auto; padding: 0 8px; color: var(--ink); white-space: nowrap; }
+.header-open svg:last-child { width: 12px; }
+.topbar button:hover:not(:disabled), .topbar button.active, .icon-button:hover:not(:disabled) { background: var(--surface); color: var(--ink); }
+.projects-heading { display: flex; align-items: center; justify-content: space-between; height: 36px; margin-bottom: 4px; padding-left: 8px; color: var(--muted); font-weight: 500; }
+.project-row { position: relative; display: flex; align-items: center; min-width: 0; }
+.project-tree-header { min-width: 0; padding: 7px 38px 7px 8px; color: var(--ink); font-weight: 500; }
+.project-tree-name { font-weight: 500; }
+.project-tree-header > svg { flex: 0 0 auto; color: var(--muted); }
+.project-tree-header:hover:not(:disabled), .project-tree-header.active { color: var(--ink); background: transparent; }
+.project-row:hover { background: var(--surface); border-radius: 8px; }
+.project-new-chat { position: absolute; right: 3px; opacity: .65; }
+.project-row:hover .project-new-chat, .project-new-chat:focus-visible { opacity: 1; }
+.project-tree-chevron { color: var(--muted); }
+.project-tree-threads { border-left: 0; margin-left: 8px; padding-left: 8px; }
+.thread-row .thread-item { color: var(--muted); }
+.thread-item:hover, .thread-item.active { color: var(--ink); background: var(--surface); }
+.thread-item.active::before { display: none; }
+.thread-item > span, .thread-item.active > span { color: inherit; }
+.thread-actions-button { color: var(--muted); }
+.sidebar-footer { padding: 0; border: 0; }
+.sidebar-settings { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 8px; border: 0; border-radius: 8px; color: var(--ink); background: transparent; text-align: left; }
+.sidebar-settings:hover, .sidebar-settings.active { background: var(--surface); }
+.sidebar-settings svg { color: var(--muted); }
+.action-menu {
+  position: fixed; z-index: 1100; width: 240px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px);
+  overflow-y: auto; padding: 5px; border: 1px solid var(--border); border-radius: 12px;
+  color: var(--ink); background: var(--canvas); box-shadow: 0 6px 24px #0003;
+}
+.action-menu button { display: block; width: 100%; min-height: 36px; padding: 7px 10px; border: 0; border-radius: 7px; background: transparent; color: inherit; font-size: var(--font-size-ui); text-align: left; }
+.action-menu button:hover:not(:disabled), .action-menu button:focus-visible { background: var(--surface); }
+.welcome-card { background: var(--canvas); border: 0; }
+.welcome-card p, .welcome-card .eyebrow { color: var(--muted); }
+.welcome-status-grid > div, .welcome-add-project { background: var(--surface); border-color: var(--border); color: var(--ink); }
+.welcome-status-grid strong { color: var(--ink); }
+.welcome-status-grid span { color: var(--muted); }
+.welcome-add-project { display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border); }
+.composer { background: var(--surface); border-color: var(--border); }
+.composer textarea, .composer .model-select { color: var(--ink); }
+.composer .model-select, .composer input, .composer select { background: transparent; border-color: var(--border); color: var(--ink); }
+.composer input { min-height: 28px; padding: 4px 7px; border: 1px solid var(--border); border-radius: 6px; }
+.composer option, .composer optgroup { background: var(--canvas); color: var(--ink); }
+.composer textarea::placeholder, .composer-hints { color: var(--muted); }
+.settings-panel, .settings-card, .context-panel, .git-panel, .diagnostics-panel { background: var(--canvas); color: var(--ink); border-color: var(--border); }
+/* Override legacy light-mode rules that painted every sidebar button. */
+:root[data-theme="light"] .sidebar .thread-item,
+:root[data-theme="light"] .sidebar .project-tree-header,
+:root[data-theme="light"] .sidebar .sidebar-settings,
+:root[data-theme="light"] .sidebar .icon-button,
+:root[data-theme="light"] .sidebar .brand-mark,
+:root[data-theme="light"] .topbar button { background: transparent; }
+:root[data-theme="light"] .sidebar .thread-item.active,
+:root[data-theme="light"] .sidebar .thread-item:hover,
+:root[data-theme="light"] .sidebar .sidebar-settings:hover,
+:root[data-theme="light"] .sidebar .sidebar-settings.active,
+:root[data-theme="light"] .sidebar .icon-button:hover,
+:root[data-theme="light"] .topbar button:hover,
+:root[data-theme="light"] .topbar button.active { background: var(--surface); }
+@media (max-width: 1000px) { .topbar-title span { display: none; } }

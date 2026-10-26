@@ -1,8 +1,16 @@
-# v0.4.1 桌面交互更新
+# 桌面交互与外观
+
+当前外观与导航的本机验收见 [2026-10-26 桌面验收](../validation/desktop-shell-2026-10-26.md)；下方 v0.4.1 测试和发布信息仅为历史记录。
 
 ## 字体和控件
 
-参考 Codex 桌面的文字层级统一为正文/聊天输入 16px、常规界面/设置/代码 14px、辅助文字 12px。侧栏项目、会话和按钮同时增加高度与间距；不是使用页面缩放。较窄窗口中工具栏自动换行，Settings 根据工具栏实际高度布局，避免覆盖按钮。
+参考 Codex 桌面的文字层级统一为正文/聊天输入 16px、常规界面/设置/代码 14px、辅助文字 12px。侧栏项目、会话和按钮同时增加高度与间距；不是使用页面缩放。
+
+当前源码将 Windows 原生窗口按钮与应用顶部合并为一行 48px 标题栏，隐藏默认 Electron 菜单栏；较窄窗口省略项目副标题，标题截断，不再把工具栏挤成两行。深色主区 `#212121`、侧栏 `#181818`；浅色主区 `#ffffff`、侧栏 `#f9f9f9`，原生窗口按钮随主题更新。
+
+顶部保留 Open（在文件管理器打开当前项目）、Git、Task、Context 和 More；Plan、Diagnostics、Refresh models、Toggle color theme 收入 More。Settings 在侧栏左下角，不显示 Agent Connected 或 Provider 分类标签。连接错误仍在输入区和 Diagnostics 中明确显示，模型统一从已保存目录选择。
+
+项目按项目/会话最近更新时间降序排列，稳定保留同时间的服务端顺序，不再按名称排序；创建会话、发送任务、改名和重启都会读取持久化时间。各项目右侧 `+` 创建该项目的会话，也可以直接从非当前项目创建。
 
 ## 会话改名
 
@@ -12,16 +20,16 @@
 
 ## 新建项目
 
-1. 点击侧栏 New project，填写 Project name。
+1. 点击侧栏 Projects 右侧 `+` → Create new project，填写 Project name；Add existing folder 用于添加已有目录。
 2. Location 默认为 Windows 文档目录，Choose… 打开原生目录选择器以选择父目录。
 3. Initialize Git repository 默认勾选，可取消。
 4. Create project 创建独立新文件夹，通过原有项目注册和打开流程进入新会话。
 
 项目名遵循 Windows 文件名规则，不允许路径穿越、绝对路径或保留设备名称。父目录必须已经存在，同名文件或目录一律拒绝，不复用、不覆盖。取消弹框不会创建目录；运行中的任务会在后端阻止新建。
 
-Git 初始化使用现有 Git 工具，只创建空仓库，不创建提交，不推送。Git 不可用时保留目录、打开项目并给出警告。自主任务使用受管理 Worktree 前仍需用户准备初始提交。原 Open project 按钮用于已有工程。
+Git 初始化使用现有 Git 工具，只创建空仓库，不创建提交，不推送。Git 不可用时保留目录、打开项目并给出警告。自主任务使用受管理 Worktree 前仍需用户准备初始提交。已有工程使用 Projects `+` → Add existing folder。
 
-## 实现与验证
+## 历史 v0.4.1 实现与验证
 
 复用原项目注册、会话存储、IPC、Git helper 和权限系统；新增 project.create 请求和可选的 thread.rename.project_id。未另建项目数据库或任务生命周期。
 

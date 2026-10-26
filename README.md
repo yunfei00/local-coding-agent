@@ -49,7 +49,7 @@ Task 启动预算检查也已补充具体任务/全局字段、限额、已用/�
 
 ## 当前能力
 
-v0.4.1 调整桌面字体和控件尺寸：正文/输入框 16px、常规界面 14px、辅助文字 12px。会话右侧 `…` 或右键菜单 → Rename，在居中弹框中改名；侧栏 New project 在居中弹框中选择名称、位置与是否初始化 Git。详见 [桌面交互更新](docs/v0.4/desktop-usability.md)。
+桌面正文/输入框 16px、常规界面 14px、辅助文字 12px。当前源码统一深浅配色、Windows 单行标题栏，并按最近更新时间排列项目。Projects 右侧 `+` 添加已有目录或创建项目，各项目右侧 `+` 新建会话；会话 `…` 或右键 → Rename，居中弹框改名。Settings 在左下角，Plan/Diagnostics 等收进顶部 More。详见 [桌面交互更新](docs/v0.4/desktop-usability.md)。
 
 v0.2.0 已经完成可用的单 Agent 本地开发闭环：
 

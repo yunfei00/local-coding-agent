@@ -13,7 +13,7 @@ npm --prefix desktop run dev
 需 Windows 交互桌面、Git、uv、Node 22/npm；无需独立 GPU。Python 使用项目 .venv，由 uv 管理。无本轮安装包/Portable，旧 v0.4.2 安装包不会自动包含源码变更。
 
 1. Settings → Models & Routing 使用已有连接和安全 Key；选择 Default Chat Model。Chat 下拉框按连接分组搜索，每 Thread 独立保存。
-2. Open project 打开自己的工程或 fixture 实验副本，New thread 创建会话。Task → Single Agent (online)，选择 Executor。需要独立视觉时选择 Task Vision Observer；若不上传图片，使用确定性 UIA。
+2. Projects 右侧 `+` → Add existing folder 打开自己的工程或 fixture 实验副本，项目右侧 `+` 创建会话。Task → Single Agent (online)，选择 Executor。需要独立视觉时选择 Task Vision Observer；若不上传图片，使用确定性 UIA。
 3. 输入具体目标、保留项目测试命令。fixture 已提供 .lca 验收文件，模型不应修改它们。模型调用受当前预算约束，复杂任务可能在默认调用数用尽后暂停；查看具体限制，不自动追加。
 4. 启动 Task，审阅每次文件、命令、桌面及图片上传审批；Save 等风险操作仍需显式授权。只允许操作受控测试窗口；不要将私人截图发往模型。
 5. 展开工具卡查看终端输出、Task timeline 看状态与修复轮次，Screenshot artifacts 本地预览失败/成功截图；Completion report and Git review 查看 Diff。
