@@ -1,4 +1,7 @@
 const paths = {
+  back: "M19 12H5m6-6-6 6 6 6",
+  forward: "M5 12h14m-6-6 6 6-6 6",
+  sidebar: "M4 4h16v16H4V4ZM9 4v16",
   plus: "M12 5v14M5 12h14",
   compose: "M12 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-7M16 3l5 5-10 10-4 1 1-4L18 5M14 5l5 5",
   folder: "M3 7V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z",

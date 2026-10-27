@@ -107,6 +107,9 @@ type ThreadRecord = {
   updated_at: string;
 };
 
+type ChatLocation = {projectId:string; threadId:string | null};
+const sameChat = (a:ChatLocation | undefined, b:ChatLocation) => a?.projectId === b.projectId && a.threadId === b.threadId;
+
 type ChatItem = {
   id: string;
   role: "user" | "agent" | "system" | "tool";
@@ -233,6 +236,10 @@ function App() {
     } catch { return []; }
   });
   const [theme, setTheme] = useState(() => localStorage.getItem("lca-theme") ?? "dark");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("lca-sidebar-collapsed") === "true");
+  const chatHistory = useRef<{entries:ChatLocation[]; index:number; target:ChatLocation | null}>({entries:[], index:-1, target:null});
+  const [, setHistoryRevision] = useState(0);
+  const [historyBusy, setHistoryBusy] = useState(false);
   const lastEditorRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const remember = (event:FocusEvent) => {
@@ -268,6 +275,19 @@ function App() {
   const autoFollowRef = useRef(true);
   const navigationInitializedRef = useRef(localStorage.getItem("lca-expanded-projects") !== null);
   const sendingRef = useRef(false);
+
+  useEffect(() => {localStorage.setItem("lca-sidebar-collapsed", String(sidebarCollapsed));}, [sidebarCollapsed]);
+  useEffect(() => {
+    if (!workspace) return;
+    const current = {projectId:workspace.id, threadId:activeThread?.id ?? null};
+    const history = chatHistory.current;
+    if (history.target && !sameChat(history.target, current)) return;
+    history.target = null;
+    if (sameChat(history.entries[history.index], current)) return;
+    history.entries = [...history.entries.slice(0, history.index + 1), current].slice(-50);
+    history.index = history.entries.length - 1;
+    setHistoryRevision(revision => revision + 1);
+  }, [workspace?.id, activeThread?.id, historyBusy]);
 
   useEffect(() => { localStorage.setItem("lca-expanded-projects", JSON.stringify(expandedProjectIds)); }, [expandedProjectIds]);
   useEffect(() => {
@@ -1092,6 +1112,7 @@ function App() {
   const createThread = async (project: ProjectInfo) => {
     if (runningTurnId || status.state !== "ready") return;
     setUiError(null);
+    chatHistory.current.target = {projectId:project.id, threadId:null};
     try {
       if (workspace?.id !== project.id) applyProjectSession(await window.localAgent.selectProject(project.id));
       setExpandedProjectIds(ids => ids.includes(project.id) ? ids : [...ids, project.id]);
@@ -1100,6 +1121,7 @@ function App() {
       setContextUsage(null);
       requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus());
     } catch (error) {setUiError(String(error));}
+    finally {chatHistory.current.target = null;}
   };
 
   const ensureConversation = async (prompt:string): Promise<ThreadRecord> => {
@@ -1120,6 +1142,11 @@ function App() {
         throw new Error("删除接口尚未加载。请完整退出并重新启动更新后的桌面程序；仅刷新页面不会更新后台和预加载进程。模型配置会保留。");
       }
       const event = await window.localAgent.deleteThread(target.thread.id, target.projectId);
+      const history = chatHistory.current;
+      const retainedBeforeCurrent = history.entries.slice(0, history.index + 1).filter(entry => entry.threadId !== target.thread.id).length;
+      history.entries = history.entries.filter(entry => entry.threadId !== target.thread.id);
+      history.index = retainedBeforeCurrent - 1;
+      setHistoryRevision(revision => revision + 1);
       setThreads(current => current.filter(thread => thread.id !== target.thread.id));
       setProjectThreadCache(cache => ({...cache, [target.projectId]:(cache[target.projectId] ?? []).filter(thread => thread.id !== target.thread.id)}));
       inputDrafts.current.delete(target.projectId + ":" + target.thread.id);
@@ -1162,6 +1189,7 @@ function App() {
 
   const openProjectThread = async (project: ProjectInfo, thread: ThreadRecord) => {
     if (runningTurnId) return;
+    chatHistory.current.target = {projectId:project.id, threadId:thread.id};
     try {
       if (workspace?.id !== project.id) {
         const selected = await window.localAgent.selectProject(project.id);
@@ -1173,7 +1201,39 @@ function App() {
       setSelectedModel(loaded.active_model ?? provider?.default_model ?? "");
       setItems(historyItems(project.id, loaded.id, (event.payload?.messages ?? []) as StoredMessage[]));
       setContextUsage(null);
-    } catch (error) { setUiError(String(error)); }
+    } catch (error) {setUiError(String(error));}
+    finally {chatHistory.current.target = null;}
+  };
+
+  const navigateChat = async (direction:-1 | 1) => {
+    if (historyBusy || runningTurnId || status.state !== "ready") return;
+    if (settingsOpen && direction === -1) {setSettingsOpen(false); void refreshModels(); return;}
+    const history = chatHistory.current;
+    const index = history.index + direction;
+    const target = history.entries[index];
+    if (!target) return;
+    setHistoryBusy(true); setUiError(null);
+    history.target = target;
+    const previousIndex = history.index;
+    history.index = index;
+    try {
+      let selected:AgentEnvelope | null = null;
+      if (workspace?.id !== target.projectId) selected = await window.localAgent.selectProject(target.projectId);
+      if (target.threadId) {
+        const event = await window.localAgent.getThread(target.threadId);
+        const thread = readThread(event);
+        if (!thread) throw new Error("This conversation is no longer available.");
+        if (selected) applyProjectSession(selected);
+        setActiveThread(thread);
+        setSelectedModel(thread.active_model ?? provider?.default_model ?? "");
+        setItems(historyItems(target.projectId, thread.id, (event.payload?.messages ?? []) as StoredMessage[]));
+      } else {
+        if (selected) applyProjectSession(selected);
+        setActiveThread(null); setItems([]);
+      }
+      setContextUsage(null); setSettingsOpen(false);
+    } catch (error) {history.index = previousIndex; history.target = null; setUiError(String(error));}
+    finally {setHistoryBusy(false); setHistoryRevision(revision => revision + 1);}
   };
 
   const commitThreadRename = async (title:string) => {
@@ -1244,6 +1304,7 @@ function App() {
       !workspace ||
       !prompt ||
       runningTurnId ||
+      historyBusy ||
       !providerReady
       || sendingRef.current
     ) {
@@ -1307,8 +1368,13 @@ function App() {
   };
 
   return (
-    <div className="app-shell">
-        <header className="topbar">
+    <div className={"app-shell" + (sidebarCollapsed ? " sidebar-collapsed" : "")}>
+        <header className="topbar" aria-label="Window title bar">
+          <div className="window-navigation">
+            <button type="button" aria-label="Go back" title="Go back" disabled={historyBusy || Boolean(runningTurnId) || status.state !== "ready" || (!settingsOpen && chatHistory.current.index <= 0)} onClick={() => void navigateChat(-1)}><Icon name="back" /></button>
+            <button type="button" aria-label="Go forward" title="Go forward" disabled={historyBusy || Boolean(runningTurnId) || status.state !== "ready" || chatHistory.current.index >= chatHistory.current.entries.length - 1} onClick={() => void navigateChat(1)}><Icon name="forward" /></button>
+            <button type="button" aria-label="Toggle sidebar" title="Toggle sidebar" aria-controls="project-sidebar" aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed(value => !value)}><Icon name="sidebar" /></button>
+          </div>
           <nav className="app-menubar" role="menubar" aria-label="Application menu">
             <ActionMenu label="文件" className="app-menu-button" menuBarItem actions={[
               {label:"添加现有文件夹…", disabled:status.state !== "ready" || Boolean(runningTurnId), onSelect:() => void openProject()},
@@ -1337,32 +1403,9 @@ function App() {
               {label:"关于 Local Coding Agent", onSelect:() => void window.localAgent.menuAction("about").catch(cause => setUiError(String(cause)))}
             ]}>帮助</ActionMenu>
           </nav>
-          <div className="topbar-title">
-            <strong title={activeThread?.title ?? "Local Coding Agent"}>{activeThread?.title ?? "New chat"}</strong>
-            {workspace ? <span title={workspace.path}>{workspace.name}</span> : null}
-          </div>
-          <div className="topbar-actions">
-            <ActionMenu label="Open" className="header-open" disabled={!workspace}
-              actions={[{label:window.localAgent.platform === "win32" ? "Open in File Explorer" : "Open in file manager",
-                onSelect:() => {void window.localAgent.openProjectFolder().catch(cause => setUiError(String(cause)));}}]}>
-              <Icon name="open" /><span>Open</span><Icon name="chevron" />
-            </ActionMenu>
-            <button type="button" className={"icon-button" + (gitOpen ? " active" : "")} aria-label="Git" title="Review changes"
-              disabled={!workspace} onClick={() => togglePanel("git")}><Icon name="changes" /></button>
-            <button type="button" className={"icon-button" + (taskOpen ? " active" : "")} aria-label="Task" title="Tasks"
-              disabled={!workspace} onClick={() => togglePanel("task")}><Icon name="task" /></button>
-            <button type="button" className={"icon-button" + (contextOpen ? " active" : "")} aria-label="Context" title="Context"
-              disabled={!activeThread} onClick={() => togglePanel("context")}><Icon name="context" /></button>
-            <ActionMenu label="More" className="icon-button" actions={[
-              {label:"Plan", disabled:!activeThread, onSelect:() => togglePanel("plan")},
-              {label:"Diagnostics", onSelect:() => togglePanel("diagnostics")},
-              {label:"Refresh models", onSelect:() => void refreshModels()},
-              {label:"Toggle color theme", onSelect:() => setTheme(theme === "dark" ? "light" : "dark")}
-            ]}><Icon name="more" /></ActionMenu>
-          </div>
         </header>
 
-      <aside className="sidebar">
+      <aside className="sidebar" id="project-sidebar">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">LC</span>
           <span className="brand-copy"><strong>Local Coding Agent</strong></span>
@@ -1418,6 +1461,33 @@ function App() {
       </aside>
 
       <main className="workspace">
+        <header className="chat-header" aria-label="Conversation toolbar">
+          <div className="chat-header-title">
+            <Icon name="folder" />
+            <strong title={activeThread?.title ?? "Local Coding Agent"}>{activeThread?.title ?? "New chat"}</strong>
+            {workspace ? <span title={workspace.path}>{workspace.name}</span> : null}
+          </div>
+          <div className="chat-header-actions">
+            <ActionMenu label="Open" className="header-open" disabled={!workspace}
+              actions={[{label:window.localAgent.platform === "win32" ? "Open in File Explorer" : "Open in file manager",
+                onSelect:() => {void window.localAgent.openProjectFolder().catch(cause => setUiError(String(cause)));}}]}>
+              <Icon name="open" /><span>Open</span><Icon name="chevron" />
+            </ActionMenu>
+            <button type="button" className={"icon-button" + (gitOpen ? " active" : "")} aria-label="Git" title="Review changes"
+              disabled={!workspace} onClick={() => togglePanel("git")}><Icon name="changes" /></button>
+            <button type="button" className={"icon-button" + (taskOpen ? " active" : "")} aria-label="Task" title="Tasks"
+              disabled={!workspace} onClick={() => togglePanel("task")}><Icon name="task" /></button>
+            <button type="button" className={"icon-button" + (contextOpen ? " active" : "")} aria-label="Context" title="Context"
+              disabled={!activeThread} onClick={() => togglePanel("context")}><Icon name="context" /></button>
+            <ActionMenu label="More" className="icon-button" actions={[
+              {label:"Plan", disabled:!activeThread, onSelect:() => togglePanel("plan")},
+              {label:"Diagnostics", onSelect:() => togglePanel("diagnostics")},
+              {label:"Refresh models", onSelect:() => void refreshModels()},
+              {label:"Toggle color theme", onSelect:() => setTheme(theme === "dark" ? "light" : "dark")}
+            ]}><Icon name="more" /></ActionMenu>
+          </div>
+        </header>
+
 
         <div className={"conversation-shell" + (gitOpen || planOpen || taskOpen || contextOpen || diagnosticsOpen ? " with-panel" : "")}>
           <section
