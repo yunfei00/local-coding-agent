@@ -98,6 +98,13 @@ const provider = http.createServer((req, res) => {
       return res.end("data: [DONE]\n\n");
     }
     const send = (text, finish = null) => res.write("data: " + JSON.stringify({choices: [{index: 0, delta: {content: text}, finish_reason: finish}]}) + "\n\n");
+    if (prompt.includes("invalid-json-smoke")) {
+      const repairing = payload.messages.some(m => m.role === "system" && String(m.content).includes("Runtime protocol feedback"));
+      if (!repairing) {
+        res.write("data: " + JSON.stringify({choices:[{delta:{content:"DISCARD_PARTIAL_🙂",tool_calls:[{index:0,id:"invalid",type:"function",function:{name:"write_file",arguments:'{"path":"must-not-exist.py",'}}]},finish_reason:"tool_calls"}],usage:{prompt_tokens:100,completion_tokens:20}}) + "\n\n");
+      } else send("RECOVERED_VALID_JSON: invalid call was not executed.","stop");
+      return res.end("data: [DONE]\n\n");
+    }
     const wantedTool = prompt.includes("mcp-smoke-stdio") ? "mcp__smoke_stdio__echo" : prompt.includes("mcp-smoke-http") ? "mcp__smoke_http__echo" : prompt.includes("read-real-fixture") ? "read_file" : null;
     if (wantedTool && payload.messages.at(-1)?.role !== "tool") {
       assert(payload.tools.some(tool => tool.function.name === wantedTool), `Tool unavailable: ${wantedTool}`);
@@ -212,6 +219,31 @@ async function main() {
     checks.push("Unified dark palette, single 44px native header, project menu keyboard/outside dismissal, no connection/provider badges");
     assert.equal(await page.locator(".workspace > .topbar").count(), 0);
     assert.equal(await page.locator(".topbar").count(), 1);
+    assert.deepEqual(await page.locator(".topbar button").evaluateAll(nodes => nodes.map(e => e.getAttribute("aria-label"))),
+      ["Go back","Go forward","Toggle sidebar","文件","编辑","视图","帮助"]);
+    assert.equal(await page.locator(".topbar .chat-header-actions, .topbar .chat-header-title").count(), 0);
+    assert.equal(await page.locator(".workspace > .chat-header").count(), 1);
+    assert(await page.locator(".chat-header").evaluate(e => Math.abs(e.getBoundingClientRect().top - document.querySelector(".topbar").getBoundingClientRect().bottom) <= 1));
+    assert.equal(await page.locator(".chat-header-actions").getByRole("button",{name:"Open",exact:true}).count(), 1);
+    const beforeNavigation = modelRequests.length;
+    await page.getByRole("button",{name:"New chat in calculator-project",exact:true}).click();
+    await page.locator(".composer textarea").fill("Unsent navigation draft");
+    await page.getByRole("button",{name:"Go back",exact:true}).click();
+    await page.locator(".thread-item.active").waitFor();
+    await page.getByRole("button",{name:"Go forward",exact:true}).click();
+    await page.waitForFunction(() => document.querySelector(".composer textarea").value === "Unsent navigation draft" && !document.querySelector(".thread-item.active"));
+    await page.getByRole("button",{name:"Go back",exact:true}).click();
+    await page.locator(".thread-item.active").waitFor();
+    assert.equal(modelRequests.length,beforeNavigation);
+    assert.equal((await page.evaluate(() => window.localAgent.getProject())).payload.threads.length,1);
+    await page.getByRole("button",{name:"Toggle sidebar",exact:true}).click();
+    assert.equal(await page.locator(".sidebar").isVisible(),false);
+    assert(await page.locator(".workspace").evaluate(e => e.getBoundingClientRect().left <= 7));
+    assert.equal(await page.locator(".composer textarea").isEnabled(),true);
+    await screenshot("desktop-window-toolbar-collapsed.png");
+    await page.getByRole("button",{name:"Toggle sidebar",exact:true}).click();
+    assert.equal(await page.locator(".sidebar").isVisible(),true);
+    checks.push("Window row contains only Back/Forward, sidebar toggle and application menus; chat actions live below, navigation restores draft without model calls or extra threads");
     assert.equal(await page.locator(".topbar").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(26, 34, 37)");
     const appMenus = page.getByRole("menubar",{name:"Application menu"});
     assert.deepEqual(await appMenus.getByRole("menuitem").allTextContents(), ["文件","编辑","视图","帮助"]);
@@ -279,6 +311,14 @@ async function main() {
       if (originalOpenPath) await application.evaluate(({shell}) => {shell.openPath = globalThis.smokeOpenPath;});
     }
     checks.push("Header Open menu resolves only the active backend project; file manager launch mocked");
+    const beforeProtocolRecovery = modelRequests.length;
+    await page.locator(".composer textarea").fill("invalid-json-smoke");
+    await page.locator(".composer textarea").press("Enter");
+    await page.waitForFunction(() => [...document.querySelectorAll(".message.agent")].some(e => e.textContent.includes("RECOVERED_VALID_JSON")) && !document.querySelector(".stop-button"));
+    assert(!(await page.locator(".message.agent").allTextContents()).some(text => text.includes("DISCARD_PARTIAL")));
+    assert(!fs.existsSync(path.join(project,"must-not-exist.py")));
+    assert.equal(modelRequests.length,beforeProtocolRecovery+2);
+    checks.push("Actual HTTP malformed tool batch executes no file write, same-model retry is visible, discarded Unicode partial output is removed and final chat recovers");
 
     if (process.platform === "win32") {
       const captureTitle="LCA M4 controlled Electron capture";
@@ -764,13 +804,13 @@ async function main() {
       await page.getByRole("button", {name: "Context", exact: true}).click();
       await page.locator(".context-overlay").waitFor({state: "visible"});
       assert.equal(await page.locator(".topbar").evaluate(e => e.getBoundingClientRect().height), 44);
-      assert.equal(await page.locator(".topbar-actions").evaluate(e => getComputedStyle(e).flexWrap), "nowrap");
-      const actionRects = await page.locator(".topbar-actions > button").evaluateAll(nodes => nodes.map(e => ({top:e.getBoundingClientRect().top, right:e.getBoundingClientRect().right})));
+      assert.equal(await page.locator(".chat-header-actions").evaluate(e => getComputedStyle(e).flexWrap), "nowrap");
+      const actionRects = await page.locator(".chat-header-actions > button").evaluateAll(nodes => nodes.map(e => ({top:e.getBoundingClientRect().top, right:e.getBoundingClientRect().right})));
       assert(actionRects.every(rect => Math.abs(rect.top - actionRects[0].top) < 1), "Every header action must share one row");
-      if (process.platform === "win32") assert(actionRects.every(rect => rect.right <= width - 138), "Header controls overlap native window buttons");
+      assert(actionRects.every(rect => rect.top >= 44 && rect.right < width), "Chat actions belong below the native window buttons");
       await screenshot(`desktop-context-${width}.png`);
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Horizontal page overflow");
-      assert(await page.locator(".topbar-actions").evaluate(e => e.scrollWidth <= e.clientWidth + 1), "Single-row header controls must fit without scrolling");
+      assert(await page.locator(".chat-header-actions").evaluate(e => e.scrollWidth <= e.clientWidth + 1), "Chat controls must fit without scrolling");
       await page.getByRole("button", {name: "Context", exact: true}).click();
       await page.locator(".context-overlay").waitFor({state: "hidden"});
       await toggleSettings(page);
@@ -873,6 +913,14 @@ async function main() {
     assert.equal(emptyRestored.payload.active_thread,null);
     await page.waitForFunction(() => !document.querySelector(".composer textarea").disabled);
     assert.equal(await page.locator(".sidebar-footer .status-title").count(), 0);
+    await page.getByRole("button",{name:"Toggle sidebar",exact:true}).click();
+    await application.close();
+    page = await launch();
+    assert.equal(await page.locator(".sidebar").isVisible(),false);
+    assert.equal(await page.getByRole("button",{name:"Toggle sidebar",exact:true}).getAttribute("aria-expanded"),"false");
+    await page.getByRole("button",{name:"Toggle sidebar",exact:true}).click();
+    assert.equal(await page.locator(".sidebar").isVisible(),true);
+    checks.push("Sidebar collapse survives restart and can be restored from the window row with an empty project and usable composer");
     checks.push("Compose selects the correct project, submitted chat survives restart, right-click Delete supports cancel and persistence without removing project files");
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ok: true, checks, skipped}, null, 2));

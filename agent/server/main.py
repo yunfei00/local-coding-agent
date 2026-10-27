@@ -2252,8 +2252,34 @@ class AgentServer:
                                         execution.data['last_attachment'] = attachment
                                         execution.save()
                                         await ws.send_json(envelope('model.attachment',attachment,thread_id=thread_id,turn_id=turn_id))
+                        if finish_reason in {"length", "max_tokens", "content_filter"}:
+                            limit = getattr(provider, "max_output_tokens", None) or "Provider 默认（客户端未设置）"
+                            raise ProviderError("MODEL_REFUSED" if finish_reason == "content_filter" else "MODEL_TRUNCATED",
+                                "模型拒绝了响应，未接受完成状态。" if finish_reason == "content_filter" else
+                                f"模型响应被截断（finish_reason={finish_reason}, max_output_tokens={limit}）；未执行本批工具。请分段生成，或在 Models & Routing 调整该模型单次输出上限后新建任务。")
                         break
                     except ProviderError as exc:
+                        protocol_error = exc.code in {"MODEL_INVALID_TOOL_CALL", "MODEL_TOOL_ARGUMENTS_TRUNCATED", "MODEL_TRUNCATED"}
+                        repairs = execution.data.get("tool_protocol_repairs", 0)
+                        if protocol_error and not tool_calls and attempt < self.model_retry_attempts and repairs < self.model_retry_attempts - 1:
+                            # The provider rejected the complete call batch before
+                            # tool execution. Ask the SAME model to regenerate it;
+                            # never guess/fix malformed arguments or replay tools.
+                            execution.data["tool_protocol_repairs"] = repairs + 1
+                            execution.save()
+                            output_limit = getattr(provider, "max_output_tokens", None) or "Provider default (client did not set max_output_tokens)"
+                            messages.append({"role":"system", "content":
+                                f"Runtime protocol feedback: {exc.code}. The previous malformed tool-call batch was NOT executed. "
+                                f"Current per-request output cap: {output_limit}. Return strictly valid JSON object arguments, "
+                                "with escaped newlines and quotes. Reissue only the failed operation; for long code use a small file skeleton "
+                                "and several small apply_patch edits. Do not replay earlier successful tools or claim unexecuted changes."})
+                            discarded_chars = sum(len(part) for part in assistant_parts)
+                            assistant_parts.clear(); step_tool_keys.clear(); observed_output = False
+                            metrics.retries += 1
+                            await ws.send_json(envelope("turn.status", {"phase":"tool_protocol_retry", "code":exc.code,
+                                "discard_response_characters":discarded_chars,
+                                "message":f"响应截断或工具参数无效，未执行本批工具；让同一模型分小段重新生成（{repairs+1}/{self.model_retry_attempts-1}），每次请求仍检查预算。"}, thread_id=thread_id, turn_id=turn_id))
+                            continue
                         can_retry = (
                             exc.transient
                             and not observed_output

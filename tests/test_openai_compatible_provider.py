@@ -8,7 +8,29 @@ from unittest.mock import patch
 from aiohttp import web
 
 from agent.llm.factory import create_provider_from_env, normalize_provider_name
-from agent.llm.openai_compatible import OpenAICompatibleProvider
+from agent.llm.openai_compatible import OpenAICompatibleProvider, OpenAICompatibleProviderError, _finalize_tool_calls
+
+
+class ToolArgumentDiagnosticsTests(unittest.TestCase):
+    def test_malformed_arguments_are_classified_without_logging_content(self):
+        for finish, code in [("tool_calls", "MODEL_INVALID_TOOL_CALL"), ("length", "MODEL_TOOL_ARGUMENTS_TRUNCATED"), ("content_filter", "MODEL_REFUSED")]:
+            with self.subTest(finish=finish):
+                metadata = {}
+                with self.assertRaises(OpenAICompatibleProviderError) as caught:
+                    _finalize_tool_calls({0:{"name":"write_file", "arguments":'{"content":"private-file-body'}}, finish, metadata)
+                self.assertEqual(caught.exception.code, code)
+                self.assertFalse(metadata["tool_parse_success"])
+                self.assertIn("position", metadata["tool_json_error"])
+                self.assertNotIn("private-file-body", json.dumps(metadata))
+
+    def test_non_object_and_complete_but_truncated_calls_never_return_tools(self):
+        metadata = {}
+        with self.assertRaises(OpenAICompatibleProviderError):
+            _finalize_tool_calls({0:{"name":"write_file", "arguments":"[]"}}, "tool_calls", metadata)
+        self.assertEqual(metadata["tool_json_error"]["category"], "not_an_object")
+        with self.assertRaises(OpenAICompatibleProviderError) as caught:
+            _finalize_tool_calls({0:{"name":"list_directory", "arguments":"{}"}}, "length", metadata)
+        self.assertEqual(caught.exception.code, "MODEL_TOOL_ARGUMENTS_TRUNCATED")
 
 
 class OpenAICompatibleProviderIntegrationTests(unittest.IsolatedAsyncioTestCase):

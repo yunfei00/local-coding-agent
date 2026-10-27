@@ -1,12 +1,14 @@
 # 公司环境验证流程
 
-2026-10-27 的会话草稿/删除补查见[会话生命周期](../validation/conversation-lifecycle-2026-10-27.md)，真实阿里模型修改产品仓库和独立测试结果见[真实仓库验收](../validation/alibaba-repository-acceptance-2026-10-27.md)。本次在 PR #23 整理；更新前检查该 PR 状态，已合并用 main，未合并用 `codex/desktop-codex-layout`，不要使用旧安装包判断源码修复结果。
+2026-10-27 的会话草稿/删除补查见[会话生命周期](../validation/conversation-lifecycle-2026-10-27.md)，真实阿里模型修改产品仓库和独立测试结果见[真实仓库验收](../validation/alibaba-repository-acceptance-2026-10-27.md)。PR #23 已合并。
+
+后续窗口行/聊天工具栏拆分见[窗口布局](../validation/window-chat-header-2026-10-27.md)，DeepSeek 工具参数报错补查和真实空项目 Tkinter 验收见[工具 JSON 与计算器](../validation/tool-json-tkinter-2026-10-27.md)。后续功能分支为 `codex/titlebar-chat-toolbar`，已合并时更新 main，合并前可使用该功能分支源码；不要用旧安装包判断源码修复。真实 DeepSeek 完整复验有 HTTP 403 限制，不能把 Qwen 的完整 PASS 说成 DeepSeek PASS。
 
 之前两种真实 Electron 编码/视觉验收证据见[2026-10-26 完整结果](../validation/unlocked-real-online-acceptance-2026-10-26.md)，PR #22 已合并。旧 API Profile 可使用 Use coding output limit（8192）并保存；此值与 Task 总预算不同，旧快照不会自动改变。
 
 ### 本次源码更新和删除验证
 
-先完整退出源码开发版及其 Agent；仅刷新 Vite 页面不能加载新的删除 IPC。保留未提交文件，不执行 reset/clean。若 PR #23 已合并：
+先完整退出源码开发版及其 Agent；仅刷新 Vite 页面不能加载新的后台/预加载代码。保留未提交文件，不执行 reset/clean。若本轮修复 PR 已合并：
 
 ```powershell
 git status -sb
@@ -18,7 +20,7 @@ npm --prefix desktop ci --no-audit --no-fund
 npm --prefix desktop run dev
 ```
 
-未合并时将上述 switch/pull 的分支改为 `codex/desktop-codex-layout`。无需重填已保存的模型配置或 Key。项目右侧写入图标只打开草稿，首次发送内容才生成会话；右键会话 → Delete，先 Cancel 应保留，确认则停止该会话的未完成任务并从列表移除。重启后保持删除，项目文件、Worktree、检查点和用量审计保留。停止不完整时会保留会话，不能伪称删除成功。
+未合并时将上述 switch/pull 的分支改为 `codex/titlebar-chat-toolbar`。无需重填已保存的模型配置或 Key。项目右侧写入图标只打开草稿，首次发送内容才生成会话；右键会话 → Delete，先 Cancel 应保留，确认则停止该会话的未完成任务并从列表移除。重启后保持删除，项目文件、Worktree、检查点和用量审计保留。停止不完整时会保留会话，不能伪称删除成功。
 
 真实仓库测试使用实际存在的阿里模型 ID，并在隔离任务快照设上下文 `131072`、单次最大输出 `8192`。这是本次成功样本的客户端配置，不是对所有模型规格的统一承诺，也不是任务总 Token 额度。用户已保存的 Profile 未被脚本更改；公司需要时编辑相应 Profile 保存，再建新 Task。旧任务继续使用旧快照。
 
