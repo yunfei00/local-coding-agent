@@ -143,3 +143,93 @@ class ThreadLifecycleTests(unittest.IsolatedAsyncioTestCase):
             running.cancel()
             await asyncio.gather(running, return_exceptions=True)
             self.server.active_turns.clear()
+
+    async def test_confirmed_delete_cancels_paused_tasks_without_losing_budget(self):
+        await self.open()
+        thread_id = await self.create()
+        runtime = self.server.store.task_runtime
+        task = runtime.create(thread_id, "Old paused task", {}, str(self.project_path))
+        task["status"] = "paused"
+        runtime.save(task)
+        with runtime.db:
+            runtime.db.execute("INSERT INTO model_requests VALUES(?,?,?,?,?,?,?,?,?,?)", (
+                "delete-retained", task["id"], "api", "executor", "model", 321, 0.0, "interrupted", "{}", 1.0))
+        before = runtime.usage(task["id"])
+        result = await self.request("thread.delete", {"cancel_tasks":True}, thread_id)
+        self.assertEqual(result["type"], "thread.deleted")
+        self.assertEqual(runtime.get(task["id"])["status"], "cancelled")
+        self.assertEqual(runtime.usage(task["id"]), before)
+        self.assertEqual((self.project_path / "keep.txt").read_text(), "user content")
+
+    async def test_confirmed_delete_stops_only_target_conversation(self):
+        await self.open()
+        target = await self.create("Delete this")
+        other = await self.create("Keep this")
+        stopped = asyncio.Event()
+        async def controlled():
+            try:
+                await asyncio.Event().wait()
+            finally:
+                stopped.set()
+        own = asyncio.create_task(controlled())
+        unrelated = asyncio.create_task(asyncio.Event().wait())
+        self.server.active_turns.update(target_turn=own, other_turn=unrelated)
+        self.server.active_turn_threads.update(target_turn=target, other_turn=other)
+        await asyncio.sleep(0)
+        try:
+            result = await self.request("thread.delete", {"cancel_tasks":True}, target)
+            self.assertEqual(result["type"], "thread.deleted")
+            self.assertTrue(stopped.is_set())
+            self.assertFalse(unrelated.done())
+            self.assertIsNotNone(self.server.projects.active.state.get_thread(other))
+        finally:
+            unrelated.cancel()
+            await asyncio.gather(own, unrelated, return_exceptions=True)
+            self.server.active_turns.clear()
+            self.server.active_turn_threads.clear()
+
+    async def test_delete_retry_is_idempotent(self):
+        await self.open()
+        thread_id = await self.create()
+        for _ in range(2):
+            result = await self.request("thread.delete", {"cancel_tasks":True}, thread_id)
+            self.assertEqual(result["type"], "thread.deleted")
+            self.assertEqual(result["payload"]["threads"], [])
+
+    async def test_running_task_without_local_owner_retains_conversation(self):
+        await self.open()
+        thread_id = await self.create()
+        runtime = self.server.store.task_runtime
+        task = runtime.create(thread_id, "Owned by another process", {}, str(self.project_path))
+        task["status"] = "executing"
+        runtime.save(task)
+        result = await self.request("thread.delete", {"cancel_tasks":True}, thread_id)
+        self.assertEqual(result["payload"]["code"], "THREAD_STOP_INCOMPLETE")
+        self.assertIn("original instance", result["payload"]["message"])
+        self.assertEqual(runtime.get(task["id"])["status"], "executing")
+        self.assertIsNotNone(self.server.projects.active.state.get_thread(thread_id))
+
+    async def test_new_turn_started_during_shutdown_prevents_deletion(self):
+        await self.open()
+        thread_id = await self.create()
+        async def restart_during_cleanup():
+            try:
+                await asyncio.Event().wait()
+            finally:
+                self.server.active_turns["new"] = asyncio.create_task(asyncio.Event().wait())
+                self.server.active_turn_threads["new"] = thread_id
+        original = asyncio.create_task(restart_during_cleanup())
+        self.server.active_turns["old"] = original
+        self.server.active_turn_threads["old"] = thread_id
+        await asyncio.sleep(0)
+        try:
+            result = await self.request("thread.delete", {"cancel_tasks":True}, thread_id)
+            self.assertEqual(result["payload"]["code"], "THREAD_STOP_INCOMPLETE")
+            self.assertIsNotNone(self.server.projects.active.state.get_thread(thread_id))
+            self.assertFalse(self.server.active_turns["new"].done())
+        finally:
+            for running in self.server.active_turns.values():
+                running.cancel()
+            await asyncio.gather(*self.server.active_turns.values(), return_exceptions=True)
+            self.server.active_turns.clear()
+            self.server.active_turn_threads.clear()

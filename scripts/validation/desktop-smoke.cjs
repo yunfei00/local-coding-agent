@@ -818,6 +818,32 @@ async function main() {
     otherSession = await page.evaluate(() => window.localAgent.getProject());
     assert.equal(otherSession.payload.threads.length, 1);
     const newId = otherSession.payload.active_thread.id;
+
+    // Reproduce the common failed-delete case: a persisted paused task, with
+    // zero API budget. This is an actual TaskService path, not a fabricated row.
+    const deletionProject = path.join(data,"ui-created-project");
+    fs.writeFileSync(path.join(deletionProject,"README.md"),"# Conversation deletion fixture\n");
+    for (const args of [["config","user.name","Smoke"],["config","user.email","smoke@example.test"],["add","."],["commit","-qm","owned deletion fixture"]]) execFileSync("git",args,{cwd:deletionProject});
+    const beforeDeleteRequests = modelRequests.length;
+    const pauseReply = await page.evaluate(async ({thread,profile}) => {
+      const config = structuredClone((await window.localAgent.taskRequest(thread,"task.settings.get")).payload.config);
+      config.strategy = "single-agent";
+      config.roles.executor = {model_profile_id:profile};
+      config.budget.api_calls = 0;
+      config.verification_commands = ["git diff --check"];
+      return window.localAgent.taskRequest(thread,"task.start",{goal:"Persist a paused task for conversation deletion regression",config});
+    },{thread:newId,profile:profileIds["api-reviewer"]});
+    const pausedDeleteTaskId = pauseReply.payload.task.id;
+    await page.getByRole("button",{name:"Allow once",exact:true}).click();
+    let pausedDeleteTask;
+    for (let attempt=0;attempt<100;attempt++) {
+      pausedDeleteTask = (await page.evaluate(thread => window.localAgent.taskRequest(thread,"task.list"),newId)).payload.tasks.find(t=>t.id===pausedDeleteTaskId);
+      if (pausedDeleteTask?.status==="paused") break;
+      await new Promise(resolve=>setTimeout(resolve,100));
+    }
+    assert.equal(pausedDeleteTask.status,"paused");
+    assert.equal(pausedDeleteTask.usage.api_calls,0);
+    assert.equal(modelRequests.length,beforeDeleteRequests);
     assert.equal((await page.evaluate(() => window.localAgent.listProjects())).payload.projects.find(p => p.name === "calculator-project").thread_count, currentCount);
     await application.close();
     page = await launch();
@@ -833,6 +859,12 @@ async function main() {
     await deleteDialog.getByRole("button",{name:"Delete conversation",exact:true}).click();
     await deleteDialog.waitFor({state:"hidden"});
     assert.equal((await page.evaluate(() => window.localAgent.getProject())).payload.threads.length, 0);
+    const cancelledDeleteStatus = execFileSync("uv",["run","--no-project","python","-c",
+      "import sqlite3,json,sys; c=sqlite3.connect(sys.argv[1]); r=c.execute('SELECT data_json FROM autonomous_tasks WHERE plan_id=?',(sys.argv[2],)).fetchone(); print(json.loads(r[0])['status']); c.close()",
+      path.join(data,"agent","local-coding-agent.sqlite3"),pausedDeleteTaskId],{cwd:root,encoding:"utf8"}).trim();
+    assert.equal(cancelledDeleteStatus,"cancelled");
+    assert.equal(modelRequests.length,beforeDeleteRequests);
+    checks.push("Confirmed deletion cancels an actual persisted paused task with zero additional model requests and retained task audit");
     assert(fs.existsSync(path.join(data,"ui-created-project",".git")));
     await application.close();
     page = await launch();

@@ -373,6 +373,10 @@ class SQLiteStore:
                 SELECT id FROM threads WHERE project_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1
             ) WHERE id = ? AND active_thread_id = ?""", (project_id, project_id, thread_id))
 
+    def thread_is_deleted(self, project_id: str, thread_id: str) -> bool:
+        row = self.connection.execute("SELECT deleted_at FROM threads WHERE project_id=? AND id=?", (project_id, thread_id)).fetchone()
+        return bool(row and row[0] is not None)
+
     def append_message(
         self,
         *,

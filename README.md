@@ -49,7 +49,7 @@ Task 启动预算检查也已补充具体任务/全局字段、限额、已用/�
 
 ## 当前能力
 
-桌面正文/输入框 16px、常规界面 14px、辅助文字 12px。当前源码统一深浅配色、Windows 单行标题栏，并按最近更新时间排列项目。Projects 右侧 `+` 添加已有目录或创建项目，各项目右侧 `+` 新建会话；会话 `…` 或右键 → Rename，居中弹框改名。Settings 在左下角，Plan/Diagnostics 等收进顶部 More。详见 [桌面交互更新](docs/v0.4/desktop-usability.md)。
+桌面正文/输入框 16px、常规界面 14px、辅助文字 12px。当前源码采用参考截图的深浅配色、Windows 单行标题栏，并按最近更新时间排列项目。Projects 右侧文件夹图标添加目录或创建项目，各项目右侧写入图标打开草稿，首次发送内容才保存会话；会话 `…` 或右键支持 Rename、Delete，确认删除会先停止该会话的未完成任务，保留项目文件和任务审计。Settings 在左下角，Plan/Diagnostics 等收进顶部 More。详见 [桌面交互更新](docs/v0.4/desktop-usability.md)、[删除补查](docs/validation/conversation-lifecycle-2026-10-27.md)和[真实阿里模型工程验收](docs/validation/alibaba-repository-acceptance-2026-10-27.md)。
 
 v0.2.0 已经完成可用的单 Agent 本地开发闭环：
 

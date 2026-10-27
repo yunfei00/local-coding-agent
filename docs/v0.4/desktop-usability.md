@@ -20,14 +20,14 @@
 
 ## 新建项目
 
-1. 点击侧栏 Projects 右侧 `+` → Create new project，填写 Project name；Add existing folder 用于添加已有目录。
+1. 点击侧栏 Projects 右侧文件夹图标 → Create new project，填写 Project name；Add existing folder 用于添加已有目录。
 2. Location 默认为 Windows 文档目录，Choose… 打开原生目录选择器以选择父目录。
 3. Initialize Git repository 默认勾选，可取消。
 4. Create project 创建独立新文件夹，通过原有项目注册和打开流程进入新会话。
 
 项目名遵循 Windows 文件名规则，不允许路径穿越、绝对路径或保留设备名称。父目录必须已经存在，同名文件或目录一律拒绝，不复用、不覆盖。取消弹框不会创建目录；运行中的任务会在后端阻止新建。
 
-Git 初始化使用现有 Git 工具，只创建空仓库，不创建提交，不推送。Git 不可用时保留目录、打开项目并给出警告。自主任务使用受管理 Worktree 前仍需用户准备初始提交。已有工程使用 Projects `+` → Add existing folder。
+Git 初始化使用现有 Git 工具，只创建空仓库，不创建提交，不推送。Git 不可用时保留目录、打开项目并给出警告。自主任务使用受管理 Worktree 前仍需用户准备初始提交。已有工程使用 Projects 文件夹图标 → Add existing folder。
 
 ## 历史 v0.4.1 实现与验证
 

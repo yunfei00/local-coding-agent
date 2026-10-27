@@ -1464,7 +1464,7 @@ ipcMain.handle("agent:thread-rename", async (_event, threadId: string, title: st
   return sendRequest("thread.rename", "thread.updated", { title, project_id:projectId }, { threadId });
 });
 ipcMain.handle("agent:thread-delete", async (_event, threadId:string, projectId:string) =>
-  sendRequest("thread.delete", "thread.deleted", {project_id:projectId}, {threadId}));
+  sendRequest("thread.delete", "thread.deleted", {project_id:projectId, cancel_tasks:true}, {threadId}, 60_000));
 ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
   return sendRequest(
     "thread.get",

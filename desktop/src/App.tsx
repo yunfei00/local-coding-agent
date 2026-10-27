@@ -1116,14 +1116,23 @@ function App() {
     const target = deletingThread;
     setDeletingBusy(true); setDeleteError("");
     try {
+      if (typeof window.localAgent.deleteThread !== "function") {
+        throw new Error("删除接口尚未加载。请完整退出并重新启动更新后的桌面程序；仅刷新页面不会更新后台和预加载进程。模型配置会保留。");
+      }
       const event = await window.localAgent.deleteThread(target.thread.id, target.projectId);
       setThreads(current => current.filter(thread => thread.id !== target.thread.id));
       setProjectThreadCache(cache => ({...cache, [target.projectId]:(cache[target.projectId] ?? []).filter(thread => thread.id !== target.thread.id)}));
       inputDrafts.current.delete(target.projectId + ":" + target.thread.id);
       if (workspace?.id === target.projectId && activeThread?.id === target.thread.id) applyProjectSession(event);
-      setProjects(readProjectList(await window.localAgent.listProjects()));
       setDeletingThread(null);
-    } catch (cause) {setDeleteError(String(cause));}
+      try {setProjects(readProjectList(await window.localAgent.listProjects()));}
+      catch {setUiError("会话已删除，项目列表刷新失败。重新打开项目列表可恢复显示。");}
+    } catch (cause) {
+      const message = String(cause);
+      setDeleteError(/No handler registered|UNKNOWN_MESSAGE_TYPE|Unsupported message type: thread.delete/.test(message)
+        ? "当前桌面进程或后台尚未加载删除接口。请完整退出本应用，重新构建并启动更新后的源码版本；无需重填模型配置。"
+        : message);
+    }
     finally {setDeletingBusy(false);}
   };
 
@@ -1704,7 +1713,7 @@ function App() {
         requestAnimationFrame(() => trigger.focus());
       }} /> : null}
       {deletingThread ? <Modal title="Delete conversation?" busy={deletingBusy} onClose={() => setDeletingThread(null)}>
-        <p className="modal-description">Delete “{deletingThread.thread.title}” from the conversation list? Project files, Worktrees and task audit records are retained. Unfinished tasks must be cancelled first.</p>
+        <p className="modal-description">Delete “{deletingThread.thread.title}”? This stops unfinished tasks in this conversation and removes it from the list. Project files, Worktrees, checkpoints and usage audit records are retained.</p>
         {deleteError ? <div role="alert" className="error-banner">{deleteError}</div> : null}
         <div className="modal-actions">
           <button type="button" disabled={deletingBusy} onClick={() => setDeletingThread(null)}>Cancel</button>

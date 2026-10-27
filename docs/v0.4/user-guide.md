@@ -4,7 +4,7 @@
 
 ## 项目和会话
 
-侧栏 Projects 右侧文件夹图标 → Create new project 打开居中弹框，填写项目名称并用 Choose… 选择父目录，默认位置为 Windows 文档目录。Create project 创建新文件夹并打开；默认初始化空 Git 仓库，不自动提交或发布。已有同名文件夹不会被覆盖，使用同一菜单的 Add existing folder 打开。各项目右侧写入图标打开空草稿，首次发送内容才保存会话；右键会话支持 Rename、Delete。删除保留代码和任务审计记录，未结束任务需要先取消。自主 Worktree 任务需要先在项目中准备文件和初始提交。
+侧栏 Projects 右侧文件夹图标 → Create new project 打开居中弹框，填写项目名称并用 Choose… 选择父目录，默认位置为 Windows 文档目录。Create project 创建新文件夹并打开；默认初始化空 Git 仓库，不自动提交或发布。已有同名文件夹不会被覆盖，使用同一菜单的 Add existing folder 打开。各项目右侧写入图标打开空草稿，首次发送内容才保存会话；右键会话支持 Rename、Delete。确认删除会先停止该会话的未完成任务，保留代码、Worktree、检查点和用量审计；停止未完成时保留会话并提示原因。自主 Worktree 任务需要先在项目中准备文件和初始提交。
 
 会话右侧悬停显示 `…`，或右键会话 → Rename，在居中弹框中修改名称。Enter 保存、Escape 取消；修改其他项目的会话名不会切换当前项目。正文和聊天输入为 16px，常规控件为 14px。完整说明见 [桌面交互更新](desktop-usability.md)。
 
@@ -18,7 +18,7 @@ API Key 用密码框和 Save / clear connection key 保存，随后保存模型�
 
 Local-only 保证自主任务不发送 API 请求；绑定冲突会在请求前报错。API-only 需绑定相应 API 模型，所有调用均计入预算。公司 LAN Ollama 按 Ollama 类型视为本地服务。
 
-普通聊天使用 Settings → Provider 的服务和输入框底部 Chat model，不使用 Task 的四角色绑定。v0.4.2 起发送会携带当前可见的模型并同步保存到会话；旧会话模型不在当前服务列表时显示 unavailable，需重新选择。无需删除历史、清空配置或重新填写 API Key。排查细节见 [聊天模型同步修复](chat-model-sync.md)。
+普通聊天使用输入框底部 Chat model，不使用 Task 的四角色绑定。当前源码从保存的模型目录选择具体连接和 Profile，跨 Provider 不依赖旧活动 Provider；旧配置仍有兼容路径。发送会携带当前可见模型并同步保存到会话；已删除的历史 Profile 会明确显示不可用并阻止发送。无需删除历史、清空配置或重新填写 API Key。v0.4.2 的历史排查见 [聊天模型同步修复](chat-model-sync.md)。
 
 ## 开始任务与恢复
 

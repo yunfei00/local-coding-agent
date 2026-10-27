@@ -85,6 +85,30 @@ class TaskService:
                 "calls": self.runtime.calls(task["id"]), "plan": self.runtime.plans.get(task["id"]),
                 "checkpoint": self.runtime.plans.latest_checkpoint(task["id"])}
 
+    async def interrupt(self, plan_id: str, target: str, reason="User requested"):
+        """Shared stop path for task controls and confirmed conversation deletion."""
+        if target not in {"paused", "cancelled"}:
+            raise ValueError("Invalid stop target")
+        task = self.runtime.get(plan_id)
+        turn_id = self.running.get(plan_id)
+        running = self.server.active_turns.get(turn_id)
+        if running and not running.done():
+            self.stop_reasons[plan_id] = target
+            self.server.approvals.cancel_turn(turn_id)
+            running.cancel()
+            try:
+                await asyncio.wait_for(asyncio.shield(asyncio.gather(running, return_exceptions=True)), 45)
+            except TimeoutError as exc:
+                raise ValueError("Task shutdown is not complete; conversation retained. Retry after its processes stop.") from exc
+            if self.runtime.get(plan_id)["status"] != target:
+                self.runtime.transition(plan_id, target, reason)
+            self.stop_reasons.pop(plan_id, None)
+            self.running.pop(plan_id, None)
+        else:
+            task["last_error"] = {"code":"TASK_PAUSED" if target == "paused" else "TASK_CANCELLED"}
+            self.runtime.save(task)
+            self.runtime.transition(plan_id, target, reason)
+
     async def handle(self, ws, data: dict, owned_turns: set):
         kind, payload = data["type"], data.get("payload", {})
         request_id = data.get("request_id")
@@ -220,22 +244,7 @@ class TaskService:
                         raise ValueError("Task belongs to another thread")
                     plan_id = task["id"]
                     if kind in {"task.pause", "task.cancel"}:
-                        turn_id = self.running.get(plan_id)
-                        running = self.server.active_turns.get(turn_id)
-                        if running and not running.done():
-                            self.stop_reasons[plan_id] = "paused" if kind == "task.pause" else "cancelled"
-                            self.server.approvals.cancel_turn(turn_id)
-                            running.cancel()
-                            await asyncio.gather(running, return_exceptions=True)
-                            target = "paused" if kind == "task.pause" else "cancelled"
-                            if self.runtime.get(plan_id)["status"] != target:
-                                self.runtime.transition(plan_id, target, "User requested")
-                            self.stop_reasons.pop(plan_id, None)
-                            self.running.pop(plan_id, None)
-                        else:
-                            task["last_error"] = {"code":"TASK_PAUSED" if kind == "task.pause" else "TASK_CANCELLED"}
-                            self.runtime.save(task)
-                            self.runtime.transition(plan_id, "paused" if kind == "task.pause" else "cancelled", "User requested")
+                        await self.interrupt(plan_id, "paused" if kind == "task.pause" else "cancelled")
                     elif kind == "task.resume":
                         if payload.get("local_only") is True and task["config"]["strategy"] == "single-agent":
                             raise ValueError("Single Agent requires an online Executor; explicitly configure another strategy to switch modes")
@@ -332,7 +341,8 @@ class TaskService:
         owned_turns.add(turn_id)
         running = asyncio.create_task(self.run(ws, task["id"], project, turn_id), name=turn_id)
         self.server.active_turns[turn_id] = running
-        running.add_done_callback(lambda _: self.server.active_turns.pop(turn_id, None))
+        self.server.active_turn_threads[turn_id] = task["thread_id"]
+        running.add_done_callback(lambda _: self.server.forget_turn(turn_id))
 
     async def workspace_fingerprint(self, project):
         # Track all nonignored files, including untracked files missing from Git diff.
