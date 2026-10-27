@@ -25,6 +25,7 @@ from agent.core.agent_loop import (
     compact_tool_payload,
 )
 from agent.core.context import ContextBudgetManager
+from agent.core.repository_instructions import RepositoryInstructions
 from agent.core.execution import failure_diagnosis
 from agent.core.explicit_context import (
     context_blocks_for_files,
@@ -2051,6 +2052,13 @@ class AgentServer:
                 active_step_id = first_step["id"]
 
         history = state.get_messages(thread_id)
+        instructions = RepositoryInstructions(workspace)
+        try:
+            instructions.discover()
+        except ProviderError as exc:
+            await ws.send_json(envelope('turn.failed', {'code': exc.code, 'message': exc.message,
+                'recoverable': True}, thread_id=thread_id, turn_id=turn_id))
+            return
         context_manager = ContextBudgetManager(
             context_window_tokens=provider.context_window,
             reserved_output_tokens=self.context_reserved_output_tokens,
@@ -2133,6 +2141,9 @@ class AgentServer:
             context_blocks=context_blocks,
         )
         messages: list[dict[str, Any]] = initial_context.messages
+        # Keep required instructions separate from optional repository/file
+        # excerpts. Reconstruct the suffix per request; never accumulate copies.
+        instruction_suffix = '\n\n' + instructions.render() if instructions.sources else ''
         context_usage = initial_context.usage
         context_source_tokens = dict(context_usage.context_sources)
         self.last_context_usage = context_usage.to_dict()
@@ -2154,6 +2165,9 @@ class AgentServer:
         previous_checkpoint = self.store.task_plans.latest_checkpoint(active_plan["id"]) if active_plan else None
         from agent.core.execution import ExecutionBudget
         execution = ExecutionBudget(self.store.connection, active_plan['id'] if active_plan else turn_id, thread_id, self.continuation_policy)
+        execution.data['repository_instructions'] = [
+            {'path': path, 'sha256': digest} for path, (digest, _) in instructions.sources.items()]
+        execution.save()
         deadline = perf_counter() + max(.01, execution.data['limits']['seconds'] - execution.data['elapsed'])
 
         try:
@@ -2209,10 +2223,12 @@ class AgentServer:
                             await ws.send_json(envelope('vision.observed', {**observer.chat_identity, **tools.desktop.image_metadata.get(turn_id,{}), 'vision_profile_id':observer.chat_identity.get('vision_profile_id') or observer.chat_identity['chat_profile_id'], 'image_attached':True, 'attachment_transport':'jpeg_multimodal', 'tools_allowed':False},thread_id=thread_id,turn_id=turn_id))
                             capture = None
                         from agent.core.execution import execution_observation
-                        runtime_observation = (execution_observation(guard,tools.processes,turn_id,single_agent=single_agent)
-                            if single_agent or plan_id else None)
+                        memory = execution.memory_snapshot(max_chars=max(256, min(6000, provider.context_window // 4)))
+                        runtime_observation = (execution_observation(guard,tools.processes,turn_id,
+                            single_agent=single_agent, memory=memory)
+                            if single_agent or plan_id or memory else None)
                         request_messages = [dict(m) for m in messages] + ([capture] if capture else [])
-                        runtime_suffix = '\n\n' + runtime_observation['content'] if runtime_observation else ''
+                        runtime_suffix = instruction_suffix + ('\n\n' + runtime_observation['content'] if runtime_observation else '')
                         if plan_id and not single_agent and active_plan:
                             current_step = self.store.task_plans.active_step(active_plan['id'])
                             if current_step:
@@ -2225,6 +2241,11 @@ class AgentServer:
                         request_messages[0]['content'] += runtime_suffix
                         await ws.send_json(envelope('model.identity', {**getattr(provider,'chat_identity',{}), **(tools.desktop.image_metadata.get(turn_id,{}) if capture else {}), 'executor_profile_id':getattr(provider,'profile',{}).get('model_profile_id') if plan_id else None, 'image_attached':bool(capture), 'vision_profile_id':getattr(observer,'chat_identity',{}).get('chat_profile_id'), 'model_id':model, 'attachment_state':'queued' if capture else 'none'}, thread_id=thread_id,turn_id=turn_id))
                         schemas = tools.schemas(self.permissions.visible_tools(tools.names, tools.permission_metadata_map()), desktop_owner_id=turn_id)
+                        if getattr(provider, 'route', None) != 'api' and runtime_suffix:
+                            # Local providers need the same protection for the
+                            # required instruction and live-memory suffix.
+                            request_messages = context_manager.fit_runtime(request_messages,
+                                history_messages_total=len(history)).messages
                         if getattr(provider,'route',None) == 'api':
                             fitted_request = context_manager.fit_request(request_messages,tools=schemas,
                                 output_limit=getattr(provider,'max_output_tokens',None) or self.context_reserved_output_tokens,
@@ -2349,6 +2370,19 @@ class AgentServer:
                 if not assistant_text.strip() and not tool_calls:
                     raise ProviderError("MODEL_EMPTY_RESPONSE", "Model returned no text or tool calls; completion was not accepted")
 
+                if tool_calls and instructions.discover(instructions.tool_paths(tool_calls)):
+                    instruction_suffix = '\n\n' + instructions.render()
+                    execution.data['repository_instructions'] = [
+                        {'path': path, 'sha256': digest} for path, (digest, _) in instructions.sources.items()]
+                    execution.save()
+                    # The entire proposed batch is regenerated after the model
+                    # sees newly applicable rules. No mutation or orphan tool
+                    # result is created for calls that have not been executed.
+                    await ws.send_json(envelope('turn.status', {'phase': 'repository_instructions',
+                        'message': '已加载目标目录的 AGENTS 指令；本批工具尚未执行，模型将按指令重新决策。',
+                        'sources': list(instructions.sources)}, thread_id=thread_id, turn_id=turn_id))
+                    continue
+
                 if not tool_calls:
                     if unresolved_tool_failures:
                         raise ProviderError('PLAN_TOOLS_UNRESOLVED', '仍有工具失败尚无同类成功复测证据；不能宣告验收完成。查看 Plan 的最近工具记录。')
@@ -2401,7 +2435,10 @@ class AgentServer:
                             plan_tool_evidence.clear()
                             plan_commands_run.clear()
                             messages.append({"role": "assistant", "content": assistant_text})
-                            messages.append({"role": "user", "content": (
+                            # Advancing a runtime plan is not a new user goal.
+                            # Keeping it out of the user role lets context fitting
+                            # retain the actual request and its constraints.
+                            messages.append({"role": "system", "content": (
                                 "Continue the persistent plan with the next step only: "
                                 + next_step["description"]
                                 + ". Verification: " + next_step["verification"]
@@ -2643,6 +2680,8 @@ class AgentServer:
                     # running. Persist blocked only when execution actually stops;
                     # otherwise a real fail -> fix -> retest could never recover.
                     guard.record_result(call.name, payload)
+                    execution.remember_tool(call.name, call.arguments, payload, workspace,
+                                            exact_secrets=self._exact_secrets())
                     if payload.get('ok'):
                         unresolved_tool_failures.discard(call.name)
                     elif (call.name in {'run_command','desktop_wait'} or fingerprint or

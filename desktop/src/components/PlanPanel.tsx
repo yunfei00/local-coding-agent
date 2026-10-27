@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import {RecentExecutions} from "./RecentExecutions";
+import {AgentContextEvidence, type WorkingMemory} from "./AgentContextEvidence";
 
 type Step = { id: string; description: string; state: string; verification?: string; evidence?: Array<Record<string, unknown>>;
   recovery?: {category?:string; summary?:string; action?:string};
   executions?: Array<{call_id: string; tool: string; status: string; exit_code?: number | null; metadata?:{duration_ms?:number;error_code?:string;diagnosis?:{category:string;summary:string;action:string}}}> };
-type Plan = { id: string; goal: string; steps: Step[]; execution?: {calls:number;continuations:number;reserved_tokens:number;elapsed:number;status:string;last_error?:string;limits:{model_calls:number;tokens:number;seconds:number;max_continuations:number}} };
+type Plan = { id: string; goal: string; steps: Step[]; execution?: {calls:number;continuations:number;reserved_tokens:number;elapsed:number;status:string;last_error?:string;working_memory?:WorkingMemory;repository_instructions?:Array<{path:string;sha256:string}>;limits:{model_calls:number;tokens:number;seconds:number;max_continuations:number}} };
 export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: () => void }) {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [goal, setGoal] = useState("");
@@ -71,6 +72,7 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
         <h3>{plan.goal}</h3>
         {plan.execution ? <p>累计模型调用 {plan.execution.calls}/{plan.execution.limits.model_calls} · 续跑 {plan.execution.continuations}/{plan.execution.limits.max_continuations} · Token 保守预留 {plan.execution.reserved_tokens}/{plan.execution.limits.tokens}</p> : null}
         {plan.execution ? <p>活动执行 {plan.execution.elapsed.toFixed(1)}/{plan.execution.limits.seconds} 秒 · {plan.execution.status} {plan.execution.last_error ?? ""}</p> : null}
+        <AgentContextEvidence memory={plan.execution?.working_memory} instructions={plan.execution?.repository_instructions}/>
         <RecentExecutions calls={plan.steps.flatMap(s => s.executions ?? [])} />
         <div className="context-pin-input">
           <button type="button" disabled={busy} onClick={() => void request("plan.checkpoint", {plan_id: plan.id})}>Checkpoint</button>

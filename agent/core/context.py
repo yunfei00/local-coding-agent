@@ -253,6 +253,14 @@ class ContextBudgetManager:
                 context_sources=context_sources,
             )
 
+        # Permissions, repository rules and the current user request are hard
+        # anchors. Never silently shorten them to make an impossible request.
+        anchors = self._message_tokens(system_message) + self._message_tokens(messages[latest_user_index])
+        if anchors > self.input_budget_tokens:
+            raise ProviderError('MODEL_CONTEXT_LIMIT',
+                'Required instructions and the current request cannot fit the configured model context. '
+                'No request sent. Shorten the request/instructions or choose an appropriate saved context window.')
+
         history = [dict(item) for item in messages[1:latest_user_index]]
         current_turn = [dict(item) for item in messages[latest_user_index:]]
 

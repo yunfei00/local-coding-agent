@@ -1,5 +1,7 @@
 # 公司环境验证流程
 
+2026-10-28 增加[仓库指令与执行记忆验证](../validation/basic-agent-gap-2026-10-28.md)：提供既有 calculator fixture 的真实 API 命令，临时副本包含根/测试两份指令；自动核对来源、文件 Diff、原测试及独立 unittest，不需要自行编写测试工程。真实 Qwen 已通过，完整裁剪/重启专项不冒充真实模型长任务验收。
+
 2026-10-27 的会话草稿/删除补查见[会话生命周期](../validation/conversation-lifecycle-2026-10-27.md)，真实阿里模型修改产品仓库和独立测试结果见[真实仓库验收](../validation/alibaba-repository-acceptance-2026-10-27.md)。PR #23 已合并。
 
 后续窗口行/聊天工具栏拆分见[窗口布局](../validation/window-chat-header-2026-10-27.md)，DeepSeek 工具参数报错补查和真实空项目 Tkinter 验收见[工具 JSON 与计算器](../validation/tool-json-tkinter-2026-10-27.md)。后续功能分支为 `codex/titlebar-chat-toolbar`，已合并时更新 main，合并前可使用该功能分支源码；不要用旧安装包判断源码修复。真实 DeepSeek 完整复验有 HTTP 403 限制，不能把 Qwen 的完整 PASS 说成 DeepSeek PASS。
