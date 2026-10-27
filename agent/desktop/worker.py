@@ -360,12 +360,20 @@ def focus(binding, control=None):
         window.set_focus()
     if control is not None:
         control.set_focus()
-    for _ in range(15):
+    # Activation can complete after the UIA focus request (new/moved WPF
+    # windows). Retry only the ordinary Windows request for this same validated
+    # binding; do not synthesize keys or change foreground-lock policy.
+    for attempt in range(15):
         active=gui.GetForegroundWindow()
         if active and gui.IsWindow(active) and gui.GetAncestor(active,2)==hwnd:
             return
         check(binding)
-        time.sleep(.02)
+        if attempt in (4, 9):
+            try:
+                gui.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+        time.sleep(.1)
     fail('DESKTOP_FOCUS_FAILED', 'Windows did not grant focus; no input was sent')
 
 
