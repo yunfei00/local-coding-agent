@@ -7,6 +7,7 @@ import os
 import platform
 import re
 import secrets
+import sqlite3
 import sys
 from time import perf_counter
 from collections import deque
@@ -1115,7 +1116,10 @@ class AgentServer:
             return
 
         if message_type == "project.get":
-            project = self.projects.active
+            project = self.projects.get(str(payload.get("project_id") or "")) if "project_id" in payload else self.projects.active
+            if "project_id" in payload and not project:
+                await self.send_error(ws, "PROJECT_NOT_FOUND", "Project is not in the project list.", request_id=request_id)
+                return
             await ws.send_json(
                 envelope(
                     "project.loaded",
@@ -1132,6 +1136,38 @@ class AgentServer:
                     request_id=request_id,
                 )
             )
+            return
+
+        if message_type == "project.remove":
+            project_id = str(payload.get("project_id") or "")
+            was_active = self.projects.active_project_id == project_id
+            project = self.projects.get(project_id)
+            if not project and not self.projects.is_removed(project_id):
+                await self.send_error(ws, "PROJECT_NOT_FOUND", "Select a valid project.", request_id=request_id)
+                return
+            if project:
+                from agent.core.task_runtime import ACTIVE
+                thread_ids = {str(row[0]) for row in self.store.connection.execute("SELECT id FROM threads WHERE project_id=?", (project_id,))}
+                active = [(turn, self.active_turn_threads.get(turn)) for turn, running in self.active_turns.items() if not running.done()]
+                tasks = [task for thread in thread_ids for task in self.store.task_runtime.list(thread)]
+                cleanup_failed = any(task.get("cleanup_error") for task in tasks) or any(self.store.get_setting("thread.cleanup_error:" + thread) for thread in thread_ids)
+                if cleanup_failed:
+                    await self.send_error(ws, "PROJECT_STOP_INCOMPLETE", "该项目有未确认的进程清理失败。请检查任务诊断，确认进程已停止后再移出；项目已保留。", request_id=request_id)
+                    return
+                if any(task.get("status") in ACTIVE for task in tasks) or any(owner in thread_ids or owner is None for _, owner in active) or (active and self.projects.active_project_id == project_id):
+                    await self.send_error(ws, "PROJECT_BUSY", "该项目仍有正在执行的任务或会话。请先停止执行，再移出项目；文件和执行记录均保留。", request_id=request_id)
+                    return
+                try:
+                    self.projects.remove(project_id)
+                except (sqlite3.Error, OSError):
+                    await self.send_error(ws, "PROJECT_REMOVE_FAILED", "无法保存项目列表变更，请确认应用数据目录可写后重试。项目已保留。", request_id=request_id)
+                    return
+            current = self.projects.active
+            if current:
+                current.workspace.set_full_access(self.permissions.mode == PermissionMode.FULL_ACCESS)
+                self.mcp_runtime.apply_to_project(current)
+            result = self.projects.project_payload(current) if current else {"project":None, "threads":[], "active_thread":None, "messages":[]}
+            await ws.send_json(envelope("project.removed", {**result, "removed_project_id":project_id, "active_changed":was_active, "projects":self.projects.list_payload()}, request_id=request_id))
             return
 
         if message_type == "model.list":

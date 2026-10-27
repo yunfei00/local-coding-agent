@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld("localAgent", {
   platform: process.platform,
   setWindowTheme: (theme: "light" | "dark") => ipcRenderer.invoke("window:theme", theme),
   menuAction: (action: string) => ipcRenderer.invoke("window:menu-action", action),
-  openProjectFolder: () => ipcRenderer.invoke("agent:project-folder"),
+  openProjectFolder: (projectId?:string) => ipcRenderer.invoke(projectId === undefined ? "agent:project-folder" : "agent:project-folder-by-id", projectId),
   previewScreenshot: (path: string) => ipcRenderer.invoke("agent:screenshot-preview", path),
   copyText: (text: string) => ipcRenderer.invoke("clipboard:copy-text", text),
   notifyRendererReady: () => ipcRenderer.send("renderer:ready"),
@@ -125,6 +125,7 @@ contextBridge.exposeInMainWorld("localAgent", {
   createProject: (options: {name:string; parent_path:string; initialize_git:boolean; model?:string}) => ipcRenderer.invoke("agent:project-create", options),
   getProject: () => ipcRenderer.invoke("agent:project-get"),
   listProjects: () => ipcRenderer.invoke("agent:project-list"),
+  removeProject: (projectId:string) => ipcRenderer.invoke("agent:project-remove", projectId),
   selectProject: (projectId: string, model?: string) =>
     ipcRenderer.invoke("agent:project-select", projectId, model),
   listModels: () => ipcRenderer.invoke("agent:model-list"),

@@ -15,7 +15,7 @@ declare global {
       platform: string;
       setWindowTheme: (theme: "light" | "dark") => Promise<void>;
       menuAction: (action: string) => Promise<void>;
-      openProjectFolder: () => Promise<void>;
+      openProjectFolder: (projectId?:string) => Promise<void>;
       previewScreenshot: (path: string) => Promise<string>;
       copyText: (text: string) => Promise<{ok: boolean}>;
       notifyRendererReady: () => void;
@@ -187,6 +187,7 @@ declare global {
       createProject: (options: {name:string; parent_path:string; initialize_git:boolean; model?:string}) => Promise<AgentEnvelope>;
       getProject: () => Promise<AgentEnvelope>;
       listProjects: () => Promise<AgentEnvelope>;
+      removeProject: (projectId:string) => Promise<AgentEnvelope>;
       selectProject: (projectId: string, model?: string) => Promise<AgentEnvelope>;
       listModels: () => Promise<AgentEnvelope>;
       selectModel: (threadId: string, model: string) => Promise<AgentEnvelope>;

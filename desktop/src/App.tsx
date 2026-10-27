@@ -229,6 +229,9 @@ function App() {
   const [deletingThread, setDeletingThread] = useState<{projectId:string; thread:ThreadRecord} | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [removingProject, setRemovingProject] = useState<ProjectInfo | null>(null);
+  const [removingBusy, setRemovingBusy] = useState(false);
+  const [removeError, setRemoveError] = useState("");
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>(() => {
     try { const saved: unknown = JSON.parse(localStorage.getItem("lca-expanded-projects") ?? "[]");
@@ -1166,6 +1169,38 @@ function App() {
     finally {setDeletingBusy(false);}
   };
 
+  const removeProject = async () => {
+    if (!removingProject) return;
+    const target = removingProject;
+    setRemovingBusy(true); setRemoveError("");
+    try {
+      if (typeof window.localAgent.removeProject !== "function") throw new Error("移出接口尚未加载，请完整退出并重启更新后的应用；仅刷新页面不够。");
+      const event = await window.localAgent.removeProject(target.id);
+      setProjects(readProjectList(event));
+      setExpandedProjectIds(ids => ids.filter(id => id !== target.id));
+      setProjectThreadCache(cache => {const next = {...cache}; delete next[target.id]; return next;});
+      const history = chatHistory.current;
+      const retainedBeforeCurrent = history.entries.slice(0, history.index + 1).filter(entry => entry.projectId !== target.id).length;
+      history.entries = history.entries.filter(entry => entry.projectId !== target.id);
+      history.index = retainedBeforeCurrent - 1;
+      if (history.target?.projectId === target.id) history.target = null;
+      setHistoryRevision(revision => revision + 1);
+      if (event.payload?.active_changed === true || workspace?.id === target.id) {
+        if (readProjectSession(event)) applyProjectSession(event);
+        else {
+          setWorkspace(null); setActiveThread(null); setThreads([]); setItems([]); setContextUsage(null);
+        }
+        setGitOpen(false); setTaskOpen(false); setPlanOpen(false); setContextOpen(false); setDiagnosticsOpen(false);
+      }
+      setRemovingProject(null);
+      requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer textarea:not(:disabled)")?.focus());
+    } catch (cause) {
+      const message = String(cause);
+      setRemoveError(/No handler registered|UNKNOWN_MESSAGE_TYPE|Unsupported message type: project.remove/.test(message)
+        ? "后台尚未加载移出接口，请完整退出并重启更新后的源码版应用。配置和项目文件会保留。" : message);
+    } finally {setRemovingBusy(false);}
+  };
+
   const loadThread = async (thread: ThreadRecord) => {
     if (runningTurnId || !workspace) {
       return;
@@ -1437,6 +1472,13 @@ function App() {
                   <span className="project-tree-name">{project.name}</span>
                   <span className="project-tree-chevron" aria-hidden="true">{expandedProjectIds.includes(project.id) ? "⌄" : "›"}</span>
                 </button>
+                <ActionMenu label={"项目操作：" + project.name} className="icon-button project-actions" actions={[
+                  {label:"新建会话", disabled:status.state !== "ready" || Boolean(runningTurnId) || historyBusy, onSelect:() => void createThread(project)},
+                  {label:window.localAgent.platform === "win32" ? "在文件资源管理器中打开" : "在文件管理器中打开", disabled:status.state !== "ready", onSelect:() => void window.localAgent.openProjectFolder(project.id).catch(cause => setUiError(String(cause)))},
+                  {label:"复制项目路径", onSelect:() => void window.localAgent.copyText(project.path).catch(cause => setUiError(String(cause)))},
+                  {label:expandedProjectIds.includes(project.id) ? "折叠会话" : "展开会话", onSelect:() => setExpandedProjectIds(ids => ids.includes(project.id) ? ids.filter(id => id !== project.id) : [...ids,project.id])},
+                  {label:"移出项目", danger:true, separatorBefore:true, disabled:status.state !== "ready" || historyBusy || (Boolean(runningTurnId) && workspace?.id === project.id), onSelect:() => {setRemoveError(""); setRemovingProject(project);}}
+                ]}><Icon name="more" /></ActionMenu>
                 <button type="button" className="icon-button project-new-chat" aria-label={"New chat in " + project.name} title="New chat"
                   disabled={status.state !== "ready" || Boolean(runningTurnId)} onClick={() => void createThread(project)}><Icon name="compose" /></button>
                 </div>
@@ -1785,6 +1827,14 @@ function App() {
         setRenamingThread(null);
         requestAnimationFrame(() => trigger.focus());
       }} /> : null}
+      {removingProject ? <Modal title="移出项目？" busy={removingBusy} onClose={() => setRemovingProject(null)}>
+        <p className="modal-description">将“{removingProject.name}”从项目列表移出？磁盘文件、Git Worktree、会话、任务、检查点和用量记录都会保留。重新添加同一路径可恢复。正在执行的项目需先停止。</p>
+        {removeError ? <div role="alert" className="error-banner">{removeError}</div> : null}
+        <div className="modal-actions">
+          <button type="button" disabled={removingBusy} onClick={() => setRemovingProject(null)}>取消</button>
+          <button type="button" className="delete-conversation" disabled={removingBusy} onClick={() => void removeProject()}>{removingBusy ? "正在移出…" : "移出项目"}</button>
+        </div>
+      </Modal> : null}
       {deletingThread ? <Modal title="Delete conversation?" busy={deletingBusy} onClose={() => setDeletingThread(null)}>
         <p className="modal-description">Delete “{deletingThread.thread.title}”? This stops unfinished tasks in this conversation and removes it from the list. Project files, Worktrees, checkpoints and usage audit records are retained.</p>
         {deleteError ? <div role="alert" className="error-banner">{deleteError}</div> : null}

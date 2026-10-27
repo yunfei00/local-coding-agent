@@ -1,7 +1,7 @@
-import {ReactNode, useEffect, useId, useRef, useState} from "react";
+import {Fragment, ReactNode, useEffect, useId, useRef, useState} from "react";
 import {createPortal} from "react-dom";
 
-type Action = {label:string; onSelect:() => void; disabled?:boolean};
+type Action = {label:string; onSelect:() => void; disabled?:boolean; danger?:boolean; separatorBefore?:boolean};
 
 /** Anchored menu with keyboard navigation and focus restoration. */
 export function ActionMenu({label, children, actions, disabled = false, className = "", menuBarItem = false}: {
@@ -56,8 +56,11 @@ export function ActionMenu({label, children, actions, disabled = false, classNam
           buttons[next]?.focus();
         }
       }}>
-      {actions.map(action => <button type="button" role="menuitem" key={action.label} disabled={action.disabled}
-        onClick={() => {close(true); action.onSelect();}}>{action.label}</button>)}
+      {actions.map(action => <Fragment key={action.label}>
+        {action.separatorBefore ? <div role="separator" className="action-menu-separator" /> : null}
+        <button type="button" role="menuitem" className={action.danger ? "danger" : undefined} disabled={action.disabled}
+          onClick={() => {close(true); action.onSelect();}}>{action.label}</button>
+      </Fragment>)}
     </div>, document.body) : null}
   </>;
 }

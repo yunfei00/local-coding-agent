@@ -1399,16 +1399,27 @@ ipcMain.handle("window:menu-action", async (_event, action:unknown) => {
     default: throw new Error("Unsupported menu action");
   }
 });
-ipcMain.handle("agent:project-folder", async () => {
-  // Resolve from the active backend workspace, never an arbitrary renderer path.
-  const event = await sendRequest("project.get", "project.loaded");
-  const project = event.payload?.project as {path?:unknown} | undefined;
+async function openRegisteredProjectFolder(projectId?:string) {
+  // Resolve a registered backend project, never an arbitrary renderer path.
+  if (projectId !== undefined && (typeof projectId !== "string" || !projectId)) throw new Error("Invalid project ID");
+  const event = await sendRequest("project.get", "project.loaded", projectId ? {project_id:projectId} : {});
+  const project = event.payload?.project as {id?:unknown; path?:unknown} | undefined;
+  if (projectId && project?.id !== projectId) throw new Error("Project identity mismatch; fully restart the updated app and backend.");
   if (typeof project?.path !== "string" || !path.isAbsolute(project.path)) throw new Error("No active project folder");
   const error = await shell.openPath(project.path);
   if (error) throw new Error(error);
+}
+ipcMain.handle("agent:project-folder", () => openRegisteredProjectFolder());
+ipcMain.handle("agent:project-folder-by-id", (_event, projectId:string) => {
+  if (typeof projectId !== "string" || !projectId) throw new Error("Invalid project ID");
+  return openRegisteredProjectFolder(projectId);
 });
 ipcMain.handle("agent:project-list", async () => {
   return sendRequest("project.list", "project.listed");
+});
+ipcMain.handle("agent:project-remove", async (_event, projectId:string) => {
+  if (typeof projectId !== "string" || !projectId) throw new Error("Invalid project ID");
+  return sendRequest("project.remove", "project.removed", {project_id:projectId});
 });
 ipcMain.handle(
   "agent:project-select",

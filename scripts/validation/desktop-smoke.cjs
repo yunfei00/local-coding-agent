@@ -226,7 +226,8 @@ async function main() {
     assert(await page.locator(".chat-header").evaluate(e => Math.abs(e.getBoundingClientRect().top - document.querySelector(".topbar").getBoundingClientRect().bottom) <= 1));
     assert.equal(await page.locator(".chat-header-actions").getByRole("button",{name:"Open",exact:true}).count(), 1);
     const beforeNavigation = modelRequests.length;
-    await page.getByRole("button",{name:"New chat in calculator-project",exact:true}).click();
+    await page.getByRole("button",{name:"项目操作：calculator-project",exact:true}).click();
+    await page.getByRole("menuitem",{name:"新建会话",exact:true}).click();
     await page.locator(".composer textarea").fill("Unsent navigation draft");
     await page.getByRole("button",{name:"Go back",exact:true}).click();
     await page.locator(".thread-item.active").waitFor();
@@ -922,6 +923,97 @@ async function main() {
     assert.equal(await page.locator(".sidebar").isVisible(),true);
     checks.push("Sidebar collapse survives restart and can be restored from the window row with an empty project and usable composer");
     checks.push("Compose selects the correct project, submitted chat survives restart, right-click Delete supports cancel and persistence without removing project files");
+
+    // Real project menu/registration persistence; no model response is involved.
+    const beforeProjectRequests = modelRequests.length;
+    const projectListBefore = (await page.evaluate(() => window.localAgent.listProjects())).payload.projects;
+    const calculatorBefore = projectListBefore.find(p => p.name === "calculator-project");
+    const activeBefore = (await page.evaluate(() => window.localAgent.getProject())).payload.project.id;
+    const projectRow = page.locator(".project-row").filter({has:page.getByText("calculator-project",{exact:true})});
+    const moreRect = await projectRow.locator(".project-actions").boundingBox();
+    const composeRect = await projectRow.locator(".project-new-chat").boundingBox();
+    assert(moreRect.x + moreRect.width <= composeRect.x);
+    const openCalculatorMenu = async () => page.getByRole("button",{name:"项目操作：calculator-project",exact:true}).click();
+    await openCalculatorMenu();
+    const menuLabels = await page.getByRole("menu",{name:"项目操作：calculator-project",exact:true}).getByRole("menuitem").allTextContents();
+    assert.deepEqual(menuLabels.slice(0,3), ["新建会话",process.platform==="win32" ? "在文件资源管理器中打开" : "在文件管理器中打开","复制项目路径"]);
+    assert.equal(menuLabels.at(-1),"移出项目");
+    assert.equal(await page.getByRole("separator").count(),1);
+    await screenshot("desktop-project-actions.png");
+    await page.keyboard.press("End");
+    assert.equal(await page.evaluate(() => document.activeElement.textContent),"移出项目");
+    await page.keyboard.press("Escape");
+    await openCalculatorMenu();
+    await page.getByRole("menuitem",{name:"复制项目路径",exact:true}).click();
+    assert.equal(fs.realpathSync.native(await application.evaluate(({clipboard})=>clipboard.readText())),fs.realpathSync.native(project));
+    await application.evaluate(({shell})=>{
+      globalThis.projectMenuOriginalOpen = shell.openPath;
+      globalThis.projectMenuOpenWait = new Promise(resolve=>{globalThis.projectMenuOpenResolve=resolve;});
+      shell.openPath=async folder=>{globalThis.projectMenuOpenResolve(folder);return "";};
+    });
+    try {
+      await openCalculatorMenu();
+      await page.getByRole("menuitem",{name:process.platform==="win32" ? "在文件资源管理器中打开" : "在文件管理器中打开",exact:true}).click();
+      assert.equal(fs.realpathSync.native(await application.evaluate(()=>globalThis.projectMenuOpenWait)),fs.realpathSync.native(project));
+      assert.equal((await page.evaluate(()=>window.localAgent.getProject())).payload.project.id,activeBefore);
+    } finally {await application.evaluate(({shell})=>{shell.openPath=globalThis.projectMenuOriginalOpen;});}
+    const wasExpanded = await projectRow.locator(".project-tree-header").getAttribute("aria-expanded") === "true";
+    await openCalculatorMenu();
+    await page.getByRole("menuitem",{name:wasExpanded ? "折叠会话" : "展开会话",exact:true}).click();
+    assert.equal(await projectRow.locator(".project-tree-header").getAttribute("aria-expanded"),String(!wasExpanded));
+    assert.equal((await page.evaluate(()=>window.localAgent.getProject())).payload.project.id,activeBefore);
+    checks.push("Project ellipsis is immediately before compose; keyboard menu, scoped folder open, native path copy and expansion preserve the active project");
+
+    const counts = () => JSON.parse(execFileSync("uv",["run","--no-project","python","-c",
+      "import sqlite3,json,sys; c=sqlite3.connect(sys.argv[1]); p=sys.argv[2]; t=[r[0] for r in c.execute('SELECT id FROM threads WHERE project_id=?',(p,))]; a=[r[0] for r in c.execute('SELECT id FROM task_plans WHERE thread_id IN (SELECT id FROM threads WHERE project_id=?)',(p,))]; n=c.execute('SELECT count(*) FROM model_requests WHERE plan_id IN (SELECT id FROM task_plans WHERE thread_id IN (SELECT id FROM threads WHERE project_id=?))',(p,)).fetchone()[0]; print(json.dumps([len(t),len(a),n])); c.close()",
+      path.join(data,"agent","local-coding-agent.sqlite3"),calculatorBefore.id],{cwd:root,encoding:"utf8"}));
+    const auditBefore = counts();
+    assert(auditBefore[0]>0 && auditBefore[1]>0 && auditBefore[2]>0);
+    const originalCode = fs.readFileSync(path.join(project,"calculator.py"));
+    const worktreesBefore = execFileSync("git",["worktree","list","--porcelain"],{cwd:project,encoding:"utf8"});
+    const confirmRemoval = async name => {
+      await page.getByRole("button",{name:"项目操作："+name,exact:true}).click();
+      await page.getByRole("menuitem",{name:"移出项目",exact:true}).click();
+      return page.getByRole("dialog",{name:"移出项目？",exact:true});
+    };
+    let removeDialog = await confirmRemoval("calculator-project");
+    await removeDialog.getByRole("button",{name:"取消",exact:true}).click();
+    assert.equal((await page.evaluate(()=>window.localAgent.listProjects())).payload.projects.length,2);
+    removeDialog = await confirmRemoval("calculator-project");
+    await removeDialog.getByRole("button",{name:"移出项目",exact:true}).click();
+    await removeDialog.waitFor({state:"hidden"});
+    assert.equal((await page.evaluate(()=>window.localAgent.getProject())).payload.project.id,activeBefore);
+    assert.deepEqual(counts(),auditBefore);
+    assert.deepEqual(fs.readFileSync(path.join(project,"calculator.py")),originalCode);
+    assert.equal(execFileSync("git",["worktree","list","--porcelain"],{cwd:project,encoding:"utf8"}),worktreesBefore);
+    await application.close(); page=await launch();
+    assert.equal(await page.getByRole("button",{name:"项目操作：calculator-project",exact:true}).count(),0);
+    await application.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},project);
+    await page.locator(".projects-heading").getByRole("button",{name:"Add project",exact:true}).click();
+    await page.getByRole("menuitem",{name:"Add existing folder",exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector(".project-tree-header.active")?.textContent.includes("calculator-project"));
+    const reopened = (await page.evaluate(()=>window.localAgent.getProject())).payload;
+    assert.equal(reopened.project.id,calculatorBefore.id);
+    assert.deepEqual(reopened.threads.map(t=>t.id).sort(),calculatorBefore.threads.map(t=>t.id).sort());
+    assert(reopened.messages.length>0);
+    assert.deepEqual(counts(),auditBefore);
+    checks.push("Inactive project removal supports cancel, persists across restart and restores original conversations, task audit and Git worktrees on adding the same folder");
+
+    removeDialog = await confirmRemoval("calculator-project");
+    await removeDialog.getByRole("button",{name:"移出项目",exact:true}).click();
+    await removeDialog.waitFor({state:"hidden"});
+    assert.equal((await page.evaluate(()=>window.localAgent.getProject())).payload.project.id,activeBefore);
+    removeDialog = await confirmRemoval("ui-created-project");
+    await removeDialog.getByRole("button",{name:"移出项目",exact:true}).click();
+    await removeDialog.waitFor({state:"hidden"});
+    assert.equal((await page.evaluate(()=>window.localAgent.getProject())).payload.project,null);
+    assert.equal(await page.getByRole("button",{name:"Go back",exact:true}).isEnabled(),false);
+    await application.close(); page=await launch();
+    assert.equal((await page.evaluate(()=>window.localAgent.listProjects())).payload.projects.length,0);
+    assert.equal((await page.evaluate(()=>window.localAgent.getProject())).payload.project,null);
+    assert(fs.existsSync(path.join(project,"calculator.py")) && fs.existsSync(path.join(deletionProject,"README.md")));
+    assert.equal(modelRequests.length,beforeProjectRequests);
+    checks.push("Removing active and last projects selects a safe fallback or empty landing, prunes navigation and survives restart without deleting files or generating model requests");
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ok: true, checks, skipped}, null, 2));
     fs.writeFileSync(path.join(reportDir, "desktop-smoke.json"), JSON.stringify({ok: true, checks, skipped}, null, 2));
