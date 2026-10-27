@@ -132,6 +132,7 @@ class ProjectRegistry:
         self.store = store
         self._projects: dict[str, ProjectSession] = {}
         self._path_index: dict[str, str] = {}
+        self._removed: set[str] = set()
         self.active_project_id: str | None = None
         self._hydrate()
 
@@ -146,6 +147,8 @@ class ProjectRegistry:
                 continue
 
             project_id = str(row["id"])
+            if self.store.get_setting("project.hidden:" + project_id) == "1":
+                self._removed.add(project_id)
             state = InMemoryState(
                 store=self.store,
                 project_id=project_id,
@@ -165,28 +168,31 @@ class ProjectRegistry:
                     else None
                 ),
                 store=self.store,
-                repository_map=RepositoryMap(workspace.root),
+                repository_map=RepositoryMap(workspace.root) if project_id not in self._removed else None,
             )
-            project.repository_map.build()
+            if project_id not in self._removed:
+                project.repository_map.build()
             self._projects[project.id] = project
             self._path_index[os.path.normcase(project.path)] = project.id
 
         saved_active = self.store.get_setting("active_project_id")
-        if saved_active and saved_active in self._projects:
+        if saved_active and self.get(saved_active):
             self.active_project_id = saved_active
-        elif self._projects:
-            self.active_project_id = self.list_projects()[0].id
+        elif visible := self.list_projects():
+            self._set_active(visible[0].id)
+        elif saved_active:
+            self._set_active(None)
 
-    def _set_active(self, project_id: str) -> None:
+    def _set_active(self, project_id: str | None) -> None:
         self.active_project_id = project_id
         if self.store:
-            self.store.set_setting("active_project_id", project_id)
+            self.store.set_setting("active_project_id", project_id or "")
 
     @property
     def active(self) -> ProjectSession | None:
         if not self.active_project_id:
             return None
-        return self._projects.get(self.active_project_id)
+        return self.get(self.active_project_id)
 
     def open(
         self,
@@ -196,35 +202,48 @@ class ProjectRegistry:
         defer_thread: bool = False,
     ) -> tuple[ProjectSession, ThreadRecord | None, bool]:
         workspace = Workspace(path)
-        key = os.path.normcase(str(workspace.root))
+        key = os.path.normcase(workspace.display_path)
         existing_id = self._path_index.get(key)
 
         created = False
         if existing_id:
             project = self._projects[existing_id]
+            if existing_id in self._removed:
+                if self.store:
+                    self.store.set_setting("project.hidden:" + existing_id, "")
+                self._removed.discard(existing_id)
             project.touch()
         else:
+            # A path may have been unavailable during startup hydration (for
+            # example an offline company drive). Reuse its durable identity.
+            saved = next((row for row in self.store.list_projects() if os.path.normcase(str(row["path"])) == key), None) if self.store else None
             timestamp = now_iso()
-            project_id = new_id("project")
+            project_id = str(saved["id"]) if saved else new_id("project")
             state = InMemoryState(
                 store=self.store,
                 project_id=project_id,
             )
+            if saved:
+                state.load_from_store()
             project = ProjectSession(
                 id=project_id,
                 workspace=workspace,
                 tools=ToolRegistry(workspace),
                 state=state,
-                created_at=timestamp,
+                created_at=str(saved["created_at"]) if saved else timestamp,
                 updated_at=timestamp,
+                active_thread_id=saved.get("active_thread_id") if saved else None,
                 store=self.store,
                 repository_map=RepositoryMap(workspace.root),
             )
             project.repository_map.build()
             project.persist()
+            if saved and self.store:
+                self.store.set_setting("project.hidden:" + project_id, "")
+                self._removed.discard(project_id)
             self._projects[project.id] = project
             self._path_index[key] = project.id
-            created = True
+            created = saved is None
 
         self._set_active(project.id)
         thread = project.ensure_thread(active_model=active_model, create=not defer_thread)
@@ -237,7 +256,7 @@ class ProjectRegistry:
         active_model: str | None,
         defer_thread: bool = False,
     ) -> tuple[ProjectSession, ThreadRecord | None] | None:
-        project = self._projects.get(project_id)
+        project = self.get(project_id)
         if not project:
             return None
         self._set_active(project.id)
@@ -247,13 +266,32 @@ class ProjectRegistry:
 
     def list_projects(self) -> list[ProjectSession]:
         return sorted(
-            self._projects.values(),
+            (project for project in self._projects.values() if project.id not in self._removed),
             key=lambda project: project.updated_at,
             reverse=True,
         )
 
     def get(self, project_id: str) -> ProjectSession | None:
-        return self._projects.get(project_id)
+        return None if project_id in self._removed else self._projects.get(project_id)
+
+    def is_removed(self, project_id: str) -> bool:
+        return project_id in self._removed and project_id in self._projects
+
+    def remove(self, project_id: str) -> bool:
+        """Hide registration only. Keep files, threads, worktrees and task audit."""
+        if project_id not in self._projects:
+            return False
+        visible = [project for project in self.list_projects() if project.id != project_id]
+        active_id = (visible[0].id if visible else None) if self.active_project_id == project_id else self.active_project_id
+        if self.store:
+            # Save visibility and fallback together, before changing memory.
+            with self.store.connection:
+                self.store.connection.executemany("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    [("project.hidden:" + project_id, "1"), ("active_project_id", active_id or "")])
+        self._removed.add(project_id)
+        self._projects[project_id].repository_map = None
+        self.active_project_id = active_id
+        return True
 
     def mark_active_thread(self, thread_id: str) -> None:
         project = self.active
