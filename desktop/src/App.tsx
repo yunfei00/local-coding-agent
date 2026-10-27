@@ -1183,8 +1183,9 @@ function App() {
       const retainedBeforeCurrent = history.entries.slice(0, history.index + 1).filter(entry => entry.projectId !== target.id).length;
       history.entries = history.entries.filter(entry => entry.projectId !== target.id);
       history.index = retainedBeforeCurrent - 1;
+      if (history.target?.projectId === target.id) history.target = null;
       setHistoryRevision(revision => revision + 1);
-      if (workspace?.id === target.id) {
+      if (event.payload?.active_changed === true || workspace?.id === target.id) {
         if (readProjectSession(event)) applyProjectSession(event);
         else {
           setWorkspace(null); setActiveThread(null); setThreads([]); setItems([]); setContextUsage(null);

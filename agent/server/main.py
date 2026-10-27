@@ -1140,6 +1140,7 @@ class AgentServer:
 
         if message_type == "project.remove":
             project_id = str(payload.get("project_id") or "")
+            was_active = self.projects.active_project_id == project_id
             project = self.projects.get(project_id)
             if not project and not self.projects.is_removed(project_id):
                 await self.send_error(ws, "PROJECT_NOT_FOUND", "Select a valid project.", request_id=request_id)
@@ -1166,7 +1167,7 @@ class AgentServer:
                 current.workspace.set_full_access(self.permissions.mode == PermissionMode.FULL_ACCESS)
                 self.mcp_runtime.apply_to_project(current)
             result = self.projects.project_payload(current) if current else {"project":None, "threads":[], "active_thread":None, "messages":[]}
-            await ws.send_json(envelope("project.removed", {**result, "removed_project_id":project_id, "projects":self.projects.list_payload()}, request_id=request_id))
+            await ws.send_json(envelope("project.removed", {**result, "removed_project_id":project_id, "active_changed":was_active, "projects":self.projects.list_payload()}, request_id=request_id))
             return
 
         if message_type == "model.list":

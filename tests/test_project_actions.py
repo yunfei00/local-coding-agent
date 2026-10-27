@@ -70,6 +70,7 @@ class ProjectActionTests(unittest.IsolatedAsyncioTestCase):
         second = await self.open("second")
         result = await self.request("project.remove", {"project_id":first.id})
         self.assertEqual(result["type"], "project.removed")
+        self.assertFalse(result["payload"]["active_changed"])
         self.assertEqual(self.server.projects.active.id, second.id)
         self.assertEqual(len(self.server.store.list_projects()), 2)
         self.assertEqual(runtime.get(task["id"])["status"], "paused")
@@ -91,6 +92,7 @@ class ProjectActionTests(unittest.IsolatedAsyncioTestCase):
         active = await self.open("active")
         result = await self.request("project.remove", {"project_id":active.id})
         self.assertEqual(result["payload"]["project"]["id"], other.id)
+        self.assertTrue(result["payload"]["active_changed"])
         self.assertIsNone(result["payload"]["active_thread"])
         self.assertEqual(self.server.store.list_threads(other.id), [])
 
