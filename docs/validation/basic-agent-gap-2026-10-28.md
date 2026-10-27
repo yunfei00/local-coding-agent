@@ -28,7 +28,7 @@ Task：`task.start → Settings/模型/预算冻结 → TaskRuntime → Worktree
 | 通用 SKILL.md 加载/调用生命周期 | 尚未实现；现有 Prompt Rules/MCP 可用 | 后续扩展，不与仓库指令混称 |
 | OS 级强隔离 | 尚未实现；当前是应用权限检查与进程 Job | 不将 Workspace/Full Access 描述为操作系统沙箱 |
 
-本轮优先解决会让 Agent 在真实仓库中遗漏规范、反复读文件、恢复后不了解已有修改的两个基础缺口。后续优先级为：追加指令/队列 → 可审计的语义压缩与完整工具会话恢复 → 技能调用；强隔离需独立设计和 Windows 验收。并行 Agent、云端执行、插件市场不计入本轮基本编程闭环。
+本轮优先解决会让 Agent 在真实仓库中遗漏规范、反复读文件、恢复后不了解已有修改的两个基础缺口。审查另修复计划推进的内部消息误用 user 角色：改用运行时 system 消息，避免它取代原始用户目标成为裁剪锚点；实际跨两步骤、裁剪旧工具正文后仍保留原始约束的回归已通过。后续优先级为：追加指令/队列 → 可审计的语义压缩与完整工具会话恢复 → 技能调用；强隔离需独立设计和 Windows 验收。并行 Agent、云端执行、插件市场不计入本轮基本编程闭环。
 
 ## 实际实现与边界
 
@@ -44,7 +44,7 @@ Task：`task.start → Settings/模型/预算冻结 → TaskRuntime → Worktree
 
 专项：`tests/test_agent_context_continuity.py` 覆盖目录链/覆盖/变更、外部读取边界、大小与编码、先读规则再修改、只读阻断、真实 SQLite 重启、有界脱敏记忆、实际裁剪后的文件修复、真实 unittest 与 Diff。前端新增折叠证据组件测试；既有 execution recovery 18 项通过。完整回归与最新双平台 CI 的最终数量以本轮 PR 检查为准，未完成门禁前不合并。
 
-专项最终 13 项通过，前端 50 项通过。主线审计基线沿用 [PR #25 CI](https://github.com/yunfei00/local-coding-agent/actions/runs/40462345857)：442 Python 用例，Windows 440 通过/2 跳过，Ubuntu 426 通过/16 跳过。本机首轮 442 用例出现 1 failure、1 error、2 skip：一个 GUI 坐标输入明确 `Windows did not grant focus; no input was sent`，另一个 GUI 任务 `PLAN_TOOLS_UNRESOLVED`。保留 `validation-reports/20261028-000220-577269.log`；不能将该轮标为通过，后续独立全量与 CI 重新验证。本机首次新增 smoke 的重启断言查询了错误的当前会话，已改为原 Task.thread_id 查询；这不是丢失任务记忆的产品证据。
+专项最终 14 项通过，既有 v0.3 runtime 9 项通过，前端 50 项通过。主线审计基线沿用 [PR #25 CI](https://github.com/yunfei00/local-coding-agent/actions/runs/40462345857)：442 Python 用例，Windows 440 通过/2 跳过，Ubuntu 426 通过/16 跳过。本机首轮 442 用例出现 1 failure、1 error、2 skip：一个 GUI 坐标输入明确 `Windows did not grant focus; no input was sent`，另一个 GUI 任务 `PLAN_TOOLS_UNRESOLVED`。保留 `validation-reports/20261028-000220-577269.log`；不能将该轮标为通过，后续独立全量与 CI 重新验证。本机首次新增 smoke 的重启断言查询了错误的当前会话，已改为原 Task.thread_id 查询；这不是丢失任务记忆的产品证据。
 
 真实 Qwen：使用已保存的 `qwen3.7-plus` 和桌面安全凭据，实际 Electron IPC → Task → HTTP → 工具。Task `d885e14a-fdb2-48c6-b032-6e4b70e84894`，5 次 HTTP 请求，实际输入 24,695、输出 558、总计 25,253 Token；缓存 11,904 是输入子集，不能重复相加；费用 UNKNOWN。最终 `awaiting_approval`，仅修改 `calculator.py`，根/测试两份指令已加载且未改，原测试未改，独立 unittest 2 项通过，Diff 非空。没有提交模型修复副本或修改生产工程。
 

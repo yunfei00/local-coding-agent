@@ -239,3 +239,23 @@ class AgentContinuityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         diff = subprocess.run(['git','diff','--','calculator.py'], cwd=self.repo, capture_output=True, text=True, check=True)
         self.assertIn('+    return a + b', diff.stdout)
+
+    async def test_plan_advancement_does_not_replace_original_user_goal_during_compaction(self):
+        (self.repo/'large.txt').write_text('OLD-CONTENT-'+'a'*18000)
+        (self.repo/'newer.txt').write_text('NEW-CONTENT-'+'b'*18000)
+        plan = self.server.store.task_plans.create(self.thread.id, 'Inspect two files',
+            [{'description':'Inspect first file'}, {'description':'Inspect second file'}])
+        goal = 'Inspect both files. Preserve original constraint USER-GOAL-MUST-SURVIVE.'
+
+        def check_anchor(messages, provider):
+            users = [m['content'] for m in messages if m['role']=='user']
+            self.assertEqual(users, [goal])
+            self.assertNotIn('OLD-CONTENT-', str(messages))
+            return ProviderChunk(content='Second file inspected',done=True)
+
+        model = ModelResponses([tool('read_file',path='large.txt'), ProviderChunk(content='First inspected',done=True),
+                                tool('read_file',path='newer.txt'), check_anchor])
+        model.context_window = 8192
+        await self.server.run_tool_turn(self.client, thread_id=self.thread.id, turn_id='plan-anchors',
+                                       prompt=goal, model=model.preferred_model, provider=model)
+        self.assertTrue(all(s['state']=='completed' for s in self.server.store.task_plans.get(plan)['steps']))

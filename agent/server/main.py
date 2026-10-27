@@ -2435,7 +2435,10 @@ class AgentServer:
                             plan_tool_evidence.clear()
                             plan_commands_run.clear()
                             messages.append({"role": "assistant", "content": assistant_text})
-                            messages.append({"role": "user", "content": (
+                            # Advancing a runtime plan is not a new user goal.
+                            # Keeping it out of the user role lets context fitting
+                            # retain the actual request and its constraints.
+                            messages.append({"role": "system", "content": (
                                 "Continue the persistent plan with the next step only: "
                                 + next_step["description"]
                                 + ". Verification: " + next_step["verification"]
