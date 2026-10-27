@@ -35,6 +35,21 @@ def catalog():
 
 
 class LiveAcceptanceGuards(unittest.TestCase):
+    def test_instruction_fixture_is_isolated_frozen_and_uses_existing_calculator_contract(self):
+        saved = catalog()
+        original = (ROOT/'manual-fixtures/v04-local-first/tests/test_calculator.py').read_bytes()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); isolated = root/'isolated'; isolated.mkdir()
+            manifest = live.prepare(root, saved, saved['profiles'][0], None, 6, isolated,
+                                    scenario='calculator', with_instructions=True)
+            document = json.loads(manifest.read_text()); source = Path(document['source'])
+            self.assertTrue(document['with_instructions'])
+            self.assertTrue((source/'AGENTS.md').is_file())
+            self.assertTrue((source/'tests/AGENTS.md').is_file())
+            self.assertEqual((source/'tests/test_calculator.py').read_bytes(), original)
+            self.assertEqual(subprocess.check_output(['git','status','--porcelain'],cwd=source,text=True), '')
+        self.assertEqual((ROOT/'manual-fixtures/v04-local-first/tests/test_calculator.py').read_bytes(), original)
+
     def test_tkinter_starts_empty_and_verifies_inside_workspace(self):
         saved = catalog()
         with tempfile.TemporaryDirectory() as temporary:

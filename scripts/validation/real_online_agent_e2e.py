@@ -156,7 +156,7 @@ def live_config(executor, vision, calls, tokens=60000, extended=False, *, scenar
     return validate_config(raw)
 
 
-def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=60000, extended=False, scenario='electron', strategy='single-agent', request_seconds=60):
+def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=60000, extended=False, scenario='electron', strategy='single-agent', request_seconds=60, with_instructions=False):
     """Copy only public model metadata, preserving the original credential context.
 
     No user database/messages/secret files are copied. The real Electron main
@@ -187,6 +187,17 @@ def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=
         fixture = 'v04-local-first' if scenario == 'calculator' else 'm5-electron-e2e'
         shutil.copytree(ROOT / 'manual-fixtures' / fixture, source,
                         ignore=shutil.ignore_patterns('node_modules', 'dist', '.runtime'))
+    if with_instructions:
+        if scenario != 'calculator':
+            raise ValueError('Instruction acceptance currently uses the existing calculator fixture only')
+        (source/'AGENTS.md').write_text(
+            '# Calculator repository instructions\nBefore editing calculator.py, read tests/test_calculator.py '
+            'with the read_file tool. Preserve existing tests. Fix the implementation with the smallest change. '
+            'Run uv run --no-project python -m unittest discover -s tests -v and inspect git_diff. '
+            'Do not create commits or publish.\n', encoding='utf-8')
+        (source/'tests/AGENTS.md').write_text(
+            '# Test directory instructions\nThese tests are the frozen acceptance contract. '
+            'Read them to understand behavior, but do not modify or delete them.\n', encoding='utf-8')
     for args in (['init', '-q', '-b', 'main'], ['config', 'user.name', 'Live acceptance'],
                  ['config', 'user.email', 'acceptance@example.test'], ['add', '.'],
                  ['commit', '--allow-empty', '-qm', 'Controlled conversation persistence regressions' if scenario == 'repository' else 'Live fixture baseline']):
@@ -210,7 +221,7 @@ def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=
                 'credential_data': str(source_data.resolve()),
                 'executor': {k: executor[k] for k in ('model_profile_id', 'connection_id', 'model_id')},
                 'vision': {k: vision[k] for k in ('model_profile_id', 'connection_id', 'model_id')} if vision else None,
-                'scenario': scenario,
+                'scenario': scenario, 'with_instructions': with_instructions,
                 'report': str(REPORT), 'call_limit': calls}
     path = temporary / 'manifest.json'
     path.write_text(json.dumps(manifest), encoding='utf-8')
@@ -328,6 +339,16 @@ def verify_disk(report):
         tests_unchanged = (workspace/'tests/test_calculator.py').read_text(encoding='utf-8') == original_tests.read_text(encoding='utf-8')
         report['disk_evidence'].update(changed_files=paths,tests_unchanged=tests_unchanged,
             calculator_sha256=hashlib.sha256((workspace/'calculator.py').read_bytes()).hexdigest())
+        if report.get('with_instructions'):
+            expected = {'AGENTS.md', 'tests/AGENTS.md'}
+            loaded = {s['path'] for s in report.get('execution_context', {}).get('repository_instructions', [])}
+            frozen = all((workspace/name).read_bytes() == (source/name).read_bytes() for name in expected)
+            result = subprocess.run(['uv','run','--no-project','python','-m','unittest','discover','-s','tests','-v'],
+                                    cwd=workspace, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=120)
+            report['disk_evidence'].update(instructions_loaded=sorted(loaded), instructions_unchanged=frozen,
+                independent_unittest={'exit_code':result.returncode,'stdout':result.stdout[-12000:],'stderr':result.stderr[-12000:]})
+            if report.get('result') == 'PASS' and (not expected <= loaded or not frozen or result.returncode != 0):
+                report.update(result='FAIL', reason='INDEPENDENT_INSTRUCTION_EVIDENCE_FAILED')
         if report.get('result') == 'PASS' and (not unchanged or changed or paths != ['calculator.py'] or not tests_unchanged or not diff.strip()):
             report.update(result='FAIL',reason='INDEPENDENT_DISK_EVIDENCE_FAILED')
         return
@@ -412,6 +433,7 @@ def main():
     parser.add_argument('--model', default='qwen3.8-flash', help='Exact saved online Model ID, never an unverified fallback')
     parser.add_argument('--vision-model', help='Exact saved online vision Model ID')
     parser.add_argument('--scenario', choices=('electron','calculator','repository','tkinter'), default='electron')
+    parser.add_argument('--with-instructions', action='store_true', help='Seed root and tests AGENTS.md in the isolated calculator copy only')
     parser.add_argument('--report', type=Path, default=REPORT)
     parser.add_argument('--session', type=Path, default=SESSION)
     parser.add_argument('--strategy', choices=('single-agent','api-only'), default='single-agent')
@@ -443,7 +465,7 @@ def main():
         config = live_config(executor, vision, args.max_calls,args.max_tokens,args.authorize_budget_update,scenario=args.scenario,strategy=args.strategy,request_seconds=args.request_seconds)
         report.update(executor={k:executor[k] for k in ('model_profile_id','connection_id','model_id')},
                       vision={k:vision[k] for k in ('model_profile_id','connection_id','model_id')} if vision else None,
-                      scenario=args.scenario,limits=config['budget'],
+                      scenario=args.scenario,with_instructions=args.with_instructions,limits=config['budget'],
                       model_limits={'executor':{k:executor.get(k) for k in ('context_window','max_output_tokens')},
                                     'vision':{k:vision.get(k) for k in ('context_window','max_output_tokens')} if vision else None})
         if args.scenario == 'tkinter':
@@ -463,7 +485,7 @@ def main():
                 allocated = True
                 report['controller_stage'] = 'preparing_source'
                 manifest = prepare(args.data_dir, catalog, executor, vision, remaining['calls'], temporary,
-                                   tokens=remaining['tokens'],extended=args.authorize_budget_update,scenario=args.scenario,strategy=args.strategy,request_seconds=args.request_seconds)
+                                   tokens=remaining['tokens'],extended=args.authorize_budget_update,scenario=args.scenario,strategy=args.strategy,request_seconds=args.request_seconds,with_instructions=args.with_instructions)
                 document = json.loads(manifest.read_text(encoding='utf-8'))
                 document['config']['budget'].update(api_tokens=remaining['tokens'],global_api_tokens=remaining['tokens'],task_seconds=remaining['seconds'])
                 if args.authorize_budget_update:

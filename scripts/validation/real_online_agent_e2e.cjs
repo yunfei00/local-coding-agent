@@ -124,6 +124,10 @@ function finalResult(task, tools, scenario='electron') {
     acceptance_baseline:task.acceptance_baseline, usage:task.usage, calls,
     paid_requests:calls.filter(c => c.request_sent).length,
     attempts:task.attempts, repairs:task.repairs,
+    execution_context:task.plan?.execution ? {
+      repository_instructions:task.plan.execution.repository_instructions,
+      working_memory:task.plan.execution.working_memory
+    } : undefined,
     verification:verifications, verification_history:task.verification_history,
     transitions:task.transitions, tool_count:tools.length,
     function_call_count:tools.filter(t => t.model_requested).length,

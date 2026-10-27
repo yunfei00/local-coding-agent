@@ -1,5 +1,7 @@
 # Local Coding Agent
 
+2026-10-28 源码增加根目录/目标子目录 `AGENTS.md` 自动加载，以及随 Checkpoint 保留的有界工具事实记忆；Plan → 执行上下文按需查看。真实 Qwen 计算器修复已通过，完整比较、边界与复验命令见[基础 Agent 差距审计](docs/validation/basic-agent-gap-2026-10-28.md)。仍缺运行中追加消息、通用 Skills 与语义压缩，不将现有应用权限描述成 OS 沙箱。本轮只更新源码。
+
 M5 增加真实 Electron + React + TypeScript 双缺陷验收工程、Task Timeline 与失败/成功截图入口；修复 Chromium 受控输入、观察刷新及 GUI 启动契约保护。见 [M5 使用](docs/m5/user-guide.md)、[端到端验收](docs/m5/end-to-end-acceptance.md)、[实验工程](manual-fixtures/m5-electron-e2e/README.md)。[最新真实在线验收](docs/validation/unlocked-real-online-acceptance-2026-10-26.md)记录 Omni 单模型完整闭环、GLM + Omni 的真实后台通过及控制器终态竞态修复/记录重放；失败与精确边界分别保留。本轮不发布 Tag/安装包。
 
 M4 全面修复统一了 Chat/Task 的连接和模型目录，支持独立 Vision Observer、真实窗口截图与冻结任务配置。见 [修复与用法](docs/m4/complete-fixes.md)、[验收分类](docs/m4/complete-validation.md)、[阶段能力矩阵](docs/capability-matrix.md)。真实在线推理与 HTTP Mock/真实 GUI 分开记录，本轮不发布安装包。

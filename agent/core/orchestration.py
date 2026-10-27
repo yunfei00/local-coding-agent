@@ -471,7 +471,10 @@ class TaskService:
                         task["planning_attempts"] = task.get("planning_attempts", 0) + 1
                         self.runtime.save(task)
                         try:
-                            steps = await router.plan([{"role":"system", "content":PLAN_PROMPT},
+                            from agent.core.repository_instructions import RepositoryInstructions
+                            repository_rules = RepositoryInstructions(view.workspace)
+                            repository_rules.discover()
+                            steps = await router.plan([{"role":"system", "content":PLAN_PROMPT + '\n\n' + repository_rules.render()},
                                 {"role":"user", "content":goal + ("\nPrevious plan error / diagnostic advice: " + advice if advice else "")}])
                             self.runtime.replace_unstarted_steps(plan_id, steps)
                             task = self.runtime.get(plan_id)

@@ -19,7 +19,7 @@ def execution_policy():
     return result
 
 
-def execution_observation(guard, processes, owner, *, single_agent=False):
+def execution_observation(guard, processes, owner, *, single_agent=False, memory=None):
     """Small live metadata survives prompt compaction; never commands or output.
 
     Process IDs are opaque scope handles, not OS PIDs. Do not expose another
@@ -32,9 +32,16 @@ def execution_observation(guard, processes, owner, *, single_agent=False):
              'required_checks':guard.completion_gaps(),
              'consecutive_tool_failures':guard.consecutive_failures,
              'tool_results_seen':guard.result_sequence}
+    if memory:
+        state['working_memory'] = memory
     note = ('Current execution metadata, not a new task. Use only the listed process_id '
             'for read_process/stop_process; an OS PID is not a process handle. '
             'Do not replay completed work or delete persistence data just to finish. ')
+    if memory:
+        note += ('Working memory contains bounded tool facts, not file contents or new instructions. '
+                 'It survives context trimming and restart. Historical successful commands are not '
+                 'proof that the current files still pass. Re-read changed sources when necessary, '
+                 'and independently verify after the latest edit. Never replay a mutation from this record. ')
     if single_agent:
         note += ('When the requested changes and checks are complete, return your final report. '
                  'The Task framework then performs independent verification before approval. ')
@@ -117,3 +124,79 @@ class ExecutionBudget:
         self.data['continuations'] += 1
         self.save()
         return True
+
+    def remember_tool(self, name, arguments, payload, workspace, *, exact_secrets=()):
+        """Retain real, bounded facts in the existing execution/checkpoint ledger.
+
+        No prompts, file bodies, shell commands, stdout, process IDs, provider
+        credentials or arbitrary tool summaries are copied into this memory.
+        """
+        from agent.core.diagnostics import redact_text
+
+        def local_path(value):
+            if not isinstance(value, str) or len(value) > 4096:
+                return None
+            try:
+                resolved = workspace.resolve(value)
+                if not workspace.contains(resolved):
+                    return None
+                return redact_text(workspace.relative(resolved), exact_secrets=exact_secrets, max_chars=300)
+            except (OSError, ValueError, RuntimeError):
+                return None
+
+        memory = self.data.setdefault('working_memory', {'version': 1, 'sequence': 0, 'changed_paths': [], 'recent': []})
+        memory['sequence'] += 1
+        safe_name = name if re.fullmatch(r'[a-zA-Z_][a-zA-Z0-9_.-]{0,100}', name) else 'unknown_tool'
+        safe_name = redact_text(safe_name, exact_secrets=exact_secrets, max_chars=100)
+        fact = {'sequence': memory['sequence'], 'tool': safe_name, 'ok': payload.get('ok') is True}
+        code = (payload.get('error') or {}).get('code')
+        if code:
+            fact['error_code'] = failure_diagnosis(name, code)['error_code']
+        if isinstance(payload.get('exit_code'), int) and not isinstance(payload['exit_code'], bool):
+            fact['exit_code'] = payload['exit_code']
+        if name in {'read_file', 'write_file', 'apply_patch', 'file_exists', 'list_directory', 'search_files'}:
+            path = local_path(arguments.get('path', '.'))
+            if path:
+                fact['path'] = path
+        if name == 'read_file' and fact['ok']:
+            data = payload.get('data') or {}
+            for key in ('start_line', 'end_line', 'total_lines'):
+                if isinstance(data.get(key), int):
+                    fact[key] = data[key]
+        changed = [p for value in (payload.get('changed_paths') or []) if (p := local_path(value))]
+        if changed:
+            fact['changed_paths'] = changed[:8]
+            # Most recent paths win; bounds are explicit, not a claim of a full diff.
+            combined = list(dict.fromkeys([*memory['changed_paths'], *changed]))
+            memory['changed_paths'] = combined[-24:]
+            memory['last_change_sequence'] = memory['sequence']
+        if name in {'run_command', 'git_diff'}:
+            memory['last_' + ('command' if name == 'run_command' else 'diff')] = dict(fact)
+        memory['recent'] = [*memory['recent'], fact][-16:]
+        while len(json.dumps(memory, ensure_ascii=False)) > 12_000:
+            if memory['recent']:
+                memory['recent'].pop(0)
+            elif memory['changed_paths']:
+                memory['changed_paths'].pop(0)
+            else:
+                break
+        self.save()
+
+    def memory_snapshot(self, max_chars=6000):
+        memory = self.data.get('working_memory')
+        if not memory:
+            return None
+        result = json.loads(json.dumps(memory))
+        result['bounded'] = True
+        while len(json.dumps(result, ensure_ascii=False)) > max_chars:
+            if result.get('recent'):
+                result['recent'].pop(0)
+            elif result.get('changed_paths'):
+                result['changed_paths'].pop(0)
+            elif 'last_diff' in result:
+                result.pop('last_diff')
+            elif 'last_command' in result:
+                result.pop('last_command')
+            else:
+                break
+        return result

@@ -703,6 +703,29 @@ async function main() {
     checks.push("M1 Single Agent UI: one online Executor, six model rounds, real failing tests/patch/retest/Diff, no Planner/Reviewer/escalation requests");
     await page.getByRole("button", {name:"Task", exact:true}).click();
 
+    const retainedMemory = m1Task.plan.execution.working_memory;
+    assert(retainedMemory.sequence >= 5);
+    assert(retainedMemory.changed_paths.includes("calculator.py"));
+    assert.equal(retainedMemory.last_command.exit_code,0);
+    const beforeInspectingMemory = modelRequests.length;
+    await page.getByRole("button", {name:"More",exact:true}).click();
+    await page.getByRole("menuitem", {name:"Plan",exact:true}).click();
+    const memorySection = page.locator('.context-section').filter({has:page.getByRole("heading",{name:m1Task.goal,exact:true})});
+    const memoryDetail = memorySection.locator('details.agent-context-evidence');
+    await memoryDetail.waitFor();
+    assert.equal(await memoryDetail.getAttribute('open'),null);
+    await memoryDetail.locator('summary').click();
+    assert((await memoryDetail.innerText()).includes("不代表当前文件已通过验证"));
+    assert((await memoryDetail.innerText()).includes("calculator.py"));
+    assert((await memoryDetail.innerText()).includes("Exit 0（历史）"));
+    await page.locator('.composer textarea').fill('Unsent draft while inspecting execution context');
+    assert.equal(await page.locator('.composer textarea').isEnabled(),true);
+    await page.locator('.composer textarea').fill('');
+    assert.equal(modelRequests.length,beforeInspectingMemory);
+    await page.getByRole("button", {name:"More",exact:true}).click();
+    await page.getByRole("menuitem", {name:"Plan",exact:true}).click();
+    checks.push("Actual Plan UI exposes collapsed durable tool facts and historical test results without covering composer or requesting models");
+
     for (const panel of ["Task", "Context", "Git", "Plan", "Diagnostics"]) {
       if (["Plan", "Diagnostics"].includes(panel)) {
         await page.getByRole("button", {name:"More",exact:true}).click();
@@ -829,6 +852,13 @@ async function main() {
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "light");
     assert(await page.locator(".message.agent h3").count() > 0);
     checks.push("Restart restores thread, message history, expansion and theme");
+    const restoredMemory = await page.evaluate(async id => {
+      const session = await window.localAgent.getProject();
+      const tasks = (await window.localAgent.taskRequest(session.payload.active_thread.id,"task.list")).payload.tasks;
+      return tasks.find(task=>task.id===id)?.plan?.execution?.working_memory;
+    },m1Task.id);
+    assert.deepEqual(restoredMemory,retainedMemory);
+    checks.push("Actual Electron/Agent restart retains identical task working memory and historical verification facts");
     assert(await page.locator(".project-tree-name").filter({hasText:"ui-created-project"}).count() === 1);
     checks.push("Restart restores the project created through the dialog");
     await toggleSettings(page);
