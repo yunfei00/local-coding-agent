@@ -167,7 +167,7 @@ class ExecutionBudget:
         if changed:
             fact['changed_paths'] = changed[:8]
             # Most recent paths win; bounds are explicit, not a claim of a full diff.
-            combined = list(dict.fromkeys([*memory['changed_paths'], *changed]))
+            combined = list(dict.fromkeys([*(p for p in memory['changed_paths'] if p not in changed), *changed]))
             memory['changed_paths'] = combined[-24:]
             memory['last_change_sequence'] = memory['sequence']
         if name in {'run_command', 'git_diff'}:

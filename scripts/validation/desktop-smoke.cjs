@@ -852,11 +852,10 @@ async function main() {
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "light");
     assert(await page.locator(".message.agent h3").count() > 0);
     checks.push("Restart restores thread, message history, expansion and theme");
-    const restoredMemory = await page.evaluate(async id => {
-      const session = await window.localAgent.getProject();
-      const tasks = (await window.localAgent.taskRequest(session.payload.active_thread.id,"task.list")).payload.tasks;
+    const restoredMemory = await page.evaluate(async ({id,thread}) => {
+      const tasks = (await window.localAgent.taskRequest(thread,"task.list")).payload.tasks;
       return tasks.find(task=>task.id===id)?.plan?.execution?.working_memory;
-    },m1Task.id);
+    },{id:m1Task.id,thread:m1Task.thread_id});
     assert.deepEqual(restoredMemory,retainedMemory);
     checks.push("Actual Electron/Agent restart retains identical task working memory and historical verification facts");
     assert(await page.locator(".project-tree-name").filter({hasText:"ui-created-project"}).count() === 1);

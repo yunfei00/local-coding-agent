@@ -44,9 +44,13 @@ Task：`task.start → Settings/模型/预算冻结 → TaskRuntime → Worktree
 
 专项：`tests/test_agent_context_continuity.py` 覆盖目录链/覆盖/变更、外部读取边界、大小与编码、先读规则再修改、只读阻断、真实 SQLite 重启、有界脱敏记忆、实际裁剪后的文件修复、真实 unittest 与 Diff。前端新增折叠证据组件测试；既有 execution recovery 18 项通过。完整回归与最新双平台 CI 的最终数量以本轮 PR 检查为准，未完成门禁前不合并。
 
+专项最终 13 项通过，前端 50 项通过。主线审计基线沿用 [PR #25 CI](https://github.com/yunfei00/local-coding-agent/actions/runs/40462345857)：442 Python 用例，Windows 440 通过/2 跳过，Ubuntu 426 通过/16 跳过。本机首轮 442 用例出现 1 failure、1 error、2 skip：一个 GUI 坐标输入明确 `Windows did not grant focus; no input was sent`，另一个 GUI 任务 `PLAN_TOOLS_UNRESOLVED`。保留 `validation-reports/20261028-000220-577269.log`；不能将该轮标为通过，后续独立全量与 CI 重新验证。本机首次新增 smoke 的重启断言查询了错误的当前会话，已改为原 Task.thread_id 查询；这不是丢失任务记忆的产品证据。
+
 真实 Qwen：使用已保存的 `qwen3.7-plus` 和桌面安全凭据，实际 Electron IPC → Task → HTTP → 工具。Task `d885e14a-fdb2-48c6-b032-6e4b70e84894`，5 次 HTTP 请求，实际输入 24,695、输出 558、总计 25,253 Token；缓存 11,904 是输入子集，不能重复相加；费用 UNKNOWN。最终 `awaiting_approval`，仅修改 `calculator.py`，根/测试两份指令已加载且未改，原测试未改，独立 unittest 2 项通过，Diff 非空。没有提交模型修复副本或修改生产工程。
 
 这次真实运行证明指令/事实记忆进入实际调用链；强制裁剪与重启场景由脚本模型 + 真实工具/SQLite 专项覆盖，不把此次短任务冒充真实模型长上下文压力测试。原始本地报告 `validation-reports/20261028-continuity-live-qwen3.7-plus.json` 不入 Git，脱敏结果见本文。累计真实验证账本未清零，失败预留未退回为零。
+
+追加真实产品仓库复验：从已提交源码 `43f9ec1` 克隆隔离副本，预置删除过滤、改名保存两处受控回归。Qwen `qwen3.7-plus`，客户端 65,536 上下文/8,192 输出，Task `3e1dbc43-11b8-413a-9ed4-6fbb4b686ed3`，8 次请求、输入 186,731/输出 3,025/总计 189,756 Token（缓存 72,576 为输入子集），117.767 秒，费用 UNKNOWN。模型修改 `agent/persistence/store.py` 和 `agent/server/state.py`，独立重跑生命周期/持久化/项目共 13 个 unittest 均通过；测试未改，原工程未改，最终 `awaiting_approval`。本次实际上下文事件没有裁剪，不将缩小客户端窗口本身称为裁剪压力通过。报告为 `validation-reports/20261028-continuity-repository-qwen3.7-plus.json`。本轮两次实际任务合计 13 请求、215,009 个 Provider Token，记忆中没有源码/命令正文；不与既有累计验证用量混算。
 
 ## 公司更新与复验
 

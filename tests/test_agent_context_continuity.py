@@ -207,6 +207,15 @@ class AgentContinuityTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(ledger.data['working_memory']['last_command']['ok'])
         self.assertLessEqual(len(json.dumps(ledger.memory_snapshot(400), ensure_ascii=False)), 400)
 
+    async def test_recently_changed_path_is_not_evicted_as_old_history(self):
+        ledger = ExecutionBudget(self.server.store.connection, 'recent-paths', self.thread.id, execution_policy())
+        for path in ['important.py', *[f'file-{i}.py' for i in range(23)], 'important.py', 'new.py']:
+            ledger.remember_tool('write_file', {'path':path}, {'ok':True,'changed_paths':[path]}, self.project.workspace)
+        paths = ledger.data['working_memory']['changed_paths']
+        self.assertEqual(len(paths), 24)
+        self.assertEqual(paths[-2:], ['important.py','new.py'])
+        self.assertNotIn('file-0.py', paths)
+
     async def test_trimmed_tool_content_keeps_real_facts_and_independent_validation(self):
         (self.repo/'large.txt').write_text('DISCARDABLE-OLD-FILE-'+'a'*18000)
         (self.repo/'newer.txt').write_text('RECENT-FILE-'+'b'*18000)
