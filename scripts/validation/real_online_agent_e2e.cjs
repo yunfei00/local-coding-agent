@@ -146,7 +146,7 @@ async function main(manifest) {
   };
   try {
     const environment = {...process.env, LCA_DESKTOP_DATA_DIR:manifest.credential_data, LCA_DATA_DIR:manifest.data,
-      LCA_HEADLESS_SMOKE:'0', LCA_OPENAI_API_KEY:'', LCA_PROVIDER:'openai_compatible', LCA_OPENAI_MODEL:'',
+      LCA_HEADLESS_SMOKE:scenario==='repository' ? '1' : '0', LCA_OPENAI_API_KEY:'', LCA_PROVIDER:'openai_compatible', LCA_OPENAI_MODEL:'',
       LCA_OPENAI_BASE_URL:'http://127.0.0.1:1/v1'};
     // Only execution bounds for this isolated backend. Never change approval,
     // blocked-repeat or consecutive-failure settings.
@@ -192,12 +192,15 @@ async function main(manifest) {
       if (event.type === 'tool.requested') {
         const a = p.arguments || {};
         requests.set(p.tool_call_id,{name:p.name,
+          ...Object.fromEntries(['start_line','end_line'].filter(k=>Number.isInteger(a[k])).map(k=>[k,a[k]])),
           ...Object.fromEntries(['path','command'].filter(k=>typeof a[k]==='string').map(k=>[k,a[k].slice(0,2000)]))});
       }
       if (event.type === 'tool.completed') {
         const r = p.result || {};
         tools.push({...requests.get(p.tool_call_id), model_requested:requests.has(p.tool_call_id), name:p.name, ok:!!r.ok, error_code:r.error?.code,
-          changed_paths:r.changed_paths || [], exit_code:r.exit_code, duration_ms:r.duration_ms});
+          changed_paths:r.changed_paths || [], exit_code:r.exit_code, duration_ms:r.duration_ms,
+          ...(p.name==='read_file' ? {read_content_chars:typeof r.data?.content==='string' ? r.data.content.length : null,
+            read_truncated:r.data?.truncated,read_start_line:r.data?.start_line,read_end_line:r.data?.end_line}: {})});
         processFiles();
       }
       if (['model.active','verification.progress','vision.observed','context.updated'].includes(event.type)) {
