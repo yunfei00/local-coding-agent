@@ -871,14 +871,17 @@ function App() {
       if (event.type === "turn.status" && event.turn_id) {
         const message = String(event.payload?.message ?? "Agent is working…");
         const id = "status:" + event.turn_id;
+        const discarded = Number(event.payload?.discard_response_characters ?? 0);
         setItems((current) => {
-          const existing = current.find((item) => item.id === id);
+          const retained = Number.isInteger(discarded) && discarded > 0 ? current.map(item =>
+            item.id === "agent:" + event.turn_id ? {...item, text:[...item.text].slice(0, -discarded).join("")} : item) : current;
+          const existing = retained.find((item) => item.id === id);
           if (existing) {
-            return current.map((item) =>
+            return retained.map((item) =>
               item.id === id ? { ...item, text: message } : item
             );
           }
-          return [...current, { id, role: "system", text: message }];
+          return [...retained, { id, role: "system", text: message }];
         });
         return;
       }

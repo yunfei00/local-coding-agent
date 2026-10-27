@@ -100,6 +100,12 @@ class SingleAgentTests(unittest.IsolatedAsyncioTestCase):
                 await self.http_release.wait()
                 choice = final()
             response = web.StreamResponse(headers={"Content-Type": "text/event-stream"})
+            if choice == "broken-stream":
+                await response.prepare(request)
+                await response.write(('data: '+json.dumps({"choices":[final("partial", None)],
+                    "usage":{"prompt_tokens":100,"completion_tokens":30}})+'\n\ndata: broken JSON\n\n').encode())
+                await response.write_eof()
+                return response
             # Multiple network writes also exercise SSE reassembly.
             encoded = ("data: " + json.dumps({"choices": [choice], "usage": {
                 "prompt_tokens": 100, "completion_tokens": 30}}) + "\n\ndata: [DONE]\n\n").encode()
@@ -222,18 +228,77 @@ class SingleAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.requests), 1)
 
     async def test_malformed_tool_arguments_do_not_modify_files(self):
-        bad = call("write_file", {}, 0)
+        bad = call("write_file", {}, 1)
         bad["function"]["arguments"] = '{"path": "calculator.py",'
-        task = await self.start([tools(bad)])
+        # Even the valid first call of a malformed batch must never execute.
+        valid = call("write_file", {"path":"calculator.py", "content":"must not be written"}, 0)
+        task = await self.start([tools(valid, bad), tools(valid, bad)])
         self.assertEqual(task["last_error"]["code"], "MODEL_INVALID_TOOL_CALL")
         self.assertFalse(self.tool_results("write_file"))
         self.assertIn("a - b", Path(task["workspace"], "calculator.py").read_text())
+        self.assertEqual(len(self.requests), 2)
+
+    async def test_invalid_json_regenerates_same_model_then_actual_fix_and_tests(self):
+        bad = call("write_file", {}, 0)
+        bad["function"]["arguments"] = '{"path":"calculator.py","content":"unterminated'
+        task = await self.start([tools(bad), self.fix(), final()])
+        self.assertEqual(task["status"], "awaiting_approval", task["reason"])
+        self.assertEqual(len(self.requests), 3)
+        self.assertTrue(all(request["model"] == "m1-model" for request in self.requests))
+        self.assertFalse(self.tool_results("write_file"))
+        self.assertIn("NOT executed", str(self.requests[1]["messages"]))
+        first = self.server.store.task_runtime.calls(task["id"])[0]
+        self.assertEqual(first["status"], "failed")
+        self.assertEqual(first["reserved_tokens"], 130)
+        self.assertFalse(first["usage"]["estimated"])
+        self.assertFalse(first["usage"]["tool_parse_success"])
+        self.assertIn("position", first["usage"]["tool_json_error"])
+        self.assertTrue(all(result["ok"] for result in task["verification"]))
+
+    async def test_invalid_tool_repair_cannot_bypass_api_budget(self):
+        self.config["budget"]["api_calls"] = 1
+        bad = call("write_file", {}, 0)
+        bad["function"]["arguments"] = '{"path":"calculator.py",'
+        task = await self.start([tools(bad), self.fix()])
+        self.assertEqual(task["status"], "paused")
         self.assertEqual(len(self.requests), 1)
+        self.assertFalse(self.tool_results("write_file"))
+        self.assertEqual(self.server.store.task_runtime.usage(task["id"])["api_calls"], 1)
+
+    async def test_truncated_tool_arguments_regenerate_without_executing_partial_call(self):
+        bad = call("write_file", {}, 0)
+        bad["function"]["arguments"] = '{"path":"calculator.py",'
+        truncated = tools(bad); truncated["finish_reason"] = "length"
+        task = await self.start([truncated, self.fix(), final()])
+        self.assertEqual(task["status"], "awaiting_approval", task["reason"])
+        self.assertFalse(self.tool_results("write_file"))
+        first = self.server.store.task_runtime.calls(task["id"])[0]
+        self.assertEqual(first["usage"]["error_code"], "MODEL_TOOL_ARGUMENTS_TRUNCATED")
+        self.assertEqual(first["usage"]["finish_reason"], "length")
 
     async def test_truncated_response_is_not_completion(self):
-        task = await self.start([final("Done", "length")])
+        task = await self.start([final("Done", "length"), final("Still cut", "length")])
         self.assertEqual(task["status"], "paused")
         self.assertEqual(task["last_error"]["code"], "MODEL_TRUNCATED")
+        retries = [m for m in self.client.messages if m["type"] == "turn.status" and m["payload"].get("phase") == "tool_protocol_retry"]
+        self.assertEqual(retries[0]["payload"]["discard_response_characters"], len("Done"))
+
+    async def test_filtered_response_never_retries_or_executes_tools(self):
+        task = await self.start([final("refused", "content_filter"), self.fix()])
+        self.assertEqual(task["status"], "paused")
+        self.assertEqual(task["last_error"]["code"], "MODEL_REFUSED")
+        self.assertEqual(len(self.requests), 1)
+        self.assertFalse(self.tool_results("apply_patch"))
+
+    async def test_partial_usage_then_broken_stream_retains_conservative_reservation(self):
+        task = await self.start(["broken-stream"])
+        self.assertEqual(task["status"], "paused")
+        self.assertEqual(len(self.requests), 1)
+        first = self.server.store.task_runtime.calls(task["id"])[0]
+        self.assertEqual(first["usage"]["error_code"], "OPENAI_COMPATIBLE_INVALID_STREAM")
+        self.assertFalse(first["usage"]["response_complete"])
+        self.assertTrue(first["usage"]["estimated"])
+        self.assertGreater(first["reserved_tokens"], 130)
 
     async def test_cancel_during_http_stops_task_and_retains_diagnostics(self):
         task = await self.start(["block"], wait=False)

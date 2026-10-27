@@ -98,6 +98,13 @@ const provider = http.createServer((req, res) => {
       return res.end("data: [DONE]\n\n");
     }
     const send = (text, finish = null) => res.write("data: " + JSON.stringify({choices: [{index: 0, delta: {content: text}, finish_reason: finish}]}) + "\n\n");
+    if (prompt.includes("invalid-json-smoke")) {
+      const repairing = payload.messages.some(m => m.role === "system" && String(m.content).includes("Runtime protocol feedback"));
+      if (!repairing) {
+        res.write("data: " + JSON.stringify({choices:[{delta:{content:"DISCARD_PARTIAL_🙂",tool_calls:[{index:0,id:"invalid",type:"function",function:{name:"write_file",arguments:'{"path":"must-not-exist.py",'}}]},finish_reason:"tool_calls"}],usage:{prompt_tokens:100,completion_tokens:20}}) + "\n\n");
+      } else send("RECOVERED_VALID_JSON: invalid call was not executed.","stop");
+      return res.end("data: [DONE]\n\n");
+    }
     const wantedTool = prompt.includes("mcp-smoke-stdio") ? "mcp__smoke_stdio__echo" : prompt.includes("mcp-smoke-http") ? "mcp__smoke_http__echo" : prompt.includes("read-real-fixture") ? "read_file" : null;
     if (wantedTool && payload.messages.at(-1)?.role !== "tool") {
       assert(payload.tools.some(tool => tool.function.name === wantedTool), `Tool unavailable: ${wantedTool}`);
@@ -304,6 +311,14 @@ async function main() {
       if (originalOpenPath) await application.evaluate(({shell}) => {shell.openPath = globalThis.smokeOpenPath;});
     }
     checks.push("Header Open menu resolves only the active backend project; file manager launch mocked");
+    const beforeProtocolRecovery = modelRequests.length;
+    await page.locator(".composer textarea").fill("invalid-json-smoke");
+    await page.locator(".composer textarea").press("Enter");
+    await page.waitForFunction(() => [...document.querySelectorAll(".message.agent")].some(e => e.textContent.includes("RECOVERED_VALID_JSON")) && !document.querySelector(".stop-button"));
+    assert(!(await page.locator(".message.agent").allTextContents()).some(text => text.includes("DISCARD_PARTIAL")));
+    assert(!fs.existsSync(path.join(project,"must-not-exist.py")));
+    assert.equal(modelRequests.length,beforeProtocolRecovery+2);
+    checks.push("Actual HTTP malformed tool batch executes no file write, same-model retry is visible, discarded Unicode partial output is removed and final chat recovers");
 
     if (process.platform === "win32") {
       const captureTitle="LCA M4 controlled Electron capture";

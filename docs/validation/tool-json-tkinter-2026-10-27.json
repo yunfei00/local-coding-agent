@@ -1,0 +1,275 @@
+{
+  "date": "2026-10-27",
+  "scenario": "Empty directory Tkinter calculator; production Electron/TaskService/Provider; project-local tests and separate fixed Tk-widget contract",
+  "source_note": "Live runs used this development working tree. Raw development_sha identifies the base commit, not uncommitted fixes. First three runs had an external-path verification command and are retained harness failures, not a valid before/after benchmark.",
+  "runs": [
+    {
+      "private_report": "20261027-tkinter-deepseek-baseline-1024.json",
+      "report_sha256": "d4d78bbbad4bcba3c9c046994958da894efc32a195ec349c88d22865fe515c9f",
+      "model_id": "deepseek-v4.1-flash",
+      "result": "FAIL",
+      "reason": "MODEL_TRUNCATED",
+      "task_id": "7996ab3b-b2e1-4001-8af1-940aa096adf8",
+      "final_status": "paused",
+      "http_requests": 3,
+      "max_output_tokens": 1024,
+      "cost": "UNKNOWN",
+      "usage": {
+        "input_tokens": 13573,
+        "output_tokens": 2080,
+        "cached_tokens": 0,
+        "reserved_tokens": 15653,
+        "estimated": false,
+        "in_flight_tokens": 0
+      },
+      "source_unchanged": true,
+      "contract_unchanged": true,
+      "calculator_created": false,
+      "independent_checks": [],
+      "project_tests": [],
+      "http_statuses": [
+        200,
+        200,
+        200
+      ],
+      "finish_reasons": [
+        "tool_calls",
+        "tool_calls",
+        "length"
+      ],
+      "calculator_sha256": null
+    },
+    {
+      "private_report": "20261027-tkinter-deepseek-repaired-1024.json",
+      "report_sha256": "397f0d06f565440f662b464259410d6d26338fc7c18fbe228d15e0fea466b1cb",
+      "model_id": "deepseek-v4.1-flash",
+      "result": "FAIL",
+      "reason": "MODEL_TRUNCATED",
+      "task_id": "893b3dbd-ac66-450c-88f2-aca9d45e7d4e",
+      "final_status": "paused",
+      "http_requests": 4,
+      "max_output_tokens": 1024,
+      "cost": "UNKNOWN",
+      "usage": {
+        "input_tokens": 17407,
+        "output_tokens": 2235,
+        "cached_tokens": 4096,
+        "reserved_tokens": 19642,
+        "estimated": false,
+        "in_flight_tokens": 0
+      },
+      "source_unchanged": true,
+      "contract_unchanged": true,
+      "calculator_created": false,
+      "independent_checks": [],
+      "project_tests": [],
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200
+      ],
+      "finish_reasons": [
+        "tool_calls",
+        "tool_calls",
+        "length",
+        "length"
+      ],
+      "calculator_sha256": null
+    },
+    {
+      "private_report": "20261027-tkinter-deepseek-8192.json",
+      "report_sha256": "1b1539fb85d0611323b54c92d319a37b1cd34d75a6ab604e0a55784e300a501c",
+      "model_id": "deepseek-v4.1-flash",
+      "result": "FAIL",
+      "reason": "Verification environment/configuration/permission/network/timeout issue. Resolve locally and resume; no diagnostic API request sent.",
+      "task_id": "380eeb3b-a733-44bf-9814-e2bc142c3764",
+      "final_status": "paused",
+      "http_requests": 24,
+      "max_output_tokens": 8192,
+      "cost": "UNKNOWN",
+      "usage": {
+        "input_tokens": 340589,
+        "output_tokens": 16733,
+        "cached_tokens": 7168,
+        "reserved_tokens": 357322,
+        "estimated": false,
+        "in_flight_tokens": 0
+      },
+      "source_unchanged": true,
+      "contract_unchanged": true,
+      "calculator_created": true,
+      "independent_checks": [
+        {
+          "exit_code": 0,
+          "tests": 8
+        }
+      ],
+      "project_tests": [
+        {
+          "ok": false,
+          "exit_code": null,
+          "tests": null
+        },
+        {
+          "ok": true,
+          "exit_code": 0,
+          "tests": null
+        }
+      ],
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "finish_reasons": [
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "stop"
+      ],
+      "calculator_sha256": null
+    },
+    {
+      "private_report": "20261027-tkinter-deepseek-8192-workspace-tests.json",
+      "report_sha256": "64d83bf6aae8341028536fbaeddf1fcdf714a2ea31dc577256c17d360142af7b",
+      "model_id": "deepseek-v4.1-flash",
+      "result": "FAIL",
+      "reason": "OPENAI_COMPATIBLE_AUTH_FAILED",
+      "task_id": "734452b7-bd1f-4a2f-8349-4a1364c98240",
+      "final_status": "paused",
+      "http_requests": 1,
+      "max_output_tokens": 8192,
+      "cost": "UNKNOWN",
+      "usage": {
+        "input_tokens": 17309,
+        "output_tokens": 8192,
+        "cached_tokens": 0,
+        "reserved_tokens": 25501,
+        "estimated": true,
+        "in_flight_tokens": 0
+      },
+      "source_unchanged": true,
+      "contract_unchanged": true,
+      "calculator_created": false,
+      "independent_checks": [],
+      "project_tests": [],
+      "http_statuses": [
+        403
+      ],
+      "finish_reasons": [
+        null
+      ],
+      "calculator_sha256": null
+    },
+    {
+      "private_report": "20261027-tkinter-qwen3.7-plus-8192.json",
+      "report_sha256": "f4f7f4599d8f311d828d7f0dff4a12f13a75d1718afc3f0782463e061e5882e7",
+      "model_id": "qwen3.7-plus",
+      "result": "PASS",
+      "reason": "Independent validation passed; review report and Git Diff",
+      "task_id": "196313f1-5498-475c-a5ba-c9fb2022f469",
+      "final_status": "awaiting_approval",
+      "http_requests": 8,
+      "max_output_tokens": 8192,
+      "cost": "UNKNOWN",
+      "usage": {
+        "input_tokens": 62622,
+        "output_tokens": 4468,
+        "cached_tokens": 20736,
+        "reserved_tokens": 67090,
+        "estimated": false,
+        "in_flight_tokens": 0
+      },
+      "source_unchanged": true,
+      "contract_unchanged": true,
+      "calculator_created": true,
+      "independent_checks": [
+        {
+          "exit_code": 0,
+          "tests": 8
+        }
+      ],
+      "project_tests": [
+        {
+          "ok": true,
+          "exit_code": 0,
+          "tests": 17
+        },
+        {
+          "ok": true,
+          "exit_code": 0,
+          "tests": null
+        }
+      ],
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "finish_reasons": [
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "tool_calls",
+        "stop"
+      ],
+      "calculator_sha256": "dc1faf93a989378cddd7d8169f390036fb547dbe286ae7cb03c449ecb4ea231c"
+    }
+  ],
+  "totals": {
+    "http_requests": 40,
+    "pass": 1,
+    "fail": 4
+  },
+  "privacy": "No prompts, tool argument bodies, credentials, images, user files or private temporary paths are included. Cached tokens are part of input tokens; estimated reservations are not claimed as billing usage."
+}

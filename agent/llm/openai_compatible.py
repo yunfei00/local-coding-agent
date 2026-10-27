@@ -85,12 +85,16 @@ def _error_message(payload: dict[str, Any], fallback: str) -> str:
 
 def _finalize_tool_calls(
     states: dict[int, dict[str, str]],
+    finish_reason: str | None = None,
+    diagnostics: dict | None = None,
 ) -> tuple[ToolCall, ...]:
     result: list[ToolCall] = []
     for index in sorted(states):
         state = states[index]
         name = state.get("name", "").strip()
         if not name:
+            if diagnostics is not None:
+                diagnostics.update(tool_parse_success=False, tool_json_error={"index":index, "category":"missing_function_name"})
             raise OpenAICompatibleProviderError("MODEL_INVALID_TOOL_CALL", "Tool call has no function name")
 
         raw_arguments = state.get("arguments", "")
@@ -99,8 +103,17 @@ def _finalize_tool_calls(
             try:
                 parsed = json.loads(raw_arguments)
             except json.JSONDecodeError as exc:
-                raise OpenAICompatibleProviderError("MODEL_INVALID_TOOL_CALL", "Tool arguments must be valid JSON; no tool was executed") from exc
+                if diagnostics is not None:
+                    diagnostics.update(tool_parse_success=False, response_form="invalid_tool_calls", tool_json_error={"index":index,
+                        "chars":len(raw_arguments), "position":exc.pos, "line":exc.lineno,
+                        "column":exc.colno, "category":exc.msg})
+                code = "MODEL_TOOL_ARGUMENTS_TRUNCATED" if finish_reason in {"length", "max_tokens"} else "MODEL_REFUSED" if finish_reason == "content_filter" else "MODEL_INVALID_TOOL_CALL"
+                message = ("Model output limit truncated tool arguments; no tool was executed. Retry using smaller code edits within the configured per-request output limit."
+                           if code == "MODEL_TOOL_ARGUMENTS_TRUNCATED" else "Tool arguments must be valid JSON; no tool was executed")
+                raise OpenAICompatibleProviderError(code, message) from exc
             if not isinstance(parsed, dict):
+                if diagnostics is not None:
+                    diagnostics.update(tool_parse_success=False, tool_json_error={"index":index, "chars":len(raw_arguments), "category":"not_an_object"})
                 raise OpenAICompatibleProviderError("MODEL_INVALID_TOOL_CALL", "Tool arguments must be a JSON object; no tool was executed")
             arguments = parsed
 
@@ -111,6 +124,10 @@ def _finalize_tool_calls(
                 arguments=arguments,
             )
         )
+    if diagnostics is not None:
+        diagnostics["tool_parse_success"] = True
+    if states and finish_reason in {"length", "max_tokens"}:
+        raise OpenAICompatibleProviderError("MODEL_TOOL_ARGUMENTS_TRUNCATED", "Model output ended at its output limit; no tool was executed. Use smaller code edits.")
     return tuple(result)
 
 
@@ -242,7 +259,7 @@ class OpenAICompatibleProvider:
         actual_cost: float | None = None
         tool_states: dict[int, dict[str, str]] = {}
         emitted_done = False
-        self.response_metadata = {"http_status":None, "response_type":None, "request_sent":False,
+        self.response_metadata = {"http_status":None, "response_type":None, "request_sent":False, "response_complete":False,
                                   "requested_max_tokens":request_body.get('max_tokens'),
                                   "wire_images":request_image_evidence(request_body['messages']),
                                   "tool_schema_count":len(tools or [])}
@@ -270,8 +287,9 @@ class OpenAICompatibleProvider:
 
                     async for payload in self._chat_payloads(response):
                         if payload is None:
+                            self.response_metadata["response_complete"] = True
                             yield ProviderChunk(
-                                tool_calls=_finalize_tool_calls(tool_states),
+                                tool_calls=_finalize_tool_calls(tool_states, finish_reason, self.response_metadata),
                                 done=True,
                                 finish_reason=finish_reason,
                                 prompt_eval_count=prompt_eval_count,
@@ -300,6 +318,9 @@ class OpenAICompatibleProvider:
                             raw_cost = usage.get("cost")
                             if isinstance(raw_cost, (int, float)) and 0 <= raw_cost < float("inf"):
                                 actual_cost = raw_cost
+                            self.response_metadata["reported_usage"] = {"input_tokens":prompt_eval_count,
+                                "output_tokens":eval_count, "cached_tokens":cached_tokens, "actual_cost":actual_cost,
+                                "estimated":prompt_eval_count is None or eval_count is None}
 
                         choices = payload.get("choices")
                         if not isinstance(choices, list) or not choices:
@@ -358,8 +379,9 @@ class OpenAICompatibleProvider:
             if not emitted_done:
                 if finish_reason is None:
                     raise OpenAICompatibleProviderError("OPENAI_COMPATIBLE_INCOMPLETE_STREAM", "Stream ended without a completion marker or finish_reason")
+                self.response_metadata["response_complete"] = True
                 yield ProviderChunk(
-                    tool_calls=_finalize_tool_calls(tool_states),
+                    tool_calls=_finalize_tool_calls(tool_states, finish_reason, self.response_metadata),
                     done=True,
                     finish_reason=finish_reason,
                     prompt_eval_count=prompt_eval_count,

@@ -148,6 +148,8 @@ def live_config(executor, vision, calls, tokens=60000, extended=False, *, scenar
         raw['vision_profile_id'] = vision['model_profile_id']
     if scenario == 'calculator':
         raw['verification_commands'] = ['uv run --no-project python -m unittest discover -s tests -v', 'git diff --check']
+    if scenario == 'tkinter':
+        raw['verification_commands'] = ['uv run --no-project python -m unittest discover -s . -p test_calculator.py -v', 'git diff --check']
     if scenario == 'repository':
         raw['verification_commands'] = [f'uv run --locked python -m unittest discover -s tests -p test_{name}.py -v'
             for name in ('thread_lifecycle', 'persistence', 'projects')] + ['git diff --check']
@@ -165,7 +167,9 @@ def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=
     data = temporary / 'data'
     data.mkdir()
     source = temporary / 'fixture'
-    if scenario == 'repository':
+    if scenario == 'tkinter':
+        source.mkdir()  # No seeded business code or tests in the visible directory.
+    elif scenario == 'repository':
         # Actual tracked product repository, no user configuration/untracked files.
         subprocess.run(['git','clone','--quiet','--no-hardlinks',str(ROOT),str(source)],check=True,capture_output=True)
         store_file = source / 'agent/persistence/store.py'
@@ -185,7 +189,7 @@ def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=
                         ignore=shutil.ignore_patterns('node_modules', 'dist', '.runtime'))
     for args in (['init', '-q', '-b', 'main'], ['config', 'user.name', 'Live acceptance'],
                  ['config', 'user.email', 'acceptance@example.test'], ['add', '.'],
-                 ['commit', '-qm', 'Controlled conversation persistence regressions' if scenario == 'repository' else 'Unrepaired M5 fixture baseline']):
+                 ['commit', '--allow-empty', '-qm', 'Controlled conversation persistence regressions' if scenario == 'repository' else 'Live fixture baseline']):
         if scenario != 'repository' or args[0] != 'init':
             subprocess.run(['git', *args], cwd=source, check=True, capture_output=True)
     selected = {executor['model_profile_id']}
@@ -266,12 +270,35 @@ def verify_disk(report):
     source, workspace = Path(source), Path(workspace)
     unchanged = subprocess.run(['git', 'status', '--porcelain'], cwd=source,
                                capture_output=True, text=True, check=True).stdout == ''
+    baseline_present = 'acceptance_baseline' in report
     baseline = report.pop('acceptance_baseline', {})
-    changed = acceptance_changes(workspace, baseline) if baseline else ['MISSING_BASELINE']
+    changed = acceptance_changes(workspace, baseline) if baseline_present else ['MISSING_BASELINE']
     diff = subprocess.run(['git', 'diff', '--', '.', ':!package-lock.json'], cwd=workspace,
                           capture_output=True, text=True, encoding='utf-8', check=True).stdout
     report['disk_evidence'] = {'source_unchanged': unchanged,
         'acceptance_changes': changed, 'diff': diff[:24000], 'diff_truncated': len(diff) > 24000}
+    if report.get('scenario') == 'tkinter':
+        contract = ROOT / 'scripts/validation/tkinter_calculator_contract.py'
+        contract_unchanged = hashlib.sha256(contract.read_bytes()).hexdigest() == report.get('contract_sha256')
+        calculator = workspace / 'calculator.py'
+        checks = []
+        if calculator.is_file() and contract_unchanged:
+            command = ['uv','run','--no-project','python',str(contract),'--project',str(workspace)]
+            result = subprocess.run(command, cwd=workspace, capture_output=True, text=True, encoding='utf-8',errors='replace',timeout=120)
+            checks.append({'exit_code':result.returncode,'stdout':result.stdout[-12000:],'stderr':result.stderr[-3000:]})
+            new_diff = subprocess.run(['git','diff','--no-index','--',os.devnull,str(calculator)],cwd=workspace,capture_output=True,text=True,encoding='utf-8',errors='replace')
+            diff += new_diff.stdout  # New files are untracked; ordinary diff omits them.
+        report['disk_evidence'].update(empty_project=True, contract_unchanged=contract_unchanged, independent_checks=checks,
+            calculator_created=calculator.is_file(), diff=diff[:24000], diff_truncated=len(diff)>24000)
+        if report.get('result') == 'PASS' and (not unchanged or changed or not contract_unchanged or not checks or checks[0]['exit_code'] or not diff.strip()):
+            report.update(result='FAIL',reason='INDEPENDENT_TKINTER_EVIDENCE_FAILED')
+        if report.get('result') == 'PASS':
+            target = ROOT / 'validation-reports' / ('tkinter-live-' + report['task_id'])
+            target.mkdir(exist_ok=True)
+            shutil.copy2(calculator, target / 'calculator.py')
+            report['disk_evidence']['validated_program'] = str(target / 'calculator.py')
+            report['disk_evidence']['calculator_sha256'] = hashlib.sha256(calculator.read_bytes()).hexdigest()
+        return
     if report.get('scenario') == 'repository':
         paths = subprocess.check_output(['git','diff','--name-only'],cwd=workspace,text=True).splitlines()
         tests = [f'tests/test_{name}.py' for name in ('thread_lifecycle','persistence','projects')]
@@ -384,7 +411,7 @@ def main():
     parser.add_argument('--live', action='store_true', help='Authorize paid requests and controlled M5 GUI operations')
     parser.add_argument('--model', default='qwen3.8-flash', help='Exact saved online Model ID, never an unverified fallback')
     parser.add_argument('--vision-model', help='Exact saved online vision Model ID')
-    parser.add_argument('--scenario', choices=('electron','calculator','repository'), default='electron')
+    parser.add_argument('--scenario', choices=('electron','calculator','repository','tkinter'), default='electron')
     parser.add_argument('--report', type=Path, default=REPORT)
     parser.add_argument('--session', type=Path, default=SESSION)
     parser.add_argument('--strategy', choices=('single-agent','api-only'), default='single-agent')
@@ -419,6 +446,8 @@ def main():
                       scenario=args.scenario,limits=config['budget'],
                       model_limits={'executor':{k:executor.get(k) for k in ('context_window','max_output_tokens')},
                                     'vision':{k:vision.get(k) for k in ('context_window','max_output_tokens')} if vision else None})
+        if args.scenario == 'tkinter':
+            report['contract_sha256'] = hashlib.sha256((ROOT / 'scripts/validation/tkinter_calculator_contract.py').read_bytes()).hexdigest()
         if args.scenario=='electron':
             from agent.desktop.session import require_interactive_session
             require_interactive_session()

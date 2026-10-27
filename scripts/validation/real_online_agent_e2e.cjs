@@ -38,6 +38,16 @@ git diff --check
 无需桌面、视觉或远程 Git 操作。所有 Python 命令通过 uv run 执行。`;
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const TK_COMMAND = 'uv run --no-project python -m unittest discover -s . -p test_calculator.py -v';
+const TK_GOAL = `使用 tkinter 在当前空目录创建简单计算器 calculator.py，不安装依赖。
+实现四则运算、小数、清空和错误提示。模块导入不能启动 mainloop；mainloop 放在 __main__ 保护内。
+可复验接口：Calculator 是 tkinter.Frame 子类，构造接受 master；display_var 是 StringVar。
+按钮文字使用 0..9、+、-、*、/、.、C、=。C 显示空或 0；除零和无效表达式显示 Error。
+不要对任意用户输入使用不受限的 eval。先检查实际目录，再通过真实工具创建代码并运行验证。
+编写项目内 test_calculator.py，使用 unittest 检查计算和实际 Tk 按钮；导入时不启动 mainloop。
+控制器还会独立验证真实 Tk 控件。禁止修改 Git 元数据或原始目录。
+运行以下固定验证命令，并检查实际 git_status/git_diff：\n${TK_COMMAND}\ngit diff --check
+仅在本任务 Worktree 工作，不提交或推送，不打开其他应用，不宣称未运行的验收通过。`;
 const TERMINAL = new Set(['paused','failed','cancelled','completed','awaiting_approval']);
 
 function createReportWriter(write) {
@@ -72,7 +82,7 @@ function approvalAllowed(payload, workspace, ownedPids, phase, scenario='electro
     const commandAllowed=/^(npm (ci --no-audit --no-fund|run (typecheck|build)|test|start)|git (diff( --check)?|status( -sb)?))$/.test(a.command || '')
       || scenario==='calculator' && a.command==='uv run --no-project python -m unittest discover -s tests -v'
       || scenario==='repository' && /^uv run --locked python -m unittest discover -s tests -p test_(thread_lifecycle|persistence|projects)\.py -v$/.test(a.command || '');
-    return commandAllowed
+    return (commandAllowed || scenario==='tkinter' && a.command===TK_COMMAND)
       && (!a.cwd || a.cwd === '.' || path.resolve(a.cwd) === path.resolve(workspace || '.'));
   }
   return false; // No blanket Full Access, allow_turn, publishing or outside paths.
@@ -83,7 +93,7 @@ function safeCall(call) {
     'request_sent','request_dispatched','finish_reason','response_form','failure_reason','error_code',
     'connection_id','provider','provider_type','model_profile_id','input_tokens','output_tokens',
     'cached_tokens','estimated','actual_cost','initial_reserved_tokens','released_tokens','settlement',
-    'wire_images','tool_schema_count','requested_max_tokens'];
+    'wire_images','tool_schema_count','requested_max_tokens','response_complete','tool_parse_success','tool_json_error'];
   return {id:call.id, model:call.model, role:call.role, status:call.status,
     reserved_tokens:call.reserved_tokens, ...Object.fromEntries(keys.filter(k => call.usage?.[k] !== undefined).map(k => [k,call.usage[k]]))};
 }
@@ -96,10 +106,11 @@ function finalResult(task, tools, scenario='electron') {
   const evidence = gui?.evidence || [];
   const image = evidence.some(e => e.tool === 'desktop_screenshot' && e.ok && e.sha256);
   const observation = evidence.find(e => e.tool === 'vision_observer')?.observation;
-  const codePassed = task.status === 'awaiting_approval' && verifications.length >= (scenario==='calculator' ? 2 : scenario==='repository' ? 4 : 5)
+  const codePassed = task.status === 'awaiting_approval' && verifications.length >= (['calculator','tkinter'].includes(scenario) ? 2 : scenario==='repository' ? 4 : 5)
     && verifications.every(v => v.ok) && tools.some(t => t.ok && ['apply_patch','write_file'].includes(t.name))
     && real.length > 0 && real.every(c => c.estimated === false);
-  const passed = codePassed && (scenario==='calculator' || scenario==='repository' ?
+  const passed = codePassed && (scenario==='tkinter' ?
+    verifications.some(v => v.command===TK_COMMAND && /Ran [1-9][0-9]* tests?/.test((v.stdout||'')+'\n'+(v.stderr||''))) : scenario==='calculator' || scenario==='repository' ?
     verifications.some(v=>v.command===(scenario==='repository' ? 'uv run --locked python -m unittest discover -s tests -p test_thread_lifecycle.py -v' : 'uv run --no-project python -m unittest discover -s tests -v')
       && /Ran [1-9][0-9]* tests?/.test((v.stdout || '')+'\n'+(v.stderr || '')))
     : image && real.some(c => c.role === 'vision-observer' && c.tool_schema_count === 0
@@ -146,7 +157,7 @@ async function main(manifest) {
   };
   try {
     const environment = {...process.env, LCA_DESKTOP_DATA_DIR:manifest.credential_data, LCA_DATA_DIR:manifest.data,
-      LCA_HEADLESS_SMOKE:scenario==='repository' ? '1' : '0', LCA_OPENAI_API_KEY:'', LCA_PROVIDER:'openai_compatible', LCA_OPENAI_MODEL:'',
+      LCA_HEADLESS_SMOKE:['repository','tkinter'].includes(scenario) ? '1' : '0', LCA_OPENAI_API_KEY:'', LCA_PROVIDER:'openai_compatible', LCA_OPENAI_MODEL:'',
       LCA_OPENAI_BASE_URL:'http://127.0.0.1:1/v1'};
     // Only execution bounds for this isolated backend. Never change approval,
     // blocked-repeat or consecutive-failure settings.
@@ -215,7 +226,7 @@ async function main(manifest) {
     await app.evaluate(({dialog}, folder) => {dialog.showOpenDialog = async () => ({canceled:false,filePaths:[folder]});},manifest.source);
     mark('project_and_thread');
     await page.evaluate(profile => window.localAgent.openProject('profile:'+profile),manifest.executor.model_profile_id);
-    const goal = scenario==='repository' ? REPOSITORY_GOAL : scenario==='calculator' ? CALCULATOR_GOAL : GOAL;
+    const goal = scenario==='tkinter' ? TK_GOAL : scenario==='repository' ? REPOSITORY_GOAL : scenario==='calculator' ? CALCULATOR_GOAL : GOAL;
     const created = await page.evaluate(({profile,goal}) => window.localAgent.createThread('profile:'+profile,goal),{profile:manifest.executor.model_profile_id,goal});
     thread = created.payload.thread?.id || created.payload.active_thread?.id;
     if (!thread) {
@@ -291,5 +302,5 @@ async function main(manifest) {
   }
 }
 
-module.exports = {approvalAllowed, safeCall, finalResult, GOAL, createReportWriter, cleanupFailureReport};
+module.exports = {approvalAllowed, safeCall, finalResult, GOAL, TK_GOAL, TK_COMMAND, createReportWriter, cleanupFailureReport};
 if (require.main === module) main(JSON.parse(fs.readFileSync(process.argv[2],'utf8'))).catch(() => {process.exitCode=2;});

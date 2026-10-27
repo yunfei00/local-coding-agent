@@ -35,6 +35,19 @@ def catalog():
 
 
 class LiveAcceptanceGuards(unittest.TestCase):
+    def test_tkinter_starts_empty_and_verifies_inside_workspace(self):
+        saved = catalog()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            original = root / 'original'; original.mkdir()
+            isolated = root / 'isolated'; isolated.mkdir()
+            manifest = live.prepare(original, saved, saved['profiles'][0], None, 6, isolated, scenario='tkinter')
+            document = json.loads(manifest.read_text())
+            self.assertEqual([p.name for p in Path(document['source']).iterdir()], ['.git'])
+            commands = document['config']['verification_commands']
+            self.assertEqual(commands, ['uv run --no-project python -m unittest discover -s . -p test_calculator.py -v', 'git diff --check'])
+            self.assertNotIn(str(ROOT), str(commands))
+
     def test_incomplete_terminal_report_is_failure_not_a_hanging_running_result(self):
         report={'result':'RUNNING','final_status':'awaiting_approval'}
         live.normalize_controller_result(report,0)

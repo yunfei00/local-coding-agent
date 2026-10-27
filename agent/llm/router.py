@@ -265,6 +265,11 @@ class RoutedProvider:
             raise ProviderError("MODEL_CLIENT_ERROR", "Model client failed; inspect the call metadata") from exc
         finally:
             meta = getattr(self.provider, "response_metadata", {})
+            # A completed HTTP response can carry authoritative Usage even when
+            # its tool JSON is invalid. It still counts as a failed paid call.
+            reported = meta.get("reported_usage", {})
+            if usage.get("estimated") is not False and meta.get("response_complete") is True and reported.get("estimated") is False:
+                usage = reported
             self.router.budget.annotate(request_id, {**meta, "request_dispatched":dispatched})
             if not meta.get("request_sent", dispatched):
                 status = "not_sent"

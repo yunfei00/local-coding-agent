@@ -10,7 +10,8 @@ CALL_FIELDS = {"task_id", "call_id", "sequence", "phase", "retry", "started_at",
     "finish_reason", "representation", "response_form", "response_chars", "response_fingerprint", "http_started_at", "http_ended_at",
     "parse_success", "schema_valid", "schema_errors", "error_code", "failure_reason", "next_state",
     "transition_at", "recovered_at", "request_sent", "request_dispatched", "estimated", "input_tokens", "output_tokens",
-    "cached_tokens", "actual_cost", "initial_reserved_tokens", "released_tokens", "settlement"}
+    "cached_tokens", "actual_cost", "initial_reserved_tokens", "released_tokens", "settlement",
+    "requested_max_tokens", "response_complete", "tool_parse_success", "tool_json_error"}
 
 
 def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
@@ -44,14 +45,14 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
     lines = ["# Task diagnostics", "", f"Task: {task_id}", f"Status: {task['status']}",
         f"Planning attempts: {report['planning_attempts']} / {report['planning_limit']}",
         f"Why Planning did not enter Executing: {blocker or 'Plan accepted; see transitions'}", "",
-        "| Call | Stage / Role | Provider / Model | HTTP | Finish | Parse / Schema | Result / Next |",
+        "| Call | Stage / Role | Provider / Model | HTTP | Finish | Transport / Tool JSON / Schema | Result / Next |",
         "| --- | --- | --- | --- | --- | --- | --- |"]
     for c in report["calls"]:
         m = c["metadata"]
         cell = lambda v: str(v).replace("|", "/").replace("\n", " ").replace("\r", " ")
         lines.append("| " + " | ".join(map(cell, [c["call_id"], f"{m.get('phase')} / {c['role']}",
             f"{m.get('provider_type')} / {c['model']}", m.get("http_status"), m.get("finish_reason"),
-            f"{m.get('parse_success')} / {m.get('schema_valid')}", f"{m.get('error_code', c['status'])} / {m.get('next_state')}"])) + " |")
+            f"{m.get('parse_success')} / {m.get('tool_parse_success')} / {m.get('schema_valid')}", f"{m.get('error_code', c['status'])} / {m.get('next_state')}"])) + " |")
     lines += ["", "Full allowlisted metadata and Usage:", "```json", text, "```", ""]
     markdown = "\n".join(lines)
     directory.mkdir(parents=True, exist_ok=True)
