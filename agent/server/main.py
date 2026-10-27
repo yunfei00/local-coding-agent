@@ -1225,6 +1225,9 @@ class AgentServer:
                     await self.send_error(ws, "THREAD_NOT_FOUND", "Select a valid conversation.", request_id=request_id)
                 return
             unfinished = [task for task in self.store.task_runtime.list(thread_id) if task.get("status") not in {"completed", "failed", "cancelled"}]
+            if self.store.get_setting("thread.cleanup_error:" + thread_id):
+                await self.send_error(ws, "THREAD_STOP_INCOMPLETE", "Previous process cleanup failed; conversation retained for diagnosis. Verify the owned processes have stopped before recovery.", request_id=request_id)
+                return
             if payload.get("cancel_tasks") is True:
                 try:
                     # Only this conversation's task/turn IDs. Never cancel unrelated work.
@@ -1240,9 +1243,12 @@ class AgentServer:
                             self.approvals.cancel_turn(turn_id)
                             running.cancel()
                             try:
-                                await asyncio.wait_for(asyncio.shield(asyncio.gather(running, return_exceptions=True)), 45)
+                                outcomes = await asyncio.wait_for(asyncio.shield(asyncio.gather(running, return_exceptions=True)), 45)
                             except TimeoutError as exc:
                                 raise ValueError("Conversation shutdown is not complete; retry after its processes stop.") from exc
+                            if any(isinstance(outcome, Exception) for outcome in outcomes):
+                                self.store.set_setting("thread.cleanup_error:" + thread_id, "TURN_SHUTDOWN_FAILED")
+                                raise ValueError("Conversation process cleanup failed; conversation retained for diagnosis.")
                     unknown = [turn for turn, running in self.active_turns.items()
                         if not running.done() and turn not in self.active_turn_threads]
                     if unknown:

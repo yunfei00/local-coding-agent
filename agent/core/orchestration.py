@@ -90,6 +90,8 @@ class TaskService:
         if target not in {"paused", "cancelled"}:
             raise ValueError("Invalid stop target")
         task = self.runtime.get(plan_id)
+        if task.get("cleanup_error"):
+            raise ValueError("Task process cleanup failed; conversation retained. Inspect Task diagnostics before recovery.")
         turn_id = self.running.get(plan_id)
         running = self.server.active_turns.get(turn_id)
         if running and not running.done():
@@ -97,9 +99,11 @@ class TaskService:
             self.server.approvals.cancel_turn(turn_id)
             running.cancel()
             try:
-                await asyncio.wait_for(asyncio.shield(asyncio.gather(running, return_exceptions=True)), 45)
+                outcomes = await asyncio.wait_for(asyncio.shield(asyncio.gather(running, return_exceptions=True)), 45)
             except TimeoutError as exc:
                 raise ValueError("Task shutdown is not complete; conversation retained. Retry after its processes stop.") from exc
+            if any(isinstance(outcome, Exception) for outcome in outcomes):
+                raise ValueError("Task shutdown failed; conversation retained. Inspect Task diagnostics before recovery.")
             if self.runtime.get(plan_id)["status"] != target:
                 self.runtime.transition(plan_id, target, reason)
             self.stop_reasons.pop(plan_id, None)
@@ -697,10 +701,18 @@ class TaskService:
             with suppress(Exception):
                 await update("failed", redact_text(str(exc), exact_secrets=self.server._exact_secrets()))
         finally:
+            cleanup_error = None
             if 'view' in locals():
-                with suppress(Exception):
+                try:
                     await view.tools.desktop.close_owner(turn_id)
                     await view.tools.processes.close_owner(turn_id)
+                except Exception as exc:
+                    cleanup_error = exc
+                    current = self.runtime.get(plan_id)
+                    current["cleanup_error"] = {"code":getattr(exc, "code", "PROCESS_CLEANUP_FAILED"), "exception_type":type(exc).__name__}
+                    current["last_error"] = current["cleanup_error"]
+                    self.runtime.save(current)
+                    self.runtime.transition(plan_id, "paused", "Owned process cleanup failed; inspect Task diagnostics before recovery")
             with suppress(Exception):
                 self.diagnostics(plan_id)
             self.server.approvals.finish_turn(turn_id)
@@ -712,6 +724,8 @@ class TaskService:
                                    "code": "TASK_" + status.upper(), "message": self.runtime.get(plan_id)["reason"],
                                    "verification": {"complete": status == "awaiting_approval"}})
                 await emit("task.updated", {"task": self.public(self.runtime.get(plan_id))})
+            if cleanup_error:
+                raise cleanup_error
 
     def diagnostics(self, plan_id):
         from agent.core.task_diagnostics import export_diagnostics

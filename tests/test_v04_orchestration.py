@@ -13,6 +13,8 @@ from agent.core.verification import classify, discover_commands
 from agent.llm.base import ProviderError, ProviderChunk
 from agent.llm.router import ModelRouter, validate_config
 from agent.server.main import AgentServer
+from agent.tools.base import ToolError
+from agent.tools.processes import ProcessManager
 from test_agent_reliability import FakeWebSocket, ScriptedProvider, final_step, tool_step
 
 PLAN = final_step(json.dumps({"steps": [{"description": "Inspect and fix calculator using actual tools"}]}))
@@ -66,6 +68,24 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
 
     def fix(self):
         return tool_step("apply_patch", {"path": "calculator.py", "old_text": "return a - b", "new_text": "return a + b"})
+
+    async def test_cleanup_failure_is_persisted_and_cannot_be_deleted_as_stopped(self):
+        close_owner = ProcessManager.close_owner
+        async def failed_cleanup(manager, owner):
+            await close_owner(manager, owner)
+            raise ToolError("PROCESS_CLEANUP_FAILED", "Controlled owned-process cleanup failure")
+        with patch.object(ProcessManager, "close_owner", failed_cleanup):
+            with self.assertRaises(ToolError):
+                await self.run_task([final_step("invalid plan")]*4,
+                                    config=self.config(planning_attempts=1, api_calls=0))
+        task = self.server.store.task_runtime.list(self.thread.id)[0]
+        self.assertEqual(task["status"], "paused")
+        self.assertEqual(task["cleanup_error"]["code"], "PROCESS_CLEANUP_FAILED")
+        self.assertEqual(task["last_error"]["code"], "PROCESS_CLEANUP_FAILED")
+        await self.server.handle_message(self.ws, {"type":"thread.delete", "thread_id":self.thread.id,
+            "payload":{"cancel_tasks":True}}, set())
+        self.assertEqual(self.ws.messages[-1]["payload"]["code"], "THREAD_STOP_INCOMPLETE")
+        self.assertIsNotNone(self.project.state.get_thread(self.thread.id))
 
     async def test_multistep_plan_executes_step_local_tools_and_finishes_real_validation(self):
         plan=final_step(json.dumps({'steps':[

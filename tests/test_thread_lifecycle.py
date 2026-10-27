@@ -233,3 +233,22 @@ class ThreadLifecycleTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.gather(*self.server.active_turns.values(), return_exceptions=True)
             self.server.active_turns.clear()
             self.server.active_turn_threads.clear()
+
+    async def test_failed_turn_cleanup_retains_conversation_and_retry_guard(self):
+        await self.open()
+        thread_id = await self.create()
+        async def fails_on_stop():
+            try:
+                await asyncio.Event().wait()
+            finally:
+                raise RuntimeError("Controlled cleanup failure")
+        running = asyncio.create_task(fails_on_stop())
+        self.server.active_turns["cleanup-failure"] = running
+        self.server.active_turn_threads["cleanup-failure"] = thread_id
+        running.add_done_callback(lambda _: self.server.forget_turn("cleanup-failure"))
+        await asyncio.sleep(0)
+        for _ in range(2):
+            result = await self.request("thread.delete", {"cancel_tasks":True}, thread_id)
+            self.assertEqual(result["payload"]["code"], "THREAD_STOP_INCOMPLETE")
+            self.assertIsNotNone(self.server.projects.active.state.get_thread(thread_id))
+        self.assertEqual(self.server.store.get_setting("thread.cleanup_error:" + thread_id), "TURN_SHUTDOWN_FAILED")
