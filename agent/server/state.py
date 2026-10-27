@@ -102,6 +102,7 @@ class InMemoryState:
         if len(title) > 46:
             title = title[:45].rstrip() + "…"
         thread.title = title
+        thread.updated_at = now_iso()
         self._persist_thread(thread)
         return thread
 
@@ -111,6 +112,7 @@ class InMemoryState:
         if not thread or not title or len(title) > 120:
             return None
         thread.title = title
+        thread.updated_at = now_iso()
         self._persist_thread(thread)
         return thread
 
@@ -120,6 +122,15 @@ class InMemoryState:
             key=lambda item: item.updated_at,
             reverse=True,
         )
+
+    def delete_thread(self, thread_id: str) -> bool:
+        if thread_id not in self._threads:
+            return False
+        if self.store and self.project_id:
+            self.store.delete_thread(self.project_id, thread_id, now_iso())
+        self._threads.pop(thread_id)
+        self._messages.pop(thread_id, None)
+        return True
 
     def get_thread(self, thread_id: str) -> ThreadRecord | None:
         return self._threads.get(thread_id)

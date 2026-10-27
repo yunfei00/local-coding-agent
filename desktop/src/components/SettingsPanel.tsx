@@ -483,7 +483,6 @@ export function SettingsPanel({
     <section className="settings-panel">
       <header className="settings-header">
         <div>
-          <div className="eyebrow">LOCAL CODING AGENT</div>
           <h1>Settings</h1>
         </div>
         <button type="button" onClick={onClose}>

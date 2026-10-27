@@ -4,6 +4,9 @@ type AgentEventHandler = (event: unknown) => void;
 
 contextBridge.exposeInMainWorld("localAgent", {
   platform: process.platform,
+  setWindowTheme: (theme: "light" | "dark") => ipcRenderer.invoke("window:theme", theme),
+  menuAction: (action: string) => ipcRenderer.invoke("window:menu-action", action),
+  openProjectFolder: () => ipcRenderer.invoke("agent:project-folder"),
   previewScreenshot: (path: string) => ipcRenderer.invoke("agent:screenshot-preview", path),
   copyText: (text: string) => ipcRenderer.invoke("clipboard:copy-text", text),
   notifyRendererReady: () => ipcRenderer.send("renderer:ready"),
@@ -127,7 +130,8 @@ contextBridge.exposeInMainWorld("localAgent", {
   listModels: () => ipcRenderer.invoke("agent:model-list"),
   selectModel: (threadId: string, model: string) =>
     ipcRenderer.invoke("agent:model-select", threadId, model),
-  createThread: (model?: string) => ipcRenderer.invoke("agent:thread-create", model),
+  createThread: (model?: string, initialPrompt?: string) => ipcRenderer.invoke("agent:thread-create", model, initialPrompt),
+  deleteThread: (threadId:string, projectId:string) => ipcRenderer.invoke("agent:thread-delete", threadId, projectId),
   listThreads: () => ipcRenderer.invoke("agent:thread-list"),
   taskRequest: (threadId: string, operation: string, payload: Record<string, unknown> = {}) =>
     ipcRenderer.invoke("agent:task-request", threadId, operation, payload),

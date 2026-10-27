@@ -1,0 +1,543 @@
+{
+  "date": "2026-10-27",
+  "scenario": "Real tracked product repository clone with two explicitly seeded persistence regressions; production TaskService, real Alibaba HTTP and tools, independent tests; no screenshot sent",
+  "mode": "single-agent",
+  "credential_mode": "os_protected",
+  "results": [
+    {
+      "model_id": "deepseek-v4.1-flash",
+      "result": "PASS",
+      "task_id": "23bb1a89-44a9-429e-b06e-c04b1e1682e1",
+      "development_sha": "8b22d185eb3e1edb87688bdd597dd51f049945aa",
+      "context_window": 131072,
+      "max_output_tokens": 8192,
+      "http_requests": 14,
+      "active_seconds": 85.125,
+      "final_status": "awaiting_approval",
+      "reason": "Independent validation passed; review report and Git Diff",
+      "cost": "UNKNOWN",
+      "usage": {
+        "input_tokens": 448890,
+        "output_tokens": 3271,
+        "cached_tokens": 93184,
+        "reserved_tokens": 452161,
+        "in_flight_tokens": 0,
+        "estimated": false,
+        "actual_cost_known": false
+      },
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "independent_checks": [
+        {
+          "command": "uv run --locked python -m unittest discover -s tests -p test_thread_lifecycle.py -v",
+          "exit_code": 0,
+          "tests": 8
+        },
+        {
+          "command": "uv run --locked python -m unittest discover -s tests -p test_persistence.py -v",
+          "exit_code": 0,
+          "tests": 2
+        },
+        {
+          "command": "uv run --locked python -m unittest discover -s tests -p test_projects.py -v",
+          "exit_code": 0,
+          "tests": 3
+        }
+      ],
+      "source_unchanged": true,
+      "tests_unchanged": true,
+      "changed_files": [
+        "agent/persistence/store.py",
+        "agent/server/state.py"
+      ],
+      "private_report_filename": "20261027-repository-deepseek-v4.1-flash-context128k.json",
+      "private_report_sha256": "70697bf57c171f217816a7f9d8a8534ea88900f9b843a907c27c4d3cc28b8442",
+      "reviewed_diff": "diff --git a/agent/persistence/store.py b/agent/persistence/store.py\nindex 3b408fa..8df26cf 100644\n--- a/agent/persistence/store.py\n+++ b/agent/persistence/store.py\n@@ -357,7 +357,7 @@ class SQLiteStore:\n             \"\"\"\n             SELECT id, project_id, title, active_model, created_at, updated_at\n             FROM threads\n-            WHERE project_id = ?\n+            WHERE project_id = ? AND deleted_at IS NULL\n             ORDER BY updated_at DESC\n             \"\"\",\n             (project_id,),\ndiff --git a/agent/server/state.py b/agent/server/state.py\nindex 7894ef6..62538fa 100644\n--- a/agent/server/state.py\n+++ b/agent/server/state.py\n@@ -113,6 +113,7 @@ class InMemoryState:\n             return None\n         thread.title = title\n         thread.updated_at = now_iso()\n+        self._persist_thread(thread)\n         return thread\n \n     def list_threads(self) -> list[ThreadRecord]:\n"
+    },
+    {
+      "model_id": "deepseek-v4.1-flash",
+      "result": "FAIL",
+      "task_id": "79e9056f-105f-4412-8ba9-47665c8636e4",
+      "development_sha": "72a97dbe9f26df086aad856e2e3bbd268f8a1a7e",
+      "context_window": null,
+      "max_output_tokens": 8192,
+      "http_requests": 16,
+      "active_seconds": 38.466,
+      "final_status": "paused",
+      "reason": "TOOL_LOOP_DETECTED",
+      "cost": "UNKNOWN",
+      "usage": {
+        "input_tokens": 183702,
+        "output_tokens": 2472,
+        "cached_tokens": 109568,
+        "reserved_tokens": 186174,
+        "in_flight_tokens": 0,
+        "estimated": false,
+        "actual_cost_known": false
+      },
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "independent_checks": [],
+      "source_unchanged": true,
+      "tests_unchanged": true,
+      "changed_files": [],
+      "private_report_filename": "20261027-repository-deepseek-v4.1-flash.json",
+      "private_report_sha256": "e405ba1c5b265771138a440d6128355c5bca48b32fdc2a5cb2011eaef29b740f"
+    },
+    {
+      "model_id": "glm-5.3",
+      "result": "PASS",
+      "task_id": "1ac4e016-ff27-49ed-819d-d2664e88bafb",
+      "development_sha": "8b22d185eb3e1edb87688bdd597dd51f049945aa",
+      "context_window": 131072,
+      "max_output_tokens": 8192,
+      "http_requests": 19,
+      "active_seconds": 387.996,
+      "final_status": "awaiting_approval",
+      "reason": "Independent validation passed; review report and Git Diff",
+      "cost": "UNKNOWN",
+      "usage": {
+        "input_tokens": 626962,
+        "output_tokens": 17085,
+        "cached_tokens": 173568,
+        "reserved_tokens": 644047,
+        "in_flight_tokens": 0,
+        "estimated": false,
+        "actual_cost_known": false
+      },
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "independent_checks": [
+        {
+          "command": "uv run --locked python -m unittest discover -s tests -p test_thread_lifecycle.py -v",
+          "exit_code": 0,
+          "tests": 8
+        },
+        {
+          "command": "uv run --locked python -m unittest discover -s tests -p test_persistence.py -v",
+          "exit_code": 0,
+          "tests": 2
+        },
+        {
+          "command": "uv run --locked python -m unittest discover -s tests -p test_projects.py -v",
+          "exit_code": 0,
+          "tests": 3
+        }
+      ],
+      "source_unchanged": true,
+      "tests_unchanged": true,
+      "changed_files": [
+        "agent/persistence/store.py",
+        "agent/server/state.py"
+      ],
+      "private_report_filename": "20261027-repository-glm-5.3-context128k.json",
+      "private_report_sha256": "14b32ba8fd4e8decd0019e903d2387206140599e2bfb23e8daf31ec0afc1158a",
+      "reviewed_diff": "diff --git a/agent/persistence/store.py b/agent/persistence/store.py\nindex 3b408fa..6e56725 100644\n--- a/agent/persistence/store.py\n+++ b/agent/persistence/store.py\n@@ -353,11 +353,13 @@ class SQLiteStore:\n         self.connection.commit()\n \n     def list_threads(self, project_id: str) -> list[dict[str, Any]]:\n+        # Soft-deleted conversations stay out of navigation while their\n+        # messages, tasks, checkpoints and usage audit rows are retained.\n         rows = self.connection.execute(\n             \"\"\"\n             SELECT id, project_id, title, active_model, created_at, updated_at\n             FROM threads\n-            WHERE project_id = ?\n+            WHERE project_id = ? AND deleted_at IS NULL\n             ORDER BY updated_at DESC\n             \"\"\",\n             (project_id,),\ndiff --git a/agent/server/state.py b/agent/server/state.py\nindex 7894ef6..62538fa 100644\n--- a/agent/server/state.py\n+++ b/agent/server/state.py\n@@ -113,6 +113,7 @@ class InMemoryState:\n             return None\n         thread.title = title\n         thread.updated_at = now_iso()\n+        self._persist_thread(thread)\n         return thread\n \n     def list_threads(self) -> list[ThreadRecord]:\n"
+    },
+    {
+      "model_id": "glm-5.3",
+      "result": "FAIL",
+      "task_id": "f62c5a2f-11db-4cb7-8c02-f2e1fc6d7743",
+      "development_sha": "72a97dbe9f26df086aad856e2e3bbd268f8a1a7e",
+      "context_window": null,
+      "max_output_tokens": 8192,
+      "http_requests": 15,
+      "active_seconds": 36.928,
+      "final_status": "paused",
+      "reason": "TOOL_LOOP_DETECTED",
+      "cost": "UNKNOWN",
+      "usage": {
+        "input_tokens": 162473,
+        "output_tokens": 1389,
+        "cached_tokens": 132608,
+        "reserved_tokens": 163862,
+        "in_flight_tokens": 0,
+        "estimated": false,
+        "actual_cost_known": false
+      },
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "independent_checks": [],
+      "source_unchanged": true,
+      "tests_unchanged": true,
+      "changed_files": [],
+      "private_report_filename": "20261027-repository-glm-5.3.json",
+      "private_report_sha256": "23f58c0f4781aa70d3c1b41f6385782d7c2d3c01368e24c10c3818e5fa5b0542"
+    },
+    {
+      "model_id": "kimi-k3",
+      "result": "FAIL",
+      "task_id": "98578bb5-631b-4fb6-b2e0-f41872dad9c3",
+      "development_sha": "34900fda461a4db6626d04436301f11320242ea4",
+      "context_window": 131072,
+      "max_output_tokens": 8192,
+      "http_requests": 1,
+      "active_seconds": 5.81,
+      "final_status": "paused",
+      "reason": "OPENAI_COMPATIBLE_REQUEST_FAILED",
+      "cost": "UNKNOWN",
+      "usage": {
+        "input_tokens": 41943,
+        "output_tokens": 8192,
+        "cached_tokens": 0,
+        "reserved_tokens": 50135,
+        "in_flight_tokens": 0,
+        "estimated": true,
+        "actual_cost_known": false
+      },
+      "http_statuses": [
+        400
+      ],
+      "independent_checks": [],
+      "source_unchanged": true,
+      "tests_unchanged": true,
+      "changed_files": [],
+      "private_report_filename": "20261027-repository-kimi-k3-context128k.json",
+      "private_report_sha256": "43993b5bc87dc1823a6d8886889ebf9760d5d3b7801ebc8ffc7e8a58cbe7db5e"
+    },
+    {
+      "model_id": "kimi/kimi-k3",
+      "result": "FAIL",
+      "task_id": "2be48d60-928b-41df-bf9c-d77cc5b36aa4",
+      "development_sha": "34900fda461a4db6626d04436301f11320242ea4",
+      "context_window": 131072,
+      "max_output_tokens": 8192,
+      "http_requests": 1,
+      "active_seconds": 5.713,
+      "final_status": "paused",
+      "reason": "OPENAI_COMPATIBLE_REQUEST_FAILED",
+      "cost": "UNKNOWN",
+      "usage": {
+        "input_tokens": 41943,
+        "output_tokens": 8192,
+        "cached_tokens": 0,
+        "reserved_tokens": 50135,
+        "in_flight_tokens": 0,
+        "estimated": true,
+        "actual_cost_known": false
+      },
+      "http_statuses": [
+        400
+      ],
+      "independent_checks": [],
+      "source_unchanged": true,
+      "tests_unchanged": true,
+      "changed_files": [],
+      "private_report_filename": "20261027-repository-kimi-k3-prefixed-context128k.json",
+      "private_report_sha256": "198298e3264c89e555a88dd1a2602d819ec40d45f30ac525f05682b449e5ae6c"
+    },
+    {
+      "model_id": "qwen3.7-plus",
+      "result": "PASS",
+      "task_id": "c9c260e7-566b-4d0c-8618-60a23b5e3b6b",
+      "development_sha": "34900fda461a4db6626d04436301f11320242ea4",
+      "context_window": 131072,
+      "max_output_tokens": 8192,
+      "http_requests": 10,
+      "active_seconds": 77.236,
+      "final_status": "awaiting_approval",
+      "reason": "Independent validation passed; review report and Git Diff",
+      "cost": "UNKNOWN",
+      "usage": {
+        "input_tokens": 229441,
+        "output_tokens": 2444,
+        "cached_tokens": 82944,
+        "reserved_tokens": 231885,
+        "in_flight_tokens": 0,
+        "estimated": false,
+        "actual_cost_known": false
+      },
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "independent_checks": [
+        {
+          "command": "uv run --locked python -m unittest discover -s tests -p test_thread_lifecycle.py -v",
+          "exit_code": 0,
+          "tests": 8
+        },
+        {
+          "command": "uv run --locked python -m unittest discover -s tests -p test_persistence.py -v",
+          "exit_code": 0,
+          "tests": 2
+        },
+        {
+          "command": "uv run --locked python -m unittest discover -s tests -p test_projects.py -v",
+          "exit_code": 0,
+          "tests": 3
+        }
+      ],
+      "source_unchanged": true,
+      "tests_unchanged": true,
+      "changed_files": [
+        "agent/persistence/store.py",
+        "agent/server/state.py"
+      ],
+      "private_report_filename": "20261027-repository-qwen3.7-plus-context128k.json",
+      "private_report_sha256": "25043ea468a50cca9364795935013ce9f9725bd7e5fbd0c3bb12eb9ae329b6bb",
+      "reviewed_diff": "diff --git a/agent/persistence/store.py b/agent/persistence/store.py\nindex 3b408fa..8df26cf 100644\n--- a/agent/persistence/store.py\n+++ b/agent/persistence/store.py\n@@ -357,7 +357,7 @@ class SQLiteStore:\n             \"\"\"\n             SELECT id, project_id, title, active_model, created_at, updated_at\n             FROM threads\n-            WHERE project_id = ?\n+            WHERE project_id = ? AND deleted_at IS NULL\n             ORDER BY updated_at DESC\n             \"\"\",\n             (project_id,),\ndiff --git a/agent/server/state.py b/agent/server/state.py\nindex 7894ef6..62538fa 100644\n--- a/agent/server/state.py\n+++ b/agent/server/state.py\n@@ -113,6 +113,7 @@ class InMemoryState:\n             return None\n         thread.title = title\n         thread.updated_at = now_iso()\n+        self._persist_thread(thread)\n         return thread\n \n     def list_threads(self) -> list[ThreadRecord]:\n"
+    },
+    {
+      "model_id": "qwen3.8-flash",
+      "result": "PASS",
+      "task_id": "456bf0e9-4e0a-4bed-9e21-e7375eaa4573",
+      "development_sha": "34900fda461a4db6626d04436301f11320242ea4",
+      "context_window": 131072,
+      "max_output_tokens": 8192,
+      "http_requests": 21,
+      "active_seconds": 163.981,
+      "final_status": "awaiting_approval",
+      "reason": "Independent validation passed; review report and Git Diff",
+      "cost": "UNKNOWN",
+      "usage": {
+        "input_tokens": 677485,
+        "output_tokens": 7155,
+        "cached_tokens": 204800,
+        "reserved_tokens": 684640,
+        "in_flight_tokens": 0,
+        "estimated": false,
+        "actual_cost_known": false
+      },
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "independent_checks": [
+        {
+          "command": "uv run --locked python -m unittest discover -s tests -p test_thread_lifecycle.py -v",
+          "exit_code": 0,
+          "tests": 8
+        },
+        {
+          "command": "uv run --locked python -m unittest discover -s tests -p test_persistence.py -v",
+          "exit_code": 0,
+          "tests": 2
+        },
+        {
+          "command": "uv run --locked python -m unittest discover -s tests -p test_projects.py -v",
+          "exit_code": 0,
+          "tests": 3
+        }
+      ],
+      "source_unchanged": true,
+      "tests_unchanged": true,
+      "changed_files": [
+        "agent/persistence/store.py",
+        "agent/server/state.py"
+      ],
+      "private_report_filename": "20261027-repository-qwen3.8-flash-context128k.json",
+      "private_report_sha256": "4543e1f3fe43fe8c3f158382103c4212a1bd274e4c858c081c925e3a5167cb25",
+      "reviewed_diff": "diff --git a/agent/persistence/store.py b/agent/persistence/store.py\nindex 3b408fa..8df26cf 100644\n--- a/agent/persistence/store.py\n+++ b/agent/persistence/store.py\n@@ -357,7 +357,7 @@ class SQLiteStore:\n             \"\"\"\n             SELECT id, project_id, title, active_model, created_at, updated_at\n             FROM threads\n-            WHERE project_id = ?\n+            WHERE project_id = ? AND deleted_at IS NULL\n             ORDER BY updated_at DESC\n             \"\"\",\n             (project_id,),\ndiff --git a/agent/server/state.py b/agent/server/state.py\nindex 7894ef6..62538fa 100644\n--- a/agent/server/state.py\n+++ b/agent/server/state.py\n@@ -113,6 +113,7 @@ class InMemoryState:\n             return None\n         thread.title = title\n         thread.updated_at = now_iso()\n+        self._persist_thread(thread)\n         return thread\n \n     def list_threads(self) -> list[ThreadRecord]:\n"
+    },
+    {
+      "model_id": "qwen3.8-max",
+      "result": "PASS",
+      "task_id": "9c132b05-65ef-445f-9719-d8827cf31ca2",
+      "development_sha": "34900fda461a4db6626d04436301f11320242ea4",
+      "context_window": 131072,
+      "max_output_tokens": 8192,
+      "http_requests": 17,
+      "active_seconds": 143.717,
+      "final_status": "awaiting_approval",
+      "reason": "Independent validation passed; review report and Git Diff",
+      "cost": "UNKNOWN",
+      "usage": {
+        "input_tokens": 511591,
+        "output_tokens": 3702,
+        "cached_tokens": 163840,
+        "reserved_tokens": 515293,
+        "in_flight_tokens": 0,
+        "estimated": false,
+        "actual_cost_known": false
+      },
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "independent_checks": [
+        {
+          "command": "uv run --locked python -m unittest discover -s tests -p test_thread_lifecycle.py -v",
+          "exit_code": 0,
+          "tests": 8
+        },
+        {
+          "command": "uv run --locked python -m unittest discover -s tests -p test_persistence.py -v",
+          "exit_code": 0,
+          "tests": 2
+        },
+        {
+          "command": "uv run --locked python -m unittest discover -s tests -p test_projects.py -v",
+          "exit_code": 0,
+          "tests": 3
+        }
+      ],
+      "source_unchanged": true,
+      "tests_unchanged": true,
+      "changed_files": [
+        "agent/persistence/store.py",
+        "agent/server/state.py"
+      ],
+      "private_report_filename": "20261027-repository-qwen3.8-max-context128k.json",
+      "private_report_sha256": "f0f02f26f98dcf0ae49458e28a5e6781f9ae52bd43e99b2c2dd088cf3063e104",
+      "reviewed_diff": "diff --git a/agent/persistence/store.py b/agent/persistence/store.py\nindex 3b408fa..8df26cf 100644\n--- a/agent/persistence/store.py\n+++ b/agent/persistence/store.py\n@@ -357,7 +357,7 @@ class SQLiteStore:\n             \"\"\"\n             SELECT id, project_id, title, active_model, created_at, updated_at\n             FROM threads\n-            WHERE project_id = ?\n+            WHERE project_id = ? AND deleted_at IS NULL\n             ORDER BY updated_at DESC\n             \"\"\",\n             (project_id,),\ndiff --git a/agent/server/state.py b/agent/server/state.py\nindex 7894ef6..62538fa 100644\n--- a/agent/server/state.py\n+++ b/agent/server/state.py\n@@ -113,6 +113,7 @@ class InMemoryState:\n             return None\n         thread.title = title\n         thread.updated_at = now_iso()\n+        self._persist_thread(thread)\n         return thread\n \n     def list_threads(self) -> list[ThreadRecord]:\n"
+    },
+    {
+      "model_id": "qwen3.8-omni-flash",
+      "result": "FAIL",
+      "task_id": "0202f67c-d847-4016-93b9-c3a31adfb85d",
+      "development_sha": "34900fda461a4db6626d04436301f11320242ea4",
+      "context_window": 131072,
+      "max_output_tokens": 8192,
+      "http_requests": 11,
+      "active_seconds": 100.613,
+      "final_status": "paused",
+      "reason": "OPENAI_COMPATIBLE_AUTH_FAILED",
+      "cost": "UNKNOWN",
+      "usage": {
+        "input_tokens": 430374,
+        "output_tokens": 11506,
+        "cached_tokens": 14336,
+        "reserved_tokens": 441880,
+        "in_flight_tokens": 0,
+        "estimated": true,
+        "actual_cost_known": false
+      },
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        403
+      ],
+      "independent_checks": [],
+      "source_unchanged": true,
+      "tests_unchanged": true,
+      "changed_files": [
+        "agent/persistence/store.py",
+        "agent/server/state.py"
+      ],
+      "private_report_filename": "20261027-repository-qwen3.8-omni-flash-context128k.json",
+      "private_report_sha256": "0f69789ee61c10e50d8eb1a1ff822944b838c8421504209b85d3f3d82b843cc2"
+    }
+  ],
+  "totals": {
+    "attempts": 10,
+    "pass": 5,
+    "fail": 5,
+    "http_requests": 125
+  },
+  "usage_notes": "cached_tokens is a subset of input_tokens; failed requests without Usage retain conservative reservation and estimated=true; cost remains UNKNOWN. These attempts are a subset of the cumulative local session."
+}

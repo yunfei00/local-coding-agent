@@ -79,7 +79,7 @@ def settle_session(path, report):
     # backend before the controller lost its reply. Refund only known preflight
     # failures or a terminal task with settled, numeric usage.
     safe_preflight=(not report.get('task_id') and report.get('controller_stage') in {
-        'electron_launch','electron_window','agent_ready','protected_credential_status','project_and_thread'})
+        'preparing_source','electron_launch','electron_window','agent_ready','protected_credential_status','project_and_thread'})
     settled_task=(report.get('task_id') and report.get('final_status') in {
         'paused','failed','cancelled','completed','awaiting_approval'} and not report.get('usage_uncertain')
         and isinstance(usage.get('api_calls'),int) and isinstance(usage.get('reserved_tokens'),int))
@@ -117,12 +117,15 @@ def select_profile(catalog, model, explicit=None, *, vision=False):
     return profile
 
 
-def configure_run_output(catalog, profile_id, output_tokens):
+def configure_run_output(catalog, profile_id, output_tokens, context_window=None):
     """Explicit per-run output setting; never overwrites saved user profiles."""
     copied = json.loads(json.dumps(catalog))
-    if output_tokens is not None:
+    if output_tokens is not None or context_window is not None:
         profile = next(p for p in copied['profiles'] if p['model_profile_id'] == profile_id)
-        profile['max_output_tokens'] = output_tokens
+        if output_tokens is not None:
+            profile['max_output_tokens'] = output_tokens
+        if context_window is not None:
+            profile['context_window'] = context_window
     return validate_catalog(copied)
 
 
@@ -145,6 +148,9 @@ def live_config(executor, vision, calls, tokens=60000, extended=False, *, scenar
         raw['vision_profile_id'] = vision['model_profile_id']
     if scenario == 'calculator':
         raw['verification_commands'] = ['uv run --no-project python -m unittest discover -s tests -v', 'git diff --check']
+    if scenario == 'repository':
+        raw['verification_commands'] = [f'uv run --locked python -m unittest discover -s tests -p test_{name}.py -v'
+            for name in ('thread_lifecycle', 'persistence', 'projects')] + ['git diff --check']
     return validate_config(raw)
 
 
@@ -159,13 +165,29 @@ def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=
     data = temporary / 'data'
     data.mkdir()
     source = temporary / 'fixture'
-    fixture = 'v04-local-first' if scenario == 'calculator' else 'm5-electron-e2e'
-    shutil.copytree(ROOT / 'manual-fixtures' / fixture, source,
-                    ignore=shutil.ignore_patterns('node_modules', 'dist', '.runtime'))
+    if scenario == 'repository':
+        # Actual tracked product repository, no user configuration/untracked files.
+        subprocess.run(['git','clone','--quiet','--no-hardlinks',str(ROOT),str(source)],check=True,capture_output=True)
+        store_file = source / 'agent/persistence/store.py'
+        text = store_file.read_text(encoding='utf-8')
+        expected = 'WHERE project_id = ? AND deleted_at IS NULL'
+        if expected not in text:
+            raise ValueError('REPOSITORY_BASELINE_MISSING_DELETION_CONTRACT')
+        store_file.write_text(text.replace(expected, 'WHERE project_id = ?', 1), encoding='utf-8')
+        state_file = source / 'agent/server/state.py'
+        text = state_file.read_text(encoding='utf-8')
+        start, end = text.index('    def rename_thread('), text.index('    def list_threads(')
+        text = text[:start] + text[start:end].replace('        self._persist_thread(thread)\n', '', 1) + text[end:]
+        state_file.write_text(text, encoding='utf-8')
+    else:
+        fixture = 'v04-local-first' if scenario == 'calculator' else 'm5-electron-e2e'
+        shutil.copytree(ROOT / 'manual-fixtures' / fixture, source,
+                        ignore=shutil.ignore_patterns('node_modules', 'dist', '.runtime'))
     for args in (['init', '-q', '-b', 'main'], ['config', 'user.name', 'Live acceptance'],
                  ['config', 'user.email', 'acceptance@example.test'], ['add', '.'],
-                 ['commit', '-qm', 'Unrepaired M5 fixture baseline']):
-        subprocess.run(['git', *args], cwd=source, check=True, capture_output=True)
+                 ['commit', '-qm', 'Controlled conversation persistence regressions' if scenario == 'repository' else 'Unrepaired M5 fixture baseline']):
+        if scenario != 'repository' or args[0] != 'init':
+            subprocess.run(['git', *args], cwd=source, check=True, capture_output=True)
     selected = {executor['model_profile_id']}
     if vision is not None:
         selected.add(vision['model_profile_id'])
@@ -250,6 +272,27 @@ def verify_disk(report):
                           capture_output=True, text=True, encoding='utf-8', check=True).stdout
     report['disk_evidence'] = {'source_unchanged': unchanged,
         'acceptance_changes': changed, 'diff': diff[:24000], 'diff_truncated': len(diff) > 24000}
+    if report.get('scenario') == 'repository':
+        paths = subprocess.check_output(['git','diff','--name-only'],cwd=workspace,text=True).splitlines()
+        tests = [f'tests/test_{name}.py' for name in ('thread_lifecycle','persistence','projects')]
+        frozen = all((workspace / name).is_file() and (workspace / name).read_text(encoding='utf-8') == (source / name).read_text(encoding='utf-8') for name in tests)
+        checks = []
+        if report.get('result') == 'PASS':
+            for command in report.get('limits',{}).get('verification_commands',[]) or [
+                f'uv run --locked python -m unittest discover -s tests -p test_{name}.py -v' for name in ('thread_lifecycle','persistence','projects')]:
+                import shlex
+                started = time.monotonic()
+                result = subprocess.run(shlex.split(command), cwd=workspace, capture_output=True, text=True, encoding='utf-8',errors='replace',timeout=180)
+                checks.append({'command':command,'exit_code':result.returncode,'seconds':round(time.monotonic()-started,3),
+                    'stdout':result.stdout[-12000:],'stderr':result.stderr[-12000:]})
+        report['disk_evidence'].update(changed_files=paths, tests_unchanged=frozen, independent_checks=checks,
+            real_repository=True, controlled_regressions=['deleted conversations reappear after restart','renamed title is not persisted'],
+            source_commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=source,text=True).strip())
+        allowed = {'agent/persistence/store.py','agent/server/state.py'}
+        if report.get('result') == 'PASS' and (not unchanged or changed or not frozen or not paths or not set(paths) <= allowed
+                or not checks or any(check['exit_code'] for check in checks) or not diff.strip()):
+            report.update(result='FAIL',reason='INDEPENDENT_REPOSITORY_EVIDENCE_FAILED')
+        return
     if report.get('scenario') == 'calculator':
         paths = subprocess.check_output(['git','diff','--name-only'],cwd=workspace,text=True).splitlines()
         original_tests = ROOT / 'manual-fixtures/v04-local-first/tests/test_calculator.py'
@@ -335,16 +378,20 @@ def normalize_controller_result(report, exit_code):
 
 
 def main():
+    global REPORT, SESSION
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data-dir', type=Path, default=Path(os.getenv('APPDATA', str(Path.home()))) / 'local-coding-agent-desktop')
     parser.add_argument('--live', action='store_true', help='Authorize paid requests and controlled M5 GUI operations')
     parser.add_argument('--model', default='qwen3.8-flash', help='Exact saved online Model ID, never an unverified fallback')
     parser.add_argument('--vision-model', help='Exact saved online vision Model ID')
-    parser.add_argument('--scenario', choices=('electron','calculator'), default='electron')
+    parser.add_argument('--scenario', choices=('electron','calculator','repository'), default='electron')
+    parser.add_argument('--report', type=Path, default=REPORT)
+    parser.add_argument('--session', type=Path, default=SESSION)
     parser.add_argument('--strategy', choices=('single-agent','api-only'), default='single-agent')
     parser.add_argument('--executor-profile')
     parser.add_argument('--vision-profile')
     parser.add_argument('--output-tokens',type=int,help='Explicit output cap in the isolated selected profile; saved Settings unchanged')
+    parser.add_argument('--context-window',type=int,help='Explicit isolated context-window setting for controlled diagnosis; saved Settings unchanged')
     parser.add_argument('--request-seconds',type=int,default=60,help='Per-request timeout; bounded by the existing BudgetGuard validator')
     parser.add_argument('--max-calls', type=int, default=12)
     parser.add_argument('--max-tokens', type=int, default=60000)
@@ -352,15 +399,17 @@ def main():
     parser.add_argument('--max-seconds', type=int, default=900)
     parser.add_argument('--authorize-budget-update', action='store_true',help='Explicit user authorization required; preserves all prior usage')
     args = parser.parse_args()
+    REPORT, SESSION = args.report.resolve(), args.session.resolve()
     allocated = False
     controller_started = False
     report = {'result': 'NOT RUN', 'os': platform.platform(),
               'main_start_sha': subprocess.check_output(['git','rev-parse','origin/main'],cwd=ROOT,text=True).strip(),
-              'paid_requests': 0, 'cost': 'UNKNOWN', 'interactive_desktop': False}
+              'paid_requests': 0, 'cost': 'UNKNOWN', 'interactive_desktop': False,
+              'development_sha':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()}
     try:
         catalog = load_catalog(args.data_dir)
         executor = select_profile(catalog, args.model, args.executor_profile)
-        catalog = configure_run_output(catalog,executor['model_profile_id'],args.output_tokens)
+        catalog = configure_run_output(catalog,executor['model_profile_id'],args.output_tokens,args.context_window)
         executor = select_profile(catalog,args.model,args.executor_profile)
         vision_model = args.vision_model or ('qwen3.8-flash' if args.model == 'glm-5.3' else args.model)
         vision = select_profile(catalog, vision_model, args.vision_profile, vision=True) if args.scenario=='electron' or args.vision_model else None
@@ -383,6 +432,7 @@ def main():
                 remaining = allocate_session(SESSION, args.model, args.max_calls,args.max_tokens,
                                              args.max_full_attempts,args.authorize_budget_update,args.max_seconds)
                 allocated = True
+                report['controller_stage'] = 'preparing_source'
                 manifest = prepare(args.data_dir, catalog, executor, vision, remaining['calls'], temporary,
                                    tokens=remaining['tokens'],extended=args.authorize_budget_update,scenario=args.scenario,strategy=args.strategy,request_seconds=args.request_seconds)
                 document = json.loads(manifest.read_text(encoding='utf-8'))
@@ -421,7 +471,7 @@ def main():
         settle_session(SESSION, report)
     write_report(report)
     print(json.dumps({k:report.get(k) for k in ('result','reason','paid_requests','task_id','final_status')}, ensure_ascii=False))
-    return 0 if report['result'] == 'PASS' or (not args.live and (report['interactive_desktop'] or args.scenario=='calculator')) else 2
+    return 0 if report['result'] == 'PASS' or (not args.live and (report['interactive_desktop'] or args.scenario in {'calculator','repository'})) else 2
 
 
 if __name__ == '__main__':

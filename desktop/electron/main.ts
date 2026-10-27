@@ -899,7 +899,11 @@ function createWindow(): void {
     height: Math.min(780, workArea.height),
     minWidth: Math.min(900, workArea.width),
     minHeight: Math.min(600, workArea.height),
-    backgroundColor: "#111111",
+    backgroundColor: "#1a2225",
+    ...(process.platform === "win32" || process.platform === "linux" ? {
+      titleBarStyle: "hidden" as const,
+      titleBarOverlay: {color:"#1a2225", symbolColor:"#ffffff", height:44}
+    } : {}),
     webPreferences: {
       offscreen: process.env.LCA_HEADLESS_SMOKE === "1",
       backgroundThrottling: process.env.LCA_HEADLESS_SMOKE !== "1",
@@ -908,6 +912,8 @@ function createWindow(): void {
       nodeIntegration: false
     }
   });
+  // The renderer's header and native window buttons share one row.
+  mainWindow.setMenu(null);
 
   mainWindow.webContents.on("did-finish-load", () => {
     appendRuntimeLog(
@@ -1347,8 +1353,8 @@ ipcMain.handle("agent:project-open", async (_event, model?: string) => {
     "project.open",
     "project.opened",
     model
-      ? { path: selection.filePaths[0], model }
-      : { path: selection.filePaths[0] }
+      ? { path: selection.filePaths[0], model, defer_thread:true }
+      : { path: selection.filePaths[0], defer_thread:true }
   );
   return { canceled: false, event };
 });
@@ -1361,9 +1367,45 @@ ipcMain.handle("agent:project-choose-parent", async (_event, defaultPath?: strin
   return {canceled:selected.canceled, path:selected.filePaths[0]};
 });
 ipcMain.handle("agent:project-create", async (_event, options: Record<string, unknown>) =>
-  sendRequest("project.create", "project.opened", options, {}, 30000));
+  sendRequest("project.create", "project.opened", {...options, defer_thread:true}, {}, 30000));
 ipcMain.handle("agent:project-get", async () => {
   return sendRequest("project.get", "project.loaded");
+});
+ipcMain.handle("window:theme", (_event, theme:unknown) => {
+  if (theme !== "light" && theme !== "dark") throw new Error("Invalid window theme");
+  const color = theme === "light" ? "#ecf6f9" : "#1a2225";
+  mainWindow?.setBackgroundColor(color);
+  if (process.platform === "win32" || process.platform === "linux") {
+    mainWindow?.setTitleBarOverlay({color, symbolColor:theme === "light" ? "#1a1c1e" : "#ffffff", height:44});
+  }
+});
+ipcMain.handle("window:menu-action", async (_event, action:unknown) => {
+  const contents = mainWindow?.webContents;
+  if (!contents || contents.isDestroyed()) return;
+  // Fixed native editing/view actions only; no arbitrary command or renderer path.
+  switch (action) {
+    case "undo": contents.undo(); break;
+    case "redo": contents.redo(); break;
+    case "cut": contents.cut(); break;
+    case "copy": contents.copy(); break;
+    case "paste": contents.paste(); break;
+    case "selectAll": contents.selectAll(); break;
+    case "zoomIn": contents.setZoomFactor(Math.min(2, contents.getZoomFactor() + .1)); break;
+    case "zoomOut": contents.setZoomFactor(Math.max(.5, contents.getZoomFactor() - .1)); break;
+    case "zoomReset": contents.setZoomFactor(1); break;
+    case "guide": await shell.openExternal("https://github.com/yunfei00/local-coding-agent/blob/main/docs/v0.4/user-guide.md"); break;
+    case "about": await dialog.showMessageBox(mainWindow!, {type:"info", title:"Local Coding Agent", message:"Local Coding Agent", detail:"Version " + app.getVersion()}); break;
+    case "quit": app.quit(); break;
+    default: throw new Error("Unsupported menu action");
+  }
+});
+ipcMain.handle("agent:project-folder", async () => {
+  // Resolve from the active backend workspace, never an arbitrary renderer path.
+  const event = await sendRequest("project.get", "project.loaded");
+  const project = event.payload?.project as {path?:unknown} | undefined;
+  if (typeof project?.path !== "string" || !path.isAbsolute(project.path)) throw new Error("No active project folder");
+  const error = await shell.openPath(project.path);
+  if (error) throw new Error(error);
 });
 ipcMain.handle("agent:project-list", async () => {
   return sendRequest("project.list", "project.listed");
@@ -1374,7 +1416,7 @@ ipcMain.handle(
     return sendRequest(
       "project.select",
       "project.selected",
-      model ? { project_id: projectId, model } : { project_id: projectId }
+      model ? { project_id: projectId, model, defer_thread:true } : { project_id: projectId, defer_thread:true }
     );
   }
 );
@@ -1384,11 +1426,11 @@ ipcMain.handle("agent:model-list", async () => {
 ipcMain.handle("agent:model-select", async (_event, threadId: string, model: string) => {
   return sendRequest("model.select", "model.selected", { model }, { threadId });
 });
-ipcMain.handle("agent:thread-create", async (_event, model?: string) => {
+ipcMain.handle("agent:thread-create", async (_event, model?: string, initialPrompt?: string) => {
   return sendRequest(
     "thread.create",
     "thread.created",
-    model ? { model } : {}
+    {model, initial_prompt:initialPrompt}
   );
 });
 ipcMain.handle("agent:thread-list", async () => {
@@ -1421,6 +1463,8 @@ ipcMain.handle("agent:plan-request", async (_event, threadId: string, operation:
 ipcMain.handle("agent:thread-rename", async (_event, threadId: string, title: string, projectId?: string) => {
   return sendRequest("thread.rename", "thread.updated", { title, project_id:projectId }, { threadId });
 });
+ipcMain.handle("agent:thread-delete", async (_event, threadId:string, projectId:string) =>
+  sendRequest("thread.delete", "thread.deleted", {project_id:projectId, cancel_tasks:true}, {threadId}, 60_000));
 ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
   return sendRequest(
     "thread.get",

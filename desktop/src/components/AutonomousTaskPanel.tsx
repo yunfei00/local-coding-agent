@@ -4,8 +4,8 @@ import {TaskEvidence} from "./TaskEvidence";
 import {mergeTaskSnapshot, TaskSnapshot, taskIsActive} from "../lib/autonomousTask";
 import {TaskConfig as Config, ModelCatalog, modelLabel, taskConfigOverrides, longTaskBudget} from "../lib/modelCatalog";
 
-export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
-  threadId: string; running: boolean; onClose: () => void; onSettings: () => void;
+export function AutonomousTaskPanel({threadId, ensureThread, running, onClose, onSettings}: {
+  threadId: string; ensureThread?: (goal:string) => Promise<string>; running: boolean; onClose: () => void; onSettings: () => void;
 }) {
   const [tasks, setTasks] = useState<TaskSnapshot[]>([]);
   const [config, setConfig] = useState<Config | null>(null);
@@ -21,17 +21,18 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
   const [model, setModel] = useState("");
   const [globalUsage, setGlobalUsage] = useState<Record<string, unknown>>({});
   const [advanced, setAdvanced] = useState("");
-  const apply = (event: AgentEnvelope) => {
+  const apply = (event: AgentEnvelope, owner = threadId) => {
     const next = event.payload?.task as TaskSnapshot | undefined;
-    if (next) setTasks(current => mergeTaskSnapshot(current, next, threadId));
+    if (next) setTasks(current => mergeTaskSnapshot(current, next, owner));
     const list = event.payload?.tasks as TaskSnapshot[] | undefined;
-    if (list) setTasks(current => list.reduce((all, task) => mergeTaskSnapshot(all, task, threadId), current));
+    if (list) setTasks(current => list.reduce((all, task) => mergeTaskSnapshot(all, task, owner), current));
   };
   const request = async (operation: string, payload: Record<string, unknown> = {}) => {
     setBusy(true); setError("");
     try {
-      const event = await window.localAgent.taskRequest(threadId, operation, payload);
-      apply(event);
+      const owner = !threadId && operation === "task.start" && ensureThread ? await ensureThread(String(payload.goal ?? "")) : threadId;
+      const event = await window.localAgent.taskRequest(owner, operation, payload);
+      apply(event, owner);
       return event;
     } catch (cause) {setError(String(cause)); return null;}
     finally {setBusy(false);}
@@ -47,7 +48,7 @@ export function AutonomousTaskPanel({threadId, running, onClose, onSettings}: {
       setAdvanced(JSON.stringify(next, null, 2));
       setGlobalUsage(event.payload?.global_usage as Record<string, unknown> ?? {});
     }).catch(cause => {if (alive) setError(String(cause));});
-    void window.localAgent.taskRequest(threadId, "task.list").then(event => {if (alive) apply(event);}).catch(cause => {if (alive) setError(String(cause));});
+    if (threadId) void window.localAgent.taskRequest(threadId, "task.list").then(event => {if (alive) apply(event);}).catch(cause => {if (alive) setError(String(cause));});
     const unsubscribe = window.localAgent.onAgentEvent(event => {
       if (event.thread_id !== threadId || !alive) return;
       if (event.type === "task.updated") apply(event);

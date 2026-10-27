@@ -154,6 +154,7 @@ class AgentServer:
             self.settings.context_reserved_output_tokens
         )
         self.active_turns: dict[str, asyncio.Task[None]] = {}
+        self.active_turn_threads: dict[str, str] = {}
         self.available_models: set[str] = set()
         self.default_model: str | None = ('profile:'+self.store.get_setting('chat.default_profile_id')) if self.store.get_setting('chat.default_profile_id') else self.provider.preferred_model
         self.permissions = PermissionPolicy(PermissionMode.WORKSPACE)
@@ -280,6 +281,10 @@ class AgentServer:
                 else None
             ),
         }
+
+    def forget_turn(self, turn_id: str) -> None:
+        self.active_turns.pop(turn_id, None)
+        self.active_turn_threads.pop(turn_id, None)
 
     async def handle_message(
         self,
@@ -1020,6 +1025,7 @@ class AgentServer:
                             warning = f"Project folder created, but Git initialization failed ({exc.code}). No commit was created."
                 project, thread, created = self.projects.open(
                     raw_path,
+                    defer_thread=payload.get("defer_thread") is True,
                     active_model=(
                         requested_model
                         or self.default_model
@@ -1051,7 +1057,7 @@ class AgentServer:
                     "project.opened",
                     response_payload,
                     request_id=request_id,
-                    thread_id=thread.id,
+                    thread_id=thread.id if thread else None,
                 )
             )
             return
@@ -1078,6 +1084,7 @@ class AgentServer:
             project_id = str(payload.get("project_id") or "").strip()
             selected = self.projects.select(
                 project_id,
+                defer_thread=payload.get("defer_thread") is True,
                 active_model=(
                     str(payload.get("model") or "").strip()
                     or self.default_model
@@ -1102,7 +1109,7 @@ class AgentServer:
                     "project.selected",
                     self.projects.project_payload(project),
                     request_id=request_id,
-                    thread_id=thread.id,
+                    thread_id=thread.id if thread else None,
                 )
             )
             return
@@ -1173,6 +1180,10 @@ class AgentServer:
                     request_id=request_id,
                 )
                 return
+            initial_prompt = payload.get("initial_prompt")
+            if initial_prompt is not None and (not isinstance(initial_prompt, str) or not initial_prompt.strip()):
+                await self.send_error(ws, "INVALID_PROMPT", "Enter content before creating a conversation.", request_id=request_id)
+                return
             requested_model = str(payload.get("model") or "").strip() or None
             thread = project.state.create_thread(
                 payload.get("title"),
@@ -1183,6 +1194,8 @@ class AgentServer:
                 ),
             )
             project.active_thread_id = thread.id
+            if initial_prompt:
+                project.state.summarize_thread_title(thread.id, initial_prompt)
             project.touch()
             await ws.send_json(
                 envelope(
@@ -1195,6 +1208,69 @@ class AgentServer:
                     thread_id=thread.id,
                 )
             )
+            return
+
+        if message_type == "thread.delete":
+            project_id = str(payload.get("project_id") or "")
+            project = self.projects.get(project_id) if project_id else self.projects.active
+            thread_id = str(data.get("thread_id") or payload.get("thread_id") or "")
+            if not project:
+                await self.send_error(ws, "THREAD_NOT_FOUND", "Select a valid conversation.", request_id=request_id)
+                return
+            if not project.state.get_thread(thread_id):
+                if self.store.thread_is_deleted(project.id, thread_id):
+                    await ws.send_json(envelope("thread.deleted", {"deleted_thread_id":thread_id, "project_id":project.id,
+                        **self.projects.project_payload(project)}, request_id=request_id, thread_id=thread_id))
+                else:
+                    await self.send_error(ws, "THREAD_NOT_FOUND", "Select a valid conversation.", request_id=request_id)
+                return
+            unfinished = [task for task in self.store.task_runtime.list(thread_id) if task.get("status") not in {"completed", "failed", "cancelled"}]
+            if self.store.get_setting("thread.cleanup_error:" + thread_id):
+                await self.send_error(ws, "THREAD_STOP_INCOMPLETE", "Previous process cleanup failed; conversation retained for diagnosis. Verify the owned processes have stopped before recovery.", request_id=request_id)
+                return
+            if payload.get("cancel_tasks") is True:
+                try:
+                    # Only this conversation's task/turn IDs. Never cancel unrelated work.
+                    for task in unfinished:
+                        if task["status"] in {"planning", "executing", "verifying", "repairing", "escalating"}:
+                            owner = self.tasks.running.get(task["id"])
+                            if owner not in self.active_turns:
+                                raise ValueError("The running task is not owned by this backend. Stop it in its original instance or restart this application to recover it; conversation retained.")
+                        await self.tasks.interrupt(task["id"], "cancelled", "Conversation deleted by user")
+                    for turn_id, owner in list(self.active_turn_threads.items()):
+                        running = self.active_turns.get(turn_id)
+                        if owner == thread_id and running and not running.done():
+                            self.approvals.cancel_turn(turn_id)
+                            running.cancel()
+                            try:
+                                outcomes = await asyncio.wait_for(asyncio.shield(asyncio.gather(running, return_exceptions=True)), 45)
+                            except TimeoutError as exc:
+                                raise ValueError("Conversation shutdown is not complete; retry after its processes stop.") from exc
+                            if any(isinstance(outcome, Exception) for outcome in outcomes):
+                                self.store.set_setting("thread.cleanup_error:" + thread_id, "TURN_SHUTDOWN_FAILED")
+                                raise ValueError("Conversation process cleanup failed; conversation retained for diagnosis.")
+                    unknown = [turn for turn, running in self.active_turns.items()
+                        if not running.done() and turn not in self.active_turn_threads]
+                    if unknown:
+                        raise ValueError("An execution cannot be scoped safely; stop it before retrying. Conversation retained.")
+                    if any(owner == thread_id and (running := self.active_turns.get(turn)) and not running.done()
+                           for turn, owner in self.active_turn_threads.items()):
+                        raise ValueError("New work started while stopping this conversation; stop it and retry. Conversation retained.")
+                    if any(task["status"] not in {"completed", "failed", "cancelled"} for task in self.store.task_runtime.list(thread_id)):
+                        raise ValueError("The conversation still has unfinished work; deletion was not applied.")
+                except (ValueError, TimeoutError) as exc:
+                    await self.send_error(ws, "THREAD_STOP_INCOMPLETE", str(exc), request_id=request_id)
+                    return
+            elif any(not task.done() for task in self.active_turns.values()) or unfinished:
+                await self.send_error(ws, "THREAD_BUSY", "Confirm stopping unfinished tasks before deleting this conversation.", request_id=request_id)
+                return
+            project.state.delete_thread(thread_id)
+            if project.active_thread_id == thread_id:
+                remaining = project.state.list_threads()
+                project.active_thread_id = remaining[0].id if remaining else None
+            project.touch()
+            await ws.send_json(envelope("thread.deleted", {"deleted_thread_id":thread_id, "project_id":project.id,
+                **self.projects.project_payload(project)}, request_id=request_id, thread_id=thread_id))
             return
 
         if message_type == "thread.rename":
@@ -1450,8 +1526,9 @@ class AgentServer:
                 name=turn_id,
             )
             self.active_turns[turn_id] = task
+            self.active_turn_threads[turn_id] = thread_id
             owned_turns.add(turn_id)
-            task.add_done_callback(lambda _task, tid=turn_id: self.active_turns.pop(tid, None))
+            task.add_done_callback(lambda _task, tid=turn_id: self.forget_turn(tid))
             return
 
         if message_type == "turn.cancel":

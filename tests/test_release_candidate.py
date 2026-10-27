@@ -177,7 +177,7 @@ class V01DatabaseUpgradeTests(unittest.TestCase):
                 ).fetchone()
 
                 self.assertEqual(version, SCHEMA_VERSION)
-                self.assertEqual(version, 4)
+                self.assertEqual(version, 5)
                 self.assertEqual(integrity, "ok")
                 self.assertEqual(message, "preserve me")
                 self.assertEqual(permission, "read_only")

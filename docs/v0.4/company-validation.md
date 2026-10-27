@@ -1,6 +1,26 @@
 # 公司环境验证流程
 
-最新解锁后已取得两种真实 Electron 编码/视觉验收证据，详见[完整结果、已知限制与更新命令](../validation/unlocked-real-online-acceptance-2026-10-26.md)。公司请核对 PR #22 是否合并：合并后更新 main，合并前用功能分支。旧 API Profile 可使用 Use coding output limit（8192）并保存；此值与 Task 总预算不同，旧快照不会自动改变。
+2026-10-27 的会话草稿/删除补查见[会话生命周期](../validation/conversation-lifecycle-2026-10-27.md)，真实阿里模型修改产品仓库和独立测试结果见[真实仓库验收](../validation/alibaba-repository-acceptance-2026-10-27.md)。本次在 PR #23 整理；更新前检查该 PR 状态，已合并用 main，未合并用 `codex/desktop-codex-layout`，不要使用旧安装包判断源码修复结果。
+
+之前两种真实 Electron 编码/视觉验收证据见[2026-10-26 完整结果](../validation/unlocked-real-online-acceptance-2026-10-26.md)，PR #22 已合并。旧 API Profile 可使用 Use coding output limit（8192）并保存；此值与 Task 总预算不同，旧快照不会自动改变。
+
+### 本次源码更新和删除验证
+
+先完整退出源码开发版及其 Agent；仅刷新 Vite 页面不能加载新的删除 IPC。保留未提交文件，不执行 reset/clean。若 PR #23 已合并：
+
+```powershell
+git status -sb
+git fetch origin
+git switch main
+git pull --ff-only origin main
+uv sync --locked
+npm --prefix desktop ci --no-audit --no-fund
+npm --prefix desktop run dev
+```
+
+未合并时将上述 switch/pull 的分支改为 `codex/desktop-codex-layout`。无需重填已保存的模型配置或 Key。项目右侧写入图标只打开草稿，首次发送内容才生成会话；右键会话 → Delete，先 Cancel 应保留，确认则停止该会话的未完成任务并从列表移除。重启后保持删除，项目文件、Worktree、检查点和用量审计保留。停止不完整时会保留会话，不能伪称删除成功。
+
+真实仓库测试使用实际存在的阿里模型 ID，并在隔离任务快照设上下文 `131072`、单次最大输出 `8192`。这是本次成功样本的客户端配置，不是对所有模型规格的统一承诺，也不是任务总 Token 额度。用户已保存的 Profile 未被脚本更改；公司需要时编辑相应 Profile 保存，再建新 Task。旧任务继续使用旧快照。
 
 历史记录（2026-10-26 解锁前）：当时修复在功能分支，只有 calculator 在线闭环通过，原生桌面被锁屏阻断。[该阶段记录](../validation/alibaba-model-validation-2026-10-26.md)继续保留；当前结果和安装分支以本页顶部新报告及 PR 合并状态为准。
 

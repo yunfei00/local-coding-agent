@@ -9,7 +9,7 @@ from agent.task_plans import TaskPlanStore
 from agent.core.task_runtime import TaskRuntimeStore
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def default_data_dir() -> Path:
@@ -143,9 +143,10 @@ class SQLiteStore:
             ON pinned_context(thread_id, created_at);
             """
         )
-        self.connection.execute(
-            "PRAGMA user_version = " + str(SCHEMA_VERSION)
-        )
+        columns = {row[1] for row in self.connection.execute("PRAGMA table_info(threads)")}
+        if "deleted_at" not in columns:
+            self.connection.execute("ALTER TABLE threads ADD COLUMN deleted_at TEXT")
+        self.connection.execute("PRAGMA user_version = " + str(SCHEMA_VERSION))
         self.connection.commit()
 
     def close(self) -> None:
@@ -356,12 +357,25 @@ class SQLiteStore:
             """
             SELECT id, project_id, title, active_model, created_at, updated_at
             FROM threads
-            WHERE project_id = ?
+            WHERE project_id = ? AND deleted_at IS NULL
             ORDER BY updated_at DESC
             """,
             (project_id,),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def delete_thread(self, project_id: str, thread_id: str, deleted_at: str) -> None:
+        # Keep task/checkpoint/usage audit records and project files intact.
+        # One transaction removes the conversation from navigation and repairs its pointer.
+        with self.connection:
+            self.connection.execute("UPDATE threads SET deleted_at = ? WHERE id = ? AND project_id = ? AND deleted_at IS NULL", (deleted_at, thread_id, project_id))
+            self.connection.execute("""UPDATE projects SET active_thread_id = (
+                SELECT id FROM threads WHERE project_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1
+            ) WHERE id = ? AND active_thread_id = ?""", (project_id, project_id, thread_id))
+
+    def thread_is_deleted(self, project_id: str, thread_id: str) -> bool:
+        row = self.connection.execute("SELECT deleted_at FROM threads WHERE project_id=? AND id=?", (project_id, thread_id)).fetchone()
+        return bool(row and row[0] is not None)
 
     def append_message(
         self,

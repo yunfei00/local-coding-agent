@@ -25,6 +25,18 @@ const CALCULATOR_GOAL = `检查当前 Python 工程，修复 calculator.py 的 a
 使用 uv run --no-project python -m unittest discover -s tests -v 运行测试，并检查实际 Git Diff。
 只允许本任务 Worktree；无需桌面、联网安装依赖、提交、推送或合并。完成检查后给出简洁报告。`;
 
+const REPOSITORY_GOAL = `这是 Local Coding Agent 的真实 Python 后端仓库隔离副本，存在两处可复现的持久化回归：
+删除的会话在重启后又出现在列表；重命名后的名称在重新打开后丢失。
+请读取实际源码、相关恢复调用链和现有 tests/test_thread_lifecycle.py，自主定位并修复业务代码。
+需要修复 agent/persistence/store.py 与 agent/server/state.py；不要修改或删除 tests、配置、验证命令、项目数据或 Git 元数据。
+保留任务、Checkpoint、API Usage 和预留记录，不删除用户项目文件，不自动提交、推送或合并。
+使用程序工具执行以下真实验证命令，失败则根据错误继续修复，最终检查实际 Diff：
+uv run --locked python -m unittest discover -s tests -p test_thread_lifecycle.py -v
+uv run --locked python -m unittest discover -s tests -p test_persistence.py -v
+uv run --locked python -m unittest discover -s tests -p test_projects.py -v
+git diff --check
+无需桌面、视觉或远程 Git 操作。所有 Python 命令通过 uv run 执行。`;
+
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const TERMINAL = new Set(['paused','failed','cancelled','completed','awaiting_approval']);
 
@@ -58,7 +70,8 @@ function approvalAllowed(payload, workspace, ownedPids, phase, scenario='electro
   }
   if (tool === 'run_command' || tool === 'start_process') {
     const commandAllowed=/^(npm (ci --no-audit --no-fund|run (typecheck|build)|test|start)|git (diff( --check)?|status( -sb)?))$/.test(a.command || '')
-      || scenario==='calculator' && a.command==='uv run --no-project python -m unittest discover -s tests -v';
+      || scenario==='calculator' && a.command==='uv run --no-project python -m unittest discover -s tests -v'
+      || scenario==='repository' && /^uv run --locked python -m unittest discover -s tests -p test_(thread_lifecycle|persistence|projects)\.py -v$/.test(a.command || '');
     return commandAllowed
       && (!a.cwd || a.cwd === '.' || path.resolve(a.cwd) === path.resolve(workspace || '.'));
   }
@@ -83,11 +96,11 @@ function finalResult(task, tools, scenario='electron') {
   const evidence = gui?.evidence || [];
   const image = evidence.some(e => e.tool === 'desktop_screenshot' && e.ok && e.sha256);
   const observation = evidence.find(e => e.tool === 'vision_observer')?.observation;
-  const codePassed = task.status === 'awaiting_approval' && verifications.length >= (scenario==='calculator' ? 2 : 5)
+  const codePassed = task.status === 'awaiting_approval' && verifications.length >= (scenario==='calculator' ? 2 : scenario==='repository' ? 4 : 5)
     && verifications.every(v => v.ok) && tools.some(t => t.ok && ['apply_patch','write_file'].includes(t.name))
     && real.length > 0 && real.every(c => c.estimated === false);
-  const passed = codePassed && (scenario==='calculator' ?
-    verifications.some(v=>v.command==='uv run --no-project python -m unittest discover -s tests -v'
+  const passed = codePassed && (scenario==='calculator' || scenario==='repository' ?
+    verifications.some(v=>v.command===(scenario==='repository' ? 'uv run --locked python -m unittest discover -s tests -p test_thread_lifecycle.py -v' : 'uv run --no-project python -m unittest discover -s tests -v')
       && /Ran [1-9][0-9]* tests?/.test((v.stdout || '')+'\n'+(v.stderr || '')))
     : image && real.some(c => c.role === 'vision-observer' && c.tool_schema_count === 0
       && c.wire_images?.some(i => i.mime_type === 'image/jpeg' && i.bytes > 0 && i.sha256))
@@ -133,7 +146,7 @@ async function main(manifest) {
   };
   try {
     const environment = {...process.env, LCA_DESKTOP_DATA_DIR:manifest.credential_data, LCA_DATA_DIR:manifest.data,
-      LCA_HEADLESS_SMOKE:'0', LCA_OPENAI_API_KEY:'', LCA_PROVIDER:'openai_compatible', LCA_OPENAI_MODEL:'',
+      LCA_HEADLESS_SMOKE:scenario==='repository' ? '1' : '0', LCA_OPENAI_API_KEY:'', LCA_PROVIDER:'openai_compatible', LCA_OPENAI_MODEL:'',
       LCA_OPENAI_BASE_URL:'http://127.0.0.1:1/v1'};
     // Only execution bounds for this isolated backend. Never change approval,
     // blocked-repeat or consecutive-failure settings.
@@ -179,17 +192,22 @@ async function main(manifest) {
       if (event.type === 'tool.requested') {
         const a = p.arguments || {};
         requests.set(p.tool_call_id,{name:p.name,
+          ...Object.fromEntries(['start_line','end_line'].filter(k=>Number.isInteger(a[k])).map(k=>[k,a[k]])),
           ...Object.fromEntries(['path','command'].filter(k=>typeof a[k]==='string').map(k=>[k,a[k].slice(0,2000)]))});
       }
       if (event.type === 'tool.completed') {
         const r = p.result || {};
         tools.push({...requests.get(p.tool_call_id), model_requested:requests.has(p.tool_call_id), name:p.name, ok:!!r.ok, error_code:r.error?.code,
-          changed_paths:r.changed_paths || [], exit_code:r.exit_code, duration_ms:r.duration_ms});
+          changed_paths:r.changed_paths || [], exit_code:r.exit_code, duration_ms:r.duration_ms,
+          ...(p.name==='read_file' ? {read_content_chars:typeof r.data?.content==='string' ? r.data.content.length : null,
+            read_truncated:r.data?.truncated,read_start_line:r.data?.start_line,read_end_line:r.data?.end_line}: {})});
         processFiles();
       }
-      if (['model.active','verification.progress','vision.observed'].includes(event.type)) {
+      if (['model.active','verification.progress','vision.observed','context.updated'].includes(event.type)) {
         events.push({type:event.type, at:event.timestamp, ...Object.fromEntries(
-          ['role','model','connection_id','model_profile_id','stage','state','ok','image_attached','attachment_transport'].filter(k => p[k] !== undefined).map(k=>[k,p[k]]))});
+          ['role','model','connection_id','model_profile_id','stage','state','ok','image_attached','attachment_transport',
+           'context_window_tokens','reserved_output_tokens','input_budget_tokens','estimated_input_tokens',
+           'history_messages_total','history_messages_included','omitted_history_messages','runtime_messages_omitted','truncated_messages'].filter(k => p[k] !== undefined).map(k=>[k,p[k]]))});
       }
     });
     await page.evaluate(() => window.localAgent.onAgentEvent(e => {void window.lcaAcceptanceEvent(e);}));
@@ -197,7 +215,8 @@ async function main(manifest) {
     await app.evaluate(({dialog}, folder) => {dialog.showOpenDialog = async () => ({canceled:false,filePaths:[folder]});},manifest.source);
     mark('project_and_thread');
     await page.evaluate(profile => window.localAgent.openProject('profile:'+profile),manifest.executor.model_profile_id);
-    const created = await page.evaluate(profile => window.localAgent.createThread('profile:'+profile),manifest.executor.model_profile_id);
+    const goal = scenario==='repository' ? REPOSITORY_GOAL : scenario==='calculator' ? CALCULATOR_GOAL : GOAL;
+    const created = await page.evaluate(({profile,goal}) => window.localAgent.createThread('profile:'+profile,goal),{profile:manifest.executor.model_profile_id,goal});
     thread = created.payload.thread?.id || created.payload.active_thread?.id;
     if (!thread) {
       const project = await page.evaluate(() => window.localAgent.getProject());
@@ -207,7 +226,7 @@ async function main(manifest) {
     const started = Date.now();
     mark('task_start');
     const response = await page.evaluate(({thread, goal, config}) => window.localAgent.taskRequest(thread,'task.start',{goal,config}),
-      {thread, goal:scenario==='calculator' ? CALCULATOR_GOAL : GOAL, config:manifest.config});
+      {thread, goal, config:manifest.config});
     task = response.payload.task;
     if (!task) throw new Error('TASK_NOT_CREATED');
     stage = 'task_running';
