@@ -23,7 +23,20 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
             "reserved_cost":call["reserved_cost"], "metadata":{k:v for k,v in call["usage"].items() if k in CALL_FIELDS}})
     error = task.get("last_error", {}).get("code")
     blocker = (error or (task.get("planning_failures") or [{}])[-1].get("code") or "PLANNING_IN_PROGRESS") if not task["planned"] else None
+    # API accounting and model context are independent constraints. A local
+    # request may fail its model window while API reservations remain zero.
+    usage = runtime.usage(task_id)
+    task_budget = task["config"]["budget"]
+    budget_explanation = {
+        "api_accounting": "API call/token limits apply only to route=api; local model calls do not reserve API tokens.",
+        "model_context": "MODEL_CONTEXT_LIMIT is a per-request context-window check, not cumulative API token usage.",
+        "api_reserved_tokens": usage.get("reserved_tokens", 0),
+        "api_token_limit": task_budget.get("api_tokens"),
+        "error_code": error,
+        "error_budget_details": task.get("last_error", {}).get("budget") if error == "BUDGET_EXHAUSTED" else None,
+    }
     report = {"schema_version":1, "task_id":task_id, "status":task["status"], "planned":task["planned"],
+        "budget_explanation":budget_explanation,
         "why_not_executing":blocker, "last_error_code":error,
         "last_error":{k:v for k,v in task.get("last_error", {}).items() if k in {"code","role","phase","exception_type","budget"}},
         "config_source":task.get("config_source", "legacy-snapshot"), "config_snapshot_at":task.get("config_snapshot_at"),
