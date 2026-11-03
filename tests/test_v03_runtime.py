@@ -41,6 +41,19 @@ class V03RuntimeTests(unittest.IsolatedAsyncioTestCase):
     def plan(self, steps):
         return self.server.store.task_plans.create(self.thread.id, "Repair calculator", steps)
 
+    async def test_completed_step_never_regresses_on_stale_replay(self):
+        plans = self.server.store.task_plans
+        plan = self.plan([{"description": "Implement feature"}])
+        step = plans.get(plan)["steps"][0]["id"]
+        evidence = [{"tool_call_id": "real-tool-evidence", "ok": True}]
+        plans.update_step(plan, step, "completed", evidence)
+        plans.update_step(plan, step, "in_progress")
+        plans.update_step(plan, step, "blocked")
+        current = plans.get(plan)["steps"][0]
+        self.assertEqual(current["state"], "completed")
+        self.assertEqual(current["evidence"], evidence)
+
+
     async def test_metrics_include_retry_real_tools_and_context(self):
         Path(self.repo.name, "value.txt").write_text("before", encoding="utf-8")
         self.server.provider = RetryThenPatchProvider()
