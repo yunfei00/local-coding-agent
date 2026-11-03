@@ -174,8 +174,13 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         command='uv run --no-project python -c "from pathlib import Path; p=Path(\'counter.txt\'); p.write_text(p.read_text()+\'x\' if p.exists() else \'x\')"'
         await self.run_model([tool('run_command',command=command)],turn='first-command')
         self.assertEqual((self.repo/'counter.txt').read_text(),'x')
+        plan=self.server.store.task_plans.list_for_thread(self.thread.id)[0]
+        before=[e for e in self.server.store.task_plans.executions(plan['id']) if e['tool']=='run_command']
         await self.run_model([tool('run_command',command=command)],turn='resumed-command')
         self.assertEqual((self.repo/'counter.txt').read_text(),'x')
+        after=[e for e in self.server.store.task_plans.executions(plan['id']) if e['tool']=='run_command']
+        self.assertEqual(len(after),len(before),
+                         'A rejected replay must not create a second execution journal entry')
         result=next(e['payload']['result'] for e in reversed(self.client.messages) if e['type']=='tool.completed')
         self.assertEqual(result['error']['code'],'PLAN_OPERATION_ALREADY_APPLIED')
         self.assertTrue(repeatable_check('run_command',{'command':'uv run --no-project python -m unittest discover -s tests -v'}))
