@@ -1,6 +1,6 @@
 # Local Coding Agent — L3 长流程自主开发验收指南
 
-版本：L3.2（2026-11-03）  
+版本：L3.3（2026-11-03）  
 分支：`test/agent-functional-validation`  
 目标：验证 Agent 在真实、隔离的工程中能否完成“理解需求→制定计划→修改多文件→执行测试→定位失败→修复→复测→Git 审查→交付总结”。
 
@@ -79,7 +79,54 @@ git -c user.name='L3 Validation' -c user.email='l3@example.invalid' commit -m 't
 | T14 | 交付报告 | 报告含变更、测试、风险、未完成项 |
 | **T15** | **独立 Git 流程** | **独立分支、审查 diff、提交 commit；未改 main、未推送** |
 
-## 五、优先处理：当前任务因 Token 预算超限而暂停（2026-11-03）
+## 五、补充诊断：第一步 Completed，后四步 Pending，验收命令未配置
+
+**适用现象：** 第 1 步已 Completed，第 2～5 步 Pending；界面出现 `Verification not configured`，左侧模型回复却称“全部回归测试通过”。**以真实执行证据为准，模型回复不能替代验收。**
+
+### 先看哪里
+
+1. 打开原优惠券任务，点击 **任务诊断（Task diagnostics）**，查看 `reason`、`last_error`。
+2. 找到任务下方的验收记录，展开 `Verification not configured` 行，查看 `summary`、`exit code`、`Full log`。
+3. 展开 **模型与预算（Models and budget）**，检查 **验收命令（Verification commands）**。如果为空，表示未手工配置；系统可能自动发现，但不能保证发现成功。
+4. 项目代码 `agent/core/verification.py` 明确规定：没有配置或发现任何命令时返回失败，摘要为 `No verification command configured or discovered; task cannot pass.`。这种情况下**不得把回归测试判 PASS**。
+
+### 在正确的工作区确定实际命令
+
+先按下文“找到真实代码”步骤记录原任务 Worktree 路径，并在该目录打开 PowerShell：
+
+```powershell
+Get-Location
+Get-ChildItem -Name
+git status --short
+git branch --show-current
+```
+
+确认该目录是包含优惠券新增文件的 Python 工程。查看 `pyproject.toml`、`pytest.ini`、`tests` 等项目结构后选择真正存在的测试方式。例如：
+
+- unittest 工程：`uv run --no-project python -m unittest discover -s tests -v`
+- pytest 工程：`uv run --no-project python -m pytest -q`（需环境中已安装 pytest）
+- 如果项目已有专用脚本，优先使用专用脚本。
+
+在 PowerShell 运行实际命令后，立即记录 `$LASTEXITCODE`。**不得仅根据示例盲目选择不存在的命令。**
+
+### 应用到原暂停任务
+
+1. 仅当原任务状态为 **paused**，先在“验收命令”填写已确认可执行的真实命令，每行一条。
+2. 点击 **“将配置应用到暂停任务”**，注意只保存默认设置不会更新原任务的配置快照。
+3. 查看任务诊断确认已生效；再检查工作区、检查点，点击 **“恢复 / 继续”**。
+4. 若仍然 Pending 或重新暂停，保存最新 `reason`、`last_error`、验收记录摘要，不要重复启动新的开发任务。
+5. **如果任务已 completed 而非 paused**，不要用恢复按钮强行重跑；先独立检查实际文件和命令结果，再决定是否需要新的隔离验收任务。
+
+### 判断是否通过
+
+- 第一项 Completed **不代表**第二至第五项完成。
+- `Verification not configured` 且 `exit_code` 为空时，T13 不能 PASS。
+- 左侧自然语言“通过回归测试”不算实际验收证据。
+- 只有实际命令退出码 0、对应测试日志存在，才能记录相关测试通过。
+
+---
+
+## 六、优先处理：当前任务因 Token 预算超限而暂停（2026-11-03）
 
 **这条适用于目前这次真实 L3 任务，优先于下文“独立复核”。** 已确认诊断：单任务 Token 上限 50,000，累计预占 58,416；第 17 次本地模型调用在 `verifying` 阶段触发预算保护，任务自动暂停。第一步 Blocked，后续 Pending。**不能判定开发已通过，也不要重新运行 R2/L2 或创建第二个优惠券开发任务。**
 
@@ -119,7 +166,7 @@ git -c user.name='L3 Validation' -c user.email='l3@example.invalid' commit -m 't
 
 ---
 
-## 六、已完成优惠券开发后，从这里继续（实际操作版）
+## 七、已完成优惠券开发后，从这里继续（实际操作版）
 
 > **当前用户进度：** 已将第三节“优惠券规则引擎”需求交给自主任务，界面报告称已完成基线测试、新增功能、代码差异、回归测试和交付报告。**此时无需重新运行 R2/L2，也无需再次执行优惠券开发。** 从本节 **步骤 1** 开始。第一轮的“报告完成”不等于验收 PASS。
 
@@ -263,7 +310,7 @@ git log -5 --oneline
 - **产品中的 Git 审查可能限制自主任务直接提交。** 若出现“请使用独立 Git 工作流”，按产品 Git 页面或在确认安全后使用隔离工程 PowerShell 提交；不要为了测试绕过权限。
 - **任务显示暂停、规划 pending 或 Provider 冲突时不是正常运行。** 先检查任务诊断和模型绑定，不能把它当作长流程等待。
 
-## 七、原始分轮验收标准（参考）
+## 八、原始分轮验收标准（参考）
 
 ### 第一轮：T01–T06、T09、T13
 
@@ -288,7 +335,7 @@ git log -5 --oneline
 4. 生成 `reports/l3-final.md`，列出 15 项逐项 PASS/FAIL、证据、测试命令、退出码、Commit SHA。
 5. 最后由人工或独立脚本复核；Agent 的自述不作为唯一证据。
 
-## 八、统一结果记录格式
+## 九、统一结果记录格式
 
 ```text
 L3 Test ID:
@@ -313,7 +360,7 @@ Git diff:
 - 失败项和复现步骤；
 - 未经验证的能力明确标注 NOT TESTED。
 
-## 九、常见问题
+## 十、常见问题
 
 - Chat 可回复但 Task 失败：分别核对 Chat Model 和 Task Executor 的绑定；Planner 只在对应任务策略下生效。
 - OpenAI-compatible HTTP 404：优先核对模型 Profile 关联的 Connection 和 Base URL，原生 Ollama 为 `http://127.0.0.1:11434`，OpenAI 兼容 Ollama 通常为 `http://127.0.0.1:11434/v1`。
@@ -322,6 +369,6 @@ Git diff:
 - 任务无权限：先按 Workspace 权限策略操作，不要直接开放全磁盘权限。
 - 没有独立 Git commit：T15 FAIL。
 
-## 十、通过后
+## 十一、通过后
 
 仅当 15 项至少 13 项 PASS、六项强制通过且证据完整时，L3 才判定通过。通过后再讨论下一阶段或合并产品代码到 main；**L3 验收本身不自动触发合并或发布**。
