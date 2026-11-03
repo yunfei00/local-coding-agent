@@ -543,6 +543,9 @@ class TaskService:
                         failures = [r for r in task["verification"] if not r.get("ok")]
                         evidence = [{"command": str(r.get("command", ""))[:200],
                                      "category": str(r.get("category", ""))[:80],
+                                     "visual_errors": [str(error)[:300] for item in r.get('evidence', [])
+                                         if item.get('tool') == 'vision_observer'
+                                         for error in (item.get('observation') or {}).get('errors', [])][:3],
                                      "summary": str(r.get("summary", ""))[-600:]}
                                     for r in failures[-3:]]
                         prompt += "\nPrevious verification failures (bounded):\n" + redact_text(
