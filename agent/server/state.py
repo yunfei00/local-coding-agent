@@ -180,3 +180,11 @@ class InMemoryState:
             )
 
         self.touch_thread(thread_id)
+
+    def append_message(self, thread_id: str, *, role: str, content: str) -> None:
+        if role not in {'user','assistant'} or not self.get_thread(thread_id):
+            raise ValueError('Invalid conversation message target')
+        self._messages.setdefault(thread_id, []).append({'role':role,'content':content})
+        if self.store:
+            self.store.append_message(thread_id=thread_id,role=role,content=content,created_at=now_iso())
+        self.touch_thread(thread_id)

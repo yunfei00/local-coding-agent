@@ -49,6 +49,14 @@ const TK_GOAL = `使用 tkinter 在当前空目录创建简单计算器 calculat
 运行以下固定验证命令，并检查实际 git_status/git_diff：\n${TK_COMMAND}\ngit diff --check
 仅在本任务 Worktree 工作，不提交或推送，不打开其他应用，不宣称未运行的验收通过。`;
 const TERMINAL = new Set(['paused','failed','cancelled','completed','awaiting_approval']);
+const COUPON_GOAL = `实现优惠券规则引擎 coupon_engine.py，保留 calculator.py 和 tests/test_l2.py 原有行为，不能修改这两个基线文件。
+导出 apply_coupon(amount,coupon,today) 返回最终应付 Decimal 两位小数 HALF_UP。coupon 是 dict：type 为 fixed 或 percent，value 是金额或百分比(0..100)，可选 min_spend、max_discount、expires(YYYY-MM-DD)。today 为 date。
+门槛按原金额判断；低于门槛或已过期返回原金额；有效期含当天；优惠不超过原金额及 max_discount；金额最低为0。
+金额、门槛、上限、value 非法、负数、bool、NaN/Infinity、非法类型/日期均抛 ValueError。
+导出 apply_coupons(amount,coupons,today)，不允许叠加：多于一张抛 ValueError，单张委托 apply_coupon，空列表返回原金额。
+先真实运行基线，再实现、多文件测试、失败自行修复；新增 unittest 覆盖所有边界；生成中文 DELIVERY.md，检查真实 Git Diff。
+所有 Python 命令使用 uv run；固定验收 uv run --no-project python -m unittest discover -s tests -v 和 git diff --check。
+不提交/推送、不安装依赖、不修改原测试与验证配置。最后独立验证会检查公共 API，不以你的自述作为通过依据。`;
 
 function createReportWriter(write) {
   let finalized=false;
@@ -80,7 +88,7 @@ function approvalAllowed(payload, workspace, ownedPids, phase, scenario='electro
   }
   if (tool === 'run_command' || tool === 'start_process') {
     const commandAllowed=/^(npm (ci --no-audit --no-fund|run (typecheck|build)|test|start)|git (diff( --check)?|status( -sb)?))$/.test(a.command || '')
-      || scenario==='calculator' && a.command==='uv run --no-project python -m unittest discover -s tests -v'
+      || ['calculator','coupon'].includes(scenario) && a.command==='uv run --no-project python -m unittest discover -s tests -v'
       || scenario==='repository' && /^uv run --locked python -m unittest discover -s tests -p test_(thread_lifecycle|persistence|projects)\.py -v$/.test(a.command || '');
     return (commandAllowed || scenario==='tkinter' && a.command===TK_COMMAND)
       && (!a.cwd || a.cwd === '.' || path.resolve(a.cwd) === path.resolve(workspace || '.'));
@@ -139,7 +147,7 @@ function finalResult(task, tools, scenario='electron') {
 
 async function main(manifest) {
   const scenario=manifest.scenario || 'electron';
-  const resultOf=(task,tools)=>finalResult(task,tools,scenario);
+  const resultOf=(task,tools)=>finalResult(task,tools,scenario==='coupon' ? 'calculator' : scenario);
   const { _electron } = require('../../desktop/node_modules/playwright-core');
   const root = path.resolve(__dirname,'../..');
   let app, page, thread, task, stage = 'electron_launch';
@@ -230,7 +238,7 @@ async function main(manifest) {
     await app.evaluate(({dialog}, folder) => {dialog.showOpenDialog = async () => ({canceled:false,filePaths:[folder]});},manifest.source);
     mark('project_and_thread');
     await page.evaluate(profile => window.localAgent.openProject('profile:'+profile),manifest.executor.model_profile_id);
-    const goal = scenario==='tkinter' ? TK_GOAL : scenario==='repository' ? REPOSITORY_GOAL : scenario==='calculator' ? CALCULATOR_GOAL : GOAL;
+    const goal = scenario==='coupon' ? COUPON_GOAL : scenario==='tkinter' ? TK_GOAL : scenario==='repository' ? REPOSITORY_GOAL : scenario==='calculator' ? CALCULATOR_GOAL : GOAL;
     const created = await page.evaluate(({profile,goal}) => window.localAgent.createThread('profile:'+profile,goal),{profile:manifest.executor.model_profile_id,goal});
     thread = created.payload.thread?.id || created.payload.active_thread?.id;
     if (!thread) {
@@ -240,13 +248,26 @@ async function main(manifest) {
     await page.evaluate(() => window.localAgent.setPermission('workspace'));
     const started = Date.now();
     mark('task_start');
-    const response = await page.evaluate(({thread, goal, config}) => window.localAgent.taskRequest(thread,'task.start',{goal,config}),
-      {thread, goal, config:manifest.config});
-    task = response.payload.task;
+    if (manifest.conversation) {
+      await page.getByLabel('对话执行方式',{exact:true}).selectOption('development');
+      await page.getByLabel('Chat model',{exact:true}).selectOption('profile:'+manifest.executor.model_profile_id);
+      await page.locator('.composer textarea').fill(goal);
+      await page.locator('.composer textarea').press('Enter');
+      const until=Date.now()+30000;
+      while(Date.now()<until && !task) {
+        const reply=await page.evaluate(thread=>window.localAgent.taskRequest(thread,'task.list'),thread);
+        task=reply.payload.tasks[0];
+        if(!task) await delay(200);
+      }
+    } else {
+      const response = await page.evaluate(({thread, goal, config}) => window.localAgent.taskRequest(thread,'task.start',{goal,config}),
+        {thread, goal, config:manifest.config});
+      task = response.payload.task;
+    }
     if (!task) throw new Error('TASK_NOT_CREATED');
     stage = 'task_running';
     save({task_id:task.id, source:manifest.source, result:'RUNNING', paid_requests:0});
-    let lastStatus = '';
+    let lastStatus = '', continuation;
     while (Date.now()-started < manifest.config.budget.task_seconds*1000) {
       const reply = await page.evaluate(thread => window.localAgent.taskRequest(thread,'task.list'),thread);
       task = reply.payload.tasks.find(t => t.id === task.id);
@@ -254,7 +275,19 @@ async function main(manifest) {
       const progress = `${task.status} calls=${task.usage.api_calls} tokens=${task.usage.reserved_tokens}`;
       if (progress !== lastStatus) {console.log(progress);lastStatus=progress;}
       save({...resultOf(task,tools), result:'RUNNING', source:manifest.source, events, approvals});
-      if (TERMINAL.has(task.status)) break;
+      if (TERMINAL.has(task.status)) {
+        if(manifest.conversation && task.status==='awaiting_approval' && !continuation) {
+          continuation={task_id:task.id,workspace:task.workspace,api_calls:task.usage.api_calls,
+            completed_steps:task.plan.steps.filter(s=>s.state==='completed').map(s=>s.id)};
+          await page.locator('[data-conversation-task]').waitFor();
+          await page.locator('.composer textarea').fill('追加需求：请在 DELIVERY.md 追加“同页追加验收”章节，说明仍在同一工作区、保留原有规则与测试；再运行全部 unittest 和 git diff --check，不要改动基线文件，不要提交或合并。');
+          await page.locator('.composer textarea').press('Enter');
+          await page.waitForFunction(id=>document.querySelector('[data-conversation-task="'+id+'"]')?.textContent?.includes('同页追加验收'),task.id,{timeout:30000});
+          await delay(1000);
+          continue;
+        }
+        break;
+      }
       await delay(1000);
     }
     if (!TERMINAL.has(task.status)) {
@@ -262,6 +295,19 @@ async function main(manifest) {
       task = (await page.evaluate(thread=>window.localAgent.taskRequest(thread,'task.list'),thread)).payload.tasks.find(t=>t.id===task.id);
     }
     const result = resultOf(task,tools);
+    if (manifest.conversation) {
+      const tasks=(await page.evaluate(thread=>window.localAgent.taskRequest(thread,'task.list'),thread)).payload.tasks;
+      const persisted=await page.evaluate(()=>window.localAgent.getProject());
+      result.conversation={initial:continuation,task_count:tasks.length,
+        same_task:continuation?.task_id===task.id,same_workspace:continuation?.workspace===task.workspace,
+        budget_accumulated:task.usage.api_calls>(continuation?.api_calls ?? Infinity),
+        completed_preserved:continuation?.completed_steps.every(id=>task.plan.steps.some(s=>s.id===id && s.state==='completed')),
+        followup_recorded:task.goal.includes('同页追加验收'),inline_visible:await page.locator('[data-conversation-task]').isVisible()};
+      if(result.result==='PASS' && (!continuation || !result.conversation.same_task || !result.conversation.same_workspace || !result.conversation.completed_preserved || !result.conversation.budget_accumulated || tasks.length!==1)) {
+        result.result='FAIL';result.reason='CONVERSATION_CONTINUATION_FAILED';
+      }
+    }
+    result.final_plan=task.plan.steps.map(s=>({id:s.id,description:s.description,state:s.state}));
     finish({...result, source:manifest.source, events, approvals, active_seconds:(Date.now()-started)/1000});
     console.log(JSON.stringify({task_id:task.id,result:result.result,reason:result.reason,paid_requests:result.paid_requests}));
   } catch (error) {

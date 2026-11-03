@@ -231,6 +231,7 @@ class TaskService:
                         raise ValueError("Finish or use a new thread for the existing manual plan")
                     task = self.runtime.create(thread_id, goal, config, str(project.workspace.root))
                     task["provider_settings"] = asdict(self.server.settings)  # No keys in settings.
+                    task['entrypoint'] = 'conversation' if payload.get('entrypoint') == 'conversation' else 'advanced'
                     task["resolved_roles"] = resolved["roles"]
                     task['resolved_vision'] = vision_binding
                     task['catalog_snapshot'] = self.catalog().load()
@@ -238,6 +239,8 @@ class TaskService:
                     task["config_source"] = config_source
                     task["config_snapshot_at"] = time.time()
                     self.runtime.save(task)
+                    if task.get('entrypoint') == 'conversation':
+                        project.state.append_message(thread_id,role='user',content=goal)
                     result = {"task": self.public(task), "defaults":saved, "catalog":self.catalog().load(), "global_usage":self.runtime.usage()}
                     await ws.send_json(envelope("task.loaded", result, request_id=request_id, thread_id=thread_id))
                     self.launch(ws, task, project, owned_turns)
@@ -249,7 +252,17 @@ class TaskService:
                     plan_id = task["id"]
                     if kind in {"task.pause", "task.cancel"}:
                         await self.interrupt(plan_id, "paused" if kind == "task.pause" else "cancelled")
-                    elif kind == "task.resume":
+                    elif kind in {"task.resume", "task.continue"}:
+                        if kind == 'task.continue' and payload.get('followup_id') in task.get('followup_ids',[]):
+                            await ws.send_json(envelope('task.loaded', {'task':self.public(task)},request_id=request_id,thread_id=thread_id))
+                            return
+                        if kind == 'task.continue' and (not isinstance(payload.get('prompt'),str) or not 1 <= len(payload['prompt'].strip()) <= 4000):
+                            raise ValueError('Follow-up must contain 1..4000 characters')
+                        if kind == 'task.continue':
+                            if not isinstance(payload.get('followup_id'),str) or not 1 <= len(payload['followup_id']) <= 100:
+                                raise ValueError('Follow-up identifier required')
+                            if len(task['goal'])+len(payload['prompt'].strip())+12 > 32000 or len(task.get('followup_ids',[])) >= 32 or len(self.runtime.plans.get(plan_id)['steps']) >= 100:
+                                raise ValueError('Conversation task continuation limit reached; review and start a new development session')
                         if payload.get("local_only") is True and task["config"]["strategy"] == "single-agent":
                             raise ValueError("Single Agent requires an online Executor; explicitly configure another strategy to switch modes")
                         if any(not t.done() for t in self.server.active_turns.values()):
@@ -261,6 +274,15 @@ class TaskService:
                         if task["status"] != "paused":
                             self.runtime.transition(plan_id, "paused", "User reopened task")
                         task = self.runtime.get(plan_id)
+                        if kind == 'task.continue':
+                            if not self.runtime.append_followup(plan_id,payload.get('prompt'),payload.get('followup_id')):
+                                await ws.send_json(envelope('task.loaded', {'task':self.public(self.runtime.get(plan_id))},request_id=request_id,thread_id=thread_id))
+                                return
+                            task = self.runtime.get(plan_id)
+                            if payload.get('entrypoint') == 'conversation':
+                                task['entrypoint'] = 'conversation'
+                                self.runtime.save(task)
+                                project.state.append_message(thread_id,role='user',content=payload['prompt'].strip())
                         if payload.get("local_only") is True:
                             task["config"]["strategy"] = "local-only"
                             self.runtime.save(task)

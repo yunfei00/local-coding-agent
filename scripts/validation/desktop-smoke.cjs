@@ -77,7 +77,15 @@ const provider = http.createServer((req, res) => {
     res.writeHead(200, {"Content-Type": "text/event-stream"});
     if (payload.model === "api-reviewer") {
       let delta = {content:"Review verified tests and Diff."};
-      if (prompt.includes("M1 Single Agent")) {
+      if (prompt.includes('Conversation acceptance')) {
+        const followup=prompt.includes('Append native follow-up');
+        const name=followup?'write_file':'apply_patch';
+        if(!payload.messages.some(m=>m.role==='tool' && m.name===name)) {
+          const args=followup?{path:'FOLLOWUP.md',content:'Native conversation continuation verified\n'}:{path:'calculator.py',old_text:'return a - b',new_text:'return a + b  # conversation'};
+          delta={tool_calls:[{index:0,id:'conversation-'+name,type:'function',function:{name,arguments:JSON.stringify(args)}}]};
+        } else delta={content:'Actual change complete; independently verify tests and Diff.'};
+      }
+      else if (prompt.includes("M1 Single Agent")) {
         const results = payload.messages.filter(m => m.role === "tool");
         const seen = name => results.filter(m => m.name === name);
         let name, args;
@@ -1070,6 +1078,51 @@ async function main() {
     assert(fs.existsSync(path.join(project,"calculator.py")) && fs.existsSync(path.join(deletionProject,"README.md")));
     assert.equal(modelRequests.length,beforeProjectRequests);
     checks.push("Removing active and last projects selects a safe fallback or empty landing, prunes navigation and survives restart without deleting files or generating model requests");
+    // Actual composer, actual HTTP protocol/tools/worktree; no second task form.
+    await page.evaluate(profile=>window.localAgent.openProject('profile:'+profile),profileIds['api-reviewer']);
+    await page.getByRole('button',{name:'New chat in calculator-project',exact:true}).waitFor();
+    await page.getByRole('button',{name:'New chat in calculator-project',exact:true}).click();
+    await page.evaluate(config=>window.localAgent.taskRequest('','task.settings.update',{config:{...config,
+      budget:{...config.budget,api_calls:12,global_api_calls:100,api_tokens:250000,global_api_tokens:2000000}}}),defaultsBeforeBudgetCheck);
+    await page.getByLabel('对话执行方式',{exact:true}).selectOption('development');
+    await page.getByLabel('Chat model',{exact:true}).selectOption('profile:'+profileIds['api-reviewer']);
+    await page.locator('.composer textarea').fill('Conversation acceptance: fix calculator and independently test');
+    await page.locator('.composer textarea').press('Enter');
+    await page.getByRole('button',{name:'Allow once',exact:true}).click();
+    const waitConversation=async(minCalls=0)=>{
+      const deadline=Date.now()+60000;
+      while(Date.now()<deadline) {
+        const task=await page.evaluate(async()=>{const p=(await window.localAgent.getProject()).payload;return (await window.localAgent.taskRequest(p.active_thread.id,'task.list')).payload.tasks[0];});
+        if(task?.usage.api_calls>minCalls && ['awaiting_approval','paused','failed'].includes(task.status)) return task;
+        await new Promise(resolve=>setTimeout(resolve,200));
+      }
+      throw new Error('Conversation Task did not settle');
+    };
+    const conversation=await waitConversation();
+    assert.equal(conversation.status,'awaiting_approval',conversation.reason);
+    const completedIds=conversation.plan.steps.map(s=>s.id);
+    await page.locator('[data-conversation-task="'+conversation.id+'"]').waitFor();
+    assert.equal(await page.getByLabel('Autonomous task goal').count(),0);
+    await page.locator('.composer textarea').fill('Append native follow-up: create FOLLOWUP.md and retest');
+    await page.locator('.composer textarea').press('Enter');
+    const followed=await waitConversation(conversation.usage.api_calls);
+    assert.equal(followed.status,'awaiting_approval',followed.reason);
+    assert.equal(followed.id,conversation.id);assert.equal(followed.workspace,conversation.workspace);
+    assert(completedIds.every(id=>followed.plan.steps.some(s=>s.id===id && s.state==='completed')));
+    assert(fs.readFileSync(path.join(followed.workspace,'FOLLOWUP.md'),'utf8').includes('verified'));
+    await screenshot('desktop-conversation-development.png');
+    const beforeRestartCalls=modelRequests.length;
+    await application.close();page=await launch();
+    await page.locator('[data-conversation-task="'+followed.id+'"]').waitFor();
+    assert.equal(await page.getByLabel('对话执行方式',{exact:true}).inputValue(),'development');
+    const restored=(await page.evaluate(()=>window.localAgent.getProject())).payload;
+    assert.deepEqual(restored.messages.filter(m=>m.role==='user').map(m=>m.content),[
+      'Conversation acceptance: fix calculator and independently test','Append native follow-up: create FOLLOWUP.md and retest']);
+    const persisted=(await page.evaluate(thread=>window.localAgent.taskRequest(thread,'task.list'),followed.thread_id)).payload.tasks;
+    assert.equal(persisted.length,1);assert.deepEqual(persisted[0].usage,followed.usage);
+    assert.equal(modelRequests.length,beforeRestartCalls);
+    assert(await page.locator('.composer textarea').isEnabled());
+    checks.push('Same composer starts and continues one Task/Worktree with real HTTP tools, immutable Completed steps, cumulative budget and persisted user messages; restart restores inline progress without another request');
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ok: true, checks, skipped}, null, 2));
     fs.writeFileSync(path.join(reportDir, "desktop-smoke.json"), JSON.stringify({ok: true, checks, skipped}, null, 2));

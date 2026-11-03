@@ -2454,11 +2454,12 @@ class AgentServer:
                     execution.data['status'] = 'completed'
                     execution.data.pop('last_error', None)
                     # Intermediate plan steps must not create duplicate user turns.
-                    state.append_exchange(
-                        thread_id,
-                        user=prompt,
-                        assistant=assistant_text,
-                    )
+                    autonomous = plan_id and self.store.connection.execute('SELECT 1 FROM autonomous_tasks WHERE plan_id=?',(plan_id,)).fetchone()
+                    conversation_entry = bool(autonomous and self.tasks.runtime.get(plan_id).get('entrypoint') == 'conversation')
+                    if conversation_entry:
+                        state.append_message(thread_id,role='assistant',content=assistant_text)
+                    else:
+                        state.append_exchange(thread_id,user=prompt,assistant=assistant_text)
                     await self._checkpoint_thread_plans(thread_id, "turn_completed", sorted(plan_files_changed), plan_commands_run, project_override=project, target_plan_id=active_plan['id'] if active_plan else None)
                     # A fully completed plan is no longer considered active by
                     # _checkpoint_thread_plans. Persist its terminal state too.

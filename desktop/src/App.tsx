@@ -11,6 +11,7 @@ import {
 import { ContextPanel } from "./components/ContextPanel";
 import { AutonomousTaskPanel } from "./components/AutonomousTaskPanel";
 import { TaskSnapshot } from "./lib/autonomousTask";
+import {ConversationTask,useConversationTasks} from './components/ConversationTask';
 import { PlanPanel } from "./components/PlanPanel";
 import { ExecutionSummary, TurnTrace } from "./components/ExecutionSummary";
 import { MessageContent } from "./components/MessageContent";
@@ -274,6 +275,9 @@ function App() {
   const [gitOpen, setGitOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
+  const [developmentMode,setDevelopmentMode] = useState(false);
+  const conversationTasks = useConversationTasks(activeThread?.id ?? '',status.state==='ready');
+  useEffect(()=>{if(conversationTasks.task?.entrypoint==='conversation')setDevelopmentMode(true);},[conversationTasks.task?.id,conversationTasks.task?.entrypoint]);
   const conversationRef = useRef<HTMLElement | null>(null);
   const autoFollowRef = useRef(true);
   const navigationInitializedRef = useRef(localStorage.getItem("lca-expanded-projects") !== null);
@@ -386,7 +390,7 @@ function App() {
     }
     element.scrollTop = element.scrollHeight;
     setShowJumpToBottom(false);
-  }, [items, approvals]);
+  }, [items, approvals,conversationTasks.task?.revision]);
 
   useEffect(() => {
     autoFollowRef.current = true;
@@ -1342,6 +1346,7 @@ function App() {
       !workspace ||
       !prompt ||
       runningTurnId ||
+      conversationTasks.active ||
       historyBusy ||
       !providerReady
       || sendingRef.current
@@ -1359,6 +1364,20 @@ function App() {
     try {
       boundThread = await ensureConversation(prompt);
       setItems(current => [...current, {id:userItemId, role:"user", text:prompt}]);
+      if (developmentMode) {
+        const current=conversationTasks.task;
+        if (current && current.thread_id===boundThread.id) {
+          if (['paused','failed','cancelled'].includes(current.status) && !window.confirm('检查当前开发工作区和检查点后继续；不会重放已完成修改。')) throw new Error('已保留输入，尚未继续开发');
+          await window.localAgent.taskRequest(boundThread.id,'task.continue',{task_id:current.id,prompt,followup_id:crypto.randomUUID(),confirm_workspace:true,entrypoint:'conversation'});
+        } else {
+          const id=selectedModel.replace(/^profile:/,'');
+          const settings=(await window.localAgent.taskRequest(boundThread.id,'task.catalog.get')).payload?.catalog as {profiles:Array<{model_profile_id:string;connection_id:string}>;connections:Array<{connection_id:string;provider_type:string}>};
+          const profile=settings.profiles.find(p=>p.model_profile_id===id);
+          const local=settings.connections.find(c=>c.connection_id===profile?.connection_id)?.provider_type==='ollama';
+          const roles=Object.fromEntries((local?['planner','executor','reviewer','escalation']:['executor']).map(role=>[role,{model_profile_id:id}]));
+          await window.localAgent.taskRequest(boundThread.id,'task.start',{goal:prompt,entrypoint:'conversation',config_overrides:{strategy:local?'local-only':'single-agent',roles}});
+        }
+      } else {
       const started = await window.localAgent.startTurn(
         boundThread.id,
         prompt,
@@ -1366,6 +1385,7 @@ function App() {
       );
       if (started.turn_id) {
         setRunningTurnId(started.turn_id);
+      }
       }
       setInput(current => current.trim() === prompt ? "" : current);
     } catch (error) {
@@ -1380,6 +1400,10 @@ function App() {
   };
 
   const stop = async () => {
+    if (conversationTasks.active && activeThread) {
+      await window.localAgent.taskRequest(activeThread.id,'task.cancel',{task_id:conversationTasks.active.id}).catch(error=>setUiError(String(error)));
+      return;
+    }
     if (!runningTurnId) {
       return;
     }
@@ -1641,6 +1665,11 @@ function App() {
               ))}
             </div>
           )}
+          {developmentMode && conversationTasks.task ? <ConversationTask task={conversationTasks.task}
+            onDetails={()=>togglePanel('task')} onAction={operation=>{
+              if (!activeThread || (operation==='task.resume' && !window.confirm('确认检查开发工作区后继续？'))) return;
+              void window.localAgent.taskRequest(activeThread.id,operation,{task_id:conversationTasks.task.id,confirm_workspace:true}).catch(error=>setUiError(String(error)));
+            }}/>:null}
           </section>
           {showJumpToBottom ? (
             <button
@@ -1722,6 +1751,9 @@ function App() {
           />
           <div className="composer-row">
             <div className="model-controls">
+              <select aria-label="对话执行方式" value={developmentMode?'development':'chat'} disabled={Boolean(runningTurnId) || Boolean(conversationTasks.active)} onChange={event=>setDevelopmentMode(event.target.value==='development')}>
+                <option value="chat">对话与代码操作</option><option value="development">自主开发 · 自动验证</option>
+              </select>
               <select
                 className={
                   "permission-select permission-" + permissionMode
@@ -1743,7 +1775,7 @@ function App() {
               <select
                 className="model-select"
                 aria-label="Chat model"
-                title="Ordinary chat model. Autonomous Task roles are configured in Models & Routing."
+                title={developmentMode ? '新开发使用所选模型；已开始的开发保留模型与预算快照，高级配置可在暂停后调整。' : 'Chat model'}
                 value={selectedModel}
                 disabled={
                   !provider?.online ||
