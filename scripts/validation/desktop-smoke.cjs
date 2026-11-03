@@ -1079,6 +1079,7 @@ async function main() {
     assert.equal(modelRequests.length,beforeProjectRequests);
     checks.push("Removing active and last projects selects a safe fallback or empty landing, prunes navigation and survives restart without deleting files or generating model requests");
     // Actual composer, actual HTTP protocol/tools/worktree; no second task form.
+    await application.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},project);
     await page.evaluate(profile=>window.localAgent.openProject('profile:'+profile),profileIds['api-reviewer']);
     await page.getByRole('button',{name:'New chat in calculator-project',exact:true}).waitFor();
     await page.getByRole('button',{name:'New chat in calculator-project',exact:true}).click();
@@ -1103,6 +1104,7 @@ async function main() {
     const completedIds=conversation.plan.steps.map(s=>s.id);
     await page.locator('[data-conversation-task="'+conversation.id+'"]').waitFor();
     assert.equal(await page.getByLabel('Autonomous task goal').count(),0);
+    await page.locator('.send-button').waitFor({state:'visible'});
     await page.locator('.composer textarea').fill('Append native follow-up: create FOLLOWUP.md and retest');
     await page.locator('.composer textarea').press('Enter');
     const followed=await waitConversation(conversation.usage.api_calls);

@@ -1759,7 +1759,7 @@ function App() {
                   "permission-select permission-" + permissionMode
                 }
                 value={permissionMode}
-                disabled={runningTurnId !== null}
+                disabled={runningTurnId !== null || Boolean(conversationTasks.active)}
                 onChange={(event) =>
                   void changePermission(
                     event.target.value as PermissionMode
@@ -1780,6 +1780,7 @@ function App() {
                 disabled={
                   !provider?.online ||
                   runningTurnId !== null ||
+                  Boolean(conversationTasks.active) ||
                   provider.models.length === 0
                 }
                 onChange={(event) => void changeModel(event.target.value)}
@@ -1803,7 +1804,7 @@ function App() {
                 <span>Shift+Enter newline</span>
               </span>
             </div>
-            {runningTurnId ? (
+            {runningTurnId || conversationTasks.active ? (
               <button
                 type="button"
                 className="stop-button"

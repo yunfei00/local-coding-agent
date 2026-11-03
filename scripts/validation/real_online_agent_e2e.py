@@ -303,7 +303,7 @@ def verify_disk(report):
         followup_ok = not report.get('conversation') or (
             (workspace/'DELIVERY.md').is_file() and '同页追加验收' in (workspace/'DELIVERY.md').read_text(encoding='utf-8'))
         report['disk_evidence']['followup_report_present'] = followup_ok
-        if report.get('result') == 'PASS' and check.returncode == 0:
+        if check.returncode == 0 and (workspace/'DELIVERY.md').is_file():
             target = REPORT.parent / ('coupon-project-' + report['task_id'])
             target.mkdir(exist_ok=True)
             for name in ['coupon_engine.py','DELIVERY.md','calculator.py']:

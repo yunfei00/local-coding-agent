@@ -279,7 +279,10 @@ async function main(manifest) {
         if(manifest.conversation && task.status==='awaiting_approval' && !continuation) {
           continuation={task_id:task.id,workspace:task.workspace,api_calls:task.usage.api_calls,
             completed_steps:task.plan.steps.filter(s=>s.state==='completed').map(s=>s.id)};
+          stage='followup_composer';
           await page.locator('[data-conversation-task]').waitFor();
+          await page.waitForFunction(()=>document.querySelector('[data-conversation-task] > strong')?.textContent?.includes('awaiting_approval'),undefined,{timeout:30000});
+          await page.locator('.send-button').waitFor({state:'visible',timeout:30000});
           await page.locator('.composer textarea').fill('追加需求：请在 DELIVERY.md 追加“同页追加验收”章节，说明仍在同一工作区、保留原有规则与测试；再运行全部 unittest 和 git diff --check，不要改动基线文件，不要提交或合并。');
           await page.locator('.composer textarea').press('Enter');
           await page.waitForFunction(id=>document.querySelector('[data-conversation-task="'+id+'"]')?.textContent?.includes('同页追加验收'),task.id,{timeout:30000});
