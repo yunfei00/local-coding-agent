@@ -7,6 +7,7 @@
 仓库提供真实优惠券测试工程的自动准备、真实桌面提交和独立合同验收，不要求手写业务代码。下面命令使用已保存的阿里连接/安全凭据，`--model` 应是本机目录内的实际模型 ID；只在明确授权在线使用后执行，费用/额度以提供商为准。累计 session 账本不会重置，失败预留不会自动退款。默认循环、审批和工具进程保护继续生效。
 
 ```powershell
+git fetch origin
 git switch test/agent-functional-validation
 git pull --ff-only origin test/agent-functional-validation
 uv sync --locked
