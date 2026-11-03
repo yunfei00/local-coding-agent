@@ -34,11 +34,12 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
         "api_token_limit": task_budget.get("api_tokens"),
         "error_code": error,
         "error_budget_details": task.get("last_error", {}).get("budget") if error == "BUDGET_EXHAUSTED" else None,
+        "error_context_details": task.get("last_error", {}).get("context") if error == "MODEL_CONTEXT_LIMIT" else None,
     }
     report = {"schema_version":1, "task_id":task_id, "status":task["status"], "planned":task["planned"],
         "budget_explanation":budget_explanation,
         "why_not_executing":blocker, "last_error_code":error,
-        "last_error":{k:v for k,v in task.get("last_error", {}).items() if k in {"code","role","phase","exception_type","budget","command","category","exit_code","summary","log_path","failed_count"}},
+        "last_error":{k:v for k,v in task.get("last_error", {}).items() if k in {"code","role","phase","exception_type","budget","context","command","category","exit_code","summary","log_path","failed_count"}},
         "config_source":task.get("config_source", "legacy-snapshot"), "config_snapshot_at":task.get("config_snapshot_at"),
         "task_limits":task["config"]["budget"], "global_limits":task.get("global_budget"),
         "global_usage":runtime.usage(),

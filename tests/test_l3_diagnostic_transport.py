@@ -42,6 +42,12 @@ class DiagnosticTransportTests(unittest.TestCase):
                 full = json.loads(Path(result['paths']['json']).read_text(encoding='utf-8'))
                 self.assertEqual(len(full['calls']),2000)
                 self.assertEqual(full['last_error']['exit_code'],124)
+            task['last_error'] = {'code':'MODEL_CONTEXT_LIMIT', 'context':{
+                'context_window':50000,'request_reservation':58416,'output_limit':4096,'request_sent':False}}
+            diagnostic = export_diagnostics(runtime,'task',Path(directory))['diagnostics']['json']
+            self.assertEqual(diagnostic['last_error']['context']['request_reservation'],58416)
+            self.assertEqual(diagnostic['budget_explanation']['error_context_details']['context_window'],50000)
+            self.assertIsNone(diagnostic['budget_explanation']['error_budget_details'])
 
 
 class WebSocketRecoveryTests(unittest.IsolatedAsyncioTestCase):
