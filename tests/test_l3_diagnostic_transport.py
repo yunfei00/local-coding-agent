@@ -5,6 +5,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from agent.core.task_diagnostics import export_diagnostics
 from agent.llm.router import validate_config
+import os
+from unittest.mock import patch
+from aiohttp import web, ClientSession
+from agent.server.main import AgentServer
 
 
 class DiagnosticTransportTests(unittest.TestCase):
@@ -31,3 +35,30 @@ class DiagnosticTransportTests(unittest.TestCase):
                 full = json.loads(Path(result['paths']['json']).read_text(encoding='utf-8'))
                 self.assertEqual(len(full['calls']),2000)
                 self.assertEqual(full['last_error']['exit_code'],124)
+
+
+class WebSocketRecoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_real_socket_reconnect_loads_persistent_task_without_starting_it(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {'LCA_DATA_DIR': directory}):
+            server = AgentServer('test-secret')
+            workspace = Path(directory)/'workspace'; workspace.mkdir()
+            project, thread, _ = server.projects.open(workspace, active_model='fixture')
+            task = server.tasks.runtime.create(thread.id,'Pending recovery fixture',validate_config({}),str(workspace))
+            app = web.Application(); app.router.add_get('/ws',server.websocket)
+            runner = web.AppRunner(app); await runner.setup()
+            site = web.TCPSite(runner,'127.0.0.1',0); await site.start()
+            port = site._server.sockets[0].getsockname()[1]
+            try:
+                async with ClientSession() as client:
+                    for _ in range(2):
+                        async with client.ws_connect(f'http://127.0.0.1:{port}/ws',headers={'Authorization':'Bearer test-secret'}) as ws:
+                            await ws.send_json({'type':'task.list','request_id':'sync','thread_id':thread.id,'payload':{}})
+                            for _ in range(20):
+                                message = await ws.receive_json(timeout=10)
+                                if message.get('request_id') == 'sync': break
+                            self.assertEqual(message['type'],'task.loaded',message)
+                            restored = message['payload']['tasks'][0]
+                            self.assertEqual((restored['id'],restored['status']),(task['id'],'pending'))
+                            self.assertEqual(restored['usage']['api_calls'],0)
+            finally:
+                await runner.cleanup(); await server.close_async(); server.close()
