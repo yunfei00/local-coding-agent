@@ -227,9 +227,21 @@ class TaskPlanStore:
         if state == "completed" and not evidence:
             raise ValueError("completion requires runtime evidence")
         with self.db:
+            previous = self.db.execute(
+                "SELECT state FROM task_plan_steps WHERE id=? AND plan_id=?",
+                (step_id, plan_id),
+            ).fetchone()
+            if previous is None:
+                raise KeyError(step_id)
+            # Completed work has persisted tool evidence. A stale executor or
+            # replayed tool call must never turn it back into in_progress/blocked.
+            if previous["state"] == "completed" and state != "completed":
+                return
             result = self.db.execute(
                 "UPDATE task_plan_steps SET state=?,evidence_json=? WHERE id=? AND plan_id=?",
-                (state, json.dumps(evidence or []), step_id, plan_id),
+                (state, json.dumps(evidence) if evidence is not None else
+                 (self.db.execute("SELECT evidence_json FROM task_plan_steps WHERE id=? AND plan_id=?",
+                                  (step_id, plan_id)).fetchone()[0]), step_id, plan_id),
             )
             if result.rowcount != 1:
                 raise KeyError(step_id)
