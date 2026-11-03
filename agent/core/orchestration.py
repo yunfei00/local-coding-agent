@@ -661,8 +661,29 @@ class TaskService:
                                   "git_approval": "Review Diff and tests, then accept report. Commit/push/merge remain separate explicit Git operations."}
                         await update("awaiting_approval", "Independent validation passed; review report and Git Diff", report=report)
                         return
-                    if any(r["category"] in {"environment", "configuration", "permission", "network", "timeout"} for r in results):
-                        await update("paused", "Verification environment/configuration/permission/network/timeout issue. Resolve locally and resume; no diagnostic API request sent.")
+                    blocking_categories = {"environment", "configuration", "permission", "network", "timeout"}
+                    blocking_results = [r for r in results if not r.get("ok") and r.get("category") in blocking_categories]
+                    if blocking_results:
+                        # Preserve the precise failing command in persistent task state.
+                        # A generic pause reason hid the actionable error for 87 resumes.
+                        first = blocking_results[0]
+                        failure = {
+                            "code": "VERIFICATION_" + str(first.get("category", "unknown")).upper(),
+                            "phase": "verifying",
+                            "command": str(first.get("command", ""))[:300],
+                            "category": str(first.get("category", ""))[:80],
+                            "exit_code": first.get("exit_code"),
+                            "summary": str(first.get("summary", ""))[-1200:],
+                            "log_path": str(first.get("log_path", ""))[:500],
+                            "failed_count": len(blocking_results),
+                        }
+                        task = self.runtime.get(plan_id)
+                        task["last_error"] = failure
+                        self.runtime.save(task)
+                        await update("paused",
+                            "Verification blocked: " + failure["category"] + " in " +
+                            (failure["command"] or "(no command)") + "; " +
+                            failure["summary"][-300:])
                         return
                     if all(r['ok'] for r in results) and diff_result.get('ok') and not plan_complete:
                         # A prior identical checkpoint means another Executor turn would
