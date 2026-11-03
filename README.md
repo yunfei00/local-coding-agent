@@ -1,5 +1,7 @@
 # Local Coding Agent
 
+v0.5.0 发布准备：本次按用户确认的在线模型验收标准发布，同页自主开发、真实在线工程及 GUI/视觉路径已通过。版本说明与已知限制见 [v0.5.0](docs/releases/v0.5.0.md)。以下阶段性记录保留历史验收范围；最终发布状态以 Release 页面为准。
+
 当前验证分支增加同页自主开发：在聊天输入框选择“自主开发 · 自动验证”并发送目标，进度、计划、测试、Diff 与接受结果都在消息区展示。结束或暂停后可继续在原输入框追加需求，复用同一 Task/Worktree、模型与累计预算。高级 Task 面板继续提供多角色策略、验证命令和诊断。使用与边界见[公司部署与使用](docs/v0.4/user-guide.md)。源码验证结果与正式发布分别记录，不代表旧安装包已更新。
 
 本轮真实阿里模型、同页续作、GUI/视觉和双平台回归的分项结果见[综合验收报告](acceptance/L3_ALI_CONVERSATION_VALIDATION_REPORT.md)，包括未通过的模型与运行边界；验证分支没有自动合并 main。
@@ -12,7 +14,7 @@ M4 全面修复统一了 Chat/Task 的连接和模型目录，支持独立 Visio
 
 Local Coding Agent 是一个面向 Windows 本地开发环境的桌面 Coding Agent。目标是提供类似 Codex Desktop 的核心开发体验，同时让模型、Agent、工具链、数据和权限边界保持在用户自己的环境中。
 
-> 当前代码版本：**v0.4.2**
+> 当前代码版本：**v0.5.0**
 >
 > 最近正式发布：[**v0.4.2**](https://github.com/yunfei00/local-coding-agent/releases/tag/v0.4.2)
 
