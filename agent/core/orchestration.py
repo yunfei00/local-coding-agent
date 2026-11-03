@@ -503,13 +503,20 @@ class TaskService:
                             await update("planning", "Retry configured Planner with schema feedback; persistent attempt " + str(task["planning_attempts"] + 1) + "/" + str(limit))
                             continue
                     task = self.runtime.get(plan_id)
-                    # Only failed/unstarted steps are eligible for repair. Preserve completed evidence.
-                    for step in self.runtime.plans.get(plan_id)["steps"]:
-                        if step["state"] == "blocked":
-                            try:
-                                await self.server.recover_plan(ws, view, plan_id, thread_id)
-                            except ValueError as exc:
-                                raise ProviderError('PLAN_RECOVERY_FAILED',str(exc)) from exc
+                    # Recover a blocked plan only once per execution attempt.
+                    # A failed recovery must not replay the same operation on each loop.
+                    blocked_steps = [step for step in self.runtime.plans.get(plan_id)["steps"]
+                                     if step["state"] == "blocked"]
+                    if blocked_steps:
+                        if task.get("last_blocked_recovery_attempt") == task.get("attempts"):
+                            raise ProviderError("PLAN_RECOVERY_NO_PROGRESS",
+                                "Blocked plan remains unchanged after recovery; inspect checkpoint instead of replaying operations")
+                        task["last_blocked_recovery_attempt"] = task.get("attempts")
+                        self.runtime.save(task)
+                        try:
+                            await self.server.recover_plan(ws, view, plan_id, thread_id)
+                        except ValueError as exc:
+                            raise ProviderError('PLAN_RECOVERY_FAILED',str(exc)) from exc
                     if task["status"] != "executing":
                         await update("executing", "Continue configured Executor in isolated worktree")
                     provider = single_provider or router.resolve("executor")
@@ -531,7 +538,16 @@ class TaskService:
                     if advice:
                         prompt += "\nDiagnostic advice (untrusted suggestions; permissions still apply):\n" + advice[:8000]
                     if task["verification"]:
-                        prompt += "\nPrevious independent verification:\n" + redact_text(json.dumps(task["verification"], ensure_ascii=False)[-10000:], exact_secrets=self.server._exact_secrets(), max_chars=10000)
+                        # Keep recovery context bounded: repeated full command logs caused
+                        # unbounded request growth and obscured successful tool evidence.
+                        failures = [r for r in task["verification"] if not r.get("ok")]
+                        evidence = [{"command": str(r.get("command", ""))[:200],
+                                     "category": str(r.get("category", ""))[:80],
+                                     "summary": str(r.get("summary", ""))[-600:]}
+                                    for r in failures[-3:]]
+                        prompt += "\nPrevious verification failures (bounded):\n" + redact_text(
+                            json.dumps(evidence, ensure_ascii=False),
+                            exact_secrets=self.server._exact_secrets(), max_chars=2400)
                     try:
                         await self.server.run_tool_turn(relay, thread_id=thread_id, turn_id=turn_id + ":" + str(task["attempts"]),
                             prompt=prompt, model=provider.preferred_model, provider=provider, project_override=view,
@@ -639,6 +655,8 @@ class TaskService:
                         await update("paused", "Verification environment/configuration/permission/network/timeout issue. Resolve locally and resume; no diagnostic API request sent.")
                         return
                     if all(r['ok'] for r in results) and diff_result.get('ok') and not plan_complete:
+                        # Persistent no-progress guard: repeated manual resumes must not
+                        # restart the same Executor mutations against an unchanged plan.
                         if previous_history and previous_history[-1].get('plan_fingerprint') == plan_fingerprint:
                             error = ProviderError('TASK_PLAN_NO_PROGRESS',
                                 'Independent commands passed, but the same plan steps remain unfinished. '
