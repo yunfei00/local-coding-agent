@@ -554,9 +554,9 @@ async function main() {
       await window.localAgent.taskRequest(thread, "task.settings.update", {config});
     });
     await page.getByRole("button", {name:"Task", exact:true}).click();
-    await page.getByLabel("Task strategy", {exact:true}).selectOption("local-first");
+    await page.getByLabel("任务策略", {exact:true}).selectOption("local-first");
     await page.getByLabel("Autonomous task goal").fill("Fix calculator in an isolated task worktree");
-    await page.getByRole("button", {name:"Start autonomous task", exact:true}).click();
+    await page.getByRole("button", {name:"启动自主任务", exact:true}).click();
     await page.getByRole("button", {name:"Allow once", exact:true}).click();
     await page.locator('[data-task-status="awaiting_approval"]').waitFor({timeout:60000});
     const timeline=page.locator('summary').filter({hasText:/^Task timeline/}).first();
@@ -580,7 +580,7 @@ async function main() {
     checks.push("Autonomous task uses Mock Ollama, actual worktree/tools/tests, zero API and verified report approval");
     blockPlanning = true;
     await page.getByLabel("Autonomous task goal").fill("Cancel a blocked Planning request");
-    await page.getByRole("button",{name:"Start autonomous task",exact:true}).click();
+    await page.getByRole("button",{name:"启动自主任务",exact:true}).click();
     await page.getByRole("button",{name:"Allow once",exact:true}).click();
     await page.waitForFunction(() => !!document.querySelector('.task-live-controls'));
     const cancel = page.getByRole("button",{name:"Cancel active task",exact:true});
@@ -628,7 +628,7 @@ async function main() {
     await page.getByRole("button",{name:"Task",exact:true}).click();
     const requestsBeforeBlock = modelRequests.length;
     await page.getByLabel("Autonomous task goal").fill("Show exact zero-budget preflight rejection");
-    await page.getByRole("button",{name:"Start autonomous task",exact:true}).click();
+    await page.getByRole("button",{name:"启动自主任务",exact:true}).click();
     await page.getByRole("button",{name:"Allow once",exact:true}).click();
     const budgetDetail = page.getByLabel("Budget rejection details",{exact:true});
     await budgetDetail.waitFor();
@@ -641,7 +641,7 @@ async function main() {
       await window.localAgent.taskRequest("","task.settings.update",{config});
     });
     await page.getByLabel("Autonomous task goal").fill("Use fresh Settings for API Planner and fix calculator");
-    await page.getByRole("button",{name:"Start autonomous task",exact:true}).click();
+    await page.getByRole("button",{name:"启动自主任务",exact:true}).click();
     await page.getByRole("button",{name:"Allow once",exact:true}).click();
     await page.locator('[data-task-status="awaiting_approval"]').waitFor({timeout:60000});
     const latestBudgetTask = await page.evaluate(async () => {
@@ -663,9 +663,9 @@ async function main() {
     await page.evaluate(config => window.localAgent.taskRequest("","task.settings.update",{config}), defaultsBeforeBudgetCheck);
     await page.getByRole("button", {name:"Task", exact:true}).click();
     await page.getByRole("button", {name:"Task", exact:true}).click();
-    await page.waitForFunction(() => document.querySelector('[aria-label="Task strategy"]')?.value === "local-first");
+    await page.waitForFunction(() => document.querySelector('[aria-label="任务策略"]')?.value === "local-first");
     // Select Single Agent using the actual Task UI. Other role bindings remain local.
-    await page.getByLabel("Task strategy",{exact:true}).selectOption("single-agent");
+    await page.getByLabel("任务策略",{exact:true}).selectOption("single-agent");
     await page.getByText("Models and budget",{exact:true}).click();
     await page.getByLabel("executor task profile",{exact:true}).selectOption(profileIds["api-reviewer"]);
     await page.getByRole("button",{name:"Use long task budget",exact:true}).click();
@@ -676,7 +676,7 @@ async function main() {
     assert.equal(await page.getByLabel("planner task profile",{exact:true}).count(),0);
     const m1Start = modelRequests.length;
     await page.getByLabel("Autonomous task goal").fill("M1 Single Agent: inspect calculator, run failing tests, fix, retest and inspect diff");
-    await page.getByRole("button",{name:"Start autonomous task",exact:true}).click();
+    await page.getByRole("button",{name:"启动自主任务",exact:true}).click();
     await page.getByRole("button",{name:"Allow once",exact:true}).click();
     let m1Task;
     const m1Deadline = Date.now() + 60000;
