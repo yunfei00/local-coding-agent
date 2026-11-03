@@ -575,7 +575,7 @@ async function main() {
     assert(fs.readFileSync(path.join(project,"calculator.py"),"utf8").includes("a - b"));
     assert(fs.readFileSync(path.join(taskBefore.workspace,"calculator.py"),"utf8").includes("a + b"));
     await screenshot("desktop-v04-task-report.png");
-    await page.getByRole("button", {name:"Accept verified report", exact:true}).click();
+    await page.getByRole("button", {name:"接受已验证报告", exact:true}).click();
     await page.locator('[data-task-status="completed"]').waitFor();
     checks.push("Autonomous task uses Mock Ollama, actual worktree/tools/tests, zero API and verified report approval");
     blockPlanning = true;
@@ -583,7 +583,7 @@ async function main() {
     await page.getByRole("button",{name:"启动自主任务",exact:true}).click();
     await page.getByRole("button",{name:"Allow once",exact:true}).click();
     await page.waitForFunction(() => !!document.querySelector('.task-live-controls'));
-    const cancel = page.getByRole("button",{name:"Cancel active task",exact:true});
+    const cancel = page.getByRole("button",{name:"取消当前任务",exact:true});
     await cancel.waitFor();
     assert(await cancel.isEnabled());
     const planningDeadline = Date.now() + 10000;
@@ -601,12 +601,12 @@ async function main() {
       const session = await window.localAgent.getProject();
       return (await window.localAgent.taskRequest(session.payload.active_thread.id,"task.list")).payload.tasks[0];
     });
-    await page.getByRole("button",{name:"Task diagnostics " + cancelledTask.id.slice(0,8),exact:true}).click();
-    const diagnosticPanel = page.getByLabel("Task diagnostics report",{exact:true});
+    await page.getByRole("button",{name:"任务诊断 " + cancelledTask.id.slice(0,8),exact:true}).click();
+    const diagnosticPanel = page.getByLabel("任务诊断 report",{exact:true});
     await diagnosticPanel.waitFor();
     assert((await diagnosticPanel.innerText()).includes("TASK_CANCELLED"));
-    assert(await diagnosticPanel.getByRole("button",{name:"Copy diagnostics JSON",exact:true}).isEnabled());
-    assert(await diagnosticPanel.getByRole("button",{name:"Copy diagnostics Markdown",exact:true}).isEnabled());
+    assert(await diagnosticPanel.getByRole("button",{name:"复制诊断 JSON",exact:true}).isEnabled());
+    assert(await diagnosticPanel.getByRole("button",{name:"复制诊断 Markdown",exact:true}).isEnabled());
     checks.push("Sticky Task Cancel stops a blocked Planning request; persisted sanitized JSON/Markdown diagnostics are accessible");
 
     // Exercise ordinary Settings navigation first (App closes the Task panel).
@@ -666,9 +666,9 @@ async function main() {
     await page.waitForFunction(() => document.querySelector('[aria-label="任务策略"]')?.value === "local-first");
     // Select Single Agent using the actual Task UI. Other role bindings remain local.
     await page.getByLabel("任务策略",{exact:true}).selectOption("single-agent");
-    await page.getByText("Models and budget",{exact:true}).click();
+    await page.getByText("模型与预算",{exact:true}).click();
     await page.getByLabel("executor task profile",{exact:true}).selectOption(profileIds["api-reviewer"]);
-    await page.getByRole("button",{name:"Use long task budget",exact:true}).click();
+    await page.getByRole("button",{name:"使用长任务预算",exact:true}).click();
     assert.equal(await page.getByLabel("api_tokens",{exact:true}).inputValue(),"10000000");
     assert.equal(await page.getByLabel("executor task profile",{exact:true}).inputValue(),profileIds["api-reviewer"]);
     await page.getByLabel("api_calls",{exact:true}).fill("12");
@@ -1074,3 +1074,4 @@ async function main() {
   }
 }
 main().catch(error => {console.error(error); process.exitCode = 1;});
+
