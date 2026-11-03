@@ -12,12 +12,39 @@ from unittest.mock import patch
 
 from agent.core.gui_verification import validate_gui
 from agent.llm.base import ProviderChunk
+from agent.llm.base import ProviderError, ToolCall
 from agent.llm.router import validate_config
 from agent.server.main import AgentServer
 from test_m2_projects import Client, ModelResponses, tool
 from test_m2_processes import alive
 
 ROOT=Path(__file__).resolve().parents[1]
+
+
+class ObserverSchemaTests(unittest.IsolatedAsyncioTestCase):
+    async def test_invalid_schema_repaired_once_with_same_pixels_and_no_response_body_replay(self):
+        from agent.core.gui_verification import observe_pixels
+        provider=ModelResponses([ProviderChunk(content='{"observations":"PRIVATE_RESPONSE","errors":[]}',done=True),
+            ProviderChunk(content='{"observations":["Visible"],"errors":[]}',done=True)])
+        image={'role':'user','content':[{'type':'image_url','image_url':{'url':'data:image/jpeg;base64,controlled'}}]}
+        value=await observe_pixels(provider,image)
+        self.assertEqual(value['errors'],[])
+        self.assertEqual(len(provider.seen),2)
+        self.assertNotIn('PRIVATE_RESPONSE',str(provider.seen))
+        self.assertEqual(provider.seen[-1][1],image)
+
+    async def test_invalid_schema_stops_after_two_and_observer_tools_never_execute(self):
+        from agent.core.gui_verification import observe_pixels
+        provider=ModelResponses([ProviderChunk(content='{}',done=True)]*2)
+        with self.assertRaises(ProviderError) as caught:
+            await observe_pixels(provider,{'role':'user','content':'controlled image'})
+        self.assertEqual(caught.exception.code,'VISION_SCHEMA_INVALID')
+        self.assertEqual(len(provider.seen),2)
+        provider=ModelResponses([ProviderChunk(tool_calls=(ToolCall('write_file',{'path':'forbidden'}),),done=True)])
+        with self.assertRaises(ProviderError) as caught:
+            await observe_pixels(provider,{'role':'user','content':'controlled image'})
+        self.assertEqual(caught.exception.code,'VISION_UNEXPECTED_TOOL')
+        self.assertEqual(len(provider.seen),1)
 
 
 class GUIContractTests(unittest.TestCase):
@@ -207,3 +234,14 @@ class AutonomousGUIRepairTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(task['status'],'paused',task['reason'])
         self.assertEqual(task['verification'][-1]['error_code'],'APPROVAL_DENIED')
         self.assertFalse(any(c['role']=='vision-observer' for c in self.server.store.task_runtime.calls(task['id'])))
+
+    async def test_real_pixels_schema_retry_is_accounted_and_does_not_rerun_gui_mutations(self):
+        self.configure_observer()
+        task=await self.start([self.repair(),ProviderChunk(content='Verify actual UI',done=True),
+            ProviderChunk(content='{"observations":"wrong type","errors":[]}',done=True),
+            ProviderChunk(content='{"observations":["Settings visible"],"errors":[]}',done=True)])
+        self.assertEqual(task['status'],'awaiting_approval',task['reason'])
+        calls=self.server.store.task_runtime.calls(task['id'])
+        self.assertEqual(len([c for c in calls if c['role']=='vision-observer']),2)
+        self.assertEqual(task['attempts'],1)
+        self.assertEqual(task['repairs'],0)
