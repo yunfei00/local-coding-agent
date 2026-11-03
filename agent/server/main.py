@@ -2162,6 +2162,7 @@ class AgentServer:
         eval_count: int | None = None
         total_tool_calls = 0
         unresolved_tool_failures: set[str] = set()
+        explicit_tool_denial = False
         previous_checkpoint = self.store.task_plans.latest_checkpoint(active_plan["id"]) if active_plan else None
         from agent.core.execution import ExecutionBudget
         execution = ExecutionBudget(self.store.connection, active_plan['id'] if active_plan else turn_id, thread_id, self.continuation_policy)
@@ -2385,7 +2386,22 @@ class AgentServer:
 
                 if not tool_calls:
                     if unresolved_tool_failures:
-                        raise ProviderError('PLAN_TOOLS_UNRESOLVED', '仍有工具失败尚无同类成功复测证据；不能宣告验收完成。查看 Plan 的最近工具记录。')
+                        # A prose completion after a failed tool is not success.
+                        # Give Single Agent one persistent, budgeted opportunity
+                        # to address the real result, without replay or permissions.
+                        if single_agent and not explicit_tool_denial and execution.data.get('completion_recovery_attempts',0) < 1:
+                            execution.data['completion_recovery_attempts'] = 1
+                            execution.save()
+                            messages.append({'role':'system','content':
+                                'Completion rejected: unresolved tools: '+', '.join(sorted(unresolved_tool_failures)[:8])+
+                                '. Inspect the actual tool errors above and resolve/retest under existing permissions. '
+                                'Do not replay successful mutations, bypass approvals or claim success. '
+                                'This is the only completion-repair opportunity; if blocked, state the concrete reason.'})
+                            await ws.send_json(envelope('turn.status',{'phase':'completion_repair','code':'PLAN_TOOLS_UNRESOLVED',
+                                'tools':sorted(unresolved_tool_failures)[:8],'attempt':1,'limit':1},thread_id=thread_id,turn_id=turn_id))
+                            continue
+                        raise ProviderError('PLAN_TOOLS_UNRESOLVED', '仍有工具失败尚无同类成功复测证据：'+', '.join(sorted(unresolved_tool_failures)[:8])+
+                            '；最近错误：'+str(guard.last_failure_code or '见工具记录')+'。不能宣告验收完成。')
                     gaps = guard.completion_gaps()
                     verification = {
                         "complete": not gaps,
@@ -2697,6 +2713,8 @@ class AgentServer:
                     elif (call.name in {'run_command','desktop_wait'} or fingerprint or
                           failure_diagnosis(call.name,(payload.get('error') or {}).get('code'))['category'] in {'permission','repetition','compatibility'}):
                         unresolved_tool_failures.add(call.name)
+                        if str((payload.get('error') or {}).get('code','')).endswith('DENIED'):
+                            explicit_tool_denial = True
 
                     failure_limit_reached = guard.failure_limit_reached(
                         max_consecutive_failures=self.max_consecutive_tool_failures
