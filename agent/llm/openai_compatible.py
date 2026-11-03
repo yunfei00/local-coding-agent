@@ -468,9 +468,13 @@ class OpenAICompatibleProvider:
         try:
             payload = await response.json(content_type=None)
         except (aiohttp.ContentTypeError, json.JSONDecodeError) as exc:
+            # Never log response bodies: gateways may echo prompts or credentials.
+            content_type = response.headers.get("Content-Type", "missing").split(";")[0][:80]
             raise OpenAICompatibleProviderError(
                 "OPENAI_COMPATIBLE_INVALID_RESPONSE",
-                "The OpenAI-compatible provider returned a non-JSON response.",
+                f"OpenAI-compatible endpoint returned non-JSON: HTTP {response.status}, "
+                f"Content-Type {content_type}. Verify the selected Chat model's "
+                "connection and endpoint; this is not a Planner/Executor setting.",
             ) from exc
 
         if not isinstance(payload, dict):
