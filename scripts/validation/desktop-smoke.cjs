@@ -701,6 +701,33 @@ async function main() {
     assert(m1Task.report.diff.includes("M1 fix"));
     await screenshot("desktop-m1-single-agent.png");
     checks.push("M1 Single Agent UI: one online Executor, six model rounds, real failing tests/patch/retest/Diff, no Planner/Reviewer/escalation requests");
+    const callsBeforeReconnect = modelRequests.length;
+    const backendPort = (await page.evaluate(() => window.localAgent.getAgentStatus())).port;
+    await page.evaluate(() => {
+      globalThis.__lcaSocketRestored = false;
+      window.localAgent.onAgentEvent(event => {
+        if (event.type === 'connection.restored') globalThis.__lcaSocketRestored = true;
+      });
+    });
+    // Close only this test Electron process's exact backend TCP connection.
+    // No token inspection, arbitrary process kill, network policy or OS changes.
+    await application.evaluate((_, port) => {
+      const sockets = process._getActiveHandles().filter(handle =>
+        handle.remotePort === port && String(handle.remoteAddress).endsWith('127.0.0.1') && !handle.destroyed);
+      if (sockets.length !== 1) throw new Error('Expected one owned Agent connection');
+      sockets[0].destroy();
+    }, backendPort);
+    await page.waitForFunction(() => globalThis.__lcaSocketRestored === true, undefined, {timeout:30000});
+    assert.equal((await page.evaluate(() => window.localAgent.getAgentStatus())).state,'ready');
+    const reconnectedTask = await page.evaluate(async ({thread,id}) =>
+      (await window.localAgent.taskRequest(thread,'task.list')).payload.tasks.find(task=>task.id===id),
+      {thread:m1Task.thread_id,id:m1Task.id});
+    assert.equal(reconnectedTask.status,'awaiting_approval');
+    assert.deepEqual(reconnectedTask.plan.steps,m1Task.plan.steps);
+    assert.deepEqual(reconnectedTask.usage,m1Task.usage);
+    assert.equal(modelRequests.length,callsBeforeReconnect);
+    assert(await page.locator('.composer textarea').isEnabled());
+    checks.push('Actual Electron backend socket interruption reconnects and resynchronizes task state without replay, budget reset or model requests');
     await page.getByRole("button", {name:"Task", exact:true}).click();
 
     const retainedMemory = m1Task.plan.execution.working_memory;
@@ -1074,4 +1101,3 @@ async function main() {
   }
 }
 main().catch(error => {console.error(error); process.exitCode = 1;});
-
