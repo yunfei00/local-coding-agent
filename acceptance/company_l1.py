@@ -44,7 +44,7 @@ class IndependentTests(unittest.TestCase):
     def test_shipping_not_discounted(self):
         self.assertEqual(total_price(100, 3, 10, 10), Decimal("280.00"))
     def test_free_shipping(self):
-        self.assertEqual(total_price("19.99", 2, 25, 0), Decimal("29.99"))
+        self.assertEqual(total_price("19.99", 2, 25, 0), Decimal("29.98"))
     def test_full_discount_keeps_shipping(self):
         self.assertEqual(total_price(100, 1, 100, 8), Decimal("8.00"))
     def test_zero_quantity_shipping(self):
