@@ -52,7 +52,13 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
         "unfinished_steps":[{"state":step["state"],"description":str(step.get("description",""))[:240]}
             for step in runtime.plans.get(task_id)["steps"]
             if step["state"] not in {"completed","skipped"}][:8],
-        "recent_calls":[{"role":c["role"],"route":c["route"],"status":c["status"],\n                         "error_code":c["metadata"].get("error_code")} for c in calls[-8:]],\n        "recent_transitions":[{"status":t.get("status"),"reason":str(t.get("reason",""))[:240]}\n                              for t in report["transitions"][-8:]],\n        "recent_executions":[{"tool":e.get("tool"),"status":e.get("status"),\n                              "error_code":str(e.get("error_code",""))[:100]}\n                             for e in report["executions"][-8:]],
+        "recent_calls":[{"role":c["role"],"route":c["route"],"status":c["status"],
+                         "error_code":c["metadata"].get("error_code")} for c in calls[-8:]],
+        "recent_transitions":[{"status":t.get("status"),"reason":str(t.get("reason",""))[:240]}
+                              for t in report["transitions"][-8:]],
+        "recent_executions":[{"tool":e.get("tool"),"status":e.get("status"),
+                              "error_code":str(e.get("error_code",""))[:100]}
+                             for e in report["executions"][-8:]],
         "usage":report["usage"], "budget_explanation":budget_explanation,
     }
     # Redact credential values even if a configured model/display name contains one.
