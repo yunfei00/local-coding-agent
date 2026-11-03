@@ -2586,11 +2586,15 @@ class AgentServer:
                     replay = active_plan and not repeatable_check(call.name,call.arguments) and self.store.task_plans.previously_applied(active_plan["id"], fingerprint)
                     unfinished = self.store.task_plans.active_step(active_plan['id']) if active_plan else None
                     journal_step_id = active_step_id or (unfinished['id'] if unfinished else active_plan['steps'][-1]['id'] if active_plan else None)
-                    if active_plan and active_step_id:
-                        self.store.task_plans.update_step(active_plan["id"], active_step_id, "in_progress")
-                    if active_plan and journal_step_id:
-                        self.store.task_plans.record_execution(active_plan["id"], journal_step_id,
-                            call_id, turn_id, call.name, fingerprint=fingerprint)
+                    # A persisted successful mutation is a replay, not a new
+                    # execution. Never regress a completed step to in_progress
+                    # or create misleading execution evidence for the rejected call.
+                    if not replay:
+                        if active_plan and active_step_id:
+                            self.store.task_plans.update_step(active_plan["id"], active_step_id, "in_progress")
+                        if active_plan and journal_step_id:
+                            self.store.task_plans.record_execution(active_plan["id"], journal_step_id,
+                                call_id, turn_id, call.name, fingerprint=fingerprint)
                     if replay:
                         payload = {"ok": False, "summary": "This plan already applied this operation. Inspect the workspace instead of replaying it.",
                             "error": {"code": "PLAN_OPERATION_ALREADY_APPLIED", "message": "A successful persisted operation cannot be automatically replayed."}, "changed_paths": []}
