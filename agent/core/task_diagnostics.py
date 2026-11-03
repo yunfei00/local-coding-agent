@@ -46,6 +46,16 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
         "strategy":task["config"]["strategy"], "usage":runtime.usage(task_id),
         "calls":calls, "transitions":task.get("transitions", []), "executions":runtime.plans.executions(task_id),
         "privacy":"No prompts, response bodies, user files, headers, credentials, goals or Diffs are included."}
+    current_issue = {
+        "status":task["status"], "last_error":report["last_error"],
+        "reason":str(task.get("reason",""))[:600],
+        "unfinished_steps":[{"state":step["state"],"description":str(step.get("description",""))[:240]}
+            for step in runtime.plans.get(task_id)["steps"]
+            if step["state"] not in {"completed","skipped"}][:8],
+        "recent_calls":calls[-8:], "recent_transitions":report["transitions"][-8:],
+        "recent_executions":report["executions"][-8:],
+        "usage":report["usage"], "budget_explanation":budget_explanation,
+    }
     # Redact credential values even if a configured model/display name contains one.
     def clean(value):
         if isinstance(value, str):
@@ -55,19 +65,12 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
         return value
     report = clean(report)
     text = json.dumps(report, ensure_ascii=False, indent=2)
-    lines = ["# Task diagnostics", "", f"Task: {task_id}", f"Status: {task['status']}",
-        f"Planning attempts: {report['planning_attempts']} / {report['planning_limit']}",
-        f"Why Planning did not enter Executing: {blocker or 'Plan accepted; see transitions'}", "",
-        "| Call | Stage / Role | Provider / Model | HTTP | Finish | Transport / Tool JSON / Schema | Result / Next |",
-        "| --- | --- | --- | --- | --- | --- | --- |"]
-    for c in report["calls"]:
-        m = c["metadata"]
-        cell = lambda v: str(v).replace("|", "/").replace("\n", " ").replace("\r", " ")
-        lines.append("| " + " | ".join(map(cell, [c["call_id"], f"{m.get('phase')} / {c['role']}",
-            f"{m.get('provider_type')} / {c['model']}", m.get("http_status"), m.get("finish_reason"),
-            f"{m.get('parse_success')} / {m.get('tool_parse_success')} / {m.get('schema_valid')}", f"{m.get('error_code', c['status'])} / {m.get('next_state')}"])) + " |")
-    lines += ["", "Full allowlisted metadata and Usage:", "```json", text, "```", ""]
-    markdown = "\n".join(lines)
+    markdown = "\n".join(["# Task diagnostics — current issue", "",
+        "Task: " + task_id, "Status: " + str(task["status"]),
+        "Last error: " + str(error or "none"),
+        "Showing the current issue and last 8 events only; full history is saved in JSON.",
+        "", "~~~json", json.dumps(clean(current_issue), ensure_ascii=False, indent=2),
+        "~~~", ""])
     directory.mkdir(parents=True, exist_ok=True)
     paths = {}
     for suffix, content in (("json",text), ("md",markdown)):
