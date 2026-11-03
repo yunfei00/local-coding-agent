@@ -174,8 +174,13 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         command='uv run --no-project python -c "from pathlib import Path; p=Path(\'counter.txt\'); p.write_text(p.read_text()+\'x\' if p.exists() else \'x\')"'
         await self.run_model([tool('run_command',command=command)],turn='first-command')
         self.assertEqual((self.repo/'counter.txt').read_text(),'x')
+        plan=self.server.store.task_plans.list_for_thread(self.thread.id)[0]
+        before=[e for e in self.server.store.task_plans.executions(plan['id']) if e['tool']=='run_command']
         await self.run_model([tool('run_command',command=command)],turn='resumed-command')
         self.assertEqual((self.repo/'counter.txt').read_text(),'x')
+        after=[e for e in self.server.store.task_plans.executions(plan['id']) if e['tool']=='run_command']
+        self.assertEqual(len(after),len(before),
+                         'A rejected replay must not create a second execution journal entry')
         result=next(e['payload']['result'] for e in reversed(self.client.messages) if e['type']=='tool.completed')
         self.assertEqual(result['error']['code'],'PLAN_OPERATION_ALREADY_APPLIED')
         self.assertTrue(repeatable_check('run_command',{'command':'uv run --no-project python -m unittest discover -s tests -v'}))
@@ -267,6 +272,15 @@ class ExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(e['payload'].get('code')=='PLAN_TOOLS_UNRESOLVED' for e in self.client.messages))
         plan=self.server.store.task_plans.list_for_thread(self.thread.id)[0]
         self.assertEqual(plan['steps'][0]['state'],'blocked')
+
+    async def test_single_agent_completion_feedback_does_not_retry_explicit_permission_denial(self):
+        self.server.permissions.set_mode('read_only')
+        model=await self.run_model([tool('write_file',path='denied.txt',content='must not write'),
+            ProviderChunk(content='Done',done=True)],single=True)
+        self.assertEqual(len(model.seen),2)
+        self.assertFalse((self.repo/'denied.txt').exists())
+        self.assertFalse(any(e['payload'].get('phase')=='completion_repair' for e in self.client.messages))
+        self.assertTrue(any(e['payload'].get('code')=='PLAN_TOOLS_UNRESOLVED' for e in self.client.messages))
 
     async def test_restart_uncertain_mutation_requires_new_approval(self):
         pid=self.server.store.task_plans.create(self.thread.id,'Uncertain operation',[{'description':'Verify uncertain write'}])

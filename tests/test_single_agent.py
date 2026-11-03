@@ -201,6 +201,40 @@ class SingleAgentTests(unittest.IsolatedAsyncioTestCase):
         report = self.server.tasks.diagnostics(task["id"])["diagnostics"]["json"]
         self.assertEqual(report["calls"][0]["metadata"]["http_status"], 401)
 
+    async def test_premature_completion_gets_one_budgeted_repair_then_real_retest(self):
+        task=await self.start([tools(call('run_command',{'command':COMMAND},0)),final('All passed'),self.fix(),
+            tools(call('run_command',{'command':COMMAND},6)),final('Retested actual fix')])
+        self.assertEqual(task['status'],'awaiting_approval',task['reason'])
+        self.assertEqual(len(self.requests),5)
+        self.assertEqual(task['repairs'],0)
+        repairs=[e for e in self.client.messages if e['type']=='turn.status' and e['payload'].get('phase')=='completion_repair']
+        self.assertEqual(len(repairs),1)
+        self.assertIn('Completion rejected',str(self.requests[2]['messages']))
+        self.assertEqual(len([r for r in self.tool_results('apply_patch') if r['ok']]),1)
+        self.assertTrue(all(v['ok'] for v in task['verification']))
+
+    async def test_repeated_prose_after_failed_tools_stops_at_persistent_repair_limit(self):
+        task=await self.start([tools(call('run_command',{'command':COMMAND},0)),final('Passed'),final('Passed again')])
+        self.assertEqual(task['status'],'paused')
+        self.assertEqual(task['last_error']['code'],'PLAN_TOOLS_UNRESOLVED')
+        self.assertEqual(len(self.requests),3)
+        self.assertFalse(any(v.get('ok') for v in task['verification']))
+        self.assertEqual(self.server.store.task_plans.get(task['id'])['execution']['completion_recovery_attempts'],1)
+        self.responses=[tools(call('run_command',{'command':COMMAND},9)),final('Still passed')]
+        await self.server.tasks.handle(self.client,{'type':'task.resume','thread_id':self.thread.id,
+            'payload':{'task_id':task['id'],'confirm_workspace':True}},set())
+        await asyncio.wait_for(asyncio.gather(*list(self.server.active_turns.values())),45)
+        self.assertEqual(len(self.requests),5)
+        self.assertEqual(len([e for e in self.client.messages if e['payload'].get('phase')=='completion_repair']),1)
+
+    async def test_completion_repair_cannot_send_past_api_request_budget(self):
+        self.config['budget']['api_calls']=2
+        task=await self.start([tools(call('run_command',{'command':COMMAND},0)),final('Passed')])
+        self.assertEqual(task['status'],'paused')
+        self.assertEqual(task['last_error']['code'],'BUDGET_EXHAUSTED')
+        self.assertEqual(len(self.requests),2)
+        self.assertEqual(self.server.store.task_runtime.usage(task['id'])['api_calls'],2)
+
     async def test_independent_failure_returns_to_same_executor_for_repair(self):
         task = await self.start([tools(call("read_file", {"path": "calculator.py"}, 0)), final(), self.fix(), final()])
         self.assertEqual(task["status"], "awaiting_approval", task["reason"])

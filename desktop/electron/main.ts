@@ -539,7 +539,7 @@ function connectAgentWebSocket(ready: {
   token: string;
   version: string;
   protocol: string;
-}): void {
+}, reconnectAttempt = 0): void {
   agentSocket?.close();
 
   const socket = new WebSocket("ws://" + ready.host + ":" + ready.port + "/ws", {
@@ -558,6 +558,7 @@ function connectAgentWebSocket(ready: {
       protocol: ready.protocol
     };
     console.log("[desktop] Agent WebSocket connected");
+    broadcastAgentEvent({type:"connection.restored",payload:{reconnectAttempt}});
 
     lastAgentReady = {
       host: ready.host,
@@ -588,6 +589,7 @@ function connectAgentWebSocket(ready: {
   });
 
   socket.on("close", () => {
+    if (agentSocket !== socket) return;
     rejectPending("Agent WebSocket disconnected.");
     if (!shuttingDown && agentProcess) {
       agentStatus = {
@@ -598,6 +600,10 @@ function connectAgentWebSocket(ready: {
         protocol: ready.protocol,
         error: "Agent WebSocket disconnected."
       };
+      if (reconnectAttempt < 8) setTimeout(() => {
+        if (!shuttingDown && agentProcess && agentSocket === socket)
+          connectAgentWebSocket(ready, reconnectAttempt + 1);
+      }, Math.min(1000 * 2 ** reconnectAttempt, 10000));
     }
   });
 }
@@ -1460,7 +1466,7 @@ ipcMain.handle("agent:task-request", async (_event, threadId: string, operation:
     storeModelCredentials(values);
     return {type:"task.loaded", payload:{mode:safeStorage.isEncryptionAvailable() ? "os_protected" : "session_only", configured:!!key}};
   }
-  const allowed = new Set(["task.catalog.get", "task.catalog.update", "task.settings.get", "task.settings.update", "task.connection.test", "task.list", "task.start", "task.resume", "task.pause", "task.cancel", "task.budget.add", "task.configure", "task.approve", "task.diagnostics"]);
+  const allowed = new Set(["task.catalog.get", "task.catalog.update", "task.settings.get", "task.settings.update", "task.connection.test", "task.list", "task.start", "task.resume", "task.continue", "task.pause", "task.cancel", "task.budget.add", "task.configure", "task.approve", "task.diagnostics"]);
   allowed.add("task.model.diagnostic"); allowed.add("task.model.diagnostic.cancel");
   if (!allowed.has(operation)) throw new Error("Unsupported task operation");
   return sendRequest(operation, "task.loaded", payload, {threadId}, operation === "task.model.diagnostic" ? 300000 : operation === "task.connection.test" ? 30000 : 15000);

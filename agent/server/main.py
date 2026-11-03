@@ -2162,6 +2162,8 @@ class AgentServer:
         eval_count: int | None = None
         total_tool_calls = 0
         unresolved_tool_failures: set[str] = set()
+        unresolved_failure_codes: dict[str,str] = {}
+        explicit_tool_denial = False
         previous_checkpoint = self.store.task_plans.latest_checkpoint(active_plan["id"]) if active_plan else None
         from agent.core.execution import ExecutionBudget
         execution = ExecutionBudget(self.store.connection, active_plan['id'] if active_plan else turn_id, thread_id, self.continuation_policy)
@@ -2385,7 +2387,22 @@ class AgentServer:
 
                 if not tool_calls:
                     if unresolved_tool_failures:
-                        raise ProviderError('PLAN_TOOLS_UNRESOLVED', '仍有工具失败尚无同类成功复测证据；不能宣告验收完成。查看 Plan 的最近工具记录。')
+                        # A prose completion after a failed tool is not success.
+                        # Give Single Agent one persistent, budgeted opportunity
+                        # to address the real result, without replay or permissions.
+                        if single_agent and not explicit_tool_denial and execution.data.get('completion_recovery_attempts',0) < 1:
+                            execution.data['completion_recovery_attempts'] = 1
+                            execution.save()
+                            messages.append({'role':'system','content':
+                                'Completion rejected: unresolved tools: '+', '.join(name+' ('+unresolved_failure_codes.get(name,'unknown')+')' for name in sorted(unresolved_tool_failures)[:8])+
+                                '. Inspect the actual tool errors above and resolve/retest under existing permissions. '
+                                'Do not replay successful mutations, bypass approvals or claim success. '
+                                'This is the only completion-repair opportunity; if blocked, state the concrete reason.'})
+                            await ws.send_json(envelope('turn.status',{'phase':'completion_repair','code':'PLAN_TOOLS_UNRESOLVED',
+                                'tools':sorted(unresolved_tool_failures)[:8],'attempt':1,'limit':1},thread_id=thread_id,turn_id=turn_id))
+                            continue
+                        raise ProviderError('PLAN_TOOLS_UNRESOLVED', '仍有工具失败尚无同类成功复测证据：'+
+                            ', '.join(name+' ('+unresolved_failure_codes.get(name,'unknown')+')' for name in sorted(unresolved_tool_failures)[:8])+'. 不能宣告验收完成。')
                     gaps = guard.completion_gaps()
                     verification = {
                         "complete": not gaps,
@@ -2454,11 +2471,12 @@ class AgentServer:
                     execution.data['status'] = 'completed'
                     execution.data.pop('last_error', None)
                     # Intermediate plan steps must not create duplicate user turns.
-                    state.append_exchange(
-                        thread_id,
-                        user=prompt,
-                        assistant=assistant_text,
-                    )
+                    autonomous = plan_id and self.store.connection.execute('SELECT 1 FROM autonomous_tasks WHERE plan_id=?',(plan_id,)).fetchone()
+                    conversation_entry = bool(autonomous and self.tasks.runtime.get(plan_id).get('entrypoint') == 'conversation')
+                    if conversation_entry:
+                        state.append_message(thread_id,role='assistant',content=assistant_text)
+                    else:
+                        state.append_exchange(thread_id,user=prompt,assistant=assistant_text)
                     await self._checkpoint_thread_plans(thread_id, "turn_completed", sorted(plan_files_changed), plan_commands_run, project_override=project, target_plan_id=active_plan['id'] if active_plan else None)
                     # A fully completed plan is no longer considered active by
                     # _checkpoint_thread_plans. Persist its terminal state too.
@@ -2586,14 +2604,23 @@ class AgentServer:
                     replay = active_plan and not repeatable_check(call.name,call.arguments) and self.store.task_plans.previously_applied(active_plan["id"], fingerprint)
                     unfinished = self.store.task_plans.active_step(active_plan['id']) if active_plan else None
                     journal_step_id = active_step_id or (unfinished['id'] if unfinished else active_plan['steps'][-1]['id'] if active_plan else None)
-                    if active_plan and active_step_id:
-                        self.store.task_plans.update_step(active_plan["id"], active_step_id, "in_progress")
-                    if active_plan and journal_step_id:
-                        self.store.task_plans.record_execution(active_plan["id"], journal_step_id,
-                            call_id, turn_id, call.name, fingerprint=fingerprint)
+                    # A persisted successful mutation is a replay, not a new
+                    # execution. Never regress a completed step to in_progress
+                    # or create misleading execution evidence for the rejected call.
+                    if not replay:
+                        if active_plan and active_step_id:
+                            self.store.task_plans.update_step(active_plan["id"], active_step_id, "in_progress")
+                        if active_plan and journal_step_id:
+                            self.store.task_plans.record_execution(active_plan["id"], journal_step_id,
+                                call_id, turn_id, call.name, fingerprint=fingerprint)
                     if replay:
                         payload = {"ok": False, "summary": "This plan already applied this operation. Inspect the workspace instead of replaying it.",
                             "error": {"code": "PLAN_OPERATION_ALREADY_APPLIED", "message": "A successful persisted operation cannot be automatically replayed."}, "changed_paths": []}
+                        if unfinished:
+                            # A different unfinished step still needs an explicit
+                            # blocker, without forging a second tool execution.
+                            self.store.task_plans.set_recovery(active_plan['id'], unfinished['id'],
+                                call.name, 'PLAN_OPERATION_ALREADY_APPLIED')
                     elif not allowed:
                         if guard.last_block_reason and guard.last_block_reason.startswith(
                             "cycle:"
@@ -2646,7 +2673,7 @@ class AgentServer:
 
                     payload['duration_ms'] = round((perf_counter() - tool_started) * 1000)
                     metrics.record_tool(payload['duration_ms'], ok=bool(payload.get("ok")))
-                    if active_plan and journal_step_id:
+                    if active_plan and journal_step_id and not replay:
                         self.store.task_plans.record_execution(active_plan["id"], journal_step_id,
                             call_id, turn_id, call.name, payload)
                         if not payload.get('ok'):
@@ -2684,9 +2711,13 @@ class AgentServer:
                                             exact_secrets=self._exact_secrets())
                     if payload.get('ok'):
                         unresolved_tool_failures.discard(call.name)
+                        unresolved_failure_codes.pop(call.name,None)
                     elif (call.name in {'run_command','desktop_wait'} or fingerprint or
                           failure_diagnosis(call.name,(payload.get('error') or {}).get('code'))['category'] in {'permission','repetition','compatibility'}):
                         unresolved_tool_failures.add(call.name)
+                        unresolved_failure_codes[call.name]=str((payload.get('error') or {}).get('code') or ('NON_ZERO_EXIT' if payload.get('exit_code') else 'TOOL_FAILED'))[:100]
+                        if str((payload.get('error') or {}).get('code','')).endswith('DENIED'):
+                            explicit_tool_denial = True
 
                     failure_limit_reached = guard.failure_limit_reached(
                         max_consecutive_failures=self.max_consecutive_tool_failures

@@ -77,7 +77,15 @@ const provider = http.createServer((req, res) => {
     res.writeHead(200, {"Content-Type": "text/event-stream"});
     if (payload.model === "api-reviewer") {
       let delta = {content:"Review verified tests and Diff."};
-      if (prompt.includes("M1 Single Agent")) {
+      if (prompt.includes('Conversation acceptance')) {
+        const followup=prompt.includes('Append native follow-up');
+        const name=followup?'write_file':'apply_patch';
+        if(!payload.messages.some(m=>m.role==='tool' && m.name===name)) {
+          const args=followup?{path:'FOLLOWUP.md',content:'Native conversation continuation verified\n'}:{path:'calculator.py',old_text:'return a - b',new_text:'return a + b  # conversation'};
+          delta={tool_calls:[{index:0,id:'conversation-'+name,type:'function',function:{name,arguments:JSON.stringify(args)}}]};
+        } else delta={content:'Actual change complete; independently verify tests and Diff.'};
+      }
+      else if (prompt.includes("M1 Single Agent")) {
         const results = payload.messages.filter(m => m.role === "tool");
         const seen = name => results.filter(m => m.name === name);
         let name, args;
@@ -554,9 +562,9 @@ async function main() {
       await window.localAgent.taskRequest(thread, "task.settings.update", {config});
     });
     await page.getByRole("button", {name:"Task", exact:true}).click();
-    await page.getByLabel("Task strategy", {exact:true}).selectOption("local-first");
+    await page.getByLabel("任务策略", {exact:true}).selectOption("local-first");
     await page.getByLabel("Autonomous task goal").fill("Fix calculator in an isolated task worktree");
-    await page.getByRole("button", {name:"Start autonomous task", exact:true}).click();
+    await page.getByRole("button", {name:"启动自主任务", exact:true}).click();
     await page.getByRole("button", {name:"Allow once", exact:true}).click();
     await page.locator('[data-task-status="awaiting_approval"]').waitFor({timeout:60000});
     const timeline=page.locator('summary').filter({hasText:/^Task timeline/}).first();
@@ -575,15 +583,15 @@ async function main() {
     assert(fs.readFileSync(path.join(project,"calculator.py"),"utf8").includes("a - b"));
     assert(fs.readFileSync(path.join(taskBefore.workspace,"calculator.py"),"utf8").includes("a + b"));
     await screenshot("desktop-v04-task-report.png");
-    await page.getByRole("button", {name:"Accept verified report", exact:true}).click();
+    await page.getByRole("button", {name:"接受已验证报告", exact:true}).click();
     await page.locator('[data-task-status="completed"]').waitFor();
     checks.push("Autonomous task uses Mock Ollama, actual worktree/tools/tests, zero API and verified report approval");
     blockPlanning = true;
     await page.getByLabel("Autonomous task goal").fill("Cancel a blocked Planning request");
-    await page.getByRole("button",{name:"Start autonomous task",exact:true}).click();
+    await page.getByRole("button",{name:"启动自主任务",exact:true}).click();
     await page.getByRole("button",{name:"Allow once",exact:true}).click();
     await page.waitForFunction(() => !!document.querySelector('.task-live-controls'));
-    const cancel = page.getByRole("button",{name:"Cancel active task",exact:true});
+    const cancel = page.getByRole("button",{name:"取消当前任务",exact:true});
     await cancel.waitFor();
     assert(await cancel.isEnabled());
     const planningDeadline = Date.now() + 10000;
@@ -601,12 +609,12 @@ async function main() {
       const session = await window.localAgent.getProject();
       return (await window.localAgent.taskRequest(session.payload.active_thread.id,"task.list")).payload.tasks[0];
     });
-    await page.getByRole("button",{name:"Task diagnostics " + cancelledTask.id.slice(0,8),exact:true}).click();
-    const diagnosticPanel = page.getByLabel("Task diagnostics report",{exact:true});
+    await page.getByRole("button",{name:"任务诊断 " + cancelledTask.id.slice(0,8),exact:true}).click();
+    const diagnosticPanel = page.getByLabel("任务诊断 report",{exact:true});
     await diagnosticPanel.waitFor();
     assert((await diagnosticPanel.innerText()).includes("TASK_CANCELLED"));
-    assert(await diagnosticPanel.getByRole("button",{name:"Copy diagnostics JSON",exact:true}).isEnabled());
-    assert(await diagnosticPanel.getByRole("button",{name:"Copy diagnostics Markdown",exact:true}).isEnabled());
+    assert(await diagnosticPanel.getByRole("button",{name:"复制诊断 JSON",exact:true}).isEnabled());
+    assert(await diagnosticPanel.getByRole("button",{name:"复制诊断 Markdown",exact:true}).isEnabled());
     checks.push("Sticky Task Cancel stops a blocked Planning request; persisted sanitized JSON/Markdown diagnostics are accessible");
 
     // Exercise ordinary Settings navigation first (App closes the Task panel).
@@ -628,7 +636,7 @@ async function main() {
     await page.getByRole("button",{name:"Task",exact:true}).click();
     const requestsBeforeBlock = modelRequests.length;
     await page.getByLabel("Autonomous task goal").fill("Show exact zero-budget preflight rejection");
-    await page.getByRole("button",{name:"Start autonomous task",exact:true}).click();
+    await page.getByRole("button",{name:"启动自主任务",exact:true}).click();
     await page.getByRole("button",{name:"Allow once",exact:true}).click();
     const budgetDetail = page.getByLabel("Budget rejection details",{exact:true});
     await budgetDetail.waitFor();
@@ -641,7 +649,7 @@ async function main() {
       await window.localAgent.taskRequest("","task.settings.update",{config});
     });
     await page.getByLabel("Autonomous task goal").fill("Use fresh Settings for API Planner and fix calculator");
-    await page.getByRole("button",{name:"Start autonomous task",exact:true}).click();
+    await page.getByRole("button",{name:"启动自主任务",exact:true}).click();
     await page.getByRole("button",{name:"Allow once",exact:true}).click();
     await page.locator('[data-task-status="awaiting_approval"]').waitFor({timeout:60000});
     const latestBudgetTask = await page.evaluate(async () => {
@@ -663,12 +671,12 @@ async function main() {
     await page.evaluate(config => window.localAgent.taskRequest("","task.settings.update",{config}), defaultsBeforeBudgetCheck);
     await page.getByRole("button", {name:"Task", exact:true}).click();
     await page.getByRole("button", {name:"Task", exact:true}).click();
-    await page.waitForFunction(() => document.querySelector('[aria-label="Task strategy"]')?.value === "local-first");
+    await page.waitForFunction(() => document.querySelector('[aria-label="任务策略"]')?.value === "local-first");
     // Select Single Agent using the actual Task UI. Other role bindings remain local.
-    await page.getByLabel("Task strategy",{exact:true}).selectOption("single-agent");
-    await page.getByText("Models and budget",{exact:true}).click();
+    await page.getByLabel("任务策略",{exact:true}).selectOption("single-agent");
+    await page.getByText("模型与预算",{exact:true}).click();
     await page.getByLabel("executor task profile",{exact:true}).selectOption(profileIds["api-reviewer"]);
-    await page.getByRole("button",{name:"Use long task budget",exact:true}).click();
+    await page.getByRole("button",{name:"使用长任务预算",exact:true}).click();
     assert.equal(await page.getByLabel("api_tokens",{exact:true}).inputValue(),"10000000");
     assert.equal(await page.getByLabel("executor task profile",{exact:true}).inputValue(),profileIds["api-reviewer"]);
     await page.getByLabel("api_calls",{exact:true}).fill("12");
@@ -676,7 +684,7 @@ async function main() {
     assert.equal(await page.getByLabel("planner task profile",{exact:true}).count(),0);
     const m1Start = modelRequests.length;
     await page.getByLabel("Autonomous task goal").fill("M1 Single Agent: inspect calculator, run failing tests, fix, retest and inspect diff");
-    await page.getByRole("button",{name:"Start autonomous task",exact:true}).click();
+    await page.getByRole("button",{name:"启动自主任务",exact:true}).click();
     await page.getByRole("button",{name:"Allow once",exact:true}).click();
     let m1Task;
     const m1Deadline = Date.now() + 60000;
@@ -701,6 +709,33 @@ async function main() {
     assert(m1Task.report.diff.includes("M1 fix"));
     await screenshot("desktop-m1-single-agent.png");
     checks.push("M1 Single Agent UI: one online Executor, six model rounds, real failing tests/patch/retest/Diff, no Planner/Reviewer/escalation requests");
+    const callsBeforeReconnect = modelRequests.length;
+    const backendPort = (await page.evaluate(() => window.localAgent.getAgentStatus())).port;
+    await page.evaluate(() => {
+      globalThis.__lcaSocketRestored = false;
+      window.localAgent.onAgentEvent(event => {
+        if (event.type === 'connection.restored') globalThis.__lcaSocketRestored = true;
+      });
+    });
+    // Close only this test Electron process's exact backend TCP connection.
+    // No token inspection, arbitrary process kill, network policy or OS changes.
+    await application.evaluate((_, port) => {
+      const sockets = process._getActiveHandles().filter(handle =>
+        handle.remotePort === port && String(handle.remoteAddress).endsWith('127.0.0.1') && !handle.destroyed);
+      if (sockets.length !== 1) throw new Error('Expected one owned Agent connection');
+      sockets[0].destroy();
+    }, backendPort);
+    await page.waitForFunction(() => globalThis.__lcaSocketRestored === true, undefined, {timeout:30000});
+    assert.equal((await page.evaluate(() => window.localAgent.getAgentStatus())).state,'ready');
+    const reconnectedTask = await page.evaluate(async ({thread,id}) =>
+      (await window.localAgent.taskRequest(thread,'task.list')).payload.tasks.find(task=>task.id===id),
+      {thread:m1Task.thread_id,id:m1Task.id});
+    assert.equal(reconnectedTask.status,'awaiting_approval');
+    assert.deepEqual(reconnectedTask.plan.steps,m1Task.plan.steps);
+    assert.deepEqual(reconnectedTask.usage,m1Task.usage);
+    assert.equal(modelRequests.length,callsBeforeReconnect);
+    assert(await page.locator('.composer textarea').isEnabled());
+    checks.push('Actual Electron backend socket interruption reconnects and resynchronizes task state without replay, budget reset or model requests');
     await page.getByRole("button", {name:"Task", exact:true}).click();
 
     const retainedMemory = m1Task.plan.execution.working_memory;
@@ -1043,6 +1078,59 @@ async function main() {
     assert(fs.existsSync(path.join(project,"calculator.py")) && fs.existsSync(path.join(deletionProject,"README.md")));
     assert.equal(modelRequests.length,beforeProjectRequests);
     checks.push("Removing active and last projects selects a safe fallback or empty landing, prunes navigation and survives restart without deleting files or generating model requests");
+    // Actual composer, actual HTTP protocol/tools/worktree; no second task form.
+    await application.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},project);
+    await page.evaluate(profile=>window.localAgent.openProject('profile:'+profile),profileIds['api-reviewer']);
+    await page.getByRole('button',{name:'New chat in calculator-project',exact:true}).waitFor();
+    await page.getByRole('button',{name:'New chat in calculator-project',exact:true}).click();
+    await page.evaluate(config=>window.localAgent.taskRequest('','task.settings.update',{config:{...config,
+      budget:{...config.budget,api_calls:12,global_api_calls:100,api_tokens:250000,global_api_tokens:2000000}}}),defaultsBeforeBudgetCheck);
+    await page.getByLabel('对话执行方式',{exact:true}).selectOption('development');
+    await page.getByLabel('Chat model',{exact:true}).selectOption('profile:'+profileIds['api-reviewer']);
+    await page.locator('.composer textarea').fill('Conversation acceptance: fix calculator and independently test');
+    await page.locator('.composer textarea').press('Enter');
+    await page.getByRole('button',{name:'Allow once',exact:true}).click();
+    const waitConversation=async(minCalls=0)=>{
+      const deadline=Date.now()+60000;
+      while(Date.now()<deadline) {
+        const task=await page.evaluate(async()=>{const p=(await window.localAgent.getProject()).payload;return (await window.localAgent.taskRequest(p.active_thread.id,'task.list')).payload.tasks[0];});
+        if(task?.usage.api_calls>minCalls && ['awaiting_approval','paused','failed'].includes(task.status)) return task;
+        await new Promise(resolve=>setTimeout(resolve,200));
+      }
+      throw new Error('Conversation Task did not settle');
+    };
+    const conversation=await waitConversation();
+    assert.equal(conversation.status,'awaiting_approval',conversation.reason);
+    const completedIds=conversation.plan.steps.map(s=>s.id);
+    await page.locator('[data-conversation-task="'+conversation.id+'"]').waitFor();
+    assert.equal(await page.getByLabel('Autonomous task goal').count(),0);
+    await page.locator('.send-button').waitFor({state:'visible'});
+    await page.locator('.composer textarea').fill('Append native follow-up: create FOLLOWUP.md and retest');
+    await page.locator('.composer textarea').press('Enter');
+    const followed=await waitConversation(conversation.usage.api_calls);
+    assert.equal(followed.status,'awaiting_approval',followed.reason);
+    assert.equal(followed.id,conversation.id);assert.equal(followed.workspace,conversation.workspace);
+    assert(completedIds.every(id=>followed.plan.steps.some(s=>s.id===id && s.state==='completed')));
+    assert(fs.readFileSync(path.join(followed.workspace,'FOLLOWUP.md'),'utf8').includes('verified'));
+    const inline=page.locator('[data-conversation-task="'+followed.id+'"]');
+    await inline.scrollIntoViewIfNeeded();
+    const inlineBounds=await inline.boundingBox();
+    const conversationBounds=await page.locator('.conversation').boundingBox();
+    assert(inlineBounds.x>=conversationBounds.x && inlineBounds.x+inlineBounds.width<=conversationBounds.x+conversationBounds.width,'Inline task must fit the chat column, never a clipped horizontal panel');
+    assert(await inline.getByRole('button',{name:'接受已验证结果',exact:true}).isVisible());
+    await screenshot('desktop-conversation-development.png');
+    const beforeRestartCalls=modelRequests.length;
+    await application.close();page=await launch();
+    await page.locator('[data-conversation-task="'+followed.id+'"]').waitFor();
+    assert.equal(await page.getByLabel('对话执行方式',{exact:true}).inputValue(),'development');
+    const restored=(await page.evaluate(()=>window.localAgent.getProject())).payload;
+    assert.deepEqual(restored.messages.filter(m=>m.role==='user').map(m=>m.content),[
+      'Conversation acceptance: fix calculator and independently test','Append native follow-up: create FOLLOWUP.md and retest']);
+    const persisted=(await page.evaluate(thread=>window.localAgent.taskRequest(thread,'task.list'),followed.thread_id)).payload.tasks;
+    assert.equal(persisted.length,1);assert.deepEqual(persisted[0].usage,followed.usage);
+    assert.equal(modelRequests.length,beforeRestartCalls);
+    assert(await page.locator('.composer textarea').isEnabled());
+    checks.push('Same composer starts and continues one Task/Worktree with real HTTP tools, immutable Completed steps, cumulative budget and persisted user messages; restart restores inline progress without another request');
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ok: true, checks, skipped}, null, 2));
     fs.writeFileSync(path.join(reportDir, "desktop-smoke.json"), JSON.stringify({ok: true, checks, skipped}, null, 2));

@@ -69,6 +69,39 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
     def fix(self):
         return tool_step("apply_patch", {"path": "calculator.py", "old_text": "return a - b", "new_text": "return a + b"})
 
+    async def test_conversation_followup_reuses_workspace_plan_and_completed_steps(self):
+        config=self.config(api_calls=0)
+        local=ScriptedProvider([PLAN,self.fix(),final_step('Fixed'),final_step('Reviewed')])
+        self.server.tasks.provider_factory_override=lambda route,profile:local
+        await self.server.tasks.handle(self.ws,{'type':'task.start','thread_id':self.thread.id,
+            'payload':{'goal':'Fix addition','config':config,'entrypoint':'conversation'}},set())
+        await asyncio.wait_for(asyncio.gather(*list(self.server.active_turns.values())),120)
+        original=self.server.store.task_runtime.list(self.thread.id)[0]
+        self.assertEqual(original['status'],'awaiting_approval',original['reason'])
+        steps=self.server.store.task_plans.get(original['id'])['steps']
+        local=ScriptedProvider([tool_step('apply_patch',{'path':'calculator.py','old_text':'return a + b','new_text':'return (a + b)'}),final_step('Follow-up done'),final_step('Reviewed')])
+        message={'type':'task.continue','thread_id':self.thread.id,'payload':{'task_id':original['id'],
+            'prompt':'Parenthesize the addition and retest','followup_id':'unique-followup','confirm_workspace':True,'entrypoint':'conversation'}}
+        await self.server.tasks.handle(self.ws,message,set())
+        await asyncio.wait_for(asyncio.gather(*list(self.server.active_turns.values())),120)
+        current=self.server.store.task_runtime.get(original['id'])
+        self.assertEqual(current['status'],'awaiting_approval',current['reason'])
+        self.assertEqual(current['workspace'],original['workspace'])
+        self.assertEqual(current['config'],original['config'])
+        self.assertEqual(len(self.server.store.task_runtime.list(self.thread.id)),1)
+        final_steps=self.server.store.task_plans.get(original['id'])['steps']
+        self.assertEqual(final_steps[:len(steps)],steps)
+        self.assertEqual(final_steps[-1]['state'],'completed')
+        self.assertIn('return (a + b)',(Path(current['workspace'])/'calculator.py').read_text())
+        self.assertIn('return a - b',(self.repo/'calculator.py').read_text())
+        users=[m['content'] for m in self.project.state.get_messages(self.thread.id) if m['role']=='user']
+        self.assertEqual(users,['Fix addition','Parenthesize the addition and retest'])
+        calls=local.calls
+        await self.server.tasks.handle(self.ws,message,set())
+        self.assertEqual(local.calls,calls)
+        self.assertEqual(self.server.store.task_runtime.get(original['id'])['status'],'awaiting_approval')
+        self.assertTrue(all(v['ok'] for v in current['verification']))
+
     async def test_cleanup_failure_is_persisted_and_cannot_be_deleted_as_stopped(self):
         close_owner = ProcessManager.close_owner
         async def failed_cleanup(manager, owner):

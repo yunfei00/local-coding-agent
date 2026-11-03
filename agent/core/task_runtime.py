@@ -134,6 +134,28 @@ class TaskRuntimeStore:
             self.db.execute("INSERT INTO task_plan_steps(id,plan_id,position,description) VALUES(?,?,?,?)",
                             (str(uuid.uuid4()), plan_id, len(steps), "Repair the latest independent verification failure; inspect current files before changing them"))
 
+    def append_followup(self, plan_id, text, followup_id):
+        task = self.get(plan_id)
+        if task['status'] != 'paused':
+            raise ValueError('Pause the task before adding a follow-up')
+        if not isinstance(text,str) or not 1 <= len(text.strip()) <= 4000:
+            raise ValueError('Follow-up must contain 1..4000 characters')
+        if not isinstance(followup_id,str) or not 1 <= len(followup_id) <= 100:
+            raise ValueError('Follow-up identifier required')
+        ids = task.get('followup_ids',[])
+        if followup_id in ids: return False
+        steps = self.plans.get(plan_id)['steps']
+        goal = task['goal'] + '\n\n用户追加需求：\n' + text.strip()
+        if len(goal) > 32000 or len(ids) >= 32 or len(steps) >= 100:
+            raise ValueError('Conversation task continuation limit reached; review and start a new development session')
+        with self.db:
+            self.db.execute('INSERT INTO task_plan_steps(id,plan_id,position,description) VALUES(?,?,?,?)',
+                (str(uuid.uuid4()),plan_id,len(steps),text.strip()))
+            task['goal'] = goal
+            task['followup_ids'] = [*ids,followup_id]
+            self.save(task)
+        return True
+
     def calls(self, plan_id: str, *, all_calls=False) -> list[dict]:
         rows = self.db.execute("SELECT * FROM model_requests WHERE plan_id=? ORDER BY created_at DESC" + ("" if all_calls else " LIMIT 1000"), (plan_id,)).fetchall()
         return [{**dict(row), "usage": json.loads(row["usage_json"])} for row in reversed(rows)]

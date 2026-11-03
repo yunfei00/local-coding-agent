@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from agent.core.diagnostics import redact_text
+from agent.core.gui_verification import failure_summary
 
 CALL_FIELDS = {"task_id", "call_id", "sequence", "phase", "retry", "started_at", "ended_at",
     "provider", "provider_type", "connection_id", "model_profile_id", "http_status", "response_type",
@@ -23,9 +24,29 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
             "reserved_cost":call["reserved_cost"], "metadata":{k:v for k,v in call["usage"].items() if k in CALL_FIELDS}})
     error = task.get("last_error", {}).get("code")
     blocker = (error or (task.get("planning_failures") or [{}])[-1].get("code") or "PLANNING_IN_PROGRESS") if not task["planned"] else None
+    # API accounting and model context are independent constraints. A local
+    # request may fail its model window while API reservations remain zero.
+    usage = runtime.usage(task_id)
+    task_budget = task["config"]["budget"]
+    budget_explanation = {
+        "api_accounting": "API call/token limits apply only to route=api; local model calls do not reserve API tokens.",
+        "model_context": "MODEL_CONTEXT_LIMIT is a per-request context-window check, not cumulative API token usage.",
+        "api_reserved_tokens": usage.get("reserved_tokens", 0),
+        "api_token_limit": task_budget.get("api_tokens"),
+        "error_code": error,
+        "error_budget_details": task.get("last_error", {}).get("budget") if error == "BUDGET_EXHAUSTED" else None,
+        "error_context_details": task.get("last_error", {}).get("context") if error == "MODEL_CONTEXT_LIMIT" else None,
+    }
+    verification_failures=[{k:r.get(k) for k in ('command','category','exit_code','summary','log_path')} |
+        {'gui_failures':failure_summary(r)} for r in task.get('verification',[]) if not r.get('ok')][-3:]
+    for failure in verification_failures:
+        for key in ('command','summary','log_path'):
+            if isinstance(failure.get(key),str): failure[key]=failure[key][-600:]
     report = {"schema_version":1, "task_id":task_id, "status":task["status"], "planned":task["planned"],
+        "verification_failures":verification_failures,
+        "budget_explanation":budget_explanation,
         "why_not_executing":blocker, "last_error_code":error,
-        "last_error":{k:v for k,v in task.get("last_error", {}).items() if k in {"code","role","phase","exception_type","budget"}},
+        "last_error":{k:v for k,v in task.get("last_error", {}).items() if k in {"code","role","phase","exception_type","budget","context","command","category","exit_code","summary","log_path","failed_count"}},
         "config_source":task.get("config_source", "legacy-snapshot"), "config_snapshot_at":task.get("config_snapshot_at"),
         "task_limits":task["config"]["budget"], "global_limits":task.get("global_budget"),
         "global_usage":runtime.usage(),
@@ -33,6 +54,22 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
         "strategy":task["config"]["strategy"], "usage":runtime.usage(task_id),
         "calls":calls, "transitions":task.get("transitions", []), "executions":runtime.plans.executions(task_id),
         "privacy":"No prompts, response bodies, user files, headers, credentials, goals or Diffs are included."}
+    current_issue = {
+        "status":task["status"], "last_error":report["last_error"],
+        "verification_failures":verification_failures,
+        "reason":str(task.get("reason",""))[:600],
+        "unfinished_steps":[{"state":step["state"],"description":str(step.get("description",""))[:240]}
+            for step in runtime.plans.get(task_id)["steps"]
+            if step["state"] not in {"completed","skipped"}][:8],
+        "recent_calls":[{"role":c["role"],"route":c["route"],"status":c["status"],
+                         "error_code":c["metadata"].get("error_code")} for c in calls[-8:]],
+        "recent_transitions":[{"status":t.get("status"),"reason":str(t.get("reason",""))[:240]}
+                              for t in report["transitions"][-8:]],
+        "recent_executions":[{"tool":e.get("tool"),"status":e.get("status"),
+                              "error_code":str(e.get("error_code",""))[:100]}
+                             for e in report["executions"][-8:]],
+        "usage":report["usage"], "budget_explanation":budget_explanation,
+    }
     # Redact credential values even if a configured model/display name contains one.
     def clean(value):
         if isinstance(value, str):
@@ -42,19 +79,12 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
         return value
     report = clean(report)
     text = json.dumps(report, ensure_ascii=False, indent=2)
-    lines = ["# Task diagnostics", "", f"Task: {task_id}", f"Status: {task['status']}",
-        f"Planning attempts: {report['planning_attempts']} / {report['planning_limit']}",
-        f"Why Planning did not enter Executing: {blocker or 'Plan accepted; see transitions'}", "",
-        "| Call | Stage / Role | Provider / Model | HTTP | Finish | Transport / Tool JSON / Schema | Result / Next |",
-        "| --- | --- | --- | --- | --- | --- | --- |"]
-    for c in report["calls"]:
-        m = c["metadata"]
-        cell = lambda v: str(v).replace("|", "/").replace("\n", " ").replace("\r", " ")
-        lines.append("| " + " | ".join(map(cell, [c["call_id"], f"{m.get('phase')} / {c['role']}",
-            f"{m.get('provider_type')} / {c['model']}", m.get("http_status"), m.get("finish_reason"),
-            f"{m.get('parse_success')} / {m.get('tool_parse_success')} / {m.get('schema_valid')}", f"{m.get('error_code', c['status'])} / {m.get('next_state')}"])) + " |")
-    lines += ["", "Full allowlisted metadata and Usage:", "```json", text, "```", ""]
-    markdown = "\n".join(lines)
+    markdown = "\n".join(["# Task diagnostics — current issue", "",
+        "Task: " + task_id, "Status: " + str(task["status"]),
+        "Last error: " + str(error or "none"),
+        "Showing the current issue and last 8 events only; full history is saved in JSON.",
+        "", "~~~json", json.dumps(clean(current_issue), ensure_ascii=False),
+        "~~~", ""])
     directory.mkdir(parents=True, exist_ok=True)
     paths = {}
     for suffix, content in (("json",text), ("md",markdown)):
@@ -63,4 +93,9 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
         temporary.write_text(content, encoding="utf-8")
         temporary.replace(target)
         paths[suffix] = str(target)
-    return {"diagnostics":{"json":report, "markdown":markdown}, "paths":paths}
+    # Full history stays on disk. Keep the protocol compatible but bound its
+    # historical arrays independently of the complete export.
+    summary = {**report, "calls": report["calls"][-8:],
+               "transitions": report["transitions"][-8:],
+               "executions": report["executions"][-8:]}
+    return {"diagnostics":{"json":summary, "markdown":markdown}, "paths":paths}

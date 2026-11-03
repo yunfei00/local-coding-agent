@@ -46,7 +46,7 @@ def allocate_session(path, model, requested_calls, requested_tokens=60000, attem
     if any(a['state'] == 'reserved' for a in attempts):
         raise ValueError('PREVIOUS_ATTEMPT_UNSETTLED: no automatic retry or reservation refund')
     if update:
-        if not 1 <= requested_calls <= 10000 or not 1 <= requested_tokens <= 1000000000 or not 1 <= attempt_limit <= 10 or not 1 <= requested_seconds <= 7200:
+        if not 1 <= requested_calls <= 10000 or not 1 <= requested_tokens <= 1000000000 or not 1 <= attempt_limit <= 20 or not 1 <= requested_seconds <= 14400:
             raise ValueError('INVALID_EXPLICIT_SESSION_CAPS')
         previous = {'calls':state['call_ceiling'],'tokens':state['token_ceiling'],
                     'attempts':state['attempt_limits'].get(model,2)}
@@ -146,7 +146,7 @@ def live_config(executor, vision, calls, tokens=60000, extended=False, *, scenar
                    'request_seconds': request_seconds, 'task_seconds': 900, 'local_repairs': 3}}
     if vision is not None:
         raw['vision_profile_id'] = vision['model_profile_id']
-    if scenario == 'calculator':
+    if scenario in {'calculator','coupon'}:
         raw['verification_commands'] = ['uv run --no-project python -m unittest discover -s tests -v', 'git diff --check']
     if scenario == 'tkinter':
         raw['verification_commands'] = ['uv run --no-project python -m unittest discover -s . -p test_calculator.py -v', 'git diff --check']
@@ -167,7 +167,17 @@ def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=
     data = temporary / 'data'
     data.mkdir()
     source = temporary / 'fixture'
-    if scenario == 'tkinter':
+    if scenario == 'coupon':
+        source.mkdir(); (source/'tests').mkdir()
+        import runpy
+        baseline = runpy.run_path(str(ROOT/'acceptance/feature_l2.py'), run_name='l2_fixture')
+        (source/'calculator.py').write_text(baseline['SOURCE'],encoding='utf-8')
+        (source/'tests/test_l2.py').write_text(baseline['PUBLIC'],encoding='utf-8')
+        # Give the Agent real, frozen user acceptance tests as well as the
+        # external check. This is a contract, never a seeded implementation.
+        shutil.copy2(ROOT/'scripts/validation/coupon_contract.py',source/'tests/test_coupon_contract.py')
+        (source/'README.md').write_text('# L2 compatibility baseline\n',encoding='utf-8')
+    elif scenario == 'tkinter':
         source.mkdir()  # No seeded business code or tests in the visible directory.
     elif scenario == 'repository':
         # Actual tracked product repository, no user configuration/untracked files.
@@ -288,6 +298,24 @@ def verify_disk(report):
                           capture_output=True, text=True, encoding='utf-8', check=True).stdout
     report['disk_evidence'] = {'source_unchanged': unchanged,
         'acceptance_changes': changed, 'diff': diff[:24000], 'diff_truncated': len(diff) > 24000}
+    if report.get('scenario') == 'coupon':
+        check = subprocess.run(['uv','run','--no-project','python',str(ROOT/'scripts/validation/coupon_contract.py'),str(workspace),'-v'],
+            cwd=workspace,capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=120)
+        report['disk_evidence']['independent_coupon'] = {'exit_code':check.returncode,'stdout':check.stdout[-12000:],'stderr':check.stderr[-12000:]}
+        report['disk_evidence']['report_present'] = (workspace/'DELIVERY.md').is_file()
+        followup_ok = not report.get('conversation') or (
+            (workspace/'DELIVERY.md').is_file() and '同页追加验收' in (workspace/'DELIVERY.md').read_text(encoding='utf-8'))
+        report['disk_evidence']['followup_report_present'] = followup_ok
+        if check.returncode == 0 and (workspace/'DELIVERY.md').is_file():
+            target = REPORT.parent / ('coupon-project-' + report['task_id'])
+            target.mkdir(exist_ok=True)
+            for name in ['coupon_engine.py','DELIVERY.md','calculator.py']:
+                if (workspace/name).is_file(): shutil.copy2(workspace/name,target/name)
+            shutil.copytree(workspace/'tests',target/'tests',dirs_exist_ok=True,ignore=shutil.ignore_patterns('__pycache__'))
+            report['disk_evidence']['validated_project'] = str(target)
+        if report.get('result') == 'PASS' and (check.returncode or not unchanged or changed or not (workspace/'DELIVERY.md').is_file() or not followup_ok):
+            report.update(result='FAIL',reason='INDEPENDENT_COUPON_ACCEPTANCE_FAILED')
+        return
     if report.get('scenario') == 'tkinter':
         contract = ROOT / 'scripts/validation/tkinter_calculator_contract.py'
         contract_unchanged = hashlib.sha256(contract.read_bytes()).hexdigest() == report.get('contract_sha256')
@@ -432,8 +460,9 @@ def main():
     parser.add_argument('--live', action='store_true', help='Authorize paid requests and controlled M5 GUI operations')
     parser.add_argument('--model', default='qwen3.8-flash', help='Exact saved online Model ID, never an unverified fallback')
     parser.add_argument('--vision-model', help='Exact saved online vision Model ID')
-    parser.add_argument('--scenario', choices=('electron','calculator','repository','tkinter'), default='electron')
+    parser.add_argument('--scenario', choices=('electron','calculator','repository','tkinter','coupon'), default='electron')
     parser.add_argument('--with-instructions', action='store_true', help='Seed root and tests AGENTS.md in the isolated calculator copy only')
+    parser.add_argument('--conversation', action='store_true', help='Submit coupon from actual conversation composer and continue same workspace')
     parser.add_argument('--report', type=Path, default=REPORT)
     parser.add_argument('--session', type=Path, default=SESSION)
     parser.add_argument('--strategy', choices=('single-agent','api-only'), default='single-agent')
@@ -466,6 +495,7 @@ def main():
         report.update(executor={k:executor[k] for k in ('model_profile_id','connection_id','model_id')},
                       vision={k:vision[k] for k in ('model_profile_id','connection_id','model_id')} if vision else None,
                       scenario=args.scenario,with_instructions=args.with_instructions,limits=config['budget'],
+                      conversation=args.conversation,
                       model_limits={'executor':{k:executor.get(k) for k in ('context_window','max_output_tokens')},
                                     'vision':{k:vision.get(k) for k in ('context_window','max_output_tokens')} if vision else None})
         if args.scenario == 'tkinter':
@@ -487,6 +517,7 @@ def main():
                 manifest = prepare(args.data_dir, catalog, executor, vision, remaining['calls'], temporary,
                                    tokens=remaining['tokens'],extended=args.authorize_budget_update,scenario=args.scenario,strategy=args.strategy,request_seconds=args.request_seconds,with_instructions=args.with_instructions)
                 document = json.loads(manifest.read_text(encoding='utf-8'))
+                document['conversation'] = args.conversation
                 document['config']['budget'].update(api_tokens=remaining['tokens'],global_api_tokens=remaining['tokens'],task_seconds=remaining['seconds'])
                 if args.authorize_budget_update:
                     # Latest user authorization: large run-specific bounds,

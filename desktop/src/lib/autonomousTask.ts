@@ -1,6 +1,7 @@
 export type TaskVerification = {command:string; ok:boolean; category?:string; exit_code?:number | null; duration_ms?:number; summary:string; log_path?:string;
   evidence?:Array<{tool:string;ok?:boolean;artifact_id?:string;path?:string;sha256?:string}>};
 export type TaskSnapshot = {
+  entrypoint?:string;
   id: string; thread_id: string; revision: number; goal: string; status: string; reason: string;
   workspace: string; branch: string; attempts: number; repairs: number; escalations: number; elapsed_seconds: number;
   usage: {api_calls: number; local_calls: number; reserved_tokens: number; input_tokens: number; output_tokens: number;

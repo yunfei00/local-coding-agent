@@ -35,6 +35,20 @@ def catalog():
 
 
 class LiveAcceptanceGuards(unittest.TestCase):
+    def test_coupon_fixture_contains_frozen_contract_and_l2_but_no_business_implementation(self):
+        from agent.core.verification import acceptance_snapshot, acceptance_changes
+        saved=catalog()
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);isolated=root/'isolated';isolated.mkdir()
+            manifest=live.prepare(root,saved,saved['profiles'][0],None,6,isolated,scenario='coupon')
+            source=Path(json.loads(manifest.read_text())['source'])
+            self.assertFalse((source/'coupon_engine.py').exists())
+            self.assertEqual((source/'tests/test_coupon_contract.py').read_bytes(),(ROOT/'scripts/validation/coupon_contract.py').read_bytes())
+            self.assertTrue((source/'tests/test_l2.py').is_file())
+            baseline=acceptance_snapshot(source)
+            (source/'tests/test_coupon_contract.py').write_text('weakened',encoding='utf-8')
+            self.assertIn(str(Path('tests/test_coupon_contract.py')),acceptance_changes(source,baseline))
+
     def test_instruction_fixture_is_isolated_frozen_and_uses_existing_calculator_contract(self):
         saved = catalog()
         original = (ROOT/'manual-fixtures/v04-local-first/tests/test_calculator.py').read_bytes()

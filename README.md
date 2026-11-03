@@ -1,5 +1,11 @@
 # Local Coding Agent
 
+v0.5.0 使用用户确认的在线模型验收标准：同页自主开发、真实在线工程及 GUI/视觉路径已通过。版本说明与已知限制见 [v0.5.0](docs/releases/v0.5.0.md)。以下阶段性记录保留历史验收范围；正式安装包及当前发布状态以 [Latest Release](https://github.com/yunfei00/local-coding-agent/releases/latest) 页面为准。
+
+当前验证分支增加同页自主开发：在聊天输入框选择“自主开发 · 自动验证”并发送目标，进度、计划、测试、Diff 与接受结果都在消息区展示。结束或暂停后可继续在原输入框追加需求，复用同一 Task/Worktree、模型与累计预算。高级 Task 面板继续提供多角色策略、验证命令和诊断。使用与边界见[公司部署与使用](docs/v0.4/user-guide.md)。源码验证结果与正式发布分别记录，不代表旧安装包已更新。
+
+本轮真实阿里模型、同页续作、GUI/视觉和双平台回归的分项结果见[综合验收报告](acceptance/L3_ALI_CONVERSATION_VALIDATION_REPORT.md)，包括未通过的模型与运行边界；验证分支没有自动合并 main。
+
 2026-10-28 源码增加根目录/目标子目录 `AGENTS.md` 自动加载，以及随 Checkpoint 保留的有界工具事实记忆；Plan → 执行上下文按需查看。真实 Qwen 计算器修复已通过，完整比较、边界与复验命令见[基础 Agent 差距审计](docs/validation/basic-agent-gap-2026-10-28.md)。仍缺运行中追加消息、通用 Skills 与语义压缩，不将现有应用权限描述成 OS 沙箱。本轮只更新源码。
 
 M5 增加真实 Electron + React + TypeScript 双缺陷验收工程、Task Timeline 与失败/成功截图入口；修复 Chromium 受控输入、观察刷新及 GUI 启动契约保护。见 [M5 使用](docs/m5/user-guide.md)、[端到端验收](docs/m5/end-to-end-acceptance.md)、[实验工程](manual-fixtures/m5-electron-e2e/README.md)。[最新真实在线验收](docs/validation/unlocked-real-online-acceptance-2026-10-26.md)记录 Omni 单模型完整闭环、GLM + Omni 的真实后台通过及控制器终态竞态修复/记录重放；失败与精确边界分别保留。本轮不发布 Tag/安装包。
@@ -8,9 +14,9 @@ M4 全面修复统一了 Chat/Task 的连接和模型目录，支持独立 Visio
 
 Local Coding Agent 是一个面向 Windows 本地开发环境的桌面 Coding Agent。目标是提供类似 Codex Desktop 的核心开发体验，同时让模型、Agent、工具链、数据和权限边界保持在用户自己的环境中。
 
-> 当前代码版本：**v0.4.2**
+> 当前代码版本：**v0.5.0**
 >
-> 最近正式发布：[**v0.4.2**](https://github.com/yunfei00/local-coding-agent/releases/tag/v0.4.2)
+> 最近正式发布：[**Latest Release / Windows 下载**](https://github.com/yunfei00/local-coding-agent/releases/latest)
 
 v0.3 增加 MCP stdio/HTTP、Repository Map、Pinned Context、Git Stage/Unstage 与 Worktree、持久化任务计划和执行统计。桌面支持项目树独立展开、会话改名、Markdown/代码复制、浅深主题，以及不遮挡输入框的右侧面板。人工验收已通过；自动化证据与主线集成记录见 [最终验收记录](docs/v0.3-final-validation.md)。
 
