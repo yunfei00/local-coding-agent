@@ -2650,7 +2650,7 @@ class AgentServer:
 
                     payload['duration_ms'] = round((perf_counter() - tool_started) * 1000)
                     metrics.record_tool(payload['duration_ms'], ok=bool(payload.get("ok")))
-                    if active_plan and journal_step_id:
+                    if active_plan and journal_step_id and not replay:
                         self.store.task_plans.record_execution(active_plan["id"], journal_step_id,
                             call_id, turn_id, call.name, payload)
                         if not payload.get('ok'):

@@ -50,6 +50,10 @@ export function AutonomousTaskPanel({threadId, ensureThread, running, onClose, o
     }).catch(cause => {if (alive) setError(String(cause));});
     if (threadId) void window.localAgent.taskRequest(threadId, "task.list").then(event => {if (alive) apply(event);}).catch(cause => {if (alive) setError(String(cause));});
     const unsubscribe = window.localAgent.onAgentEvent(event => {
+      if (event.type === "connection.restored" && alive && threadId) {
+        void window.localAgent.taskRequest(threadId,"task.list").then(next => {if (alive) apply(next);}).catch(cause => {if (alive) setError(String(cause));});
+        return;
+      }
       if (event.thread_id !== threadId || !alive) return;
       if (event.type === "task.updated") apply(event);
       if (["tool.completed","turn.continuing","execution.updated"].includes(event.type)) {

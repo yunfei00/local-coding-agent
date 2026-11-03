@@ -539,7 +539,7 @@ function connectAgentWebSocket(ready: {
   token: string;
   version: string;
   protocol: string;
-}): void {
+}, reconnectAttempt = 0): void {
   agentSocket?.close();
 
   const socket = new WebSocket("ws://" + ready.host + ":" + ready.port + "/ws", {
@@ -558,6 +558,7 @@ function connectAgentWebSocket(ready: {
       protocol: ready.protocol
     };
     console.log("[desktop] Agent WebSocket connected");
+    broadcastAgentEvent({type:"connection.restored",payload:{reconnectAttempt}});
 
     lastAgentReady = {
       host: ready.host,
@@ -588,6 +589,7 @@ function connectAgentWebSocket(ready: {
   });
 
   socket.on("close", () => {
+    if (agentSocket !== socket) return;
     rejectPending("Agent WebSocket disconnected.");
     if (!shuttingDown && agentProcess) {
       agentStatus = {
@@ -598,6 +600,10 @@ function connectAgentWebSocket(ready: {
         protocol: ready.protocol,
         error: "Agent WebSocket disconnected."
       };
+      if (reconnectAttempt < 8) setTimeout(() => {
+        if (!shuttingDown && agentProcess && agentSocket === socket)
+          connectAgentWebSocket(ready, reconnectAttempt + 1);
+      }, Math.min(1000 * 2 ** reconnectAttempt, 10000));
     }
   });
 }

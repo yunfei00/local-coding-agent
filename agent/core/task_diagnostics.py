@@ -74,7 +74,7 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
         "Task: " + task_id, "Status: " + str(task["status"]),
         "Last error: " + str(error or "none"),
         "Showing the current issue and last 8 events only; full history is saved in JSON.",
-        "", "~~~json", json.dumps(clean(current_issue), ensure_ascii=False, indent=2),
+        "", "~~~json", json.dumps(clean(current_issue), ensure_ascii=False),
         "~~~", ""])
     directory.mkdir(parents=True, exist_ok=True)
     paths = {}
@@ -84,4 +84,9 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
         temporary.write_text(content, encoding="utf-8")
         temporary.replace(target)
         paths[suffix] = str(target)
-    # Avoid sending thousands of historical records over the task WebSocket.\n    # The complete JSON remains available at paths["json"] for offline inspection.\n    return {"diagnostics":{"json":clean(current_issue), "markdown":markdown}, "paths":paths}
+    # Full history stays on disk. Keep the protocol compatible but bound its
+    # historical arrays independently of the complete export.
+    summary = {**report, "calls": report["calls"][-8:],
+               "transitions": report["transitions"][-8:],
+               "executions": report["executions"][-8:]}
+    return {"diagnostics":{"json":summary, "markdown":markdown}, "paths":paths}
