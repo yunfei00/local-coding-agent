@@ -46,7 +46,7 @@ def allocate_session(path, model, requested_calls, requested_tokens=60000, attem
     if any(a['state'] == 'reserved' for a in attempts):
         raise ValueError('PREVIOUS_ATTEMPT_UNSETTLED: no automatic retry or reservation refund')
     if update:
-        if not 1 <= requested_calls <= 10000 or not 1 <= requested_tokens <= 1000000000 or not 1 <= attempt_limit <= 10 or not 1 <= requested_seconds <= 7200:
+        if not 1 <= requested_calls <= 10000 or not 1 <= requested_tokens <= 1000000000 or not 1 <= attempt_limit <= 20 or not 1 <= requested_seconds <= 14400:
             raise ValueError('INVALID_EXPLICIT_SESSION_CAPS')
         previous = {'calls':state['call_ceiling'],'tokens':state['token_ceiling'],
                     'attempts':state['attempt_limits'].get(model,2)}

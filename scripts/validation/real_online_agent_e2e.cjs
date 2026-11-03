@@ -282,9 +282,12 @@ async function main(manifest) {
           stage='followup_composer';
           await page.locator('[data-conversation-task]').waitFor();
           await page.waitForFunction(()=>document.querySelector('[data-conversation-task] > strong')?.textContent?.includes('awaiting_approval'),undefined,{timeout:30000});
+          stage='followup_wait_send';
           await page.locator('.send-button').waitFor({state:'visible',timeout:30000});
+          stage='followup_send';
           await page.locator('.composer textarea').fill('追加需求：请在 DELIVERY.md 追加“同页追加验收”章节，说明仍在同一工作区、保留原有规则与测试；再运行全部 unittest 和 git diff --check，不要改动基线文件，不要提交或合并。');
           await page.locator('.composer textarea').press('Enter');
+          stage='followup_wait_goal';
           await page.waitForFunction(id=>document.querySelector('[data-conversation-task="'+id+'"]')?.textContent?.includes('同页追加验收'),task.id,{timeout:30000});
           await delay(1000);
           continue;
@@ -316,7 +319,11 @@ async function main(manifest) {
   } catch (error) {
     // Error strings/stacks from requests or Electron may contain private data.
     const uncertain = !task && stage === 'task_start';
-    finish({...(task ? resultOf(task,tools):{}), result:task || uncertain ? 'FAIL':'NOT RUN',
+    const ui=page ? await page.evaluate(()=>({mode:document.querySelector('[aria-label="对话执行方式"]')?.value,
+      stop_visible:!!document.querySelector('.stop-button'),input_chars:document.querySelector('.composer textarea')?.value?.length,
+      inline_phase:document.querySelector('[data-conversation-task] > strong')?.textContent,
+      error_codes:[...document.querySelectorAll('.error-banner')].flatMap(e=>(e.textContent||'').match(/\b[A-Z][A-Z_]{4,}\b/g)||[])})).catch(()=>null):null;
+    finish({...(task ? resultOf(task,tools):{}), result:task || uncertain ? 'FAIL':'NOT RUN',ui,
       paid_requests:uncertain ? null : task ? resultOf(task,tools).paid_requests : 0,
       usage_uncertain:uncertain,reason:'CONTROLLER_'+error.name, controller_stage:stage, events, approvals, source:manifest.source});
     process.exitCode = 2;
