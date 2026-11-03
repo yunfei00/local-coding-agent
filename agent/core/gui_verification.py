@@ -17,6 +17,8 @@ async def observe_pixels(provider, message, notify=None):
         'Return ONLY a JSON object with exactly two fields: observations (1..20 nonempty strings), '
         'errors (0..20 nonempty strings). Each string at most 1000 characters. '
         'Example: {"observations":["Settings page visible"],"errors":[]}. '
+        'Respect capture-tool sanitization metadata: intentional privacy overlays are not application defects. '
+        'Do not infer hidden field values or failures from masked regions; still report visible errors outside them. '
         'If the image is unreadable, say so and include an error. No tools, extra fields or independent acceptance claims.')
     messages=[{'role':'system','content':instructions},message]
     for attempt in range(2):

@@ -171,6 +171,9 @@ class WindowsDesktopTests(unittest.IsolatedAsyncioTestCase):
                                          'Ordinary editor contents must be concealed with a light placeholder')
             shutil.copy2(after.data['path'],ROOT/'validation-reports/m3-fixture-sanitized.png')
         image=self.registry.desktop.image_message(self.owner)['content'][1]['image_url']['url']
+        capture_text=self.registry.desktop.image_message(self.owner)['content'][0]['text']
+        self.assertIn('intentionally concealed for privacy',capture_text)
+        self.assertIn('not application defects',capture_text)
         self.assertTrue(base64.b64decode(image.split(',',1)[1]).startswith(b'\xff\xd8'))
         # Actual Windows capture -> actual JPEG -> original HTTP client -> local
         # Mock model endpoint. Pixels are never replaced with a generated fixture.

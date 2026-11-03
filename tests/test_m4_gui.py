@@ -48,6 +48,17 @@ class ObserverSchemaTests(unittest.IsolatedAsyncioTestCase):
 
 
 class GUIContractTests(unittest.TestCase):
+    def test_capture_metadata_explains_masks_without_revealing_editor_text(self):
+        from agent.desktop.runtime import DesktopRuntime
+        runtime=DesktopRuntime()
+        runtime.images['owned']={'type':'image_url','image_url':{'url':'data:image/jpeg;base64,controlled'}}
+        runtime.image_metadata['owned']={'redacted_controls':2}
+        message=runtime.image_message('owned',consume=True)
+        self.assertIn('2 controls intentionally concealed',message['content'][0]['text'])
+        self.assertIn('cannot be visually assessed',message['content'][0]['text'])
+        self.assertNotIn('value=',message['content'][0]['text'])
+        self.assertIsNone(runtime.image_message('owned'))
+
     def test_failure_summary_keeps_exact_contract_but_excludes_handles_and_screen_content(self):
         from agent.core.gui_verification import failure_summary
         result={'evidence':[{'tool':'desktop_wait','ok':False,'error_code':'DESKTOP_WAIT_TIMEOUT',
