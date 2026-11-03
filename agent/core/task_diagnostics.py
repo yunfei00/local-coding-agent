@@ -84,4 +84,4 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
         temporary.write_text(content, encoding="utf-8")
         temporary.replace(target)
         paths[suffix] = str(target)
-    return {"diagnostics":{"json":report, "markdown":markdown}, "paths":paths}
+    # Avoid sending thousands of historical records over the task WebSocket.\n    # The complete JSON remains available at paths["json"] for offline inspection.\n    return {"diagnostics":{"json":clean(current_issue), "markdown":markdown}, "paths":paths}
