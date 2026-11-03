@@ -21,6 +21,18 @@ ROOT=Path(__file__).resolve().parents[1]
 
 
 class GUIContractTests(unittest.TestCase):
+    def test_failure_summary_keeps_exact_contract_but_excludes_handles_and_screen_content(self):
+        from agent.core.gui_verification import failure_summary
+        result={'evidence':[{'tool':'desktop_wait','ok':False,'error_code':'DESKTOP_WAIT_TIMEOUT',
+            'actual_screen_text':'must not include','window_id':'stale',
+            'assertion':{'selector':{'name':'Status: Saved: M5 verified A','runtime_id':[1,2]},'state':'visible'}}]*10}
+        summary=failure_summary(result)
+        self.assertEqual(len(summary),2)
+        self.assertEqual(summary[0]['selector']['name'],'Status: Saved: M5 verified A')
+        self.assertNotIn('runtime_id',json.dumps(summary))
+        self.assertNotIn('stale',json.dumps(summary))
+        self.assertNotIn('must not include',json.dumps(summary))
+
     def test_gui_overrides_discovery_and_frozen_value_are_independent_of_file_edits(self):
         from agent.core.gui_verification import discover_gui
         from agent.llm.router import apply_config_overrides
@@ -101,6 +113,8 @@ class AutonomousGUIRepairTests(unittest.IsolatedAsyncioTestCase):
             text=str(messages)
             self.assertIn('GUI acceptance',text)
             self.assertIn('DESKTOP_WAIT_TIMEOUT',text)
+            self.assertIn('gui_failures',text)
+            self.assertIn('NameInput',text)
             return tool('read_file',path='app.ps1')
         task=await self.start([tool('read_file',path='app.ps1'),
             tool('apply_patch',path='app.ps1',old_text='Status.Text="Settings broken"',new_text='Status.Text="Settings ready"'),

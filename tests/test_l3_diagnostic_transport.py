@@ -24,7 +24,10 @@ class DiagnosticTransportTests(unittest.TestCase):
                       reserved_tokens=100,reserved_cost=0,usage={'error_code':'NETWORK_ERROR'}) for i in range(2000)]
         task = dict(status='paused',planned=True,config=validate_config({}),last_error={
             'code':'VERIFICATION_TIMEOUT','command':'uv run pytest','exit_code':124,'summary':'secret-value'},
-            transitions=[{'status':'paused','reason':'timeout'}]*2000)
+            transitions=[{'status':'paused','reason':'timeout'}]*2000,
+            verification=[{'command':'GUI acceptance','ok':False,'exit_code':1,'category':'assertion','summary':'Failed GUI wait',
+                'evidence':[{'tool':'desktop_wait','ok':False,'error_code':'DESKTOP_WAIT_TIMEOUT',
+                    'assertion':{'selector':{'name':'Status: secret-value'},'state':'visible'}}]}])
         plans = SimpleNamespace(executions=lambda _: [{'tool':'run_command','status':'failed'}]*2000,
                                 get=lambda _: {'steps':[{'state':'blocked','description':'Run tests'}]})
         runtime = SimpleNamespace(get=lambda _:task,calls=lambda *a,**k:calls,usage=lambda *a:{'api_calls':2000},plans=plans)
@@ -39,6 +42,8 @@ class DiagnosticTransportTests(unittest.TestCase):
                 self.assertLess(len(wire['markdown'].splitlines()),100)
                 self.assertNotIn('secret-value',json.dumps(result))
                 self.assertIn('uv run pytest',wire['markdown'])
+                self.assertIn('DESKTOP_WAIT_TIMEOUT',wire['markdown'])
+                self.assertEqual(wire['json']['verification_failures'][0]['gui_failures'][0]['state'],'visible')
                 full = json.loads(Path(result['paths']['json']).read_text(encoding='utf-8'))
                 self.assertEqual(len(full['calls']),2000)
                 self.assertEqual(full['last_error']['exit_code'],124)

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from agent.core.diagnostics import redact_text
+from agent.core.gui_verification import failure_summary
 
 CALL_FIELDS = {"task_id", "call_id", "sequence", "phase", "retry", "started_at", "ended_at",
     "provider", "provider_type", "connection_id", "model_profile_id", "http_status", "response_type",
@@ -36,7 +37,13 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
         "error_budget_details": task.get("last_error", {}).get("budget") if error == "BUDGET_EXHAUSTED" else None,
         "error_context_details": task.get("last_error", {}).get("context") if error == "MODEL_CONTEXT_LIMIT" else None,
     }
+    verification_failures=[{k:r.get(k) for k in ('command','category','exit_code','summary','log_path')} |
+        {'gui_failures':failure_summary(r)} for r in task.get('verification',[]) if not r.get('ok')][-3:]
+    for failure in verification_failures:
+        for key in ('command','summary','log_path'):
+            if isinstance(failure.get(key),str): failure[key]=failure[key][-600:]
     report = {"schema_version":1, "task_id":task_id, "status":task["status"], "planned":task["planned"],
+        "verification_failures":verification_failures,
         "budget_explanation":budget_explanation,
         "why_not_executing":blocker, "last_error_code":error,
         "last_error":{k:v for k,v in task.get("last_error", {}).items() if k in {"code","role","phase","exception_type","budget","context","command","category","exit_code","summary","log_path","failed_count"}},
@@ -49,6 +56,7 @@ def export_diagnostics(runtime, task_id, directory: Path, secrets=()):
         "privacy":"No prompts, response bodies, user files, headers, credentials, goals or Diffs are included."}
     current_issue = {
         "status":task["status"], "last_error":report["last_error"],
+        "verification_failures":verification_failures,
         "reason":str(task.get("reason",""))[:600],
         "unfinished_steps":[{"state":step["state"],"description":str(step.get("description",""))[:240]}
             for step in runtime.plans.get(task_id)["steps"]

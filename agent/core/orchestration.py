@@ -563,8 +563,10 @@ class TaskService:
                         # Keep recovery context bounded: repeated full command logs caused
                         # unbounded request growth and obscured successful tool evidence.
                         failures = [r for r in task["verification"] if not r.get("ok")]
+                        from agent.core.gui_verification import failure_summary
                         evidence = [{"command": str(r.get("command", ""))[:200],
                                      "category": str(r.get("category", ""))[:80],
+                                     "gui_failures":failure_summary(r),
                                      "visual_errors": [str(error)[:300] for item in r.get('evidence', [])
                                          if item.get('tool') == 'vision_observer'
                                          for error in (item.get('observation') or {}).get('errors', [])][:3],
@@ -823,8 +825,9 @@ class TaskService:
 
     def diagnostic_context(self, task, results, diff, question):
         # Explicit byte/character bounds and redaction; no repository dump or full logs.
+        from agent.core.gui_verification import failure_summary
         text = json.dumps({"question": question, "goal": task["goal"][:3000], "diff": diff[:6000],
-            "failures": [{"command": r["command"], "category": r["category"], "summary": r.get("summary", "")[-1200:]} for r in results[:6]],
+            "failures": [{"command": r["command"], "category": r["category"], "summary": r.get("summary", "")[-1200:],"gui_failures":failure_summary(r)} for r in results[:6]],
             "attempts": task["attempt_history"][-4:], "planning_failures":task.get("planning_failures", [])[-3:],
             "plan_schema":PLAN_SCHEMA if not task["planned"] else None}, ensure_ascii=False)
         return redact_text(text[:16000], exact_secrets=self.server._exact_secrets(), max_chars=16000)

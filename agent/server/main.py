@@ -2162,6 +2162,7 @@ class AgentServer:
         eval_count: int | None = None
         total_tool_calls = 0
         unresolved_tool_failures: set[str] = set()
+        unresolved_failure_codes: dict[str,str] = {}
         explicit_tool_denial = False
         previous_checkpoint = self.store.task_plans.latest_checkpoint(active_plan["id"]) if active_plan else None
         from agent.core.execution import ExecutionBudget
@@ -2393,15 +2394,15 @@ class AgentServer:
                             execution.data['completion_recovery_attempts'] = 1
                             execution.save()
                             messages.append({'role':'system','content':
-                                'Completion rejected: unresolved tools: '+', '.join(sorted(unresolved_tool_failures)[:8])+
+                                'Completion rejected: unresolved tools: '+', '.join(name+' ('+unresolved_failure_codes.get(name,'unknown')+')' for name in sorted(unresolved_tool_failures)[:8])+
                                 '. Inspect the actual tool errors above and resolve/retest under existing permissions. '
                                 'Do not replay successful mutations, bypass approvals or claim success. '
                                 'This is the only completion-repair opportunity; if blocked, state the concrete reason.'})
                             await ws.send_json(envelope('turn.status',{'phase':'completion_repair','code':'PLAN_TOOLS_UNRESOLVED',
                                 'tools':sorted(unresolved_tool_failures)[:8],'attempt':1,'limit':1},thread_id=thread_id,turn_id=turn_id))
                             continue
-                        raise ProviderError('PLAN_TOOLS_UNRESOLVED', '仍有工具失败尚无同类成功复测证据：'+', '.join(sorted(unresolved_tool_failures)[:8])+
-                            '；最近错误：'+str(guard.last_failure_code or '见工具记录')+'。不能宣告验收完成。')
+                        raise ProviderError('PLAN_TOOLS_UNRESOLVED', '仍有工具失败尚无同类成功复测证据：'+
+                            ', '.join(name+' ('+unresolved_failure_codes.get(name,'unknown')+')' for name in sorted(unresolved_tool_failures)[:8])+'. 不能宣告验收完成。')
                     gaps = guard.completion_gaps()
                     verification = {
                         "complete": not gaps,
@@ -2710,9 +2711,11 @@ class AgentServer:
                                             exact_secrets=self._exact_secrets())
                     if payload.get('ok'):
                         unresolved_tool_failures.discard(call.name)
+                        unresolved_failure_codes.pop(call.name,None)
                     elif (call.name in {'run_command','desktop_wait'} or fingerprint or
                           failure_diagnosis(call.name,(payload.get('error') or {}).get('code'))['category'] in {'permission','repetition','compatibility'}):
                         unresolved_tool_failures.add(call.name)
+                        unresolved_failure_codes[call.name]=str((payload.get('error') or {}).get('code') or ('NON_ZERO_EXIT' if payload.get('exit_code') else 'TOOL_FAILED'))[:100]
                         if str((payload.get('error') or {}).get('code','')).endswith('DENIED'):
                             explicit_tool_denial = True
 

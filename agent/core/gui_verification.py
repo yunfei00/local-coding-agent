@@ -9,6 +9,20 @@ from agent.desktop.runtime import NAMES
 from agent.tools.base import ToolError
 
 
+def failure_summary(result):
+    """Bounded contract assertions, never observed screen text or stale handles."""
+    failed=[e for e in result.get('evidence',[]) if e.get('ok') is False][-2:]
+    summary=[]
+    for evidence in failed:
+        assertion=evidence.get('assertion') or {}
+        selector=assertion.get('selector') or {}
+        summary.append({'tool':str(evidence.get('tool',''))[:80],
+            'error_code':str(evidence.get('error_code',''))[:80],
+            'selector':{k:selector[k][:160] for k in ('name','control_type','automation_id') if isinstance(selector.get(k),str)},
+            **{k:str(assertion[k])[:160] for k in ('state','expected') if k in assertion}})
+    return summary
+
+
 def validate_gui(value):
     if value is None:
         return None
