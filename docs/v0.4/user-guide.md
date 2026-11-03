@@ -2,7 +2,7 @@
 
 2026-10-28 源码自动加载工作区根目录及工具目标目录链中的 `AGENTS.md`（同目录优先非空 `AGENTS.override.md`）。新目录指令会先交给模型再重新决策，不能绕过审批。Plan 中展开“执行上下文”可查看加载来源、最近读写路径和历史命令结果，随 Checkpoint 保留；历史成功不等于最新文件验证成功。更新后完整退出并重启源码版，旧安装包未变。边界与真实 Qwen 验收见[基础 Agent 差距审计](../validation/basic-agent-gap-2026-10-28.md)。
 
-详细配置及可复现工程见 [公司验证流程](company-validation.md)。代码版本 0.4.2；正式发布结果以 [验收记录](acceptance.md) 和 README 的 Release 链接为准。
+详细配置及可复现工程见 [公司验证流程](company-validation.md)。代码版本 0.5.0；Windows 正式包见 [Latest Release](https://github.com/yunfei00/local-coding-agent/releases/latest)，范围和已知限制见 [v0.5.0 发布说明](../releases/v0.5.0.md)。升级后完整退出再启动，已保存的模型凭据保留。
 
 ## 项目和会话
 
@@ -26,7 +26,7 @@ Local-only 保证自主任务不发送 API 请求；绑定冲突会在请求前�
 
 ## 开始任务与恢复
 
-### 同一聊天页面开发（当前验证分支）
+### 同一聊天页面开发（v0.5.0）
 
 在输入框底部选择“自主开发 · 自动验证”，选择 Chat model，输入目标后按 Enter。在线模型使用 Single Agent，本地 Ollama 使用 Local-only；预算和验证命令沿用当前已保存配置。目标首次发送才创建会话和任务，批准 Worktree 后运行。消息区直接显示实际阶段、调用模型、API/Token 统计、工具事实、计划、独立测试和交付 Diff；无需另填 Task 目标。
 

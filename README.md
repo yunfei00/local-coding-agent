@@ -1,6 +1,6 @@
 # Local Coding Agent
 
-v0.5.0 发布准备：本次按用户确认的在线模型验收标准发布，同页自主开发、真实在线工程及 GUI/视觉路径已通过。版本说明与已知限制见 [v0.5.0](docs/releases/v0.5.0.md)。以下阶段性记录保留历史验收范围；最终发布状态以 Release 页面为准。
+v0.5.0 使用用户确认的在线模型验收标准：同页自主开发、真实在线工程及 GUI/视觉路径已通过。版本说明与已知限制见 [v0.5.0](docs/releases/v0.5.0.md)。以下阶段性记录保留历史验收范围；正式安装包及当前发布状态以 [Latest Release](https://github.com/yunfei00/local-coding-agent/releases/latest) 页面为准。
 
 当前验证分支增加同页自主开发：在聊天输入框选择“自主开发 · 自动验证”并发送目标，进度、计划、测试、Diff 与接受结果都在消息区展示。结束或暂停后可继续在原输入框追加需求，复用同一 Task/Worktree、模型与累计预算。高级 Task 面板继续提供多角色策略、验证命令和诊断。使用与边界见[公司部署与使用](docs/v0.4/user-guide.md)。源码验证结果与正式发布分别记录，不代表旧安装包已更新。
 
@@ -16,7 +16,7 @@ Local Coding Agent 是一个面向 Windows 本地开发环境的桌面 Coding Ag
 
 > 当前代码版本：**v0.5.0**
 >
-> 最近正式发布：[**v0.4.2**](https://github.com/yunfei00/local-coding-agent/releases/tag/v0.4.2)
+> 最近正式发布：[**Latest Release / Windows 下载**](https://github.com/yunfei00/local-coding-agent/releases/latest)
 
 v0.3 增加 MCP stdio/HTTP、Repository Map、Pinned Context、Git Stage/Unstage 与 Worktree、持久化任务计划和执行统计。桌面支持项目树独立展开、会话改名、Markdown/代码复制、浅深主题，以及不遮挡输入框的右侧面板。人工验收已通过；自动化证据与主线集成记录见 [最终验收记录](docs/v0.3-final-validation.md)。
 
