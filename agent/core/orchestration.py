@@ -635,14 +635,27 @@ class TaskService:
                     task.update(verification=results, attempt_history=history)
                     # Keep persisted history bounded too: command output and nested
                     # evidence may otherwise grow on every pause/resume cycle.
+                    # Preserve complete evidence locally before reducing the UI
+                    # snapshot. Screenshot identities are required for GUI audit.
+                    archive = self.server.store.data_dir / 'verification' / plan_id / ('attempt-' + str(task['attempts']) + '-' + str(time.time_ns()) + '.json')
+                    archive.parent.mkdir(parents=True, exist_ok=True)
+                    def clean_history(value):
+                        if isinstance(value, str):
+                            return redact_text(value, exact_secrets=self.server._exact_secrets(), max_chars=len(value))
+                        if isinstance(value, list): return [clean_history(v) for v in value]
+                        if isinstance(value, dict): return {k:clean_history(v) for k,v in value.items()}
+                        return value
+                    archive.write_text(json.dumps(clean_history(results), ensure_ascii=False), encoding='utf-8')
                     compact_results = [
                         {"command": str(r.get("command", ""))[:200],
                          "ok": bool(r.get("ok")), "category": str(r.get("category", ""))[:80],
+                         "exit_code":r.get('exit_code'), "log_path":r.get('log_path'),
+                         "evidence":[{k:v for k,v in e.items() if k in {'tool','ok','path','artifact_id','sha256'}} for e in r.get('evidence',[])[:64]],
                          "summary": str(r.get("summary", ""))[-600:]}
                         for r in results[:12]
                     ]
                     task['verification_history'] = [*task.get('verification_history', []),
-                        {'attempt': task['attempts'], 'passed': bool(passed),
+                        {'attempt': task['attempts'], 'passed': bool(passed), 'history_path':str(archive),
                          'at': time.time(), 'results': compact_results}][-10:]
                     self.runtime.save(task)
                     await emit("verification.completed", {"results": results, "passed": bool(passed)})

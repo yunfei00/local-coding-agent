@@ -12,6 +12,13 @@ from agent.server.main import AgentServer
 
 
 class DiagnosticTransportTests(unittest.TestCase):
+    def test_locked_uv_and_plain_diff_checks_are_repeatable_but_compounds_are_not(self):
+        from agent.task_plans import repeatable_check
+        for command in ['uv run --locked python -m unittest discover -s tests -v',
+                        'uv run pytest', 'uv run --no-project --locked python -m pytest', 'git diff --check']:
+            self.assertTrue(repeatable_check('run_command',{'command':command}),command)
+        for command in ['uv run pytest; echo changed','git diff --output=secret.txt','uv run python edit.py']:
+            self.assertFalse(repeatable_check('run_command',{'command':command}),command)
     def test_large_history_kept_on_disk_but_bounded_on_wire(self):
         calls = [dict(id=str(i),role='executor',route='api',model='model',status='failed',
                       reserved_tokens=100,reserved_cost=0,usage={'error_code':'NETWORK_ERROR'}) for i in range(2000)]

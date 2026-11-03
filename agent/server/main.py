@@ -2598,6 +2598,11 @@ class AgentServer:
                     if replay:
                         payload = {"ok": False, "summary": "This plan already applied this operation. Inspect the workspace instead of replaying it.",
                             "error": {"code": "PLAN_OPERATION_ALREADY_APPLIED", "message": "A successful persisted operation cannot be automatically replayed."}, "changed_paths": []}
+                        if unfinished:
+                            # A different unfinished step still needs an explicit
+                            # blocker, without forging a second tool execution.
+                            self.store.task_plans.set_recovery(active_plan['id'], unfinished['id'],
+                                call.name, 'PLAN_OPERATION_ALREADY_APPLIED')
                     elif not allowed:
                         if guard.last_block_reason and guard.last_block_reason.startswith(
                             "cycle:"

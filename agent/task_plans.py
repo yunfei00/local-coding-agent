@@ -48,7 +48,9 @@ def repeatable_check(tool: str, arguments: dict[str, Any]) -> bool:
     command = str(arguments.get('command','')).strip()
     if tool != 'run_command' or re.search(r'[;&|`$\n\r<>]', command):
         return False
-    return bool(re.fullmatch(r"(?:uv\s+run\s+(?:--no-project\s+)?)?(?:python(?:3)?\s+-m\s+(?:unittest|pytest|compileall)\b[\w\s./\\:=,+\-\"']*|npm(?:\.cmd)?\s+(?:run\s+)?(?:test|typecheck|build)(?:\s+--[\w\s./\\:=,+\-\"']*)?)",command,re.I))
+    if re.fullmatch(r'git\s+(?:diff(?:\s+--check)?|status(?:\s+-sb)?)', command, re.I):
+        return True
+    return bool(re.fullmatch(r"(?:uv\s+run\s+(?:(?:--locked|--no-project)\s+){0,2})?(?:(?:python(?:3)?\s+-m\s+(?:unittest|pytest|compileall)|pytest)\b[\w\s./\\:=,+\-\"']*|npm(?:\.cmd)?\s+(?:run\s+)?(?:test|typecheck|build)(?:\s+--[\w\s./\\:=,+\-\"']*)?)",command,re.I))
 
 
 def _now() -> str:
