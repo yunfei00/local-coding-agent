@@ -633,7 +633,17 @@ class TaskService:
                     history = [*previous_history, {"fingerprint": fingerprint, 'plan_fingerprint':plan_fingerprint,
                         "reason": code or "verification", "attempt": task["attempts"]}][-30:]
                     task.update(verification=results, attempt_history=history)
-                    task['verification_history'] = [*task.get('verification_history', []), {'attempt': task['attempts'], 'passed': bool(passed), 'at': time.time(), 'results': results}][-10:]
+                    # Keep persisted history bounded too: command output and nested
+                    # evidence may otherwise grow on every pause/resume cycle.
+                    compact_results = [
+                        {"command": str(r.get("command", ""))[:200],
+                         "ok": bool(r.get("ok")), "category": str(r.get("category", ""))[:80],
+                         "summary": str(r.get("summary", ""))[-600:]}
+                        for r in results[:12]
+                    ]
+                    task['verification_history'] = [*task.get('verification_history', []),
+                        {'attempt': task['attempts'], 'passed': bool(passed),
+                         'at': time.time(), 'results': compact_results}][-10:]
                     self.runtime.save(task)
                     await emit("verification.completed", {"results": results, "passed": bool(passed)})
                     if passed:
@@ -655,8 +665,8 @@ class TaskService:
                         await update("paused", "Verification environment/configuration/permission/network/timeout issue. Resolve locally and resume; no diagnostic API request sent.")
                         return
                     if all(r['ok'] for r in results) and diff_result.get('ok') and not plan_complete:
-                        # Persistent no-progress guard: repeated manual resumes must not
-                        # restart the same Executor mutations against an unchanged plan.
+                        # A prior identical checkpoint means another Executor turn would
+                        # replay already-applied plan operations. Fail closed instead.
                         if previous_history and previous_history[-1].get('plan_fingerprint') == plan_fingerprint:
                             error = ProviderError('TASK_PLAN_NO_PROGRESS',
                                 'Independent commands passed, but the same plan steps remain unfinished. '
