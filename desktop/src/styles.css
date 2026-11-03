@@ -2926,6 +2926,9 @@ summary:focus-visible {
   border-radius: 10px;
 }
 
+.conversation-task { min-width: 0; overflow-wrap: anywhere; }
+.conversation-task button { margin: 6px 6px 0 0; }
+
 .context-section-heading {
   display: flex;
   align-items: flex-start;

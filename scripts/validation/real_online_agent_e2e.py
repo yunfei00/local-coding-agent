@@ -173,6 +173,9 @@ def prepare(source_data, catalog, executor, vision, calls, temporary, *, tokens=
         baseline = runpy.run_path(str(ROOT/'acceptance/feature_l2.py'), run_name='l2_fixture')
         (source/'calculator.py').write_text(baseline['SOURCE'],encoding='utf-8')
         (source/'tests/test_l2.py').write_text(baseline['PUBLIC'],encoding='utf-8')
+        # Give the Agent real, frozen user acceptance tests as well as the
+        # external check. This is a contract, never a seeded implementation.
+        shutil.copy2(ROOT/'scripts/validation/coupon_contract.py',source/'tests/test_coupon_contract.py')
         (source/'README.md').write_text('# L2 compatibility baseline\n',encoding='utf-8')
     elif scenario == 'tkinter':
         source.mkdir()  # No seeded business code or tests in the visible directory.

@@ -1,5 +1,22 @@
 # 公司环境验证流程
 
+## 同页开发与追加需求（当前验证分支）
+
+使用 `test/agent-functional-validation` 源码，完整退出再启动，不能只刷新旧进程。打开有初始提交的 Git 项目，输入框选择“自主开发 · 自动验证”和已保存的模型。发送目标后批准隔离工作区；消息区可展开计划、真实测试、Diff 和报告，无需再去 Task 面板填一份目标。待本轮完成后直接在原输入框追加要求；核对 Task ID、工作区不变、已完成步骤保留、API 用量继续累计。完整退出重启后，原用户消息、追加要求和进度卡都应保留。独立多角色策略仍由高级 Task 面板设置；运行时可编辑下一条消息，需暂停或结束后发送。
+
+仓库提供真实优惠券测试工程的自动准备、真实桌面提交和独立合同验收，不要求手写业务代码。下面命令使用已保存的阿里连接/安全凭据，`--model` 应是本机目录内的实际模型 ID；只在明确授权在线使用后执行，费用/额度以提供商为准。累计 session 账本不会重置，失败预留不会自动退款。默认循环、审批和工具进程保护继续生效。
+
+```powershell
+git switch test/agent-functional-validation
+git pull --ff-only origin test/agent-functional-validation
+uv sync --locked
+npm.cmd --prefix desktop ci
+npm.cmd --prefix desktop run build
+uv run --locked python scripts/validation/real_online_agent_e2e.py --live --scenario coupon --conversation --strategy single-agent --model qwen3.7-plus --context-window 131072 --output-tokens 8192 --request-seconds 180 --max-calls 200 --max-tokens 10000000 --max-full-attempts 11 --max-seconds 14400 --authorize-budget-update --report validation-reports/company-conversation-live.json
+```
+
+131072 是受控客户端窗口设置，不代表已经核实所有服务商模型规格；若本机 Profile 有已确认的窗口，请使用对应值。脚本只控制隔离测试实例的文件选择器与明确审批，其余使用真实桌面输入框/IPC、Provider、工具和 Worktree。Agent 自己生成优惠券代码、测试与中文报告；外部 12 项合同检查、原 L2 测试、追加报告章节、同 Task/Worktree、Completed 不回退、预算累计、源目录未改变都通过，才报告 PASS。403/400/超时分别保留失败，不会静默切换收费模型。测试结果写 JSON/Markdown，成功生成的工程保留在报告旁的 coupon-project-<Task ID>；它们不进入 Git。具体本轮结果见仓库 acceptance 下的 Ali 同页验收报告，DeepSeek 历史 BLOCKED 单独保留。
+
 2026-10-28 增加[仓库指令与执行记忆验证](../validation/basic-agent-gap-2026-10-28.md)：提供既有 calculator fixture 的真实 API 命令，临时副本包含根/测试两份指令；自动核对来源、文件 Diff、原测试及独立 unittest，不需要自行编写测试工程。真实 Qwen 已通过，完整裁剪/重启专项不冒充真实模型长任务验收。
 
 2026-10-27 的会话草稿/删除补查见[会话生命周期](../validation/conversation-lifecycle-2026-10-27.md)，真实阿里模型修改产品仓库和独立测试结果见[真实仓库验收](../validation/alibaba-repository-acceptance-2026-10-27.md)。PR #23 已合并。

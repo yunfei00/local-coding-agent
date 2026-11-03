@@ -1112,6 +1112,12 @@ async function main() {
     assert.equal(followed.id,conversation.id);assert.equal(followed.workspace,conversation.workspace);
     assert(completedIds.every(id=>followed.plan.steps.some(s=>s.id===id && s.state==='completed')));
     assert(fs.readFileSync(path.join(followed.workspace,'FOLLOWUP.md'),'utf8').includes('verified'));
+    const inline=page.locator('[data-conversation-task="'+followed.id+'"]');
+    await inline.scrollIntoViewIfNeeded();
+    const inlineBounds=await inline.boundingBox();
+    const conversationBounds=await page.locator('.conversation').boundingBox();
+    assert(inlineBounds.x>=conversationBounds.x && inlineBounds.x+inlineBounds.width<=conversationBounds.x+conversationBounds.width,'Inline task must fit the chat column, never a clipped horizontal panel');
+    assert(await inline.getByRole('button',{name:'接受已验证结果',exact:true}).isVisible());
     await screenshot('desktop-conversation-development.png');
     const beforeRestartCalls=modelRequests.length;
     await application.close();page=await launch();

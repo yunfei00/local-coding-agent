@@ -1663,13 +1663,13 @@ function App() {
                   </div>
                 </div>
               ))}
-            </div>
-          )}
           {developmentMode && conversationTasks.task ? <ConversationTask task={conversationTasks.task}
             onDetails={()=>togglePanel('task')} onAction={operation=>{
               if (!activeThread || (operation==='task.resume' && !window.confirm('确认检查开发工作区后继续？'))) return;
               void window.localAgent.taskRequest(activeThread.id,operation,{task_id:conversationTasks.task.id,confirm_workspace:true}).catch(error=>setUiError(String(error)));
             }}/>:null}
+            </div>
+          )}
           </section>
           {showJumpToBottom ? (
             <button

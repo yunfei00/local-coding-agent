@@ -50,6 +50,7 @@ const TK_GOAL = `使用 tkinter 在当前空目录创建简单计算器 calculat
 仅在本任务 Worktree 工作，不提交或推送，不打开其他应用，不宣称未运行的验收通过。`;
 const TERMINAL = new Set(['paused','failed','cancelled','completed','awaiting_approval']);
 const COUPON_GOAL = `实现优惠券规则引擎 coupon_engine.py，保留 calculator.py 和 tests/test_l2.py 原有行为，不能修改这两个基线文件。
+先阅读 tests/test_coupon_contract.py，这是已存在的用户合同测试，不得修改/删除或替换；expires 明确接收 YYYY-MM-DD 字符串，不是 date 对象。全部测试必须真实通过，有失败就修复业务实现并重跑。
 导出 apply_coupon(amount,coupon,today) 返回最终应付 Decimal 两位小数 HALF_UP。coupon 是 dict：type 为 fixed 或 percent，value 是金额或百分比(0..100)，可选 min_spend、max_discount、expires(YYYY-MM-DD)。today 为 date。
 门槛按原金额判断；低于门槛或已过期返回原金额；有效期含当天；优惠不超过原金额及 max_discount；金额最低为0。
 金额、门槛、上限、value 非法、负数、bool、NaN/Infinity、非法类型/日期均抛 ValueError。
