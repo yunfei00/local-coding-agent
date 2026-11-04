@@ -215,6 +215,19 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(data['unified_api_requests'][0]['reserved_tokens'],0)
         self.assertEqual(data['unified_api_requests'][0]['tool_argument_chars'],600)
 
+    async def test_invalid_tool_response_keeps_reported_cache_cost_and_idempotent_usage(self):
+        from agent.core.execution import ExecutionBudget
+        budget=ExecutionBudget(self.server.store.connection,'usage-only',self.thread.id,self.server.continuation_policy)
+        identifier=budget.reserve([],None,20,api_budget=self.server.tasks.settings()['budget'],runtime=self.server.tasks.runtime)
+        budget.finish_api(identifier,status='failed',metadata={'response_complete':True,'reported_usage':{
+            'input_tokens':10,'output_tokens':4,'cached_tokens':6,'actual_cost':.003}})
+        budget.finish_api(identifier,status='failed',metadata={'response_complete':True,'reported_usage':{
+            'input_tokens':999,'output_tokens':999,'cached_tokens':999,'actual_cost':999}})
+        usage=self.server.tasks.runtime.usage('usage-only')
+        self.assertEqual(usage['api_calls'],1);self.assertEqual(usage['reserved_tokens'],14)
+        self.assertEqual(usage['cached_tokens'],6);self.assertAlmostEqual(usage['actual_cost'],.003)
+        self.assertFalse(usage['estimated']);self.assertTrue(usage['actual_cost_known'])
+
     async def test_explicit_zero_budget_sends_no_request(self):
         self.server.store.set_setting('orchestration.config',json.dumps(validate_config({'budget':{'api_calls':0}})))
         p,r=await self.run_steps([final_step('must not be called')])

@@ -160,10 +160,11 @@ class ExecutionBudget:
             if chunk is None and isinstance(usage,dict):
                 values=(usage.get('input_tokens'),usage.get('output_tokens'))
             if all(isinstance(v,int) and not isinstance(v,bool) and v>=0 for v in values):
+                cached=usage.get('cached_tokens') if chunk is None and isinstance(usage,dict) else getattr(chunk,'cached_tokens',None)
                 row.update(input_tokens=values[0],output_tokens=values[1],reserved_tokens=sum(values),estimated=False,
-                           cached_tokens=getattr(chunk,'cached_tokens',None) or 0)
-            actual=getattr(chunk,'actual_cost',None)
-            if actual is not None:
+                           cached_tokens=cached if isinstance(cached,int) and not isinstance(cached,bool) and cached>=0 else 0)
+            actual=usage.get('actual_cost') if chunk is None and isinstance(usage,dict) else getattr(chunk,'actual_cost',None)
+            if isinstance(actual,(int,float)) and not isinstance(actual,bool) and math.isfinite(actual) and actual>=0:
                 row.update(actual_cost=actual,reserved_cost=max(row['reserved_cost'],actual))
             if status=='failed' and metadata.get('request_sent') is False:
                 row.update(status='not_sent',reserved_tokens=0,reserved_cost=0,input_tokens=0,output_tokens=0,estimated=True)
