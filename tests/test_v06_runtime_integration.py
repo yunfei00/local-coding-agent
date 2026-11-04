@@ -31,6 +31,8 @@ class RuntimeIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(value['kind'],'interaction');self.assertFalse(value['read_only'])
         self.assertTrue(requested_intent('只分析窗口，不点击任何按钮')['read_only'])
         self.assertTrue(requested_intent('请解释如何在窗口点击保存')['pure_question'])
+        self.assertEqual(requested_intent('在桌面 Settings 窗口将显示名称修改为中文，然后点击保存')['kind'],'interaction')
+        self.assertEqual(requested_intent('修复 src/App.tsx 界面，让用户点击保存时显示正确状态')['kind'],'change')
 
     def test_application_runtime_profile_is_not_a_source_code_change(self):
         before=workspace_snapshot(self.repo)

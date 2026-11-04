@@ -45,7 +45,9 @@ def requested_intent(prompt):
     change=not readonly and bool(re.search(r'实现|开发|修复|修改|重构|新增|增加|改成|改为|改中文|编写|创建|\b(?:implement|develop|refactor|create|fix|add|change|update)\b',text,re.I)) and (not question or direct)
     listed=len(re.findall(r'(?m)^\s*(?:\d+[.)、]|[-*])\s*\S',prompt))
     kind='question' if question and not direct else 'complex' if change and (listed>=3 or len(paths)>=3) else 'change' if change else 'analysis' if readonly or re.search(r'分析|诊断|检查|inspect|analy[sz]e|diagnos',text,re.I) else 'question'
-    interaction=not readonly and not question and not change and bool(re.search(r'(?:桌面|窗口|界面|Settings|Display name).*(?:输入|点击|键入|填写)|(?:click|type|enter).*(?:button|window|settings|field)',text,re.I|re.S))
+    positive=re.sub(r'(?:禁止|不要|不得|不允许)[^。；;\n]*','',text)
+    code_request=bool(re.search(r'开发|实现|编写|重构|修复|源码|代码|组件|函数|模块|\b(?:develop|implement|refactor|fix|function|component)\b',positive,re.I)) or (change and bool(re.search(r'\bFILE\b',positive)))
+    interaction=not readonly and not question and not code_request and bool(re.search(r'(?:桌面|窗口|界面|Settings|Display name).*(?:输入|点击|键入|填写)|(?:click|type|enter).*(?:button|window|settings|field)',positive,re.I|re.S))
     if interaction:kind='interaction'
     project_question=bool(re.search(r'(?:本|当前|这个|该|this)\s*(?:项目|工程|仓库|程序|project|repo)|(?:分析|解释|检查).{0,8}(?:项目|工程|仓库|程序)',text,re.I))
     return {'kind':kind,'read_only':readonly or kind=='analysis' or (question and not direct),'pure_question':kind=='question' and question and not project_question and not paths,'referenced_files':len(paths),'listed_steps':listed}
