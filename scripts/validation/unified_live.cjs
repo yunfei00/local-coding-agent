@@ -8,7 +8,7 @@ const policyPath=path.join(manifest.root,'validation-reports/unified-model-polic
 const deniedModels=[...(manifest.excluded_models||[]),...(fs.existsSync(policyPath)?JSON.parse(fs.readFileSync(policyPath,'utf8')).excluded_models||[]:[])];
 const denied=model=>deniedModels.some(name=>model.toLowerCase().includes(name.toLowerCase()));
 manifest.profiles=manifest.profiles.filter(p=>!denied(p.model_id));
-const report={result:'RUNNING',models:[],cases:[],limits:{calls:manifest.max_calls,tokens:manifest.max_tokens,request_seconds:60,wall_seconds:3600},cost:'UNKNOWN',started_at:new Date().toISOString()};
+const report={result:'RUNNING',models:[],cases:[],limits:{calls:manifest.max_calls,tokens:manifest.max_tokens,request_seconds:manifest.request_seconds||60,wall_seconds:3600},cost:'UNKNOWN',started_at:new Date().toISOString()};
 const save=()=>fs.writeFileSync(manifest.report,JSON.stringify(report,null,2));
 const shell=(args,cwd)=>cp.spawnSync('git',args,{cwd,encoding:'utf8',windowsHide:true});
 function project(name){
@@ -71,7 +71,7 @@ async function main(){
    const prior=cached?.models.find(m=>m.profile_id===profile.model_profile_id && m.model_id===profile.model_id);
    if(prior){report.models.push({...prior,evidence_reused_from:manifest.reuse_capabilities});save();continue;}
    if(diagnosticCalls+2>manifest.max_calls||diagnosticTokens+20000>manifest.max_tokens){report.models.push({model_id:profile.model_id,profile_id:profile.model_profile_id,category:'unavailable',reason:'CAPABILITY_BUDGET_BLOCKED'});save();continue;}
-   const item={model_id:profile.model_id,profile_id:profile.model_profile_id,configured_context_window:profile.context_window,context_limit_source:'isolated test configuration; provider maximum UNKNOWN',output_limit:profile.max_output_tokens,timeout:60};
+   const item={model_id:profile.model_id,profile_id:profile.model_profile_id,configured_context_window:profile.context_window,context_limit_source:'isolated test configuration; provider maximum UNKNOWN',output_limit:profile.max_output_tokens,timeout:manifest.request_seconds||60};
    report.models.push(item);save();
    const result=(await page.evaluate(p=>window.localAgent.taskRequest('','task.model.diagnostic',{connection_id:p.connection_id,model_profile_id:p.model_profile_id,live:true,vision:false}),profile)).payload;
    item.capability=result;diagnosticCalls+=result.requests||0;diagnosticTokens+=result.usage.reduce((n,u)=>n+(u.input_tokens ?? 10000)+(u.output_tokens ?? 256),0);diagnosticEstimated ||= result.usage.some(u=>u.input_tokens==null||u.output_tokens==null);
@@ -102,6 +102,7 @@ async function main(){
   }
   report.usage=await budgetUsed();report.result=report.cases.length&&report.cases.every(c=>c.result==='PASS')?'PASS':report.cases.length?'PARTIAL':'BLOCKED';
   async function runCase(profile,name,goal,assertion,options={}){
+   if(manifest.case_names?.length&&!manifest.case_names.includes(name))return;
    if(denied(profile.model_id))throw Error('USER_EXCLUDED_MODEL');
    const used=await budgetUsed();
    if(used.calls+8>manifest.max_calls||used.tokens+250000>manifest.max_tokens||Date.now()-started>3300000){report.cases.push({model:profile.model_id,name,result:'BLOCKED',reason:'CUMULATIVE_LIVE_CAP'});save();return;}
