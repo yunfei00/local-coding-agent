@@ -10,6 +10,7 @@ import sqlite3
 import uuid
 import re
 import hashlib
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from typing import Any
 
@@ -183,19 +184,19 @@ class TaskPlanStore:
                 )
         return plan_id
 
-    def append_steps(self, plan_id, steps):
+    def append_steps(self, plan_id, steps, *, commit=True):
         """Upgrade complexity without replacing IDs, completed steps or execution evidence."""
         from agent.llm.planning import validate_plan
         validate_plan({'steps':steps})
         plan = self.get(plan_id)
         if len(plan['steps']) + len(steps) > MAX_STEPS:
             raise ValueError('Plan step limit reached')
-        with self.db:
+        with self.db if commit else nullcontext():
             for index, step in enumerate(steps,len(plan['steps'])):
                 self.db.execute('INSERT INTO task_plan_steps(id,plan_id,position,description,verification) VALUES(?,?,?,?,?)',
                     (str(uuid.uuid4()),plan_id,index,step['description'],step.get('verification','')))
             self.db.execute('UPDATE task_plans SET updated_at=? WHERE id=?',(_now(),plan_id))
-        self.checkpoint(plan_id,'complexity_upgraded')
+        if commit:self.checkpoint(plan_id,'complexity_upgraded')
 
     def get(self, plan_id: str) -> dict[str, Any]:
         self.db.row_factory = sqlite3.Row

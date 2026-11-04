@@ -5,6 +5,7 @@ import re
 import time
 import uuid
 import math
+from contextlib import nullcontext
 
 from agent.llm.base import ProviderError
 
@@ -86,8 +87,9 @@ def failure_diagnosis(tool, code):
 
 class ExecutionBudget:
     """Metadata ledger, not an execution loop. Task API BudgetGuard still applies."""
-    def __init__(self, db, key, thread_id, policy):
+    def __init__(self, db, key, thread_id, policy, *, ledger=None):
         self.db, self.key = db, key
+        self.ledger=ledger
         db.execute('CREATE TABLE IF NOT EXISTS agent_execution_runs (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, data_json TEXT NOT NULL)')
         row = db.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',(key,)).fetchone()
         self.data = json.loads(row[0]) if row else {'limits':dict(policy),'calls':0,'reserved_tokens':0,'continuations':0,'elapsed':0.0,'status':'running'}
@@ -95,27 +97,28 @@ class ExecutionBudget:
         self.data['status'] = 'running'
         self.save()
 
-    def save(self):
+    def save(self, *, commit=True):
         now = time.monotonic()
         self.data['elapsed'] += now - self.started
         self.started = now
-        with self.db:
+        with self.db if commit else nullcontext():
             self.db.execute('INSERT INTO agent_execution_runs VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json',
                             (self.key,self.thread_id,json.dumps(self.data)))
 
     def bind_plan(self, plan_id):
         with self.db:
             self.db.execute('UPDATE agent_execution_runs SET id=? WHERE id=?',(plan_id,self.key))
+            if self.ledger:self.ledger.rebind(self.key,plan_id,commit=False)
         self.key = plan_id
 
-    def reserve(self, messages, tools, output_limit, *, api_budget=None, runtime=None, pricing=None, identity=None):
+    def reserve(self, messages, tools, output_limit, *, api_budget=None, runtime=None, pricing=None, identity=None, request_id=None):
         # Conservative byte reservation includes schemas and actual image payloads.
         amount = len(json.dumps([messages,tools],ensure_ascii=False).encode()) + output_limit
         self.save()
         limits = self.data['limits']
         if self.data['calls'] >= limits['model_calls'] or self.data['reserved_tokens'] + amount > limits['tokens'] or self.data['elapsed'] >= limits['seconds']:
             raise ProviderError('EXECUTION_BUDGET_EXHAUSTED','累计调用、Token 保守预留或执行时间预算耗尽；检查 checkpoint 后调整预算。')
-        request_id=None
+        if api_budget is None:request_id=None
         if api_budget is not None:
             from agent.core.budget import check_api_scope, request_token_reservation, BudgetExceeded
             input_estimate,tokens=request_token_reservation(messages,tools,output_limit)
@@ -123,7 +126,7 @@ class ExecutionBudget:
             cost=(input_estimate*(pricing.get('input_price') or 0)+output_limit*(pricing.get('output_price') or 0))/1000000
             if not math.isfinite(cost) or ((api_budget['api_cost'] is not None or api_budget['global_api_cost'] is not None) and any(pricing.get(k) is None for k in ('input_price','output_price'))):
                 raise BudgetExceeded('Cost cap requires configured finite input and output prices; no request sent')
-            request_id=str(uuid.uuid4())
+            request_id=request_id or str(uuid.uuid4())
             context={'task_id':self.key,'attempt_id':request_id,'phase':'executing','role':'executor',
                      **(identity or {}),'input_token_estimate':input_estimate,'output_limit':output_limit,
                      'task_limits':api_budget,'global_limits':api_budget}
@@ -135,6 +138,7 @@ class ExecutionBudget:
                     'input_tokens':input_estimate,'output_tokens':output_limit,'estimated':True,'started_at':time.time(),**(identity or {})})
                 self.data['calls'] += 1
                 self.data['reserved_tokens'] += amount
+                if self.ledger:self.ledger.record(self.key,self.thread_id,'request.reserved',{'reserved_tokens':tokens,'reserved_cost':cost,'request_sent':False},request_id=request_id,event_key=request_id+':reserved',commit=False)
                 self.save()
             except BaseException:
                 self.db.rollback()
@@ -151,6 +155,7 @@ class ExecutionBudget:
         for row in self.data.get('unified_api_requests',[]):
             if row['id'] != identifier or row['status'] != 'reserved':
                 continue
+            initial_reserved=row['reserved_tokens']
             row.update(status=status,ended_at=time.time(),error_code=error_code)
             metadata=metadata or {}
             row.update({k:metadata[k] for k in ('http_status','request_sent','finish_reason','parse_success','response_complete','response_type',
@@ -168,7 +173,11 @@ class ExecutionBudget:
                 row.update(actual_cost=actual,reserved_cost=max(row['reserved_cost'],actual))
             if status=='failed' and metadata.get('request_sent') is False:
                 row.update(status='not_sent',reserved_tokens=0,reserved_cost=0,input_tokens=0,output_tokens=0,estimated=True)
-            self.save()
+            with self.db:
+                if self.ledger:self.ledger.record(self.key,self.thread_id,'request.settled',{
+                    **{k:row[k] for k in ('status','request_sent','input_tokens','output_tokens','cached_tokens','estimated','reserved_tokens','reserved_cost','actual_cost','error_code') if k in row},
+                    'released_tokens':max(0,initial_reserved-row['reserved_tokens'])},request_id=identifier,event_key=identifier+':settled',commit=False)
+                self.save(commit=False)
 
     def continue_slice(self):
         self.save()

@@ -23,6 +23,7 @@ def envelope(
 ) -> dict[str, Any]:
     return {
         "type": message_type,
+        "event_id": new_id('event'),
         "request_id": request_id,
         "thread_id": thread_id,
         "turn_id": turn_id,

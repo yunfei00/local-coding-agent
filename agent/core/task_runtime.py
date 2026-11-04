@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from contextlib import nullcontext
 from typing import Any
 
 ACTIVE = {"planning", "executing", "verifying", "repairing", "escalating"}
@@ -23,8 +24,10 @@ TRANSITIONS = {
 
 
 class TaskRuntimeStore:
-    def __init__(self, plans):
+    def __init__(self, plans, *, ledger=None):
         self.plans, self.db = plans, plans.db
+        from agent.core.runtime_events import RuntimeLedger
+        self.ledger=ledger or RuntimeLedger(self.db)
         self.db.executescript("""
             CREATE TABLE IF NOT EXISTS autonomous_tasks (
                 plan_id TEXT PRIMARY KEY REFERENCES task_plans(id) ON DELETE CASCADE,
@@ -53,10 +56,10 @@ class TaskRuntimeStore:
         self.save(value)
         return value
 
-    def save(self, value: dict) -> None:
+    def save(self, value: dict, *, commit=True) -> None:
         previous = self.db.execute("SELECT data_json FROM autonomous_tasks WHERE plan_id=?", (value["id"],)).fetchone()
         value["revision"] = (json.loads(previous[0]).get("revision", 0) if previous else 0) + 1
-        with self.db:
+        with self.db if commit else nullcontext():
             self.db.execute("INSERT INTO autonomous_tasks VALUES(?,?) ON CONFLICT(plan_id) "
                             "DO UPDATE SET data_json=excluded.data_json",
                             (value["id"], json.dumps(value, ensure_ascii=False, allow_nan=False)))
@@ -92,7 +95,10 @@ class TaskRuntimeStore:
                     self.db.execute("UPDATE model_requests SET usage_json=? WHERE id=?", (json.dumps(meta), last["id"]))
         task["transitions"] = [*history, {"at":now, "from":previous_status, "to":status,
             "call_id":last["id"] if last else None, "error_code":task.get("last_error", {}).get("code")}][-300:]
-        self.save(task)
+        with self.db:
+            event=self.ledger.record(plan_id,task['thread_id'],'task.transition',{'previous_phase':previous_status,'phase':status,'error_code':task.get('last_error',{}).get('code')},commit=False)
+            task['transitions'][-1]['event_id']=event['event_id']
+            self.save(task,commit=False)
         self.plans.checkpoint(plan_id, "task_" + status, blockers=[reason] if reason else [])
         return task
 
@@ -134,9 +140,9 @@ class TaskRuntimeStore:
             self.db.execute("INSERT INTO task_plan_steps(id,plan_id,position,description) VALUES(?,?,?,?)",
                             (str(uuid.uuid4()), plan_id, len(steps), "Repair the latest independent verification failure; inspect current files before changing them"))
 
-    def append_followup(self, plan_id, text, followup_id):
+    def append_followup(self, plan_id, text, followup_id, *, live=False, commit=True):
         task = self.get(plan_id)
-        if task['status'] != 'paused':
+        if task['status'] != 'paused' and not (live and task['status'] in ACTIVE):
             raise ValueError('Pause the task before adding a follow-up')
         if not isinstance(text,str) or not 1 <= len(text.strip()) <= 4000:
             raise ValueError('Follow-up must contain 1..4000 characters')
@@ -148,12 +154,12 @@ class TaskRuntimeStore:
         goal = task['goal'] + '\n\n用户追加需求：\n' + text.strip()
         if len(goal) > 32000 or len(ids) >= 32 or len(steps) >= 100:
             raise ValueError('Conversation task continuation limit reached; review and start a new development session')
-        with self.db:
+        with self.db if commit else nullcontext():
             self.db.execute('INSERT INTO task_plan_steps(id,plan_id,position,description) VALUES(?,?,?,?)',
                 (str(uuid.uuid4()),plan_id,len(steps),text.strip()))
             task['goal'] = goal
             task['followup_ids'] = [*ids,followup_id]
-            self.save(task)
+            self.save(task,commit=False)
         return True
 
     def calls(self, plan_id: str, *, all_calls=False) -> list[dict]:

@@ -38,7 +38,7 @@ export function UnifiedProgress({run,onResume,onDiagnostics,onExport}:{run:Unifi
     {run.diagnostic_checks?.map((r,i)=><details key={`diagnostic-${i}`}><summary>只读诊断 · {r.command} · exit {r.exit_code}</summary><p>该失败用于分析原因，不代表测试通过。</p><pre style={{whiteSpace:'pre-wrap'}}>{r.summary}</pre></details>)}
     {run.verification.map((r,i)=><details key={i}><summary>{r.ok?'通过':'未通过'} · {r.command} · exit {r.exit_code ?? '未执行'}</summary><p>{r.category} · {r.duration_ms} ms</p><pre style={{whiteSpace:'pre-wrap'}}>{r.summary}</pre><p>日志：{r.log_path}</p></details>)}
     {run.intent==='complex' && run.plan?<details open><summary>持久化计划</summary><ol>{run.plan.steps.map(s=><li key={s.id}>{s.description} — {s.state}</li>)}</ol></details>:null}
-    {(run.recovery_plan_id || run.plan_id) && ['failed','paused','cancelled'].includes(run.phase)?<button type="button" onClick={onResume}>检查并继续未完成步骤</button>:null}
+    {['failed','paused','cancelled'].includes(run.phase)?<button type="button" onClick={onResume}>{run.recovery_plan_id || run.plan_id ? '检查并继续未完成步骤':'检查并恢复原运行'}</button>:null}
     <button type="button" onClick={()=>onExport ? void onExport().then(setDiagnostic).catch(error=>setDiagnostic({markdown:String(error)})) : onDiagnostics()}>查看当前诊断</button>
     {diagnostic?<details open><summary>当前诊断快照</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{String(diagnostic.markdown || '')}</pre><p>完整历史 JSON：{String(diagnostic.json_path || '')}</p><button type="button" onClick={()=>void window.localAgent.copyText(String(diagnostic.markdown || ''))}>复制诊断</button></details>:null}
   </section>;

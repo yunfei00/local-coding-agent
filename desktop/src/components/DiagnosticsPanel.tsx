@@ -5,6 +5,7 @@ import { ExecutionSummary, TurnTrace } from "./ExecutionSummary";
 
 type Props = {
   onClose: () => void;
+  threadId?:string;
 };
 
 type DiagnosticPayload = Record<string, unknown>;
@@ -33,11 +34,12 @@ function booleanLabel(value: unknown): string {
   return value ? "Yes" : "No";
 }
 
-export function DiagnosticsPanel({ onClose }: Props) {
+export function DiagnosticsPanel({ onClose,threadId }: Props) {
   const [bundle, setBundle] = useState<DiagnosticBundle | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tracePath,setTracePath]=useState('');
 
   const load = async () => {
     setBusy(true);
@@ -381,6 +383,15 @@ export function DiagnosticsPanel({ onClose }: Props) {
               </section>
             </div>
 
+            <details className="diagnostics-card">
+              <summary>本会话请求追踪</summary>
+              {(Array.isArray(bundle?.agent.runtime_events)?bundle.agent.runtime_events:[]).slice(-12).map((raw,index)=>{
+                const event=objectValue(raw),meta=objectValue(event.metadata);
+                return <p key={String(event.event_id || index)}>{String(event.label || event.kind)} · {String(event.request_id || '')} · HTTP {String(meta.http_status ?? '未收到响应')} · {meta.request_sent===true?'已发送':meta.request_sent===false?'未发送':'发送状态待确认'}<br/>{String(meta.reason || meta.error_code || '')}</p>;
+              })}
+              <button type="button" disabled={!threadId} onClick={()=>void window.localAgent.taskRequest(threadId!,'task.runtime.events',{export:true}).then(event=>setTracePath(String(event.payload?.json_path || ''))).catch(e=>setError(String(e)))}>导出完整请求事件 JSON</button>
+              {tracePath?<p>完整事件文件：{tracePath}</p>:null}
+            </details>
             <section className="diagnostics-errors">
               <div className="diagnostics-section-title">
                 <div>

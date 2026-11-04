@@ -87,15 +87,21 @@ class RuntimeEvents:
         if event['type'] in {'turn.failed','turn.cancelled'}:
             payload=event.get('payload',{})
             disconnected=payload.get('reason')=='connection_interrupted' or payload.get('code')=='CONNECTION_INTERRUPTED'
-            self.runtime.update(phase='paused' if disconnected else 'cancelled' if event['type']=='turn.cancelled' else 'failed',
+            values=dict(phase='paused' if disconnected else 'cancelled' if event['type']=='turn.cancelled' else 'failed',
                 outcome='awaiting_user' if disconnected else 'cancelled' if event['type']=='turn.cancelled' else 'awaiting_user' if payload.get('code') in {'PLAN_RESUME_CONFIRMATION_REQUIRED','APPROVAL_DENIED','PERMISSION_DENIED'} else 'partially_completed' if self.runtime.get('changed_paths') else 'failed',
                 reason=str(self.runtime.get('reason') if disconnected else payload.get('message') or payload.get('reason') or payload.get('code') or '执行停止')[:2000],
                 error_code=payload.get('code'))
-            self.execution.save()
+            if self.execution.ledger:
+                phase=values.pop('phase')
+                if self.execution.ledger.transition(self.execution,phase,event.get('turn_id'),**values) is None:
+                    return
+            else:
+                self.runtime.update(values)
+                self.execution.save()
         await self.ws.send_json(event)
 
 
-def export_diagnostics(root, owner, data, plans, *, exact_secrets=()):
+def export_diagnostics(root, owner, data, plans, *, exact_secrets=(), ledger=None):
     """Small transport response; complete filtered evidence stays in local files."""
     from agent.core.diagnostics import redact_text
     runtime=data['unified']
@@ -116,10 +122,20 @@ def export_diagnostics(root, owner, data, plans, *, exact_secrets=()):
     if plan:
         rows.append('未完成步骤：')
         rows.extend(f"- {s['id']} / {s['state']} / {safe(s['description'])[:160]}" for s in plan['steps'] if s['state'] not in {'completed','skipped'})
+    if ledger:
+        rows.append('最近请求/执行事件：')
+        for event in ledger.events(run_id=owner,limit=12):
+            meta=event['metadata']
+            rows.append(f"- {event['label']} / {event.get('request_id') or event['event_id']} / HTTP {meta.get('http_status')} / 已发送 {meta.get('request_sent')} / {meta.get('error_code') or ''}")
     markdown='\n'.join('\n'.join(rows).splitlines()[:140])+'\n\n完整请求与工具证据见同目录 JSON；原始日志和数据库历史未删除。\n'
     root.mkdir(parents=True,exist_ok=True)
     stem=hashlib.sha256(owner.encode()).hexdigest()[:24]
     full=root/(stem+'.json');short=root/(stem+'.md')
+    if ledger:
+        events=root/(stem+'-events.json')
+        history['request_events_path']=str(events)
+        history['request_events_count']=ledger.export_run(events,owner)
+        history['recent_request_events']=ledger.events(run_id=owner,limit=40)
     full.write_text(json.dumps(history,ensure_ascii=False,indent=2),encoding='utf-8')
     short.write_text(markdown,encoding='utf-8')
     return {'markdown':markdown,'json_path':str(full),'markdown_path':str(short),'history_source':'existing execution ledger and TaskPlanStore; no history removed'}
