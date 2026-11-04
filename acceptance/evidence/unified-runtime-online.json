@@ -2786,7 +2786,7 @@
       "model": "qwen3-vl-plus",
       "original_controller_result": "FAIL",
       "independent_reassessment": "FAIL",
-      "original_assertions_preserved": false,
+      "original_assertions_preserved": true,
       "tests": 3,
       "failures": 6,
       "errors": 0
@@ -2795,7 +2795,7 @@
       "model": "qwen-plus",
       "original_controller_result": "FAIL",
       "independent_reassessment": "FAIL",
-      "original_assertions_preserved": false,
+      "original_assertions_preserved": true,
       "tests": 3,
       "failures": 6,
       "errors": 0
@@ -2807,7 +2807,8 @@
     "Initial analysis controller accepted phase=failed; final suite requires phase=completed and actual answer",
     "Final-01 WS interruption occurred before a plan existed. Later test interrupts after a real completed persistent step; pre-plan read-only questions must be resubmitted",
     "Early estimated flag omitted uncertain capability probes; runtime ledger and known provider Usage are separated",
-    "Provider maximum context and actual money cost UNKNOWN. Client test window 65536 is not a provider specification"
+    "Provider maximum context and actual money cost UNKNOWN. Client test window 65536 is not a provider specification",
+    "Final original-test checker also permits appending assertions inside an existing method while preserving its header and original statement prefix. Early returns, skips and assertion changes remain rejected. All eight original assertions were preserved; seven initial models still failed the independent input contract."
   ],
   "final_conclusion": "PARTIAL: runtime and nine real cases passed; coupon acceptance remains blocked by request timeout and subsequent 403. Do not merge based on an all-PASS claim."
 }

@@ -13,6 +13,14 @@ class IndependentContractTests(unittest.TestCase):
     def test_adding_test_cases_preserves_existing_assertions(self):
         self.assertTrue(preserves_tests(ORIGINAL,ORIGINAL+' def test_extra(self): self.assertEqual(add(0,0),0)\n'))
 
+    def test_adding_assertions_inside_original_method_preserves_checks(self):
+        extended=ORIGINAL.replace('def test_add(self): self.assertEqual(add(3,2),5)', 'def test_add(self):\n  self.assertEqual(add(3,2),5)\n  self.assertEqual(add(0,0),0)')
+        self.assertTrue(preserves_tests(ORIGINAL,extended))
+
+    def test_early_return_before_original_assertion_is_rejected(self):
+        changed=ORIGINAL.replace('def test_add(self): self.assertEqual(add(3,2),5)', 'def test_add(self):\n  return\n  self.assertEqual(add(3,2),5)')
+        self.assertFalse(preserves_tests(ORIGINAL,changed))
+
     def test_changing_assertion_or_skipping_original_test_is_rejected(self):
         self.assertFalse(preserves_tests(ORIGINAL,ORIGINAL.replace('),5)', '),1)')))
         self.assertFalse(preserves_tests(ORIGINAL,ORIGINAL.replace(' def test_add',' @unittest.skip("skip")\n def test_add')))

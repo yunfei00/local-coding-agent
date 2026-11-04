@@ -1,6 +1,7 @@
 """Independent synthetic calculator acceptance; never writes business implementation."""
 import argparse
 import ast
+import copy
 import importlib
 import io
 import json
@@ -18,10 +19,19 @@ def preserves_tests(original, candidate):
                 other=matches[0]
                 if any(ast.dump(ast.Module(body=a,type_ignores=[]))!=ast.dump(ast.Module(body=b,type_ignores=[])) for a,b in ((node.bases,other.bases),(node.decorator_list,other.decorator_list),(node.keywords,other.keywords))):return False
                 if not same_nodes(node.body,other.body):return False
+            elif isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef)):
+                matches=[n for n in new if type(n) is type(node) and n.name==node.name]
+                if len(matches)!=1:return False
+                other=matches[0]
+                before,after=copy.deepcopy(node),copy.deepcopy(other)
+                before.body=[];after.body=[]
+                if ast.dump(before)!=ast.dump(after) or len(other.body)<len(node.body):return False
+                # Appending assertions is legitimate; inserting return/skip or
+                # changing/removing any original body statement is not.
+                if any(ast.dump(a)!=ast.dump(b) for a,b in zip(node.body,other.body)):return False
             else:
                 exact=[n for n in new if ast.dump(n)==ast.dump(node)]
                 if not exact:return False
-                if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef)) and sum(isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) and n.name==node.name for n in new)!=1:return False
         return True
     return same_nodes(ast.parse(original).body,ast.parse(candidate).body)
 

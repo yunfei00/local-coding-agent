@@ -4,7 +4,7 @@
 
 > 最终结论：**PARTIAL**。统一入口、自动验证、持久化计划、恢复、预算及全量自动化已验证；两款允许模型的真实完整套件均 9/10 通过。指定优惠券用例仍有请求超时，后续四款允许模型新请求均 HTTP 403，因此不能宣称全部在线验收通过。PR 保持草稿，暂不建议合并 main。
 
-最终产品源码：`f9eab339cdeb0774e75425eab38911b6fbf878b4`；此后提交仅汇总验收文档和脱敏证据，最终分支 Commit 由 [PR head](https://github.com/yunfei00/local-coding-agent/pull/28) 标识。未修改用户原有两个未跟踪目录。
+最终产品源码：`f9eab339cdeb0774e75425eab38911b6fbf878b4`；此后提交仅改进独立验收控制器、汇总文档和脱敏证据，产品代码未变。最终分支 Commit 由 [PR head](https://github.com/yunfei00/local-coding-agent/pull/28) 标识。未修改用户原有两个未跟踪目录。
 
 ## 实现及审查结论
 
@@ -54,7 +54,7 @@
 
 本机首轮完整回归：511 项中 506 通过、1 失败、2 错误、2 跳过。两项原生 GUI 报 `Windows did not grant focus; no input was sent`，第三项同一路径导致 Mock 流程暂停（`MODEL_CLIENT_ERROR`）；没有通过强行输入或删除测试掩盖。
 
-最终聚合 `uv run --locked python scripts/validation/check.py` **PASS，Errors: 0**：Python 517 项（515 通过、2 跳过）、前端 57 项、类型检查和构建全部通过。本机日志 `validation-reports/20261104-125841-084879.log/.json`，Python 耗时 972.320 秒。最终单独桌面 smoke 52 项通过、0 跳过（`unified-desktop-smoke-final.log`）。初次焦点错误没有在最终完整回归复现。新增统一 Runtime/独立断言共 43 项；连同原终端用例运行 `test_unified*.py` 为 54 项，不把重复运行叠加成测试数量。
+最终聚合 `uv run --locked python scripts/validation/check.py` **PASS，Errors: 0**：Python 517 项（515 通过、2 跳过）、前端 57 项、类型检查和构建全部通过。本机日志 `validation-reports/20261104-125841-084879.log/.json`，Python 耗时 972.320 秒。最终单独桌面 smoke 52 项通过、0 跳过（`unified-desktop-smoke-final.log`）。初次焦点错误没有在最终完整回归复现。之后补充验收控制器 2 项防误判回归，5 项独立契约专项全部通过；新增 Runtime/独立断言最终共 45 项，连同原终端为 56 项，不把重复运行叠加成测试数量。最终 CI 的总数应包括这 2 项新增测试。
 
 ## 真实阿里云验证方式
 
@@ -73,11 +73,11 @@
 | qwen3.8-27b | 完整套件 9/10 通过；优惠券原 60 秒超时，后续独立复测首请求 HTTP 403 |
 | qwen3.6-flash、qwen3.5-flash | 文本/native tools 和问答/读取通过；初次简单修改未通过更严格的独立输入边界；后续优惠券首请求均 HTTP 403 |
 | qwen3-omni-flash | 文本/native tools 和问答/读取通过；真实修改遇到 HTTP 429，未伪造完成 |
-| qwen3-vl-plus、qwen-plus | 文本/native tools 和问答/读取通过；初次修改未保留原断言/未通过边界，不称为完整开发验收通过 |
+| qwen3-vl-plus、qwen-plus | 文本/native tools 和问答/读取通过；原断言保留并追加断言，但未通过 NaN/Inf 独立边界，不称为完整开发验收通过 |
 
 开发期“analysis PASS”有旧控制器漏查运行时 failed 的问题。修复后完整套件同时要求后端 completed、真实读取、实际回答及工作区未变；旧记录在公开证据中保留真实 phase，不用旧 PASS 代替新版验收。
 
-初版冻结整个原测试文件，误拒绝添加新方法；改为保留原断言 AST，并在独立进程运行冻结的原测试及 NaN/Inf/bool/字符串等边界。重新检查仍失败的模型明确保留失败。最早优惠券控制器的 PASS 被独立 12 项契约发现漏检负门槛，已撤销其最终 PASS 资格，不改原报告造成功。
+初版冻结整个原测试文件，误拒绝添加新方法；首次 AST 版本也误拒绝在原方法末尾增加断言。最终保留方法签名/装饰器及原语句前缀，允许追加断言，明确拒绝修改原断言、插入 early return 或 skip，并在独立进程运行冻结的原测试和输入边界。八款模型的原断言实际均保留；只有 qwen3.8-27b 的初次工程通过全部输入边界，其余仍失败，原因不是“新增测试”。原记录与最终重评分别保留。最早优惠券控制器的 PASS 被独立 12 项契约发现漏检负门槛，已撤销其最终 PASS 资格，不改原报告造成功。
 
 ## 最新真实用例与状态
 
