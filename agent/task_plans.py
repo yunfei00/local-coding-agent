@@ -228,7 +228,15 @@ class TaskPlanStore:
         return recovery
 
     def uncertain_operation(self, plan_id, fingerprint):
-        return bool(fingerprint and self.db.execute("SELECT 1 FROM task_plan_executions WHERE plan_id=? AND fingerprint!='' AND status='interrupted' LIMIT 1",(plan_id,)).fetchone())
+        statuses="('interrupted')" if fingerprint=='check' else "('interrupted','reviewed')"
+        return bool(fingerprint and self.db.execute(f"SELECT 1 FROM task_plan_executions WHERE plan_id=? AND fingerprint!='' AND status IN {statuses} LIMIT 1",(plan_id,)).fetchone())
+
+    def review_interrupted(self,plan_id,call_id,*,commit=True):
+        """显式用户审阅不等于成功；后续修改仍需 fresh approval。"""
+        row=self.db.execute("SELECT metadata_json FROM task_plan_executions WHERE plan_id=? AND call_id=? AND status='interrupted'",(plan_id,call_id)).fetchone()
+        if not row:raise ValueError('没有待审阅的中断记录')
+        metadata={**json.loads(row[0]),'reviewed_at':_now(),'reviewed_by':'explicit_user_approval','result_still_unknown':True}
+        with self.db if commit else nullcontext():self.db.execute("UPDATE task_plan_executions SET status='reviewed',metadata_json=? WHERE plan_id=? AND call_id=? AND status='interrupted'",(json.dumps(metadata),plan_id,call_id))
 
     def list_for_thread(self, thread_id: str) -> list[dict[str, Any]]:
         ids = self.db.execute(

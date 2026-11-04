@@ -117,20 +117,23 @@ class ElectronE2ETests(unittest.IsolatedAsyncioTestCase):
         if wait:await self.drain()
 
     def action(self,name,**args):
+        args.setdefault('timeout_seconds',60)
         def choose(messages,_model):return tool(name,window_id=self.window,**args)
         return choose
 
     def select(self,messages,_model):
-        windows=last_result(messages,'desktop_list_windows')['data']['windows']
+        result=last_result(messages,'desktop_list_windows')
+        self.assertTrue(result.get('ok'),result.get('error'))
+        windows=result['data']['windows']
         matches=[w for w in windows if w['title']=='M5 Electron acceptance']
         self.assertEqual(len(matches),1,windows);self.window=matches[0]['window_id']
-        return tool('desktop_inspect',window_id=self.window)
+        return tool('desktop_inspect',window_id=self.window,timeout_seconds=60)
 
     def list_windows(self,messages,_model):
         lines=last_result(messages).get('stdout','').splitlines()
         ready=next((line.split('M5_ELECTRON_READY ',1)[1] for line in lines if 'M5_ELECTRON_READY ' in line),None)
         self.assertIsNotNone(ready,'Missing actual process readiness metadata')
-        return tool('desktop_list_windows',pid=json.loads(ready)['pid'])
+        return tool('desktop_list_windows',pid=json.loads(ready)['pid'],timeout_seconds=60)
 
     def stop(self,messages,_model):return tool('stop_process',process_id=process_id(messages))
 

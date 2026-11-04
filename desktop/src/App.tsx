@@ -1686,8 +1686,11 @@ function App() {
             const planId=unifiedRun.recovery_plan_id || unifiedRun.plan_id;
             if (!activeThread || runningTurnId) return;
             void (async()=>{
-              if(planId)await window.localAgent.planRequest(activeThread.id,'plan.recover',{plan_id:planId});
-              const result=await window.localAgent.startTurn(activeThread.id,'继续原始需求，只完成当前未完成步骤；先检查现状，保留已完成操作，重新验证并用中文报告。',selectedModel,true,planId?undefined:{run_id:unifiedRun.id,confirm_workspace:true});
+              if(planId){
+                const recovery=await window.localAgent.planRequest(activeThread.id,'plan.recover',{plan_id:planId});
+                if(recovery.payload?.autonomous_task_id){await window.localAgent.taskRequest(activeThread.id,'task.resume',{task_id:planId,confirm_workspace:true});return;}
+              }
+              const result=await window.localAgent.startTurn(activeThread.id,'继续原始需求，只完成当前未完成步骤；先检查现状，保留已完成操作，重新验证并用中文报告。',selectedModel,true,{run_id:unifiedRun.id,confirm_workspace:true});
               if(result.turn_id)setRunningTurnId(result.turn_id);
             })().catch(error=>setUiError(String(error)));
           }}/>:null}

@@ -247,7 +247,7 @@ class AgentServer:
                         )
                         continue
 
-                    if data['type'] == 'task.model.diagnostic':
+                    if data['type'] in {'task.model.diagnostic','plan.operation.review'}:
                         diagnostic = asyncio.create_task(self.handle_message(ws, data, owned_turns))
                         diagnostic_requests.add(diagnostic)
                         diagnostic.add_done_callback(diagnostic_requests.discard)
@@ -1443,17 +1443,53 @@ class AgentServer:
                     await self.recover_plan(ws, project, plan_id, thread_id)
                     checkpoint = plans.latest_checkpoint(plan_id)
                     self.confirmed_plan_resumes.add((thread_id,checkpoint['id']))
+                elif message_type == 'plan.operation.review':
+                    if plans.get(plan_id)['thread_id']!=thread_id or payload.get('confirm_workspace') is not True:
+                        raise ValueError('先核对当前会话的工作区与中断日志')
+                    if self.active_turns:raise ValueError('先停止执行，再审阅中断记录')
+                    call_id=str(payload.get('call_id') or '')
+                    row=self.store.connection.execute("SELECT tool FROM task_plan_executions WHERE plan_id=? AND call_id=? AND status='interrupted'",(plan_id,call_id)).fetchone()
+                    if not row:raise ValueError('没有待审阅的中断记录')
+                    decision=await self.approvals.request(ws,turn_id='review-'+plan_id,thread_id=thread_id,approval_key=new_id('review'),
+                        tool_name='review_interrupted_operation',arguments={'call_id':call_id,'tool':row[0]},
+                        reason='确认已经核对工作区和日志。只解除未知结果的完成阻塞，不认定操作成功、不重放；后续修改仍需明确审批。',risk='uncertain_operation_review')
+                    if decision==APPROVAL_DENY:raise ValueError('中断审阅未获明确授权')
+                    if self.active_turns:raise ValueError('审批期间已有运行启动；请停止后重新核对')
+                    has_runs=self.store.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_execution_runs'").fetchone()
+                    saved=self.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',(plan_id,)).fetchone() if has_runs else None
+                    with self.store.connection:
+                        plans.review_interrupted(plan_id,call_id,commit=False)
+                        if saved:
+                            value=json.loads(saved[0]);value['recovery_count']=0
+                            self.store.connection.execute('UPDATE agent_execution_runs SET data_json=? WHERE id=?',(json.dumps(value),plan_id))
+                        self.runtime_ledger.record(plan_id,thread_id,'execution.operation_reviewed',{'tool':row[0],'boundary':'用户核对未知结果；未标记成功，后续修改仍需审批'},commit=False)
+                    plans.checkpoint(plan_id,'interrupted_operation_reviewed')
                 elif message_type == 'plan.execution.extend':
                     if plans.get(plan_id)['thread_id'] != thread_id:
                         raise ValueError('Plan belongs to another thread')
+                    if any(item.key==plan_id for item in self.active_executions.values()):
+                        raise ValueError('请先停止原运行，再明确追加预算')
                     row=self.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',(plan_id,)).fetchone()
                     if not row:
                         raise ValueError('No execution budget exists for this plan')
                     value=json.loads(row[0])
-                    for key,delta,cap in (('model_calls',16,512),('tokens',500000,1000000000),('seconds',300,86400),('max_continuations',1,8)):
+                    calls=payload.get('additional_calls',16);tokens=payload.get('additional_tokens',500000)
+                    if isinstance(calls,bool) or not isinstance(calls,int) or not 1<=calls<=1000 or isinstance(tokens,bool) or not isinstance(tokens,int) or not 1<=tokens<=100000000:
+                        raise ValueError('追加调用须为 1～1000，Token 须为 1～100000000')
+                    for key,delta,cap in (('model_calls',calls,512),('tokens',tokens,1000000000),('seconds',300,86400),('max_continuations',1,8)):
                         value['limits'][key]=max(value['limits'][key],min(cap,value['limits'][key]+delta))
+                    if value.get('unified_config'):
+                        limits=value['unified_config']['budget']
+                        # 只由已确认的“增加执行预算”操作修改原任务快照。
+                        # Settings 保存和普通恢复仍不能重置/扩张旧任务预算。
+                        for key,delta,cap in (('api_calls',calls,10**9),('api_tokens',tokens,10**9),('task_seconds',300,86400)):
+                            limits[key]=min(cap,limits[key]+delta)
+                        if payload.get('include_global') is True:
+                            for key,delta in (('global_api_calls',calls),('global_api_tokens',tokens)):
+                                limits[key]=min(10**9,limits[key]+delta)
                     with self.store.connection:
                         self.store.connection.execute('UPDATE agent_execution_runs SET data_json=? WHERE id=?',(json.dumps(value),plan_id))
+                        self.runtime_ledger.record(plan_id,thread_id,'execution.budget_extended',{'scope':'task_and_global_snapshot' if payload.get('include_global') is True else 'task','boundary':'用户明确确认；既有消耗及费用上限保留'},commit=False)
                     plans.checkpoint(plan_id,'user_extended_execution_budget')
                 elif message_type != "plan.list":
                     raise ValueError("Unsupported plan operation")
@@ -2163,7 +2199,7 @@ class AgentServer:
             if execution_id is None or plan['id']==execution_id
             if plan['id'] not in deferred_plan_ids
             if plan_id or not self.store.connection.execute('SELECT 1 FROM autonomous_tasks WHERE plan_id=?',(plan['id'],)).fetchone()
-            if (plan_id is None or plan["id"] == plan_id) and any(item["state"] in ("pending", "in_progress", "blocked") for item in plan["steps"])
+            if (plan_id is None or plan["id"] == plan_id) and (execution_id==plan['id'] or any(item["state"] in ("pending", "in_progress", "blocked") for item in plan["steps"]))
         ]
         # Existing plans are explicit user intent. Do not create plans for simple turns.
         active_plan = self.store.task_plans.get(plan_id) if plan_id else (active_plans[0] if active_plans else None)
@@ -2469,6 +2505,8 @@ class AgentServer:
                         runtime_suffix = instruction_suffix + ('\n\n' + runtime_observation['content'] if runtime_observation else '')
                         if (plan_id or unified) and not single_agent and active_plan:
                             current_step = self.store.task_plans.active_step(active_plan['id'])
+                            if current_step is None:
+                                runtime_suffix+='\nAll persistent plan steps are already completed. Do not replay edits or create a replacement plan. Inspect only if needed, then return the Chinese report; the runtime independently verifies the existing changes.'
                             if current_step:
                                 if unified:
                                     runtime_suffix += '\nOriginal user goal (not a new request): '+active_plan['goal']+'\nCompleted step IDs: '+json.dumps([s['id'] for s in self.store.task_plans.get(active_plan['id'])['steps'] if s['state']=='completed'])

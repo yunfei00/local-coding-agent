@@ -11,6 +11,7 @@ import test_unified_runtime as fixtures
 from test_agent_reliability import FakeWebSocket, ScriptedProvider, final_step, tool_step
 from agent.llm.base import ProviderError
 from agent.server.main import AgentServer
+from agent.task_plans import mutation_fingerprint
 
 
 class RuntimeIntegrationTests(unittest.IsolatedAsyncioTestCase):
@@ -23,6 +24,77 @@ class RuntimeIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         await self.fixture.asyncTearDown()
+
+    async def test_interrupted_review_requires_approval_and_is_not_success_evidence(self):
+        plans=self.server.store.task_plans
+        plan_id=plans.create(self.thread.id,'核对中断',[{'description':'验证'}]);step=plans.active_step(plan_id)
+        fingerprint=mutation_fingerprint('write_file',{'path':'uncertain.txt','content':'unknown'})
+        plans.record_execution(plan_id,step['id'],'unknown-call','past','write_file',fingerprint=fingerprint)
+        await self.server.close_async();self.server.close()
+        self.server=AgentServer('test');self.fixture.server=self.server
+        requested=[]
+        async def deny(*args,**kwargs):requested.append(kwargs);return 'deny'
+        self.server.approvals.request=deny
+        request={'type':'plan.operation.review','thread_id':self.thread.id,'payload':{'plan_id':plan_id,'call_id':'unknown-call','confirm_workspace':True}}
+        ws=FakeWebSocket();await self.server.handle_message(ws,request,set())
+        plans=self.server.store.task_plans
+        self.assertTrue(plans.uncertain_operation(plan_id,'check'))
+        self.assertEqual(requested[-1]['risk'],'uncertain_operation_review')
+        async def approve(*args,**kwargs):return 'allow_once'
+        self.server.approvals.request=approve
+        await self.server.handle_message(ws,request,set())
+        self.assertFalse(plans.uncertain_operation(plan_id,'check'))
+        self.assertTrue(plans.uncertain_operation(plan_id,fingerprint))
+        self.assertEqual(plans.active_step(plan_id)['state'],'pending')
+        with self.assertRaises(ValueError):plans.execution_evidence(plan_id,step['id'],['unknown-call'])
+        self.assertFalse((self.repo/'uncertain.txt').exists())
+
+    async def test_review_approval_can_return_over_the_same_websocket(self):
+        from aiohttp import web
+        from aiohttp.test_utils import TestClient,TestServer
+        plans=self.server.store.task_plans
+        plan_id=plans.create(self.thread.id,'核对中断',[{'description':'验证'}]);step=plans.active_step(plan_id)
+        plans.record_execution(plan_id,step['id'],'review-ws-call','past','run_command',fingerprint='unknown-effect')
+        await self.server.close_async();self.server.close()
+        self.server=AgentServer('test');self.fixture.server=self.server
+        app=web.Application();app.router.add_get('/ws',self.server.websocket)
+        async with TestClient(TestServer(app)) as client:
+            ws=await client.ws_connect('/ws',headers={'Authorization':'Bearer test'});await ws.receive_json()
+            await ws.send_json({'type':'plan.operation.review','request_id':'review-request','thread_id':self.thread.id,'payload':{'plan_id':plan_id,'call_id':'review-ws-call','confirm_workspace':True}})
+            approval=await asyncio.wait_for(ws.receive_json(),3)
+            self.assertEqual(approval['type'],'approval.requested')
+            await ws.send_json({'type':'approval.respond','request_id':'review-response','payload':{'approval_id':approval['payload']['approval_id'],'decision':'allow_once'}})
+            events=[await asyncio.wait_for(ws.receive_json(),3) for _ in range(2)]
+            self.assertEqual({e['type'] for e in events},{'approval.resolved','plan.loaded'})
+            self.assertFalse(self.server.store.task_plans.uncertain_operation(plan_id,'check'))
+            self.assertEqual(self.server.store.task_plans.active_step(plan_id)['state'],'pending')
+            await ws.close()
+
+    async def test_completed_plan_with_reviewed_interruption_resumes_same_owner(self):
+        plans=self.server.store.task_plans
+        plan_id=plans.create(self.thread.id,'修复加法',[{'description':'修复并验证'}]);step=plans.active_step(plan_id)
+        plans.record_execution(plan_id,step['id'],'unconfirmed-call','past','run_command',fingerprint='unknown-effect')
+        await self.server.close_async();self.server.close()
+        self.server=AgentServer('test');self.fixture.server=self.server
+        async def approve(*args,**kwargs):return 'allow_once'
+        self.server.approvals.request=approve
+        provider=ScriptedProvider([tool_step('write_file',{'path':'calculator.py','content':'def add(a,b): return a+b\n'}),final_step('真实修改与测试完成')])
+        ws=FakeWebSocket()
+        await self.server.run_tool_turn(ws,thread_id=self.thread.id,turn_id='first-attempt',prompt='请修复 calculator.py 加法',model='mock',provider=provider,unified=True,execution_id=plan_id)
+        plans=self.server.store.task_plans
+        self.assertTrue(all(s['state']=='completed' for s in plans.get(plan_id)['steps']))
+        self.assertTrue(any(e['payload'].get('code')=='PLAN_UNCERTAIN_EFFECTS' for e in ws.messages))
+        await self.server.handle_message(ws,{'type':'plan.operation.review','thread_id':self.thread.id,'payload':{'plan_id':plan_id,'call_id':'unconfirmed-call','confirm_workspace':True}},set())
+        self.server.provider=ScriptedProvider([final_step('已核对现状，完成中文交付。'),final_step('验证完成。')])
+        self.server.ensure_model_available=AsyncMock(return_value=True)
+        await self.server.handle_message(ws,{'type':'turn.start','thread_id':self.thread.id,'payload':{'prompt':'继续','model':'mock','unified':True,'resume_run_id':plan_id,'confirm_workspace':True}},set())
+        await asyncio.wait_for(asyncio.gather(*list(self.server.active_turns.values())),30)
+        saved=json.loads(self.server.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',(plan_id,)).fetchone()[0])
+        self.assertEqual(saved['unified']['phase'],'completed',str(ws.messages[-3:]))
+        self.assertEqual(saved['unified']['id'],plan_id)
+        self.assertEqual(saved['unified']['plan_id'],plan_id)
+        self.assertEqual(len(plans.list_for_thread(self.thread.id)),1)
+        self.assertTrue(all(s['state']=='completed' for s in plans.get(plan_id)['steps']))
 
     async def test_running_followup_is_applied_once_after_tool_batch(self):
         entered,release=asyncio.Event(),asyncio.Event()
@@ -185,3 +257,26 @@ asyncio.run(main())
         run_id=next(iter(self.server.active_turns));run=self.server.active_turns[run_id]
         await self.server.handle_message(ws,{'type':'turn.cancel','turn_id':run_id,'payload':{}},owned)
         await asyncio.gather(run,return_exceptions=True)
+
+    async def test_explicit_plan_budget_extension_keeps_usage_and_global_caps(self):
+        ws=FakeWebSocket()
+        provider=ScriptedProvider([tool_step('write_file',{'path':'calculator.py','content':'def add(a,b): return a+b\n'}),final_step('真实修复完成')])
+        await self.server.run_tool_turn(ws,thread_id=self.thread.id,turn_id='extend-run',prompt='请修复 calculator.py 加法',model='mock',provider=provider,unified=True)
+        plan=self.server.store.task_plans.list_for_thread(self.thread.id)[0]
+        def saved():return json.loads(self.server.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',(plan['id'],)).fetchone()[0])
+        before=saved();settings=self.server.tasks.settings()
+        await self.server.handle_message(ws,{'type':'plan.execution.extend','thread_id':self.thread.id,'payload':{'plan_id':plan['id']}},set())
+        after=saved()
+        for key in ('calls','reserved_tokens','unified_api_requests'):
+            self.assertEqual(after[key],before[key])
+        self.assertEqual(after['unified_config']['budget']['api_tokens'],before['unified_config']['budget']['api_tokens']+500000)
+        self.assertEqual(after['unified_config']['budget']['api_calls'],before['unified_config']['budget']['api_calls']+16)
+        for key in ('global_api_tokens','global_api_calls','api_cost','global_api_cost'):
+            self.assertEqual(after['unified_config']['budget'][key],before['unified_config']['budget'][key])
+        self.assertEqual(self.server.tasks.settings(),settings)
+        await self.server.handle_message(ws,{'type':'plan.execution.extend','thread_id':self.thread.id,'payload':{'plan_id':plan['id'],'include_global':True}},set())
+        global_update=saved()
+        self.assertEqual(global_update['unified_config']['budget']['global_api_tokens'],after['unified_config']['budget']['global_api_tokens']+500000)
+        self.assertEqual(global_update['unified_config']['budget']['global_api_calls'],after['unified_config']['budget']['global_api_calls']+16)
+        self.assertEqual(global_update['unified_api_requests'],before['unified_api_requests'])
+        self.assertEqual(self.server.tasks.settings(),settings)

@@ -1474,10 +1474,10 @@ ipcMain.handle("agent:task-request", async (_event, threadId: string, operation:
   return sendRequest(operation, "task.loaded", payload, {threadId}, operation === "task.model.diagnostic" ? 300000 : operation === "task.connection.test" ? 30000 : 15000);
 });
 ipcMain.handle("agent:plan-request", async (_event, threadId: string, operation: string, payload: Record<string, unknown> = {}) => {
-  const allowed = new Set(["plan.list", "plan.create", "plan.step.update", "plan.step.edit", "plan.steps.reorder", "plan.checkpoint", "plan.resume", "plan.resume.confirm", "plan.recover", "plan.execution.extend"]);
+  const allowed = new Set(["plan.list", "plan.create", "plan.step.update", "plan.step.edit", "plan.steps.reorder", "plan.checkpoint", "plan.resume", "plan.resume.confirm", "plan.recover", "plan.execution.extend", "plan.operation.review"]);
   if (!allowed.has(operation)) throw new Error("Unsupported plan operation");
   return sendRequest(operation, operation === "plan.resume" ? "plan.resumable" : "plan.loaded",
-    { ...payload, thread_id: threadId }, { threadId });
+    { ...payload, thread_id: threadId }, { threadId }, operation==='plan.operation.review'?300000:25000);
 });
 ipcMain.handle("agent:thread-rename", async (_event, threadId: string, title: string, projectId?: string) => {
   return sendRequest("thread.rename", "thread.updated", { title, project_id:projectId }, { threadId });
