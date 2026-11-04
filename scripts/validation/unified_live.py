@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import os
+import sqlite3
 from pathlib import Path
 import subprocess
 import sys
@@ -30,27 +31,56 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--live',action='store_true')
     parser.add_argument('--suite',action='store_true')
-    parser.add_argument('--case',action='append',choices=['question','analysis','change','coupon','environment','repair','context','interruption','websocket','json'],default=[])
+    parser.add_argument('--case',action='append',choices=['question','analysis','change','python-smoke','react','electron','gui','approval','network','followup','coupon','environment','repair','context','interruption','websocket','json'],default=[])
     parser.add_argument('--request-seconds',type=int,default=60)
+    parser.add_argument('--output-tokens',type=int,default=8192)
+    parser.add_argument('--validation-task-calls',type=int,help='用户授权的隔离验收任务请求上限，不修改原 Settings')
+    parser.add_argument('--validation-task-tokens',type=int,help='用户授权的隔离验收任务 Token 上限，不修改原 Settings')
     parser.add_argument('--reuse-capabilities',type=Path,help='Reuse this session capability evidence; actual Agent cases still run')
     parser.add_argument('--discover-only',action='store_true',help='List provider model IDs over the existing connection; no generation')
     parser.add_argument('--exclude-model',action='append',default=[])
     parser.add_argument('--candidate-model',action='append',default=[],help='Exact model ID returned by the discovery report; isolated catalog only')
     parser.add_argument('--discovery-report',type=Path)
+    parser.add_argument('--resume-report',type=Path,help='恢复本轮受控验收工程，不重新实现或重新创建原任务')
+    parser.add_argument('--resume-case',default='coupon')
+    parser.add_argument('--prepared-fixture',type=Path,help='复用已完成依赖安装的受控 React/Electron 工程')
+    parser.add_argument('--reuse-project',type=Path,help='真实 GUI 复用先前已由 Agent 修复的受控工程')
+    parser.add_argument('--gui-only',action='store_true',help='专项核对仅界面操作不能被标为代码验证通过')
     parser.add_argument('--only-model',action='append',default=[],help='Run actual Agent cases only for these allowed IDs')
     parser.add_argument('--data-dir',type=Path,default=Path(os.environ.get('APPDATA',Path.home()))/'local-coding-agent-desktop')
     parser.add_argument('--output',type=Path,default=ROOT/'validation-reports/unified-live')
     parser.add_argument('--max-calls',type=int,default=180)
     parser.add_argument('--max-tokens',type=int,default=20000000)
     args=parser.parse_args()
+    if args.prepared_fixture and (len(args.case)!=1 or args.case[0] not in {'react','electron'} or not args.prepared_fixture.resolve().is_relative_to(ROOT/'validation-reports')):
+        parser.error('Prepared fixture must be a controlled frontend case')
+    if args.reuse_project and (not args.case or 'gui' not in args.case or not args.reuse_project.resolve().is_relative_to(ROOT/'validation-reports')):parser.error('GUI reuse must remain inside controlled validation projects')
+    if args.gui_only and args.case!=['gui']:parser.error('GUI-only requires exactly the GUI case')
+    if args.resume_report:
+        if not args.live:parser.error('Resume requires explicit --live')
+        previous=json.loads(args.resume_report.read_text(encoding='utf-8'))
+        original=json.loads((args.resume_report.parent/'manifest.json').read_text(encoding='utf-8'))
+        case=next((c for c in previous['cases'] if c['name']==args.resume_case),None)
+        if not case or (not case.get('runtime',{}).get('plan_id') and case.get('name') not in {'react','electron'}):parser.error('Original case has no recoverable plan')
+        for value in (original['data'],case['folder']):
+            if not Path(value).resolve().is_relative_to(ROOT/'validation-reports'):parser.error('Resume outside controlled validation directory')
+        args.output.mkdir(parents=True,exist_ok=False)
+        manifest={**original,'output':str(args.output.resolve()),'report':str((args.output/'report.json').resolve()),
+                  'resume_case':case,'resume_source':str(args.resume_report.resolve()),'max_calls':25,'max_tokens':500000}
+        path=args.output/'manifest.json';path.write_text(json.dumps(manifest),encoding='utf-8')
+        code=run_controller(['node',str(ROOT/'scripts/validation/unified_live.cjs'),str(path.resolve())],{**os.environ,'PYTHONUTF8':'1'},timeout=1000,report_path=args.output/'report.json')
+        print(json.dumps({'exit_code':code,'report':manifest['report']},ensure_ascii=False));return code
     policy=ROOT/'validation-reports/unified-model-policy.json'
-    excluded=args.exclude_model+(json.loads(policy.read_text(encoding='utf-8')).get('excluded_models',[]) if policy.exists() else [])
+    excluded=['qwen3.7-plus','qwen3.8-flash']+args.exclude_model+(json.loads(policy.read_text(encoding='utf-8')).get('excluded_models',[]) if policy.exists() else [])
     if any(not isinstance(model,str) or not 1<=len(model)<=200 for model in excluded):
         parser.error('Invalid excluded model ID')
     if not 1<=args.max_calls<=500 or not 1<=args.max_tokens<=30000000:
         parser.error('Live caps out of range')
     if not 1<=args.request_seconds<=180:
         parser.error('Request timeout must be between 1 and 180 seconds')
+    if not 256<=args.output_tokens<=8192:parser.error('Output limit must be between 256 and 8192')
+    if args.validation_task_calls is not None and not 1<=args.validation_task_calls<=100:parser.error('Invalid isolated task call cap')
+    if args.validation_task_tokens is not None and not 1<=args.validation_task_tokens<=2000000:parser.error('Invalid isolated task token cap')
     catalog=load_catalog(args.data_dir)
     ali=[c for c in catalog['connections'] if c['enabled'] and c['provider_type']=='openai_compatible' and urlsplit(c['base_url']).hostname and any(urlsplit(c['base_url']).hostname.endswith(s) for s in ('aliyuncs.com','dashscope.cn','dashscope-intl.aliyuncs.com'))]
     profiles=[p for p in catalog['profiles'] if p['connection_id'] in {c['connection_id'] for c in ali} and not any(name.casefold() in p['model_id'].casefold() for name in excluded)]
@@ -75,8 +105,22 @@ def main():
     args.output.mkdir(parents=True,exist_ok=False)
     data=args.output/'agent';data.mkdir()
     # Isolated profile output/context limits, original catalog and keys stay unchanged.
-    profiles=[{**p,'max_output_tokens':8192,'context_window':p.get('context_window') or 65536} for p in profiles]
-    config=validate_config({'budget':{'api_calls':40,'api_tokens':5000000,'global_api_calls':args.max_calls,'global_api_tokens':args.max_tokens,'task_seconds':600,'request_seconds':args.request_seconds,'local_repairs':3}})
+    profiles=[{**p,'max_output_tokens':min(args.output_tokens,p.get('max_output_tokens') or args.output_tokens),'context_window':p.get('context_window') or 65536} for p in profiles]
+    # 只读当前 Settings；验收不扩大用户已有任务/全局预算，也不改原配置。
+    with sqlite3.connect((args.data_dir/'local-coding-agent.sqlite3').resolve().as_uri()+'?mode=ro',uri=True) as connection:
+        row=connection.execute('SELECT value FROM settings WHERE key=?',('orchestration.config',)).fetchone()
+    saved=validate_config(json.loads(row[0]) if row else {})
+    limits={**saved['budget']}
+    if args.validation_task_calls is not None:limits['api_calls']=args.validation_task_calls
+    if args.validation_task_tokens is not None:limits['api_tokens']=args.validation_task_tokens
+    # 用户额外授权仅作用于本轮隔离验收目录，仍受 CLI 有限总上限约束。
+    if args.validation_task_calls is not None:limits['global_api_calls']=args.max_calls
+    if args.validation_task_tokens is not None:limits['global_api_tokens']=args.max_tokens
+    limits.update(api_calls=min(limits['api_calls'],40,args.max_calls),api_tokens=min(limits['api_tokens'],5000000,args.max_tokens),
+                  global_api_calls=min(limits['global_api_calls'],args.max_calls),global_api_tokens=min(limits['global_api_tokens'],args.max_tokens),
+                  task_seconds=min(limits['task_seconds'],600),request_seconds=min(limits['request_seconds'],args.request_seconds))
+    args.max_calls=limits['global_api_calls'];args.max_tokens=limits['global_api_tokens']
+    config=validate_config({**saved,'budget':limits})
     store=SQLiteStore(data)
     store.set_setting(KEY,json.dumps({'connections':ali,'profiles':profiles}))
     store.set_setting('orchestration.config',json.dumps(config))
@@ -100,6 +144,9 @@ def main():
               'context_project':str(context.resolve()),'reuse_capabilities':str(args.reuse_capabilities.resolve()) if args.reuse_capabilities else None,
               'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()}
     manifest.update(excluded_models=excluded,discover_only=args.discover_only,case_names=args.case,request_seconds=args.request_seconds)
+    if args.prepared_fixture:manifest['prepared_fixture']=str(args.prepared_fixture.resolve())
+    if args.reuse_project:manifest['reuse_project']=str(args.reuse_project.resolve())
+    manifest['gui_only']=args.gui_only
     path=args.output/'manifest.json';path.write_text(json.dumps(manifest),encoding='utf-8')
     (args.output/'report.json').write_text(json.dumps({'result':'RUNNING','inventory':inventory}),encoding='utf-8')
     env={**os.environ,'PYTHONUTF8':'1'}

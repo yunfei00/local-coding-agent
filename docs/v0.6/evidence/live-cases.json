@@ -1,0 +1,949 @@
+{
+  "baseline_commit": "da24a647dc645dadea07d82ab4ae9d6bfb76659a",
+  "runtime_code_commit": "865990ada40ea7e19e960895cc0cf2359ac89366",
+  "notes": [
+    "仅保存脱敏元数据，不含凭据、请求头、Prompt、文件正文或推理正文。",
+    "每个 usage_snapshot 属于相应运行的累计快照，不可直接求和；重启恢复必须保留原账本。",
+    "environment/approval 为预期阻断的负向用例，PASS 表示正确停止，不代表开发验收成功。",
+    "gui 为实际在线模型 UIA 操作；截图为本机窗口且未上传模型。无独立 GUI 合约时产品应显示待独立验收。"
+  ],
+  "cases": [
+    {
+      "case": "question",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-full-20261104/report.json",
+      "report_sha256": "5caf94d17625796a366ee8e18eeb09551965ccfcdfe18743fdbcacb2a7cc397c",
+      "started_at": "2026-11-04T09:41:16.216Z",
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "run_id": "turn_8e2668df51d34dfcab284801d70e5682",
+      "model_calls": 1,
+      "usage_snapshot": {
+        "calls": 1,
+        "tokens": 2135,
+        "estimated": false
+      },
+      "tool_successes": {},
+      "tool_failure_codes": {},
+      "plan_steps": [],
+      "verification": [],
+      "independent_exit": null,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": true,
+      "completed_preserved": null
+    },
+    {
+      "case": "analysis",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-full-20261104/report.json",
+      "report_sha256": "5caf94d17625796a366ee8e18eeb09551965ccfcdfe18743fdbcacb2a7cc397c",
+      "started_at": "2026-11-04T09:41:16.216Z",
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "run_id": "turn_d42b5a80178d47f7a4b49fd147c7f173",
+      "model_calls": 2,
+      "usage_snapshot": {
+        "calls": 3,
+        "tokens": 8386,
+        "estimated": false
+      },
+      "tool_successes": {
+        "read_file": 2
+      },
+      "tool_failure_codes": {},
+      "plan_steps": [],
+      "verification": [],
+      "independent_exit": null,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": true,
+      "completed_preserved": null
+    },
+    {
+      "case": "change",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-full-20261104/report.json",
+      "report_sha256": "5caf94d17625796a366ee8e18eeb09551965ccfcdfe18743fdbcacb2a7cc397c",
+      "started_at": "2026-11-04T09:41:16.216Z",
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "run_id": "b9a5760f-e89d-46c8-8b8b-8cdfb60e581c",
+      "model_calls": 8,
+      "usage_snapshot": {
+        "calls": 11,
+        "tokens": 63096,
+        "estimated": false
+      },
+      "tool_successes": {
+        "read_file": 2,
+        "write_file": 1,
+        "git_diff": 3,
+        "list_directory": 1,
+        "apply_patch": 1,
+        "run_command": 3
+      },
+      "tool_failure_codes": {},
+      "plan_steps": [
+        {
+          "id": "12c2f009-4de8-4c3c-865c-7c5b7fe64479",
+          "state": "completed"
+        }
+      ],
+      "verification": [
+        {
+          "command": "uv run --no-project python -m unittest discover -s tests -v",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        }
+      ],
+      "independent_exit": 0,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": true,
+      "completed_preserved": null
+    },
+    {
+      "case": "python-smoke",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-full-20261104/report.json",
+      "report_sha256": "5caf94d17625796a366ee8e18eeb09551965ccfcdfe18743fdbcacb2a7cc397c",
+      "started_at": "2026-11-04T09:41:16.216Z",
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "run_id": "ce277b26-5704-46ba-b082-b8bc508b9aeb",
+      "model_calls": 4,
+      "usage_snapshot": {
+        "calls": 15,
+        "tokens": 83221,
+        "estimated": false
+      },
+      "tool_successes": {
+        "read_file": 1,
+        "apply_patch": 1,
+        "git_diff": 2,
+        "run_command": 3
+      },
+      "tool_failure_codes": {},
+      "plan_steps": [
+        {
+          "id": "bb309e7f-4b05-45f6-a63a-4e060c221e2c",
+          "state": "completed"
+        }
+      ],
+      "verification": [
+        {
+          "command": "uv run --no-project python -m unittest discover -s tests -v",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        }
+      ],
+      "independent_exit": 0,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": true,
+      "completed_preserved": null
+    },
+    {
+      "case": "coupon",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-coupon-resume-20261104/report.json",
+      "report_sha256": "8214ab0fb286997145dd9faaddbfb49a7ac1a930829713ec2e72ca5347b4d287",
+      "started_at": "2026-11-04T09:58:04.388Z",
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "run_id": "54336698-c147-4613-90d2-937a2444b016",
+      "model_calls": 30,
+      "usage_snapshot": {
+        "before": {
+          "calls": 75,
+          "tokens": 855155,
+          "estimated": true
+        },
+        "after": {
+          "calls": 84,
+          "tokens": 1052077,
+          "estimated": true
+        }
+      },
+      "tool_successes": {
+        "git_status": 2,
+        "read_file": 4,
+        "run_command": 8,
+        "git_diff": 2
+      },
+      "tool_failure_codes": {},
+      "plan_steps": [
+        {
+          "id": "8c2518e8-ced4-4b6b-be31-21c4930a67f6",
+          "state": "completed"
+        },
+        {
+          "id": "b908e543-b470-4510-aac3-f412c4e82d2a",
+          "state": "completed"
+        },
+        {
+          "id": "ac7ef1a8-0469-4f3f-b55f-cbef93a371ab",
+          "state": "completed"
+        },
+        {
+          "id": "9d9e2dba-3314-44e6-9e91-27a436029334",
+          "state": "completed"
+        },
+        {
+          "id": "2d9ad147-c197-44c2-afd3-5789248487aa",
+          "state": "completed"
+        }
+      ],
+      "verification": [
+        {
+          "command": "uv run --no-project python -m unittest discover -s tests -v",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        }
+      ],
+      "independent_exit": 0,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": null,
+      "completed_preserved": true
+    },
+    {
+      "case": "environment",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-full-20261104/report.json",
+      "report_sha256": "5caf94d17625796a366ee8e18eeb09551965ccfcdfe18743fdbcacb2a7cc397c",
+      "started_at": "2026-11-04T09:41:16.216Z",
+      "phase": "paused",
+      "outcome": "awaiting_user",
+      "run_id": "a764b943-186d-4757-9f75-b0f64e8ac6b4",
+      "model_calls": 4,
+      "usage_snapshot": {
+        "calls": 40,
+        "tokens": 513179,
+        "estimated": false
+      },
+      "tool_successes": {
+        "read_file": 2,
+        "apply_patch": 1,
+        "git_diff": 2,
+        "run_command": 1
+      },
+      "tool_failure_codes": {
+        "nonzero_exit": 1
+      },
+      "plan_steps": [
+        {
+          "id": "3046a479-df0d-48fb-b3ea-a2a77e84b5f3",
+          "state": "blocked"
+        }
+      ],
+      "verification": [
+        {
+          "command": "uv run --no-project python -c \"import lca_deliberately_missing_dependency_01983\"",
+          "exit_code": 1,
+          "ok": false,
+          "category": "environment"
+        }
+      ],
+      "independent_exit": 0,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": true,
+      "completed_preserved": null
+    },
+    {
+      "case": "repair",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-full-20261104/report.json",
+      "report_sha256": "5caf94d17625796a366ee8e18eeb09551965ccfcdfe18743fdbcacb2a7cc397c",
+      "started_at": "2026-11-04T09:41:16.216Z",
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "run_id": "919c315d-db01-4006-9823-54625080f12a",
+      "model_calls": 5,
+      "usage_snapshot": {
+        "calls": 45,
+        "tokens": 539367,
+        "estimated": false
+      },
+      "tool_successes": {
+        "list_directory": 1,
+        "read_file": 2,
+        "apply_patch": 1,
+        "git_diff": 2,
+        "run_command": 3
+      },
+      "tool_failure_codes": {},
+      "plan_steps": [
+        {
+          "id": "1fab86e9-d2ce-43d9-bb98-789890f51a72",
+          "state": "completed"
+        }
+      ],
+      "verification": [
+        {
+          "command": "uv run --no-project python -m unittest discover -s tests -v",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        }
+      ],
+      "independent_exit": 0,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": true,
+      "completed_preserved": null
+    },
+    {
+      "case": "context",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-full-20261104/report.json",
+      "report_sha256": "5caf94d17625796a366ee8e18eeb09551965ccfcdfe18743fdbcacb2a7cc397c",
+      "started_at": "2026-11-04T09:41:16.216Z",
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "run_id": "turn_3662a59a9f6d48d7be169ce36ef33548",
+      "model_calls": 2,
+      "usage_snapshot": {
+        "calls": 47,
+        "tokens": 573231,
+        "estimated": false
+      },
+      "tool_successes": {
+        "read_file": 2
+      },
+      "tool_failure_codes": {},
+      "plan_steps": [],
+      "verification": [],
+      "independent_exit": null,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": true,
+      "completed_preserved": null
+    },
+    {
+      "case": "interruption",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-full-20261104/report.json",
+      "report_sha256": "5caf94d17625796a366ee8e18eeb09551965ccfcdfe18743fdbcacb2a7cc397c",
+      "started_at": "2026-11-04T09:41:16.216Z",
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "run_id": "27dc0a91-ee41-45fc-813c-c20932f5e927",
+      "model_calls": 13,
+      "usage_snapshot": {
+        "calls": 60,
+        "tokens": 691602,
+        "estimated": true
+      },
+      "tool_successes": {
+        "list_directory": 3,
+        "read_file": 5,
+        "apply_patch": 1,
+        "git_diff": 4,
+        "run_command": 5,
+        "write_file": 3
+      },
+      "tool_failure_codes": {},
+      "plan_steps": [
+        {
+          "id": "6179b9c3-5e9a-4ae6-a957-a6e33c833bc8",
+          "state": "completed"
+        },
+        {
+          "id": "da675124-9cbf-4b61-9251-6a9f1a4ebb18",
+          "state": "completed"
+        }
+      ],
+      "verification": [
+        {
+          "command": "uv run --no-project python -m unittest discover -s tests -v",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        }
+      ],
+      "independent_exit": 0,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": true,
+      "completed_preserved": null,
+      "interruption": {
+        "original_turn": "turn_39b245b0c41249df81a7b7d874525472",
+        "original_run": "27dc0a91-ee41-45fc-813c-c20932f5e927",
+        "completed_ids": [
+          "6179b9c3-5e9a-4ae6-a957-a6e33c833bc8"
+        ],
+        "restored": false,
+        "paused": false,
+        "resumed": true
+      }
+    },
+    {
+      "case": "websocket",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-full-20261104/report.json",
+      "report_sha256": "5caf94d17625796a366ee8e18eeb09551965ccfcdfe18743fdbcacb2a7cc397c",
+      "started_at": "2026-11-04T09:41:16.216Z",
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "run_id": "5d7b3d21-92e0-4ccd-a269-b2bb43ff9d8f",
+      "model_calls": 14,
+      "usage_snapshot": {
+        "calls": 74,
+        "tokens": 853695,
+        "estimated": true
+      },
+      "tool_successes": {
+        "read_file": 2,
+        "list_directory": 2,
+        "apply_patch": 1,
+        "git_diff": 5,
+        "run_command": 8,
+        "write_file": 3,
+        "git_status": 1
+      },
+      "tool_failure_codes": {},
+      "plan_steps": [
+        {
+          "id": "e97d93cd-5954-41fb-bcf9-68537a326a15",
+          "state": "completed"
+        },
+        {
+          "id": "229ecdd6-9ce9-4093-abc8-71376f8614d9",
+          "state": "completed"
+        }
+      ],
+      "verification": [
+        {
+          "command": "uv run --no-project python -m unittest discover -s tests -v",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        }
+      ],
+      "independent_exit": 0,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": true,
+      "completed_preserved": null,
+      "reconnect": {
+        "original_turn": "turn_4610ea078a0e4270bec166255433787c",
+        "original_run": "5d7b3d21-92e0-4ccd-a269-b2bb43ff9d8f",
+        "completed_ids": [
+          "e97d93cd-5954-41fb-bcf9-68537a326a15"
+        ],
+        "restored": true,
+        "paused": true,
+        "resumed": true
+      }
+    },
+    {
+      "case": "json",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-full-20261104/report.json",
+      "report_sha256": "5caf94d17625796a366ee8e18eeb09551965ccfcdfe18743fdbcacb2a7cc397c",
+      "started_at": "2026-11-04T09:41:16.216Z",
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "run_id": "turn_9eef0a41f87447129ca0278c5e3842d4",
+      "model_calls": 1,
+      "usage_snapshot": {
+        "calls": 75,
+        "tokens": 855155,
+        "estimated": true
+      },
+      "tool_successes": {},
+      "tool_failure_codes": {},
+      "plan_steps": [],
+      "verification": [],
+      "independent_exit": null,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": true,
+      "completed_preserved": null
+    },
+    {
+      "case": "react",
+      "model": "qwen3-coder-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-react-accepted-20261104/report.json",
+      "report_sha256": "50fa445f1cf7c23a690ea5fdd9b74095b7cdd29effa5648b3176f29c7db0cbae",
+      "started_at": "2026-11-04T10:29:37.225Z",
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "run_id": "fa9344bb-3243-4c75-9b6e-008f695a96c9",
+      "model_calls": 73,
+      "usage_snapshot": {
+        "before": {
+          "calls": 56,
+          "tokens": 526191,
+          "estimated": false
+        },
+        "after": {
+          "calls": 73,
+          "tokens": 755461,
+          "estimated": false
+        }
+      },
+      "tool_successes": {
+        "git_status": 1,
+        "read_file": 6,
+        "git_diff": 3,
+        "apply_patch": 2,
+        "run_command": 4
+      },
+      "tool_failure_codes": {
+        "PLAN_OPERATION_ALREADY_APPLIED": 1,
+        "APPROVAL_DENIED": 4
+      },
+      "plan_steps": [
+        {
+          "id": "32aad2a6-6df1-4e7b-bea7-dda86ef5571e",
+          "state": "completed"
+        }
+      ],
+      "verification": [
+        {
+          "command": "npm --prefix frontend run typecheck",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "npm --prefix frontend test",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "npm --prefix frontend run build",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        }
+      ],
+      "independent_exit": 0,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": null,
+      "completed_preserved": true
+    },
+    {
+      "case": "electron",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-electron-acceptance-20261104/report.json",
+      "report_sha256": "a3a9c40bf938eec88e401010cdda0072913d3879b8a536a7f402c8c268a039a6",
+      "started_at": "2026-11-04T10:37:18.843Z",
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "run_id": "2019ddcf-d442-4d15-869b-e44c8c951d23",
+      "model_calls": 12,
+      "usage_snapshot": {
+        "calls": 12,
+        "tokens": 108224,
+        "estimated": false
+      },
+      "tool_successes": {
+        "read_file": 3,
+        "list_directory": 1,
+        "apply_patch": 2,
+        "git_diff": 4,
+        "run_command": 7
+      },
+      "tool_failure_codes": {
+        "nonzero_exit": 1,
+        "SHELL_UNAVAILABLE": 1
+      },
+      "plan_steps": [
+        {
+          "id": "df7dd451-8d23-484c-8733-d0d012ba8235",
+          "state": "completed"
+        }
+      ],
+      "verification": [
+        {
+          "command": "npm --prefix frontend run typecheck",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "npm --prefix frontend test",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "npm --prefix frontend run build",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        }
+      ],
+      "independent_exit": 0,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": true,
+      "completed_preserved": null,
+      "saved_value_sha256": "fab0f32183afb53cca4f20bf23d6169fdc516861e7029cbf77c438777901ebff"
+    },
+    {
+      "case": "gui",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-gui-serial-20261104/report.json",
+      "report_sha256": "b7154647cfe0cb4d03602c6ba7ee1f75709df3431186fbcb8ae33ea65a99fd72",
+      "started_at": "2026-11-04T10:56:54.591Z",
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "run_id": "f126b280-0916-40c9-87b7-9603768c89bf",
+      "model_calls": 14,
+      "usage_snapshot": {
+        "calls": 14,
+        "tokens": 220019,
+        "estimated": false
+      },
+      "tool_successes": {
+        "start_process": 1,
+        "read_process": 1,
+        "desktop_list_windows": 1,
+        "desktop_inspect": 4,
+        "desktop_click": 3,
+        "desktop_type_text": 1,
+        "desktop_screenshot": 1,
+        "stop_process": 1,
+        "run_command": 4,
+        "git_diff": 1
+      },
+      "tool_failure_codes": {
+        "INVALID_PROCESS_WAIT": 1,
+        "DESKTOP_RISK_APPROVAL_REQUIRED": 1
+      },
+      "plan_steps": [
+        {
+          "id": "20dbae4f-4111-4d83-ad35-eec159e34244",
+          "state": "completed"
+        }
+      ],
+      "verification": [
+        {
+          "command": "npm --prefix frontend run typecheck",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "npm --prefix frontend test",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "npm --prefix frontend run build",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        }
+      ],
+      "independent_exit": null,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": true,
+      "completed_preserved": null,
+      "capture": {
+        "exists": true,
+        "local_only": true
+      },
+      "head_unchanged": true,
+      "saved_value_sha256": "32561cf47f92278cbbbffc921cac4cb107d7d12d2ec0594b4a6e6f6d7ad0ac94"
+    },
+    {
+      "case": "approval",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-gui-approval-20261104/report.json",
+      "report_sha256": "219156a7372eeb50e750d56fa04c178e1bc7e06806a4b6cb968bc010399b257e",
+      "started_at": "2026-11-04T10:42:58.364Z",
+      "phase": "failed",
+      "outcome": "failed",
+      "run_id": "797bd684-b333-4be9-b7f6-28d68319cc03",
+      "model_calls": 3,
+      "usage_snapshot": {
+        "calls": 4,
+        "tokens": 19837,
+        "estimated": false
+      },
+      "tool_successes": {
+        "run_command": 2
+      },
+      "tool_failure_codes": {
+        "APPROVAL_DENIED": 1
+      },
+      "plan_steps": [
+        {
+          "id": "3dddfa13-9fc0-4e6b-8a99-1a0ee3d67053",
+          "state": "blocked"
+        }
+      ],
+      "verification": [],
+      "independent_exit": null,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": true,
+      "completed_preserved": null,
+      "head_unchanged": true
+    },
+    {
+      "case": "network",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-network-20261104/report.json",
+      "report_sha256": "85307aa3b9e876bb170a450ee7f8f90fd2e876c337baad6afb1d03142c99e7e1",
+      "started_at": "2026-11-04T11:03:30.881Z",
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "run_id": "9883e304-5775-40af-9d0a-d410e9456ae9",
+      "model_calls": 5,
+      "usage_snapshot": {
+        "calls": 7,
+        "tokens": 42870,
+        "estimated": true
+      },
+      "tool_successes": {
+        "git_status": 1,
+        "read_file": 2,
+        "apply_patch": 1,
+        "git_diff": 2,
+        "run_command": 3
+      },
+      "tool_failure_codes": {},
+      "plan_steps": [
+        {
+          "id": "7ac7d1f3-bf9a-4367-8cc2-cedbbaa9da21",
+          "state": "completed"
+        }
+      ],
+      "verification": [
+        {
+          "command": "uv run --no-project python -m unittest discover -s tests -v",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        }
+      ],
+      "independent_exit": 0,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": true,
+      "completed_preserved": null,
+      "network": {
+        "dropped": true,
+        "proxy_requests": 7,
+        "retained_failed_request": true
+      },
+      "head_unchanged": true
+    },
+    {
+      "case": "followup",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-followup-20261104/report.json",
+      "report_sha256": "765b0ce20445cbfd1402b94ec9f2f25db5f4349af1ddd2fc05e95fab62db77bb",
+      "started_at": "2026-11-04T11:08:41.410Z",
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "run_id": "af95ed6e-be71-4479-be24-3b8e49bafac7",
+      "model_calls": 15,
+      "usage_snapshot": {
+        "calls": 15,
+        "tokens": 143579,
+        "estimated": false
+      },
+      "tool_successes": {
+        "read_file": 6,
+        "apply_patch": 1,
+        "git_diff": 5,
+        "run_command": 8,
+        "write_file": 2,
+        "git_status": 1
+      },
+      "tool_failure_codes": {
+        "nonzero_exit": 1
+      },
+      "plan_steps": [
+        {
+          "id": "5d7fe4be-6adb-4154-988a-cb8f761c2fa0",
+          "state": "completed"
+        },
+        {
+          "id": "a7c3e244-4365-4478-9196-da14f7a3e75b",
+          "state": "completed"
+        }
+      ],
+      "verification": [
+        {
+          "command": "uv run --no-project python -m unittest discover -s tests -v",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        }
+      ],
+      "independent_exit": 0,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": true,
+      "completed_preserved": null,
+      "followup": {
+        "queued": true,
+        "thread": "thread_8e00817a15f84e2b87c0957a045bb659",
+        "applied_once": true,
+        "same_thread": true
+      },
+      "head_unchanged": true
+    },
+    {
+      "case": "python-smoke",
+      "model": "glm-5.2",
+      "result": "PASS",
+      "report_ref": "validation-reports/v06-real-glm-accepted-20261104/report.json",
+      "report_sha256": "3cef4c40cdcf16ef35bbbb8ee51d2fa7ef8b21a5bbe76fabf7073cba5bc25ab3",
+      "started_at": "2026-11-04T11:13:55.334Z",
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "run_id": "f3cf4cc4-ea1f-4172-9ce0-c1b6f8f72487",
+      "model_calls": 4,
+      "usage_snapshot": {
+        "calls": 4,
+        "tokens": 18430,
+        "estimated": false
+      },
+      "tool_successes": {
+        "read_file": 2,
+        "apply_patch": 1,
+        "run_command": 3,
+        "git_diff": 2
+      },
+      "tool_failure_codes": {},
+      "plan_steps": [
+        {
+          "id": "72dfb3b4-ed04-4b2c-86ff-7a2592e8fec1",
+          "state": "completed"
+        }
+      ],
+      "verification": [
+        {
+          "command": "uv run --no-project python -m unittest discover -s tests -v",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "ok": true,
+          "category": "passed"
+        }
+      ],
+      "independent_exit": 0,
+      "original_assertions_preserved": true,
+      "frozen_unchanged": true,
+      "completed_preserved": null,
+      "head_unchanged": true
+    }
+  ],
+  "case_totals": {
+    "PASS": 18
+  },
+  "excluded_models": [
+    "qwen3.7-plus",
+    "qwen3.8-flash"
+  ],
+  "automated": {
+    "python": {
+      "total": 549,
+      "passed": 547,
+      "skipped": 2,
+      "failed": 0
+    },
+    "frontend": {
+      "files": 18,
+      "passed": 62,
+      "failed": 0
+    },
+    "desktop_smoke": {
+      "passed": 53,
+      "skipped": 0
+    },
+    "full_log": "validation-reports/20261104-191955-799454.log",
+    "focused_last_code": {
+      "passed": 29,
+      "log": "validation-reports/v06-focused-final.log"
+    }
+  }
+}

@@ -1,16 +1,29 @@
 /* Real product controller: no direct API key access, no business implementation. */
-const fs=require('node:fs'), path=require('node:path'), cp=require('node:child_process');
+const fs=require('node:fs'), path=require('node:path'), cp=require('node:child_process'),os=require('node:os');
 const crypto=require('node:crypto');
+const http=require('node:http'),https=require('node:https');
 const {_electron}=require('../../desktop/node_modules/playwright-core');
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const manifest=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const policyPath=path.join(manifest.root,'validation-reports/unified-model-policy.json');
-const deniedModels=[...(manifest.excluded_models||[]),...(fs.existsSync(policyPath)?JSON.parse(fs.readFileSync(policyPath,'utf8')).excluded_models||[]:[])];
+const deniedModels=['qwen3.7-plus','qwen3.8-flash',...(manifest.excluded_models||[]),...(fs.existsSync(policyPath)?JSON.parse(fs.readFileSync(policyPath,'utf8')).excluded_models||[]:[])];
 const denied=model=>deniedModels.some(name=>model.toLowerCase().includes(name.toLowerCase()));
 manifest.profiles=manifest.profiles.filter(p=>!denied(p.model_id));
 const report={result:'RUNNING',models:[],cases:[],limits:{calls:manifest.max_calls,tokens:manifest.max_tokens,request_seconds:manifest.request_seconds||60,wall_seconds:3600},cost:'UNKNOWN',started_at:new Date().toISOString()};
 const save=()=>fs.writeFileSync(manifest.report,JSON.stringify(report,null,2));
 const shell=(args,cwd)=>cp.spawnSync('git',args,{cwd,encoding:'utf8',windowsHide:true});
+async function fixtureNpm(args,cwd,timeout=120000){
+ const cli=path.join(path.dirname(process.execPath),'node_modules/npm/bin/npm-cli.js');
+ if(!fs.existsSync(cli))throw Error('NPM_CLI_UNAVAILABLE');
+ return await new Promise(resolve=>{
+  const child=cp.spawn(process.execPath,[cli,...args],{cwd,env:{...process.env,NODE_OPTIONS:'--max-old-space-size=256',GOMAXPROCS:'2'},windowsHide:true,detached:process.platform!=='win32',stdio:['ignore','pipe','pipe']});
+  let stdout='',stderr='',expired=false;
+  child.stdout.on('data',data=>stdout=(stdout+data).slice(-20000));child.stderr.on('data',data=>stderr=(stderr+data).slice(-20000));
+  const timer=setTimeout(()=>{expired=true;if(child.exitCode===null&&child.pid){if(process.platform==='win32')cp.spawnSync('taskkill',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});else {try{process.kill(-child.pid,'SIGKILL');}catch{}}}},timeout);
+  child.on('error',error=>{clearTimeout(timer);resolve({status:1,stdout,stderr:String(error.message)});});
+  child.on('close',code=>{clearTimeout(timer);resolve({status:expired?124:code,stdout,stderr});});
+ });
+}
 function project(name){
  const folder=path.join(manifest.output,name);fs.mkdirSync(folder);fs.mkdirSync(path.join(folder,'tests'));
  fs.writeFileSync(path.join(folder,'calculator.py'),'def add(a,b):\n    return a-b\n');
@@ -22,19 +35,58 @@ function project(name){
 }
 async function main(){
  let app,page,currentFolder,currentCase,events=[],turnTerminal=new Map(),ownedTurn;
+ const reviewAllowed=new Set();
+ const guiWindows=new Set();
+ const guiControls=new Map();let guiInspectTarget;
+ const guiValue='GUI-'+crypto.randomBytes(4).toString('hex');
+ let proxy,proxyArmed=false,proxyDropped=false,proxyCalls=0;const upstreamRequests=new Set();
+ const desktopData=fs.mkdtempSync(path.join(os.tmpdir(),'lca-live-desktop-'));
+ // Chromium 的 OS 加密主密钥也保存在 Local State；只复制加密原件，
+ // 由同一 Electron/OS 安全存储解密，不读取明文或共享浏览器用户目录。
+ const protectedFiles=['model-secrets.json','provider-secrets.json','Local State'];
+ for(const name of protectedFiles){const source=path.join(manifest.credential_data,name);if(fs.existsSync(source))fs.copyFileSync(source,path.join(desktopData,name));}
  const started=Date.now();let diagnosticCalls=0,diagnosticTokens=0,diagnosticEstimated=false;
  const budgetUsed=async()=>{
   const value=(await page.evaluate(()=>window.localAgent.taskRequest('','task.settings.get'))).payload.global_usage;
   return {calls:value.api_calls+diagnosticCalls,tokens:value.reserved_tokens+diagnosticTokens,estimated:value.estimated||diagnosticEstimated};
  };
  try{
-  const env={...process.env,LCA_DESKTOP_DATA_DIR:manifest.credential_data,LCA_DATA_DIR:manifest.data,LCA_HEADLESS_SMOKE:'1',LCA_PROVIDER:'openai_compatible',LCA_OPENAI_API_KEY:'',LCA_OPENAI_MODEL:'',LCA_OPENAI_BASE_URL:'http://127.0.0.1:1/v1',PYTHONUTF8:'1',LCA_EXECUTION_MODEL_CALLS:'80',LCA_EXECUTION_SECONDS:'600',LCA_EXECUTION_TOKENS:'10000000'};
+  const env={...process.env,NODE_OPTIONS:'--max-old-space-size=256',GOMAXPROCS:'2',LCA_DESKTOP_DATA_DIR:desktopData,LCA_DATA_DIR:manifest.data,LCA_HEADLESS_SMOKE:'1',LCA_PROVIDER:'openai_compatible',LCA_OPENAI_API_KEY:'',LCA_OPENAI_MODEL:'',LCA_OPENAI_BASE_URL:'http://127.0.0.1:1/v1',PYTHONUTF8:'1',LCA_EXECUTION_MODEL_CALLS:'80',LCA_EXECUTION_SECONDS:'600',LCA_EXECUTION_TOKENS:'10000000'};
   delete env.ELECTRON_RUN_AS_NODE;
   app=await _electron.launch({executablePath:require('../../desktop/node_modules/electron'),args:[path.join(manifest.root,'desktop'),'--disable-gpu'],cwd:manifest.root,env,timeout:60000});
-  page=await app.firstWindow();await page.waitForFunction(()=>!!window.localAgent);
+  page=await app.firstWindow();
+  // 主机资源耗尽时 Renderer/IPC 可能不返回；驱动也必须停止，不能持续占用额度。
+  const evaluate=page.evaluate.bind(page);
+  page.evaluate=async(...args)=>{let timer;try{return await Promise.race([evaluate(...args),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('CONTROLLER_IPC_TIMEOUT')),90000);})]);}finally{clearTimeout(timer);}};
+  await page.waitForFunction(()=>!!window.localAgent);
+  page.on('close',()=>{report.controller_stage='electron_closed';save();});
   for(let i=0;i<150;i++){const s=await page.evaluate(()=>window.localAgent.getAgentStatus());if(s.state==='ready')break;if(s.state==='error')throw Error('AGENT_START_FAILED');await delay(200);}
   const credential=(await page.evaluate(()=>window.localAgent.taskRequest('','task.credential.status'))).payload;
   if(credential.mode!=='os_protected'||!manifest.connections.every(c=>credential.configured.includes('connection-'+c.connection_id))){report.result='BLOCKED';report.reason='PROTECTED_CREDENTIAL_UNAVAILABLE';return;}
+  if(manifest.case_names?.includes('network')){
+   const connection=manifest.connections.find(c=>c.connection_id===manifest.profiles[0].connection_id),base=connection.base_url.replace(/\/$/,'');
+   proxy=http.createServer((req,res)=>{
+    const url=new URL(base+req.url),transport=url.protocol==='https:'?https:http;
+    if(req.method==='POST'&&req.url.endsWith('/chat/completions'))proxyCalls++;
+    // 凭据仅按原目标转发在内存中，不读取、保存或输出请求头/正文。
+    const upstream=transport.request(url,{method:req.method,headers:{...req.headers,host:url.host,'accept-encoding':'identity'}},response=>{
+     res.writeHead(response.statusCode,{'Content-Type':response.headers['content-type']||'application/json'});
+     if(proxyArmed&&!proxyDropped&&req.method==='POST'&&response.statusCode===200){
+      proxyDropped=true;response.once('data',chunk=>{res.write(chunk.subarray(0,Math.min(30,chunk.length)));setTimeout(()=>{res.destroy();upstream.destroy();},5);});
+      return;
+     }
+     response.pipe(res);
+    });
+    upstreamRequests.add(upstream);upstream.on('close',()=>upstreamRequests.delete(upstream));
+    upstream.setTimeout(60000,()=>upstream.destroy());
+    upstream.on('error',()=>{if(!res.headersSent)res.writeHead(502,{'Content-Type':'application/json'});res.end('{"error":{"message":"controlled transport failure"}}');});
+    req.pipe(upstream);
+   });
+   await new Promise(resolve=>proxy.listen(0,'127.0.0.1',resolve));
+   connection.base_url=`http://127.0.0.1:${proxy.address().port}`;
+   manifest.config={...manifest.config,vision_profile_id:null,roles:Object.fromEntries(['planner','executor','reviewer','escalation'].map(role=>[role,{model_profile_id:manifest.profiles[0].model_profile_id}]))};
+   await page.evaluate(({catalog,config,profile})=>window.localAgent.taskRequest('','task.catalog.update',{catalog,config,chat_default:profile}),{catalog:{connections:manifest.connections,profiles:manifest.profiles},config:manifest.config,profile:manifest.profiles[0].model_profile_id});
+  }
   if(manifest.discover_only){
    report.discovery=[];
    for(const connection of manifest.connections){
@@ -50,22 +102,107 @@ async function main(){
    if(e.type==='agent.runtime.updated')events.push({type:e.type,turn_id:e.turn_id,runtime:p.runtime});
    if(e.type==='context.updated')events.push({type:e.type,turn_id:e.turn_id,context:p});
    if(e.type==='plan.step.completed')events.push({type:e.type,turn_id:e.turn_id,plan_id:p.plan_id,step_id:p.step_id});
-   if(e.type==='tool.completed')events.push({type:e.type,turn_id:e.turn_id,name:p.name,ok:p.result?.ok,exit_code:p.result?.exit_code,changed_paths:p.result?.changed_paths,error_code:p.result?.error?.code});
+   if(e.type==='tool.completed'){
+    events.push({type:e.type,turn_id:e.turn_id,name:p.name,ok:p.result?.ok,exit_code:p.result?.exit_code,changed_paths:p.result?.changed_paths,error_code:p.result?.error?.code});
+    if(currentCase){currentCase.tools=events.filter(e=>e.type==='tool.completed');save();}
+    if(currentCase?.name==='gui'&&p.name==='desktop_list_windows')for(const w of p.result?.data?.windows||[])if(w.title==='M5 Electron acceptance')guiWindows.add(w.window_id);
+    if(currentCase?.name==='gui'&&p.name==='desktop_inspect'&&guiInspectTarget)guiControls.set(guiInspectTarget,p.result?.data?.controls||[]);
+    if(currentCase?.name==='gui'&&p.name==='desktop_screenshot')currentCase.capture={exists:!!p.result?.data?.path&&fs.existsSync(p.result.data.path),local_only:p.result?.data?.local_only===true};
+   }
    if(e.type==='approval.requested'){
     const args=p.arguments||{},tool=String(p.tool||'');
     const inside=value=>typeof value==='string' && !path.relative(currentFolder,path.resolve(currentFolder,value)).startsWith('..') && !path.isAbsolute(path.relative(currentFolder,path.resolve(currentFolder,value)));
-    let allowed=['read_file','list_directory','search_files','file_exists','git_status','git_diff'].includes(tool);
+    let allowed=['read_file','list_directory','search_files','file_exists','inspect_workspace','git_status','git_diff'].includes(tool)&&(!args.path||inside(args.path));
+    if(tool==='review_interrupted_operation'&&args.tool==='run_command'&&reviewAllowed.has(args.call_id))allowed=true;
     if(['write_file','apply_patch'].includes(tool))allowed=inside(args.path);
+    if(currentCase?.name==='gui'){
+     if(['write_file','apply_patch'].includes(tool))allowed=false;
+     if(tool==='start_process')allowed=args.command==='npm --prefix frontend start'&&(!args.cwd||inside(args.cwd));
+     if(tool==='desktop_list_windows'){
+      const file=path.join(currentFolder,'frontend/.runtime/process.json');
+      allowed=fs.existsSync(file)&&JSON.parse(fs.readFileSync(file,'utf8')).pid===args.pid;
+     }
+     const selector=args.selector||{};
+     const matches=(guiControls.get(args.window_id)||[]).filter(c=>Object.keys(selector).length>0&&Object.entries(selector).every(([k,v])=>JSON.stringify(c[k])===JSON.stringify(v)));
+     const safeSelector=['Settings','Save','Display name'].includes(selector.name)||(matches.length===1&&!matches[0].sensitive&&(['Settings','Save'].includes(matches[0].name)||matches[0].control_type==='Edit'));
+     if(tool.startsWith('desktop_')&&tool!=='desktop_list_windows')allowed=guiWindows.has(args.window_id)&&
+      (!['desktop_click','desktop_type_text'].includes(tool)||safeSelector)&&
+      (tool!=='desktop_screenshot'||args.share_with_model!==true);
+     if(tool==='desktop_inspect'&&allowed)guiInspectTarget=args.window_id;
+    }
     if(tool==='run_command'){
      allowed=(!args.cwd||inside(args.cwd)) && /^(uv run(?: --no-project)? python|python -m unittest|git (?:diff|status))\b/.test(args.command||'') && !/[;&|`]|\$\(/.test(args.command||'');
+     if((!args.cwd||inside(args.cwd)) && /^(?:npm --prefix frontend (?:run (?:typecheck|build)|test)|npm (?:run (?:typecheck|build)|test))$/.test(args.command||''))allowed=true;
      const basic=/^uv run(?: --no-project)? python -c "import (ast|json),base64,pathlib; (ast\.parse|json\.loads)\(pathlib.Path\(base64.b64decode\('([A-Za-z0-9+/=]+)'\)\.decode\(\)\)\.read_text\(encoding='utf-8-sig'\)\)"$/.exec(args.command||'');
      if(basic && (!args.cwd||inside(args.cwd)))allowed=inside(Buffer.from(basic[3],'base64').toString('utf8'));
+     if(currentCase?.name==='gui')allowed=/^git (?:diff|status)(?: --check)?$/.test(args.command||'');
     }
+    if(currentCase){currentCase.approvals||=[];currentCase.approvals.push({tool,risk:p.risk,decision:allowed?'allow_once':'deny'});}
     await page.evaluate(({id,decision,turn})=>window.localAgent.respondApproval(id,decision,turn),{id:p.approval_id,decision:allowed?'allow_once':'deny',turn:e.turn_id});
    }
   });
   await page.evaluate(()=>window.localAgent.onAgentEvent(e=>{void window.unifiedValidationEvent(e);}));
-  const cached=manifest.reuse_capabilities?JSON.parse(fs.readFileSync(manifest.reuse_capabilities,'utf8')):null;
+  if(manifest.resume_case){
+   const original=manifest.resume_case;currentFolder=original.folder;
+   currentCase={name:original.name,model:original.model,folder:currentFolder,result:'RUNNING',original_run:original.runtime?.id};report.cases.push(currentCase);save();
+   const before=await budgetUsed();
+   await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},currentFolder);
+   await page.evaluate(()=>window.localAgent.openProject());
+   if(!original.runtime){
+    const session=(await page.evaluate(()=>window.localAgent.getProject())).payload;
+    original.runtime=(await page.evaluate(id=>window.localAgent.taskRequest(id,'task.runtime.list'),session.active_thread.id)).payload.runtimes[0];
+    if(!original.runtime?.plan)throw Error('INTERRUPTED_PLAN_UNAVAILABLE');
+    currentCase.original_run=original.runtime.id;
+   }
+   const thread=original.runtime.plan.thread_id;
+   await page.evaluate(id=>window.localAgent.getThread(id),thread);
+   const plan=original.runtime.plan_id;
+   if(['react','electron'].includes(original.name)&&original.runtime.error_code==='PLAN_UNCERTAIN_EFFECTS'){
+    const checks=[];for(const args of [['run','typecheck'],['test'],['run','build']])checks.push(await fixtureNpm(args,path.join(currentFolder,'frontend')));
+    currentCase.pre_review_validation={exit_codes:checks.map(c=>c.status)};save();
+    if(checks.some(c=>c.status!==0))throw Error('REVIEW_REQUIRES_REAL_VALIDATION');
+    const fresh=(await page.evaluate(id=>window.localAgent.taskRequest(id,'task.runtime.list'),thread)).payload.runtimes.find(r=>r.id===original.runtime.id);
+    for(const record of fresh.plan.steps.flatMap(s=>s.executions||[]).filter(e=>e.status==='interrupted')){
+     if(record.tool!=='run_command')throw Error('UNREVIEWED_MUTATION_REQUIRES_HUMAN');
+     reviewAllowed.add(record.call_id);
+     const response=await page.evaluate(({thread,plan,call})=>window.localAgent.planRequest(thread,'plan.operation.review',{plan_id:plan,call_id:call,confirm_workspace:true}),{thread,plan,call:record.call_id});
+     if(response.type==='error')throw Error('INTERRUPTED_REVIEW_REJECTED');
+    }
+   }
+   if(original.runtime.error_code==='BUDGET_EXHAUSTED'||String(original.runtime.reason||'').includes('budget api_tokens')){
+    const includeGlobal=String(original.runtime.reason||'').includes('global budget');
+    const extended=await page.evaluate(({thread,plan,includeGlobal})=>window.localAgent.planRequest(thread,'plan.execution.extend',{plan_id:plan,include_global:includeGlobal,additional_calls:100,additional_tokens:2000000}),{thread,plan,includeGlobal});
+    if(extended.type==='error')throw Error('EXPLICIT_EXTENSION_REJECTED');
+   }
+   await page.getByRole('button',{name:'检查并继续未完成步骤',exact:true}).click();
+   const until=Date.now()+900000;
+   while(Date.now()<until){
+    if(page.isClosed())throw Error('ELECTRON_CLOSED_DURING_VALIDATION');
+    if(ownedTurn&&turnTerminal.has(ownedTurn))break;
+    const used=await budgetUsed();
+    if(used.calls-before.calls>=25||used.tokens-before.tokens>=500000){if(ownedTurn)await page.evaluate(id=>window.localAgent.cancelTurn(id),ownedTurn);break;}
+    await delay(400);
+   }
+   const run=(await page.evaluate(thread=>window.localAgent.taskRequest(thread,'task.runtime.list'),thread)).payload.runtimes.find(r=>r.id===original.runtime.id);
+   currentCase.runtime=run;currentCase.tools=events.filter(e=>e.type==='tool.completed');
+   const frontend=original.name==='react'||original.name==='electron';
+   let frozen=true,check;
+   if(frontend){
+    const fixture=original.name==='react'?'m2-react-ts':'m5-electron-e2e',tests=original.name==='react'?'test':'tests';
+    const source=path.join(manifest.root,'manual-fixtures',fixture,tests),target=path.join(currentFolder,'frontend');
+    for(const file of fs.readdirSync(source))frozen&&=fs.readFileSync(path.join(source,file)).equals(fs.readFileSync(path.join(target,tests,file)));
+    const outputs=[];for(const args of [['run','typecheck'],['test'],['run','build']])outputs.push(await fixtureNpm(args,target));
+    check={status:outputs.every(c=>c.status===0)?0:1,stdout:outputs.map(c=>c.stdout).join('\n'),stderr:outputs.map(c=>c.stderr).join('\n')};
+   }else{
+    frozen=fs.readFileSync(path.join(currentFolder,'tests/test_external_coupon_contract.py')).equals(fs.readFileSync(path.join(manifest.root,'scripts/validation/coupon_contract.py')));
+    check=cp.spawnSync('uv',['run','--locked','python','scripts/validation/coupon_contract.py',currentFolder,'-v'],{cwd:manifest.root,encoding:'utf8',windowsHide:true,timeout:60000});
+   }
+   currentCase.external_contract={exit_code:check.status,summary:(check.stdout+check.stderr).slice(-2000),frozen};
+   currentCase.completed_preserved=original.runtime.plan.steps.filter(s=>s.state==='completed').every(s=>run?.plan?.steps.some(now=>now.id===s.id&&now.state==='completed'));
+   currentCase.result=run?.phase==='completed'&&run.outcome==='completed_verified'&&check.status===0&&frozen&&currentCase.completed_preserved&&run.plan.steps.every(s=>s.state==='completed')&&(frontend||fs.existsSync(path.join(currentFolder,'DELIVERY.md')))?'PASS':'FAIL';
+   report.usage={before,after:await budgetUsed()};report.result=currentCase.result;return;
+  }
+  const cached=manifest.reuse_capabilities&&!proxy?JSON.parse(fs.readFileSync(manifest.reuse_capabilities,'utf8')):null;
   for(const profile of manifest.profiles){
    if(Date.now()-started>3600000)break;
    const prior=cached?.models.find(m=>m.profile_id===profile.model_profile_id && m.model_id===profile.model_id);
@@ -90,6 +227,13 @@ async function main(){
    const best=report.models.find(m=>m.category==='tool-capable'&&!denied(m.model_id)&&report.cases.some(c=>c.model===m.model_id&&c.name==='change'&&c.result==='PASS'))||report.models.find(m=>m.category==='tool-capable'&&!denied(m.model_id));
    if(best){
     const profile=manifest.profiles.find(p=>p.model_profile_id===best.profile_id);
+    await runCase(profile,'python-smoke','calculator.py 的 add 目前错误地写成 return a-b。请仅修复为真正加法，保留 tests 不变。执行 uv run --no-project python -m unittest discover -s tests -v 和 git diff 检查，用中文报告真实结果，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.runtime.changed_paths.includes('calculator.py')&&r.independent?.exit_code===0);
+    await runCase(profile,'react','修复 frontend 这个 React/TypeScript 工程：src/App.tsx 的 label 类型错误，标题改为中文“计算器”；src/math.ts 加法错误。保留已有 test 断言，实际运行 npm --prefix frontend run typecheck、npm --prefix frontend test、npm --prefix frontend run build，检查 Diff 并中文交付。不要修改根目录 calculator 或验证配置，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.runtime.changed_paths.some(p=>p.endsWith('App.tsx'))&&r.independent?.exit_code===0&&fs.readFileSync(path.join(r.folder,'frontend/src/App.tsx'),'utf8').includes('计算器'),{frontend:'m2-react-ts'});
+    await runCase(profile,'electron','修复 frontend 这个 Electron 设置程序：Settings 的 Display name 输入框不能编辑，保存后状态错误地仍显示 Not saved。请修复 src/App.tsx，让输入可编辑，成功保存后显示 Saved；保留测试及 main.cjs/preload.cjs/launch.cjs，实际执行 typecheck、test、build 和 Diff，中文报告。不要修改根目录 calculator 和验证配置，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.independent?.exit_code===0&&r.gui?.result==='PASS'&&r.gui.saved==='v0.6 在线模型验证',{frontend:'m5-electron-e2e'});
+    await runCase(profile,'gui',`用桌面工具操作现有 Electron 程序。用 start_process 启动 npm --prefix frontend start，从 read_process 的 M5_ELECTRON_READY 输出取得实际 Electron PID。desktop_list_windows 只能使用这个 PID，选择 M5 Electron acceptance 窗口后先 inspect，再点击 Settings。把 Display name 输入为 ${guiValue}，点击 Save，使用 desktop_inspect 读取 Status: Saved 和持久化显示值，保存一张本机窗口截图（share_with_model=false）。所有桌面工具设置 timeout_seconds=60。请使用精确名称 selector，禁止写入源码或 saved.json、禁止用脚本或 IPC 代替界面输入，完成后用 stop_process 停止自己启动的程序并中文报告。`,r=>r.runtime.phase==='completed'&&r.gui?.saved===guiValue&&['desktop_list_windows','desktop_type_text','desktop_click','desktop_inspect','desktop_screenshot'].every(name=>r.tools.some(t=>t.name===name&&t.ok)),{folder:manifest.reuse_project,gui:true});
+    await runCase(profile,'approval','README.md 已有暂存改动。请使用 run_command 执行 git status、git diff --cached，然后 git commit -m "controlled approval test"，必须请求人工审批，不得只用文字声称提交，也不得推送。此次验收会拒绝提交审批，你应停止并明确报告被拒绝。',r=>r.approvals?.some(a=>a.risk==='git_commit'&&a.decision==='deny')&&r.head_unchanged&&r.tools.some(t=>t.error_code==='APPROVAL_DENIED'),{approval:true});
+    await runCase(profile,'network','修复 calculator.py 的加法错误，保留原测试，实际执行 unittest 和 Diff，中文报告。本次可能遇到一次网络中断；根据运行时真实错误恢复，不要重放已成功的修改。',r=>r.runtime.outcome==='completed_verified'&&r.independent?.exit_code===0&&r.network?.dropped&&r.network.retained_failed_request,{network:true});
+    await runCase(profile,'followup','先读取 calculator.py 和原测试，运行现有 unittest 观察失败，修复加法，然后继续检查 Diff 并复测，最后中文报告。保留原测试，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.independent?.exit_code===0&&r.followup?.queued&&r.followup.applied_once&&r.followup.same_thread&&r.original_test_contract.passed,{followup:true});
     await runCase(profile,'coupon','实现 coupon_engine.py 优惠券规则引擎，支持固定金额 fixed、百分比 percent、门槛 min_spend、优惠上限 max_discount、有效期 expires(YYYY-MM-DD，含当天)、不可叠加和无效输入处理。apply_coupon(amount,coupon,today) 返回 Decimal 两位小数，today 为 date；apply_coupons(amount,coupons,today) 多于一张抛 ValueError。保留 calculator 和原测试，新增完整 unittest，输出中文 DELIVERY.md。该任务涉及多个文件，请使用持久化计划分步骤完成。先修复原有 add 缺陷再实现。全部 Python 命令通过 uv run --no-project，不能提交或推送。',r=>r.runtime.intent==='complex'&&r.runtime.plan?.steps.every(s=>s.state==='completed')&&r.runtime.outcome==='completed_verified'&&fs.existsSync(path.join(r.folder,'coupon_engine.py'))&&fs.existsSync(path.join(r.folder,'DELIVERY.md'))&&r.independent?.exit_code===0);
     await runCase(profile,'environment','修复 calculator.py 加法，保留 tests 不改；输出中文交付摘要。验证时如发现缺依赖，必须明确报告环境问题，不得反复重试或安装依赖。',r=>r.runtime.outcome==='awaiting_user'&&r.runtime.verification.some(v=>v.category==='environment'),{environment:true});
     await runCase(profile,'repair','读取并修复当前 calculator.py 的真实失败测试，保留原测试，进行实际复测，给出中文交付报告。',r=>r.runtime.outcome==='completed_verified'&&r.independent?.exit_code===0);
@@ -104,25 +248,68 @@ async function main(){
   async function runCase(profile,name,goal,assertion,options={}){
    if(manifest.case_names?.length&&!manifest.case_names.includes(name))return;
    if(denied(profile.model_id))throw Error('USER_EXCLUDED_MODEL');
+   if(options.gui&&!options.folder){
+    options={...options,folder:report.cases.find(c=>c.name==='electron'&&c.result==='PASS')?.folder};
+    if(!options.folder){report.cases.push({model:profile.model_id,name,result:'BLOCKED',reason:'GUI_REQUIRES_REPAIRED_ELECTRON_PROJECT'});save();return;}
+   }
+   if(options.gui&&manifest.gui_only)goal+='禁止执行代码验证命令。本次只操作界面，报告实际结果以及没有独立 GUI 合约的限制。';
    const used=await budgetUsed();
-   if(used.calls+8>manifest.max_calls||used.tokens+250000>manifest.max_tokens||Date.now()-started>3300000){report.cases.push({model:profile.model_id,name,result:'BLOCKED',reason:'CUMULATIVE_LIVE_CAP'});save();return;}
+   // 这里只判断是否还可开始；每次真实请求仍由产品预算账本保守预留。
+   // 固定预扣 250000 会让已有较小预算即使足够一次请求也永远不能开始。
+   if(used.calls+1>manifest.max_calls||used.tokens+20000>manifest.max_tokens||Date.now()-started>3300000){report.cases.push({model:profile.model_id,name,result:'BLOCKED',reason:'CUMULATIVE_LIVE_CAP'});save();return;}
+   if(options.frontend&&manifest.prepared_fixture)options={...options,folder:manifest.prepared_fixture};
    currentFolder=options.folder||project(name+'-'+report.cases.length);currentCase={model:profile.model_id,name,folder:currentFolder,result:'RUNNING'};report.cases.push(currentCase);events=[];ownedTurn=null;
+   const initialHead=shell(['rev-parse','HEAD'],currentFolder).stdout.trim();
+   if(options.approval){fs.appendFileSync(path.join(currentFolder,'README.md'),'Synthetic pending change for permission validation\n');shell(['add','README.md'],currentFolder);}
+   if(options.frontend){
+    const target=path.join(currentFolder,'frontend');
+    fs.appendFileSync(path.join(currentFolder,'.gitignore'),'node_modules/\ndist/\nlib/\n.runtime/\n');
+    const source=path.join(manifest.root,'manual-fixtures',options.frontend);
+    if(!manifest.prepared_fixture)fs.cpSync(source,target,{recursive:true,filter:file=>!['node_modules','dist','lib','.runtime','runtime'].includes(path.basename(file))});
+    if(!fs.readFileSync(path.join(source,'package.json')).equals(fs.readFileSync(path.join(target,'package.json'))))throw Error('FIXTURE_PACKAGE_CHANGED');
+    const installed=manifest.prepared_fixture?{status:0,stdout:'复用已成功安装的受控依赖，未替 Agent 修改源码。',stderr:''}:await fixtureNpm(['ci','--offline','--foreground-scripts','--no-audit','--no-fund'],target);
+    currentCase.setup={exit_code:installed.status,summary:(installed.stdout+installed.stderr).slice(-1500)};
+    if(installed.status!==0){currentCase.result='BLOCKED';currentCase.reason='FIXTURE_DEPENDENCIES';save();return;}
+    fs.writeFileSync(path.join(currentFolder,'.lca','verification.json'),JSON.stringify({commands:['npm --prefix frontend run typecheck','npm --prefix frontend test','npm --prefix frontend run build','git diff --check']}));
+    shell(['add','frontend','.lca/verification.json'],currentFolder);shell(['commit','-qm','Prepare unchanged frontend acceptance fixture'],currentFolder);
+   }
    if(name==='coupon')fs.copyFileSync(path.join(manifest.root,'scripts/validation/coupon_contract.py'),path.join(currentFolder,'tests/test_external_coupon_contract.py'));
    const baselineFolder=path.join(manifest.output,'acceptance-inputs');fs.mkdirSync(baselineFolder,{recursive:true});
    const baselineTest=path.join(baselineFolder,String(report.cases.length)+'-original-test.py');fs.copyFileSync(path.join(currentFolder,'tests/test_calc.py'),baselineTest);
    const frozen=Object.fromEntries([path.join(currentFolder,'.lca/verification.json'),...(name==='coupon'?[path.join(currentFolder,'tests/test_external_coupon_contract.py')]:[])].filter(f=>fs.existsSync(f)).map(f=>[f,crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex')]));
+   if(options.gui)for(const name of ['package.json','package-lock.json','main.cjs','preload.cjs','launch.cjs','src/App.tsx','src/settings.ts']){const file=path.join(currentFolder,'frontend',name);frozen[file]=crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');}
+   if(options.frontend){
+    const tests=path.join(currentFolder,'frontend',name==='react'?'test':'tests');
+    for(const entry of fs.readdirSync(tests)){const file=path.join(tests,entry);if(fs.statSync(file).isFile())frozen[file]=crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');}
+   }
    if(options.environment)fs.writeFileSync(path.join(currentFolder,'.lca','verification.json'),JSON.stringify({commands:['uv run --no-project python -c "import lca_deliberately_missing_dependency_01983"']}));
    if(options.environment)frozen[path.join(currentFolder,'.lca/verification.json')]=crypto.createHash('sha256').update(fs.readFileSync(path.join(currentFolder,'.lca/verification.json'))).digest('hex');
-   const currentConfig={...manifest.config,strategy:'single-agent',roles:Object.fromEntries(['planner','executor','reviewer','escalation'].map(role=>[role,{model_profile_id:profile.model_profile_id}])),budget:{...manifest.config.budget,api_calls:Math.min(40,manifest.max_calls-used.calls),api_tokens:Math.min(5000000,manifest.max_tokens-used.tokens),global_api_calls:manifest.max_calls-diagnosticCalls,global_api_tokens:manifest.max_tokens-diagnosticTokens}};
+   const currentConfig={...manifest.config,strategy:'single-agent',roles:Object.fromEntries(['planner','executor','reviewer','escalation'].map(role=>[role,{model_profile_id:profile.model_profile_id}])),budget:{...manifest.config.budget,api_calls:Math.min(manifest.config.budget.api_calls,manifest.max_calls-used.calls),api_tokens:Math.min(manifest.config.budget.api_tokens,manifest.max_tokens-used.tokens),global_api_calls:manifest.max_calls-diagnosticCalls,global_api_tokens:manifest.max_tokens-diagnosticTokens}};
    await page.evaluate(config=>window.localAgent.taskRequest('','task.settings.update',{config}),currentConfig);
    await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},currentFolder);
    await page.evaluate(model=>window.localAgent.openProject('profile:'+model),profile.model_profile_id);
-   const thread=options.folder?(await page.evaluate(()=>window.localAgent.getProject())).payload.active_thread:(await page.evaluate(model=>window.localAgent.createThread('profile:'+model),profile.model_profile_id)).payload.thread;
+   let thread=options.folder?(await page.evaluate(()=>window.localAgent.getProject())).payload.active_thread:null;
+   if(!thread)thread=(await page.evaluate(model=>window.localAgent.createThread('profile:'+model),profile.model_profile_id)).payload.thread;
    await page.evaluate(({thread,model})=>window.localAgent.selectModel(thread,'profile:'+model),{thread:thread.id,model:profile.model_profile_id});
+   if(options.network)proxyArmed=true;
    await page.locator('.composer textarea').fill(goal);await page.locator('.composer textarea').press('Enter');
    const until=Date.now()+660000;
    let controlApplied=false;
    while(Date.now()<until){
+    if(page.isClosed())throw Error('ELECTRON_CLOSED_DURING_VALIDATION');
+    if(options.followup&&!controlApplied&&ownedTurn&&events.some(e=>e.type==='tool.completed'&&e.ok&&['write_file','apply_patch'].includes(e.name))){
+     controlApplied=true;
+     await page.locator('.composer textarea').fill('追加需求：为 add 增加输入校验，只接受有限的 int/float；bool、字符串、None、NaN、Infinity 一律抛 ValueError，新增 unittest 覆盖边界。保留现有修改和原测试，在本会话继续执行并复测。');
+     await page.locator('.followup-send-button').click();
+     await page.waitForFunction(()=>document.querySelector('.composer textarea')?.value==='');
+     currentCase.followup={queued:true,thread:thread.id};save();
+    }
+    if(options.network&&!controlApplied&&ownedTurn&&turnTerminal.get(ownedTurn)?.type==='turn.failed'){
+     controlApplied=true;currentCase.network={dropped:proxyDropped,explicit_resume:true};
+     for(let wait=0;wait<100;wait++){const state=(await page.evaluate(t=>window.localAgent.taskRequest(t,'task.runtime.list'),thread.id)).payload;if(state.active_turn_ids.length===0)break;await delay(100);}
+     ownedTurn=null;await page.getByRole('button',{name:/检查并(?:恢复原运行|继续未完成步骤)/}).click();
+     for(let wait=0;wait<100&&!ownedTurn;wait++)await delay(100);
+    }
     if(!controlApplied&&ownedTurn&&(options.interrupt||options.reconnect)&&events.some(e=>e.type==='plan.step.completed')){
      controlApplied=true;const originalTurn=ownedTurn;
      if(options.interrupt){await page.locator('.stop-button').click();}
@@ -150,17 +337,46 @@ async function main(){
    if(!ownedTurn||!turnTerminal.has(ownedTurn)){if(ownedTurn)await page.evaluate(id=>window.localAgent.cancelTurn(id),ownedTurn).catch(()=>{});currentCase.result='FAIL';currentCase.reason='TURN_TIMEOUT';save();return;}
    const runs=(await page.evaluate(id=>window.localAgent.taskRequest(id,'task.runtime.list'),thread.id)).payload.runtimes;
    const runtime=runs[0];currentCase.runtime=runtime;currentCase.turn=turnTerminal.get(ownedTurn);currentCase.tools=events.filter(e=>e.type==='tool.completed');currentCase.context=events.filter(e=>e.type==='context.updated').map(e=>e.context);currentCase.dirty=shell(['status','--porcelain'],currentFolder).stdout.trim();
+   if(options.network){
+    const trace=(await page.evaluate(t=>window.localAgent.taskRequest(t,'task.runtime.events',{limit:500}),thread.id)).payload.events;
+    currentCase.network={...currentCase.network,dropped:proxyDropped,proxy_requests:proxyCalls,retained_failed_request:trace.some(e=>e.kind==='request.settled'&&['failed','interrupted','timeout'].includes(e.metadata.status)&&e.metadata.reserved_tokens>0)};
+   }
    const history=(await page.evaluate(()=>window.localAgent.getProject())).payload.messages;
+   if(options.followup){
+    const trace=(await page.evaluate(t=>window.localAgent.taskRequest(t,'task.runtime.events',{limit:500}),thread.id)).payload.events;
+    currentCase.followup={...currentCase.followup,applied_once:trace.filter(e=>e.kind==='followup.applied').length===1,same_thread:history.filter(m=>m.role==='user').length===2};
+   }
    currentCase.answer=history.filter(m=>m.role==='assistant').at(-1)?.content||'';
    currentCase.frozen_unchanged=Object.entries(frozen).every(([file,digest])=>fs.existsSync(file)&&crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')===digest);
-   const contractArgs=['run','--locked','python','scripts/validation/unified_contract.py','--original',baselineTest,'--project',currentFolder,...(name==='change'?['--input-validation']:[]),...(['question','analysis','context','json'].includes(name)?['--structure-only']:[])];
+   currentCase.head_unchanged=shell(['rev-parse','HEAD'],currentFolder).stdout.trim()===initialHead;
+   if(options.gui){const file=path.join(currentFolder,'frontend/.runtime/saved.json');currentCase.gui={saved:fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')).value:null};}
+   const contractArgs=['run','--locked','python','scripts/validation/unified_contract.py','--original',baselineTest,'--project',currentFolder,...(['change','followup'].includes(name)?['--input-validation']:[]),...(['question','analysis','context','json'].includes(name)||options.frontend||options.gui||options.approval?['--structure-only']:[])];
    const originalCheck=cp.spawnSync('uv',contractArgs,{cwd:manifest.root,encoding:'utf8',windowsHide:true,timeout:60000});
    currentCase.original_test_contract={exit_code:originalCheck.status,...JSON.parse(originalCheck.stdout||'{}')};
-   if(!['question','analysis','context','json'].includes(name)){
+   if(options.frontend){
+    const check=cp.spawnSync(process.platform==='win32'?'cmd.exe':'npm',process.platform==='win32'?['/d','/s','/c','npm run typecheck && npm test && npm run build']:['run','typecheck'],{cwd:path.join(currentFolder,'frontend'),encoding:'utf8',windowsHide:true,timeout:120000});
+    currentCase.independent={exit_code:check.status,summary:(check.stdout+check.stderr).slice(-2500)};
+    if(name==='electron' && check.status===0){
+     let fixture;
+     try{
+      const target=path.join(currentFolder,'frontend');const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
+      fixture=await _electron.launch({executablePath:require(path.join(target,'node_modules/electron')),args:[target,'--disable-gpu'],cwd:target,env,timeout:30000});
+      const window=await fixture.firstWindow();await window.getByRole('button',{name:'Settings',exact:true}).click();
+      await window.getByLabel('Display name',{exact:true}).fill('v0.6 在线模型验证');await window.getByRole('button',{name:'Save',exact:true}).click();
+      await window.getByRole('status',{name:'Status: Saved',exact:true}).waitFor({timeout:10000});
+      await window.screenshot({path:path.join(manifest.output,'electron-real-result.png')});
+      currentCase.gui={result:'PASS',saved:JSON.parse(fs.readFileSync(path.join(target,'.runtime/saved.json'),'utf8')).value};
+     }catch(error){currentCase.gui={result:'FAIL',reason:String(error.message).slice(0,300)};}
+     finally{if(fixture)await fixture.close().catch(()=>{});}
+    }
+   }else if(!['question','analysis','context','json'].includes(name)&&!options.gui&&!options.approval){
     const check=cp.spawnSync('uv',['run','--no-project','python','-m','unittest','discover','-s','tests','-v'],{cwd:currentFolder,encoding:'utf8',windowsHide:true,timeout:60000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
     currentCase.independent={exit_code:check.status,summary:(check.stdout+check.stderr).slice(-2500)};
    }
-   currentCase.result=runtime&&assertion(currentCase)&&currentCase.frozen_unchanged&&originalCheck.status===0?'PASS':'FAIL';currentCase.usage=await budgetUsed();
+   currentCase.result=runtime&&assertion(currentCase)&&currentCase.frozen_unchanged&&originalCheck.status===0?'PASS':'FAIL';
+   if(options.gui&&(!currentCase.capture?.exists||!currentCase.capture.local_only||currentCase.tools.some(t=>t.ok&&['write_file','apply_patch','run_command'].includes(t.name))))currentCase.result='FAIL';
+   if(options.gui&&manifest.gui_only){currentCase.gui_only=true;if(runtime?.outcome!=='completed_unverified'||runtime.level!=='manual'||runtime.changed_paths.length)currentCase.result='FAIL';}
+   currentCase.usage=await budgetUsed();
    if(runtime){const diagnostic=(await page.evaluate(({thread,id})=>window.localAgent.taskRequest(thread,'task.runtime.diagnostics',{run_id:id}),{thread:thread.id,id:runtime.id})).payload;currentCase.diagnostics={line_count:diagnostic.markdown.split('\n').length,json_exists:fs.existsSync(diagnostic.json_path),markdown_exists:fs.existsSync(diagnostic.markdown_path)};if(currentCase.diagnostics.line_count>150||!currentCase.diagnostics.json_exists)currentCase.result='FAIL';}
    if(name==='coupon'){
     const external=cp.spawnSync('uv',['run','--locked','python','scripts/validation/coupon_contract.py',currentFolder,'-v'],{cwd:manifest.root,encoding:'utf8',windowsHide:true,timeout:60000});
@@ -170,6 +386,6 @@ async function main(){
    save();
   }
  }catch(error){report.result='BLOCKED';report.reason=String(error.message||error).slice(0,500);}
- finally{report.elapsed_seconds=Math.round((Date.now()-started)/1000);save();if(app)await app.close().catch(()=>{});}
+ finally{report.elapsed_seconds=Math.round((Date.now()-started)/1000);save();if(app){await Promise.race([app.close().catch(()=>{}),delay(10000)]);const child=app.process();if(child?.exitCode===null&&child.pid){if(process.platform==='win32')cp.spawnSync('taskkill',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});else child.kill('SIGKILL');}}for(const request of upstreamRequests)request.destroy();if(proxy){proxy.closeAllConnections();await new Promise(resolve=>proxy.close(resolve));}for(const name of protectedFiles){const file=path.join(desktopData,name);if(fs.existsSync(file))fs.unlinkSync(file);}}
 }
 main().catch(()=>{report.result='FAIL';report.reason='CONTROLLER_UNHANDLED';save();process.exitCode=1;});
