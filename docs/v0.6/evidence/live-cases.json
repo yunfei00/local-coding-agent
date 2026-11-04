@@ -975,6 +975,17 @@
         "confirmed_code_defect": "工具和审批错误套用模型 HTTP 请求超时，已修复并通过先失败后通过的回归。",
         "live_after_fix": "NOT RUN"
       }
+    },
+    {
+      "case": "gui-only-after-timeout-fix",
+      "model": "qwen3-coder-flash",
+      "result": "BLOCKED",
+      "reason": "page.evaluate: Target page, context or browser has been closed",
+      "elapsed_seconds": 2,
+      "model_cases_started": 0,
+      "report_ref": "validation-reports/v06-real-gui-timeout-fixed-20261105/report.json",
+      "report_sha256": "0cbea19fa156cce1c2453261ab7a4af24c5e729da6b725c4615573f7832d8f3f",
+      "included_in_pass_count": false
     }
   ],
   "confirmed_ci": {

@@ -89,6 +89,8 @@ Usage 属于相应数据库累计快照，包含失败/恢复时不能直接相�
 
 2026-11-05 只读检查同一数据库进一步发现：16 次模型调用、elapsed=99.734 秒、任务 limits.seconds=600，却为 EXECUTION_TIMEOUT。源码确认 `_authorize_tool` 外层错误使用 Provider 请求超时；修复前自动复现“工具等待超过模型请求上限导致 failed”，修复后该用例完成为未独立验证，并另证总任务到期仍取消。该软件缺陷已修正，不能把原失败完全归咎于主机资源；尚无修复后的真实 GUI 补充通过证据。
 
+基于明确修复依据，随后仅补一次该用例，选用已通过能力检测的 qwen3-coder-flash，24 次调用上限、2000000 Token、单请求 60 秒。结果仍为 BLOCKED：Electron 约 2 秒退出，未进入模型用例，错误为 `Target page, context or browser has been closed`，报告 `validation-reports/v06-real-gui-timeout-fixed-20261105/report.json`。没有继续重复测试。另修正驱动退出码：控制器退出 0 但报告 BLOCKED/PARTIAL 时，CLI 返回非零，不把进程正常退出当成验收成功。
+
 ## CI 与最终门禁
 
 源码与驱动提交 `8329cc158f13703584c08da4953e1c1817c45789` 的 push 和 PR 两次 CI 均为 Windows/Ubuntu 全通过：[push 41826050081](https://github.com/yunfei00/local-coding-agent/actions/runs/41826050081)、[PR 41826117426](https://github.com/yunfei00/local-coding-agent/actions/runs/41826117426)。包含 Python、类型检查、前端测试、构建、实际 Windows Electron GUI 与 desktop-smoke。PR 为 [#29](https://github.com/yunfei00/local-coding-agent/pull/29)，无合并冲突。

@@ -17,6 +17,17 @@ from agent.core.model_catalog import KEY
 from agent.llm.router import validate_config
 
 
+def controller_result(code, report_path):
+    """控制器正常退出不等于验收通过；BLOCKED/PARTIAL 不返回成功。"""
+    if code:
+        return code
+    try:
+        result=json.loads(report_path.read_text(encoding='utf-8')).get('result')
+    except (OSError,ValueError):
+        return 1
+    return 0 if result=='PASS' else 1
+
+
 def prepare(root):
     root.mkdir(parents=True,exist_ok=False)
     (root/'calculator.py').write_text('def add(a,b):\n    return a-b\n',encoding='utf-8')
@@ -69,6 +80,7 @@ def main():
                   'resume_case':case,'resume_source':str(args.resume_report.resolve()),'max_calls':25,'max_tokens':500000}
         path=args.output/'manifest.json';path.write_text(json.dumps(manifest),encoding='utf-8')
         code=run_controller(['node',str(ROOT/'scripts/validation/unified_live.cjs'),str(path.resolve())],{**os.environ,'PYTHONUTF8':'1'},timeout=1000,report_path=args.output/'report.json')
+        code=controller_result(code,args.output/'report.json')
         print(json.dumps({'exit_code':code,'report':manifest['report']},ensure_ascii=False));return code
     policy=ROOT/'validation-reports/unified-model-policy.json'
     excluded=['qwen3.7-plus','qwen3.8-flash']+args.exclude_model+(json.loads(policy.read_text(encoding='utf-8')).get('excluded_models',[]) if policy.exists() else [])
@@ -151,6 +163,7 @@ def main():
     (args.output/'report.json').write_text(json.dumps({'result':'RUNNING','inventory':inventory}),encoding='utf-8')
     env={**os.environ,'PYTHONUTF8':'1'}
     code=run_controller(['node',str(ROOT/'scripts/validation/unified_live.cjs'),str(path.resolve())],env,timeout=3900,report_path=args.output/'report.json')
+    code=controller_result(code,args.output/'report.json')
     print(json.dumps({'exit_code':code,'report':str(args.output/'report.json')},ensure_ascii=False))
     return code
 
