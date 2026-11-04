@@ -12,6 +12,7 @@ from test_agent_reliability import FakeWebSocket, ScriptedProvider, final_step, 
 from agent.llm.base import ProviderError
 from agent.server.main import AgentServer
 from agent.task_plans import mutation_fingerprint
+from agent.core.unified_runtime import requested_intent,workspace_snapshot
 
 
 class RuntimeIntegrationTests(unittest.IsolatedAsyncioTestCase):
@@ -24,6 +25,30 @@ class RuntimeIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         await self.fixture.asyncTearDown()
+
+    def test_explicit_gui_actions_are_not_misread_as_analysis_by_inspect_word(self):
+        value=requested_intent('在桌面窗口输入显示名并点击保存，用 desktop_inspect 读取结果')
+        self.assertEqual(value['kind'],'interaction');self.assertFalse(value['read_only'])
+        self.assertTrue(requested_intent('只分析窗口，不点击任何按钮')['read_only'])
+        self.assertTrue(requested_intent('请解释如何在窗口点击保存')['pure_question'])
+
+    def test_application_runtime_profile_is_not_a_source_code_change(self):
+        before=workspace_snapshot(self.repo)
+        runtime=self.repo/'.runtime';runtime.mkdir();(runtime/'saved.json').write_text('{"value":"synthetic"}')
+        self.assertEqual(workspace_snapshot(self.repo),before)
+
+    async def test_gui_prose_without_actual_action_cannot_complete(self):
+        ws=FakeWebSocket()
+        await self.server.run_tool_turn(ws,thread_id=self.thread.id,turn_id='gui-prose',prompt='在桌面窗口输入姓名并点击保存',model='mock',provider=ScriptedProvider([final_step('已点击保存')]),unified=True)
+        self.assertTrue(any(e['payload'].get('code')=='AGENT_NO_INTERACTION_EVIDENCE' for e in ws.messages))
+
+    async def test_gui_tool_success_does_not_claim_independent_validation(self):
+        self.server._authorize_tool=AsyncMock(return_value={'ok':True,'changed_paths':[],'summary':'unit action success','data':{}})
+        ws=FakeWebSocket()
+        await self.server.run_tool_turn(ws,thread_id=self.thread.id,turn_id='gui-evidence',prompt='在桌面窗口点击 Settings',model='mock',provider=ScriptedProvider([tool_step('desktop_click',{'window_id':'unit-window','selector':{'name':'Settings'}}),final_step('已操作，尚无独立验收合约')]),unified=True)
+        runtime=[e['payload']['runtime'] for e in ws.messages if e['type']=='agent.runtime.updated'][-1]
+        self.assertEqual(runtime['phase'],'completed');self.assertEqual(runtime['outcome'],'completed_unverified')
+        self.assertEqual(runtime['level'],'manual')
 
     async def test_interrupted_review_requires_approval_and_is_not_success_evidence(self):
         plans=self.server.store.task_plans

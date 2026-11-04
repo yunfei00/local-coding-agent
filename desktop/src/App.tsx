@@ -1679,7 +1679,7 @@ function App() {
                   </div>
                 </div>
               ))}
-          {unifiedRun ? <UnifiedProgress run={unifiedRun} onDiagnostics={()=>togglePanel('diagnostics')} onExport={async()=>{
+          {unifiedRun ? <UnifiedProgress run={unifiedRun} onPlan={()=>togglePanel('plan')} onDiagnostics={()=>togglePanel('diagnostics')} onExport={async()=>{
             if(!activeThread)throw new Error('没有当前会话');
             return (await window.localAgent.taskRequest(activeThread.id,'task.runtime.diagnostics',{run_id:unifiedRun.id})).payload || {};
           }} onResume={()=>{

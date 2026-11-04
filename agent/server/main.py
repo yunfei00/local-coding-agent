@@ -2696,6 +2696,8 @@ class AgentServer:
                     continue
 
                 if not tool_calls:
+                    if unified and requested['kind']=='interaction' and not execution.data.get('unified_interaction_evidence'):
+                        raise ProviderError('AGENT_NO_INTERACTION_EVIDENCE','用户要求实际界面操作，但没有成功的桌面动作证据；不能仅用文字宣布完成。')
                     if unified:
                         current_snapshot = workspace_snapshot(workspace.root) if unified_baseline is not None else {}
                         baseline=unified_baseline or {}
@@ -2868,7 +2870,7 @@ class AgentServer:
                             continue
                     # Record the exchange once, at the real end of the turn.
                     if active_plan and self.store.task_plans.uncertain_operation(active_plan['id'], 'check'):
-                        raise ProviderError('PLAN_UNCERTAIN_EFFECTS','仍有重启前未确认的副作用，不能宣告完成；检查实际状态并明确审批。')
+                        raise ProviderError('PLAN_UNCERTAIN_EFFECTS','仍有重启前未确认结果的操作，不能宣告完成；打开任务计划，核对 Diff 和日志后点击“审阅中断记录”。审阅不代表操作成功。')
                     if active_plan and (self.store.task_plans.active_step(active_plan['id']) or {}).get('state') == 'blocked':
                         raise ProviderError('PLAN_BLOCKED','步骤仍被阻塞；失败原因与安全恢复动作已保存在 Plan。')
                     if self.runtime_ledger.pending(execution.key):
@@ -2876,7 +2878,10 @@ class AgentServer:
                         continue
                     execution.data['status'] = 'completed'
                     if unified:
-                        await publish_runtime('completed', outcome=result_view(changed=bool(runtime['changed_paths']),results=runtime['verification'],level=runtime['level'],pending=bool(active_plan and self.store.task_plans.active_step(active_plan['id']))))
+                        if runtime['intent']=='interaction' and not runtime['changed_paths']:
+                            await publish_runtime('completed',outcome='completed_unverified',level='manual',reason='桌面动作已有真实工具证据；尚未附加独立 GUI 验收合约。')
+                        else:
+                            await publish_runtime('completed', outcome=result_view(changed=bool(runtime['changed_paths']),results=runtime['verification'],level=runtime['level'],pending=bool(active_plan and self.store.task_plans.active_step(active_plan['id']))))
                     execution.data.pop('last_error', None)
                     # Intermediate plan steps must not create duplicate user turns.
                     autonomous = plan_id and self.store.connection.execute('SELECT 1 FROM autonomous_tasks WHERE plan_id=?',(plan_id,)).fetchone()
@@ -3118,6 +3123,9 @@ class AgentServer:
 
                     payload['duration_ms'] = round((perf_counter() - tool_started) * 1000)
                     metrics.record_tool(payload['duration_ms'], ok=bool(payload.get("ok")))
+                    if unified and payload.get('ok') and call.name in {'desktop_click','desktop_type_text','desktop_keypress','desktop_scroll'}:
+                        execution.data['unified_interaction_evidence']=[*execution.data.get('unified_interaction_evidence',[]),{'tool':call.name,'call_id':call_id}][-32:]
+                        execution.save()
                     if active_plan and journal_step_id and not replay:
                         self.store.task_plans.record_execution(active_plan["id"], journal_step_id,
                             call_id, turn_id, call.name, payload)

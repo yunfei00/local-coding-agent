@@ -4,6 +4,14 @@ import {UnifiedProgress,type UnifiedRun} from './UnifiedProgress';
 const base:UnifiedRun={id:'run',intent:'question',phase:'completed',outcome:'completed_verified',level:'none',changed_paths:[],verification:[]};
 const actions={onResume:()=>{},onDiagnostics:()=>{}};
 describe('统一 Agent 结果',()=>{
+  it('未知中断有明确的原计划审阅入口',()=>{
+    const html=renderToStaticMarkup(<UnifiedProgress run={{...base,intent:'change',phase:'failed',outcome:'failed',error_code:'PLAN_UNCERTAIN_EFFECTS'}} {...actions} onPlan={()=>{}}/>);
+    expect(html).toContain('核对中断操作');expect(html).not.toContain('验证通过');
+  });
+  it('桌面动作没有独立合约时不声称验收通过',()=>{
+    const html=renderToStaticMarkup(<UnifiedProgress run={{...base,intent:'interaction',outcome:'completed_unverified',level:'manual'}} {...actions}/>);
+    expect(html).toContain('桌面操作已结束 · 待独立验收');expect(html).not.toContain('验证通过');
+  });
   it('没有持久化 Plan 的中断运行也有明确的原运行恢复入口',()=>{
     const html=renderToStaticMarkup(<UnifiedProgress run={{...base,intent:'analysis',phase:'paused',outcome:'awaiting_user',reason:'后端中断'}} {...actions}/>);
     expect(html).toContain('检查并恢复原运行');expect(html).toContain('后端中断');
