@@ -2725,6 +2725,130 @@
           "response_complete": false
         }
       ]
+    },
+    {
+      "run": "unified-live-coupon-qwen3-vl-plus",
+      "source_commit": "3745f813fe4a020eec8496191990be4496e7f585",
+      "source_note": "committed product code",
+      "started_at": "2026-11-04T05:26:00.585Z",
+      "result": "PARTIAL",
+      "limits": {
+        "calls": 45,
+        "tokens": 5000000,
+        "request_seconds": 120,
+        "wall_seconds": 3600
+      },
+      "cost": "UNKNOWN",
+      "usage_reported_by_controller": {
+        "calls": 1,
+        "tokens": 25572,
+        "estimated": true
+      },
+      "runtime_ledger": {
+        "requests": 1,
+        "tokens_actual_or_reserved": 25572,
+        "provider_reported_input_tokens": 0,
+        "provider_reported_output_tokens": 0,
+        "estimated_requests": 1
+      },
+      "models": [],
+      "cases": [
+        {
+          "model": "qwen3-vl-plus",
+          "name": "coupon",
+          "controller_result": "FAIL",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": 1,
+          "coupon_contract_exit": 1,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 1,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ],
+      "request_diagnostics": [
+        {
+          "status": "failed",
+          "http_status": 403,
+          "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+          "stream_events": 0,
+          "content_chars": 0,
+          "reasoning_chars": 0,
+          "tool_argument_chars": 0,
+          "response_complete": false
+        }
+      ]
+    },
+    {
+      "run": "unified-live-coupon-qwen3-omni-flash",
+      "source_commit": "3745f813fe4a020eec8496191990be4496e7f585",
+      "source_note": "committed product code",
+      "started_at": "2026-11-04T05:26:10.317Z",
+      "result": "PARTIAL",
+      "limits": {
+        "calls": 45,
+        "tokens": 5000000,
+        "request_seconds": 120,
+        "wall_seconds": 3600
+      },
+      "cost": "UNKNOWN",
+      "usage_reported_by_controller": {
+        "calls": 1,
+        "tokens": 25575,
+        "estimated": true
+      },
+      "runtime_ledger": {
+        "requests": 1,
+        "tokens_actual_or_reserved": 25575,
+        "provider_reported_input_tokens": 0,
+        "provider_reported_output_tokens": 0,
+        "estimated_requests": 1
+      },
+      "models": [],
+      "cases": [
+        {
+          "model": "qwen3-omni-flash",
+          "name": "coupon",
+          "controller_result": "FAIL",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": 1,
+          "coupon_contract_exit": 1,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 1,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ],
+      "request_diagnostics": [
+        {
+          "status": "failed",
+          "http_status": 403,
+          "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+          "stream_events": 0,
+          "content_chars": 0,
+          "reasoning_chars": 0,
+          "tool_argument_chars": 0,
+          "response_complete": false
+        }
+      ]
     }
   ],
   "independent_reassessment": [
