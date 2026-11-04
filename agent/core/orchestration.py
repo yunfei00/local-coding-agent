@@ -223,7 +223,8 @@ class TaskService:
                         if runtime:
                             value={**runtime,'id':row['id']}
                             if value.get('plan_id'):
-                                value['plan']=self.runtime.plans.get(value['plan_id'])
+                                from agent.core.unified_runtime import plan_view
+                                value['plan']=plan_view(self.runtime.plans.get(value['plan_id']))
                             runtimes.append(value)
                     result={'runtimes':runtimes,'active_turn_ids':[tid for tid,turn in self.server.active_turns.items() if not turn.done() and self.server.active_turn_threads.get(tid)==thread_id and tid not in self.server.disconnected_turns]}
                 elif kind == "task.list":

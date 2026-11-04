@@ -2219,7 +2219,7 @@ class AgentServer:
         previous_checkpoint = self.store.task_plans.latest_checkpoint(active_plan["id"]) if active_plan else None
         from agent.core.execution import ExecutionBudget
         execution = ExecutionBudget(self.store.connection, active_plan['id'] if active_plan else turn_id, thread_id, self.continuation_policy)
-        from agent.core.unified_runtime import INSTRUCTIONS as UNIFIED_INSTRUCTIONS, PLAN_TOOL as UNIFIED_PLAN_TOOL, infer_intent, plan_steps, verification_policy, result_view, workspace_snapshot, RuntimeEvents, requested_intent
+        from agent.core.unified_runtime import INSTRUCTIONS as UNIFIED_INSTRUCTIONS, PLAN_TOOL as UNIFIED_PLAN_TOOL, infer_intent, plan_steps, plan_view, verification_policy, result_view, workspace_snapshot, RuntimeEvents, requested_intent
         unified = unified or bool(execution.data.get('unified'))
         requested=execution.data.setdefault('unified_request',requested_intent(prompt)) if unified else None
         runtime = execution.data.setdefault('unified', {'intent':'question', 'phase':'executing', 'outcome':None, 'changed_paths':[], 'verification':[], 'level':'none', 'repairs':0}) if unified else None
@@ -2258,7 +2258,7 @@ class AgentServer:
             if deferred_plan_ids:
                 runtime['recovery_plan_id']=deferred_plan_ids[0]
             if active_plan and runtime['intent'] == 'complex':
-                runtime['plan'] = self.store.task_plans.get(active_plan['id'])
+                runtime['plan'] = plan_view(self.store.task_plans.get(active_plan['id']))
             execution.save()
             await ws.send_json(envelope('agent.runtime.updated', {'runtime':dict(runtime)}, thread_id=thread_id, turn_id=turn_id))
         await publish_runtime('executing')
@@ -2625,8 +2625,16 @@ class AgentServer:
                             active_step_id, requirement, evidence,
                             loop_complete=not gaps or bool(plan_id) or (unified and runtime['intent']=='complex') or (not requirement.strip() and
                                 active_plan["steps"][-1]["id"] != active_step_id))
-                        self.store.task_plans.advance_verified(
+                        advanced=self.store.task_plans.advance_verified(
                             active_plan["id"], active_step_id, evidence, verified)
+                        if unified and not advanced and current_step and current_step['state']!='blocked':
+                            corrections=execution.data.setdefault('step_evidence_corrections',{})
+                            if corrections.get(active_step_id,0)>=1:
+                                raise ProviderError('PLAN_STEP_NO_EVIDENCE','当前计划步骤没有真实执行/验证证据，补正后仍未满足；保留未完成步骤，不能宣称完成。')
+                            corrections[active_step_id]=corrections.get(active_step_id,0)+1
+                            execution.save()
+                            messages.append({'role':'system','content':'Current persistent step is NOT completed: '+current_step['description']+'. Required verification: '+requirement+'. No sufficient step-local tool evidence. Inspect current files and execute its verification now; do not replay completed edits or only describe work done in an earlier step.'})
+                            continue
                     # Advance to the next plan step within this same Agent turn
                     # only after the previous step has genuinely completed.
                     # Keep the loop guard to prevent replaying identical tools.
@@ -2833,7 +2841,7 @@ class AgentServer:
                     )
 
                     tool_started = perf_counter()
-                    if not active_plan and (not unified or call.name not in READ_ONLY_TOOLS):
+                    if not active_plan and (not unified or (call.name not in READ_ONLY_TOOLS and not repeatable_check(call.name,call.arguments))):
                         created = self.store.task_plans.create(thread_id, prompt if unified else '工具任务：安全续跑与真实验收', (automatic_steps(prompt) or [{'description':'执行请求并使用真实工具验证结果'}]) if unified and runtime['intent']=='complex' else [{'description':'执行请求并使用真实工具验证结果'}])
                         active_plan = self.store.task_plans.get(created)
                         active_step_id = active_plan['steps'][0]['id']
@@ -2953,7 +2961,19 @@ class AgentServer:
                         await publish_runtime('executing',changed_paths=sorted(guard.changed_paths))
                     execution.remember_tool(call.name, call.arguments, payload, workspace,
                                             exact_secrets=self._exact_secrets())
-                    if payload.get('ok'):
+                    from agent.core.verification import classify
+                    diagnostic_failure = (unified and requested['read_only'] and not guard.changed_paths
+                        and repeatable_check(call.name,call.arguments) and payload.get('exit_code') not in (None,0)
+                        and (payload.get('error') or {}).get('code') in (None,'NON_ZERO_EXIT')
+                        and classify(payload) in {'assertion','code'})
+                    if diagnostic_failure:
+                        # A failing read-only test is the requested analysis evidence,
+                        # not a claim that development or verification succeeded.
+                        runtime.setdefault('diagnostic_checks',[]).append({'command':call.arguments.get('command',''),
+                            'exit_code':payload['exit_code'],'category':'diagnostic_failure',
+                            'summary':str(payload.get('summary',''))[-1200:]})
+                        execution.save()
+                    elif payload.get('ok'):
                         unresolved_tool_failures.discard(call.name)
                         unresolved_failure_codes.pop(call.name,None)
                     elif (call.name in {'run_command','desktop_wait'} or fingerprint or

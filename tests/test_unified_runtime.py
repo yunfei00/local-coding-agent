@@ -148,6 +148,18 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
     async def test_read_only_analysis_has_no_development_plan(self):
         _,r=await self.run_steps([tool_step('read_file',{'path':'calculator.py'}),final_step('减法导致错误')])
         self.assertEqual(r['intent'],'analysis');self.assertEqual(r['changed_paths'],[])
+
+    async def test_read_only_failed_test_is_diagnostic_evidence_not_failed_development(self):
+        p=ScriptedProvider([tool_step('read_file',{'path':'calculator.py'}),
+            tool_step('run_command',{'command':'uv run --no-project python -m unittest discover -s tests -v'}),
+            final_step('真实测试退出 1，3-2 得到 1，程序使用减法导致断言失败；未修改文件。')])
+        await self.server.run_tool_turn(self.ws,thread_id=self.thread.id,turn_id='analysis-failure',prompt='分析 calculator.py 为什么失败；只分析，不修改任何文件',model='mock',provider=p,unified=True)
+        r=[x['payload']['runtime'] for x in self.ws.messages if x['type']=='agent.runtime.updated'][-1]
+        self.assertEqual(r['phase'],'completed');self.assertEqual(r['intent'],'analysis')
+        self.assertEqual(r['diagnostic_checks'][0]['exit_code'],1)
+        self.assertEqual(r['verification'],[]);self.assertEqual(r['changed_paths'],[])
+        self.assertEqual(self.server.store.task_plans.list_for_thread(self.thread.id),[])
+        self.assertFalse(any(e['type']=='turn.failed' for e in self.ws.messages))
         self.assertEqual(self.server.store.task_plans.list_for_thread(self.thread.id),[])
 
     async def test_edit_automatically_runs_real_unittest_and_diff_without_model_command(self):
@@ -180,6 +192,23 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
         plan=self.server.store.task_plans.get(r['plan_id'])
         self.assertEqual(plan['steps'][0]['state'],'completed')
         self.assertGreater(len(self.server.store.task_plans.executions(r['plan_id'])),0)
+        self.assertNotIn('execution',r['plan'])
+        self.assertLess(len(json.dumps(plan['execution'])),100000)
+
+    async def test_missing_step_evidence_gets_one_correction_not_false_completion(self):
+        p,r=await self.run_steps([tool_step('agent_plan',{'steps':[{'description':'Repair calculator'},{'description':'Inspect intermediate implementation','verification':'A successful command'},{'description':'Review final implementation'}]}),
+            tool_step('write_file',{'path':'calculator.py','content':'def add(a,b): return a+b\n'}),final_step('第一步完成'),
+            final_step('只描述已完成的事情'),
+            tool_step('run_command',{'command':'uv run --no-project python -m unittest discover -s tests -v'}),final_step('已实际验证'),
+            tool_step('read_file',{'path':'calculator.py'}),final_step('已核对并交付')])
+        self.assertEqual(r['phase'],'completed');self.assertEqual(r['outcome'],'completed_verified')
+        self.assertTrue(all(s['state']=='completed' for s in r['plan']['steps']))
+        self.assertEqual(p.calls,8)
+
+    async def test_missing_step_evidence_stops_after_bounded_correction(self):
+        p,r=await self.run_steps([tool_step('agent_plan',{'steps':[{'description':'Inspect the source'}]}),final_step('没有工具'),final_step('仍然没有工具')])
+        self.assertEqual(p.calls,3);self.assertEqual(r['phase'],'failed')
+        self.assertTrue(any(e['type']=='turn.failed' and e['payload'].get('code')=='PLAN_STEP_NO_EVIDENCE' for e in self.ws.messages))
 
     async def test_restart_snapshot_api_returns_real_persisted_result(self):
         _,r=await self.run_steps([final_step('回答')])

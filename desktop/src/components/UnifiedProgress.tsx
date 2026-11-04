@@ -3,6 +3,7 @@ import type {TaskVerification} from '../lib/autonomousTask';
 export type UnifiedRun = {
   id:string;revision?:number;plan_id?:string;recovery_plan_id?:string;intent:string;phase:string;outcome?:string;reason?:string;
   level:string;changed_paths:string[];verification:TaskVerification[];model?:string;provider?:string;
+  diagnostic_checks?:Array<{command:string;exit_code:number;summary:string}>;
   usage?:{api_calls:number;reserved_tokens:number;input_tokens:number;output_tokens:number;estimated:boolean};
   plan?:{steps:Array<{id:string;description:string;state:string}>};
 };
@@ -34,6 +35,7 @@ export function UnifiedProgress({run,onResume,onDiagnostics,onExport}:{run:Unifi
     {run.reason?<p>{run.reason}</p>:null}
     {run.usage?<p>{run.provider} / {run.model} · API {run.usage.api_calls} · Token 用量/保守预留 {run.usage.reserved_tokens}{run.usage.estimated?'（含估算）':''}</p>:null}
     {run.changed_paths.length?<details><summary>修改了 {run.changed_paths.length} 个文件 · 验证级别 {run.level}</summary><ul>{run.changed_paths.map(p=><li key={p}>{p}</li>)}</ul></details>:null}
+    {run.diagnostic_checks?.map((r,i)=><details key={`diagnostic-${i}`}><summary>只读诊断 · {r.command} · exit {r.exit_code}</summary><p>该失败用于分析原因，不代表测试通过。</p><pre style={{whiteSpace:'pre-wrap'}}>{r.summary}</pre></details>)}
     {run.verification.map((r,i)=><details key={i}><summary>{r.ok?'通过':'未通过'} · {r.command} · exit {r.exit_code ?? '未执行'}</summary><p>{r.category} · {r.duration_ms} ms</p><pre style={{whiteSpace:'pre-wrap'}}>{r.summary}</pre><p>日志：{r.log_path}</p></details>)}
     {run.intent==='complex' && run.plan?<details open><summary>持久化计划</summary><ol>{run.plan.steps.map(s=><li key={s.id}>{s.description} — {s.state}</li>)}</ol></details>:null}
     {(run.recovery_plan_id || run.plan_id) && ['failed','paused','cancelled'].includes(run.phase)?<button type="button" onClick={onResume}>检查并继续未完成步骤</button>:null}

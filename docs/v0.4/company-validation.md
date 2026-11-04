@@ -1,6 +1,26 @@
 # 公司环境验证流程
 
-## 同页开发与追加需求（v0.5.0）
+## 统一入口验证（当前开发分支）
+
+本轮尚未合并或发布安装包，使用 `feature/unified-agent-runtime` 源码，完整退出旧进程后启动。保留已有未提交文件，不强制切换或清理；工作区干净时可执行：
+
+```powershell
+git fetch origin
+git switch feature/unified-agent-runtime
+git pull --ff-only origin feature/unified-agent-runtime
+uv sync --locked
+npm.cmd --prefix desktop ci --no-audit --no-fund
+npm.cmd --prefix desktop run build
+npm.cmd --prefix desktop run dev
+```
+
+原 Key 保留在安全存储，不需要导出。打开测试工程，在同一个聊天框直接发送问答、分析、修改或复杂目标，已无模式选择。统一入口在当前工作区执行；需要 Worktree 和四角色时使用高级 Task。简单问答没有开发面板，修改出现自动验证结果，复杂任务出现持久化计划。停止后通过原卡片检查恢复，重启后应保留已完成步骤和累计预算。未建立计划的只读分析中断后可重新提问，不把它称为开发计划恢复。
+
+不要求用户手写验收工程：使用[统一测试用例](../../acceptance/UNIFIED_AGENT_RUNTIME_TEST_CASES.md)的受控在线脚本自动创建缺陷工程、通过真实聊天入口发送任务并独立验证。当前用户排除 `qwen3.7-plus`、`qwen3.8-flash` 及其别名；禁止用历史文档中的模型示例覆盖这一限制。脚本默认只修改隔离测试目录，Provider 价格、免费额度与服务可用性仍需按账号实际情况判断，不保证费用为零。
+
+验收时核对实际文件、unittest、Diff、计划终态、Stop/重连恢复和中文交付；展开当前诊断查看具体命令/退出码，完整脱敏 JSON 留本机。任何外部契约失败、无验证能力、403/429 或网络错误都不能当作 PASS。当前各模型与双平台结果见[统一验收报告](../../acceptance/UNIFIED_AGENT_RUNTIME_VALIDATION_REPORT.md)。
+
+## 同页开发与追加需求（历史 v0.5.0）
 
 正式发布后可安装 [Latest Release](https://github.com/yunfei00/local-coding-agent/releases/latest) 中的 Setup，或使用 Portable；源码用户同步 main。历史验证分支 `test/agent-functional-validation` 保留供复现。完整退出再启动，不能只刷新旧进程。打开有初始提交的 Git 项目，输入框选择“自主开发 · 自动验证”和已保存的模型。发送目标后批准隔离工作区；消息区可展开计划、真实测试、Diff 和报告，无需再去 Task 面板填一份目标。待本轮完成后直接在原输入框追加要求；核对 Task ID、工作区不变、已完成步骤保留、API 用量继续累计。完整退出重启后，原用户消息、追加要求和进度卡都应保留。独立多角色策略仍由高级 Task 面板设置；运行时可编辑下一条消息，需暂停或结束后发送。
 
@@ -13,7 +33,7 @@ git pull --ff-only origin main
 uv sync --locked
 npm.cmd --prefix desktop ci
 npm.cmd --prefix desktop run build
-uv run --locked python scripts/validation/real_online_agent_e2e.py --live --scenario coupon --conversation --strategy single-agent --model qwen3.7-plus --context-window 131072 --output-tokens 8192 --request-seconds 180 --max-calls 200 --max-tokens 10000000 --max-full-attempts 11 --max-seconds 14400 --authorize-budget-update --report validation-reports/company-conversation-live.json
+# 历史 Task/Worktree 专项命令请查原报告；当前统一入口使用上文新脚本，避免误调用用户禁止的模型。
 ```
 
 131072 是受控客户端窗口设置，不代表已经核实所有服务商模型规格；若本机 Profile 有已确认的窗口，请使用对应值。脚本只控制隔离测试实例的文件选择器与明确审批，其余使用真实桌面输入框/IPC、Provider、工具和 Worktree。Agent 自己生成优惠券代码、测试与中文报告；外部 12 项合同检查、原 L2 测试、追加报告章节、同 Task/Worktree、Completed 不回退、预算累计、源目录未改变都通过，才报告 PASS。403/400/超时分别保留失败，不会静默切换收费模型。测试结果写 JSON/Markdown，成功生成的工程保留在报告旁的 coupon-project-<Task ID>；它们不进入 Git。具体本轮结果见仓库 acceptance 下的 Ali 同页验收报告，DeepSeek 历史 BLOCKED 单独保留。

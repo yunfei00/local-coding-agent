@@ -29,6 +29,11 @@ def plan_steps(value):
     return validate_plan(value)
 
 
+def plan_view(plan):
+    """Never embed the execution ledger back into its own runtime snapshot."""
+    return {key:value for key,value in plan.items() if key!='execution'}
+
+
 def requested_intent(prompt):
     """Conservative request-shape fallback; model plans and tool evidence refine it."""
     paths=set(re.findall(r'[\w./\\-]+\.(?:py|tsx?|jsx?|json|toml|ya?ml|md)\b',prompt,re.I))
@@ -93,7 +98,7 @@ def export_diagnostics(root, owner, data, plans, *, exact_secrets=()):
     """Small transport response; complete filtered evidence stays in local files."""
     from agent.core.diagnostics import redact_text
     runtime=data['unified']
-    plan=plans.get(runtime['plan_id']) if runtime.get('plan_id') else None
+    plan=plan_view(plans.get(runtime['plan_id'])) if runtime.get('plan_id') else None
     def safe(value):
         if isinstance(value,str):return redact_text(value,exact_secrets=exact_secrets,max_chars=2000)
         if isinstance(value,list):return [safe(x) for x in value]
@@ -105,6 +110,8 @@ def export_diagnostics(root, owner, data, plans, *, exact_secrets=()):
         rows.extend(['当前/中断工具：'+safe(runtime['active_tool'].get('name','')), '命令：'+safe(runtime['active_tool'].get('command','')), '退出码：未确认', '本轮验证日志目录：'+safe(runtime.get('verification_log_root',''))])
     for result in runtime.get('verification',[])[:12]:
         rows.extend([f"- 命令：{safe(result.get('command',''))}",f"  exit {result.get('exit_code')} / {result.get('category')}",f"  日志：{safe(result.get('log_path') or '无命令执行日志')}",f"  摘要：{safe(result.get('summary',''))[-400:]}"])
+    for result in runtime.get('diagnostic_checks',[])[-6:]:
+        rows.extend([f"- 只读诊断命令：{safe(result['command'])}",f"  exit {result['exit_code']}（失败是分析证据，不代表测试通过）",safe(result.get('summary',''))[-400:]])
     if plan:
         rows.append('未完成步骤：')
         rows.extend(f"- {s['id']} / {s['state']} / {safe(s['description'])[:160]}" for s in plan['steps'] if s['state'] not in {'completed','skipped'})

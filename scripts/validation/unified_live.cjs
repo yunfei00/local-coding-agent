@@ -82,7 +82,7 @@ async function main(){
    const profile=manifest.profiles.find(p=>p.model_profile_id===item.profile_id);
    await runCase(profile,'question','请解释 Python 装饰器的作用。这是概念问答，不涉及项目操作。',r=>r.runtime.intent==='question'&&!r.runtime.plan_id&&r.tools.length===0&&r.dirty==='');
    if(item.category==='tool-capable'){
-    await runCase(profile,'analysis','分析 calculator.py 为什么不能通过 tests/test_calc.py。读取必要文件，给出具体原因；本轮只分析，不修改文件。',r=>r.runtime.intent==='analysis'&&r.tools.some(t=>t.name==='read_file')&&r.dirty==='');
+    await runCase(profile,'analysis','分析 calculator.py 为什么不能通过 tests/test_calc.py。读取必要文件，给出具体原因；本轮只分析，不修改文件。',r=>r.runtime.intent==='analysis'&&r.runtime.phase==='completed'&&r.answer.length>0&&r.tools.some(t=>t.name==='read_file')&&r.dirty==='');
     await runCase(profile,'change','为 calculator.py 的 add 函数增加输入校验，只接受有限的 int/float 数字，拒绝 bool 和字符串并抛 ValueError；修复加法，保留原测试，新增 unittest 覆盖输入校验。使用 uv run --no-project python -m unittest discover -s tests -v，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.runtime.changed_paths.includes('calculator.py')&&r.independent?.exit_code===0);
    }
   }
@@ -122,7 +122,7 @@ async function main(){
    const until=Date.now()+660000;
    let controlApplied=false;
    while(Date.now()<until){
-    if(!controlApplied&&ownedTurn&&(options.interrupt&&events.some(e=>e.type==='plan.step.completed')||options.reconnect&&events.some(e=>e.type==='tool.completed'&&e.name==='read_file'))){
+    if(!controlApplied&&ownedTurn&&(options.interrupt||options.reconnect)&&events.some(e=>e.type==='plan.step.completed')){
      controlApplied=true;const originalTurn=ownedTurn;
      if(options.interrupt){await page.locator('.stop-button').click();}
      else {
