@@ -55,6 +55,6 @@ uv run --locked python scripts/validation/unified_live.py --live --discover-only
 uv run --locked python scripts/validation/unified_live.py --live --suite --candidate-model qwen3.7-flash --only-model qwen3.7-flash --discovery-report validation-reports/unified-discovery-new/report.json --exclude-model qwen3.7-plus --exclude-model qwen3.8-flash --max-calls 100 --max-tokens 10000000 --output validation-reports/unified-live-new
 ```
 
-单请求 60 秒、单运行 600 秒、整个控制器 3900 秒，累计请求/Token 上限在发送前检查。两款用户禁止的模型及名称包含该 ID 的变体均排除；没有静默切换收费模型。
+默认单请求 60 秒、单运行 600 秒、整个控制器 3900 秒，累计请求/Token 上限在发送前检查。必要时可显式设置 `--request-seconds 120`（硬范围 1～180 秒），不自动扩额；用 `--suite --case coupon` 只复测失败用例，避免重新消耗全部用例。两款用户禁止的模型及名称包含该 ID 的变体均排除；没有静默切换收费模型。
 
 计算器外部检查保留原 AST 断言，允许在原测试文件中添加新方法，并在独立进程中执行冻结的原测试及输入边界契约，避免将“新增测试”误判成破坏测试。优惠券另有固定 12 项外部契约；控制器同时固定验证配置及契约文件哈希，不能削弱后宣称通过。详细 PASS/FAIL/BLOCKED 以最终报告和原始 JSON 为准。
