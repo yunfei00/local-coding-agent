@@ -3,6 +3,8 @@ import json
 import os
 import re
 import time
+import uuid
+import math
 
 from agent.llm.base import ProviderError
 
@@ -106,16 +108,65 @@ class ExecutionBudget:
             self.db.execute('UPDATE agent_execution_runs SET id=? WHERE id=?',(plan_id,self.key))
         self.key = plan_id
 
-    def reserve(self, messages, tools, output_limit):
+    def reserve(self, messages, tools, output_limit, *, api_budget=None, runtime=None, pricing=None, identity=None):
         # Conservative byte reservation includes schemas and actual image payloads.
         amount = len(json.dumps([messages,tools],ensure_ascii=False).encode()) + output_limit
         self.save()
         limits = self.data['limits']
         if self.data['calls'] >= limits['model_calls'] or self.data['reserved_tokens'] + amount > limits['tokens'] or self.data['elapsed'] >= limits['seconds']:
             raise ProviderError('EXECUTION_BUDGET_EXHAUSTED','累计调用、Token 保守预留或执行时间预算耗尽；检查 checkpoint 后调整预算。')
+        request_id=None
+        if api_budget is not None:
+            from agent.core.budget import check_api_scope, request_token_reservation, BudgetExceeded
+            input_estimate,tokens=request_token_reservation(messages,tools,output_limit)
+            pricing=pricing or {}
+            cost=(input_estimate*(pricing.get('input_price') or 0)+output_limit*(pricing.get('output_price') or 0))/1000000
+            if not math.isfinite(cost) or ((api_budget['api_cost'] is not None or api_budget['global_api_cost'] is not None) and any(pricing.get(k) is None for k in ('input_price','output_price'))):
+                raise BudgetExceeded('Cost cap requires configured finite input and output prices; no request sent')
+            request_id=str(uuid.uuid4())
+            context={'task_id':self.key,'attempt_id':request_id,'phase':'executing','role':'executor',
+                     **(identity or {}),'input_token_estimate':input_estimate,'output_limit':output_limit,
+                     'task_limits':api_budget,'global_limits':api_budget}
+            self.db.execute('BEGIN IMMEDIATE')
+            try:
+                for scope,owner in (('task',self.key),('global',None)):
+                    check_api_scope(scope=scope,caps=api_budget,used=runtime.usage(owner),tokens=tokens,cost=cost,context=context)
+                self.data.setdefault('unified_api_requests',[]).append({'id':request_id,'status':'reserved','reserved_tokens':tokens,'reserved_cost':cost,
+                    'input_tokens':input_estimate,'output_tokens':output_limit,'estimated':True,'started_at':time.time(),**(identity or {})})
+                self.data['calls'] += 1
+                self.data['reserved_tokens'] += amount
+                self.save()
+            except BaseException:
+                self.db.rollback()
+                raise
+            return request_id
         self.data['calls'] += 1
         self.data['reserved_tokens'] += amount
         self.save()
+        return request_id
+
+    def finish_api(self, identifier, *, chunk=None, status='completed', error_code=None, metadata=None):
+        if identifier is None:
+            return
+        for row in self.data.get('unified_api_requests',[]):
+            if row['id'] != identifier or row['status'] != 'reserved':
+                continue
+            row.update(status=status,ended_at=time.time(),error_code=error_code)
+            metadata=metadata or {}
+            row.update({k:metadata[k] for k in ('http_status','request_sent','finish_reason','parse_success','response_complete','response_type') if k in metadata})
+            values=(getattr(chunk,'prompt_eval_count',None),getattr(chunk,'eval_count',None))
+            usage=metadata.get('reported_usage') if metadata.get('response_complete') else None
+            if chunk is None and isinstance(usage,dict):
+                values=(usage.get('input_tokens'),usage.get('output_tokens'))
+            if all(isinstance(v,int) and not isinstance(v,bool) and v>=0 for v in values):
+                row.update(input_tokens=values[0],output_tokens=values[1],reserved_tokens=sum(values),estimated=False,
+                           cached_tokens=getattr(chunk,'cached_tokens',None) or 0)
+            actual=getattr(chunk,'actual_cost',None)
+            if actual is not None:
+                row.update(actual_cost=actual,reserved_cost=max(row['reserved_cost'],actual))
+            if status=='failed' and metadata.get('request_sent') is False:
+                row.update(status='not_sent',reserved_tokens=0,reserved_cost=0,input_tokens=0,output_tokens=0,estimated=True)
+            self.save()
 
     def continue_slice(self):
         self.save()

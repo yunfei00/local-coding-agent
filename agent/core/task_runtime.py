@@ -163,6 +163,8 @@ class TaskRuntimeStore:
     def usage(self, plan_id: str | None = None) -> dict[str, Any]:
         rows = self.db.execute("SELECT * FROM model_requests" + (" WHERE plan_id=?" if plan_id else ""),
                                (plan_id,) if plan_id else ()).fetchall()
+        from agent.core.budget import execution_api_rows
+        rows += execution_api_rows(self.db,plan_id)
         api = [r for r in rows if r["route"] == "api" and r["status"] != "not_sent"]
         usage = [json.loads(r["usage_json"]) for r in api]
         return {"api_calls": len(api), "local_calls": sum(r["route"] == "local" and r["status"] != "not_sent" for r in rows),

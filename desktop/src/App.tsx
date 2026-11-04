@@ -1,3 +1,4 @@
+import {UnifiedProgress,useUnifiedProgress} from './components/UnifiedProgress';
 import {
   FormEvent,
   useCallback,
@@ -275,9 +276,9 @@ function App() {
   const [gitOpen, setGitOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
-  const [developmentMode,setDevelopmentMode] = useState(false);
+
   const conversationTasks = useConversationTasks(activeThread?.id ?? '',status.state==='ready');
-  useEffect(()=>{if(conversationTasks.task?.entrypoint==='conversation')setDevelopmentMode(true);},[conversationTasks.task?.id,conversationTasks.task?.entrypoint]);
+  const unifiedRun = useUnifiedProgress(activeThread?.id || '',status.state === 'ready');
   const conversationRef = useRef<HTMLElement | null>(null);
   const autoFollowRef = useRef(true);
   const navigationInitializedRef = useRef(localStorage.getItem("lca-expanded-projects") !== null);
@@ -390,7 +391,7 @@ function App() {
     }
     element.scrollTop = element.scrollHeight;
     setShowJumpToBottom(false);
-  }, [items, approvals,conversationTasks.task?.revision]);
+  }, [items, approvals,conversationTasks.task?.revision,unifiedRun?.revision]);
 
   useEffect(() => {
     autoFollowRef.current = true;
@@ -426,6 +427,16 @@ function App() {
 
   useEffect(() => {
     return window.localAgent.onAgentEvent((event) => {
+      if (event.type === 'connection.restored') {
+        void window.localAgent.getAgentStatus().then(setStatus).catch(()=>{});
+        void window.localAgent.getProject().then(async session=>{
+          applyProjectSession(session);
+          const thread=(session.payload?.active_thread as ThreadRecord|undefined)?.id;
+          if(!thread){setRunningTurnId(null);return;}
+          const state=await window.localAgent.taskRequest(thread,'task.runtime.list');
+          setRunningTurnId((state.payload?.active_turn_ids as string[]|undefined)?.[0] || null);
+        }).catch(error=>setUiError(String(error)));
+      }
       if (["thread.created", "thread.updated", "thread.deleted", "turn.started", "turn.completed", "turn.cancelled", "turn.failed"].includes(event.type)) {
         void window.localAgent.listProjects().then(list => setProjects(readProjectList(list))).catch(cause => setUiError(String(cause)));
       }
@@ -1364,29 +1375,8 @@ function App() {
     try {
       boundThread = await ensureConversation(prompt);
       setItems(current => [...current, {id:userItemId, role:"user", text:prompt}]);
-      if (developmentMode) {
-        const current=conversationTasks.task;
-        if (current && current.thread_id===boundThread.id) {
-          if (['paused','failed','cancelled'].includes(current.status) && !window.confirm('检查当前开发工作区和检查点后继续；不会重放已完成修改。')) throw new Error('已保留输入，尚未继续开发');
-          await window.localAgent.taskRequest(boundThread.id,'task.continue',{task_id:current.id,prompt,followup_id:crypto.randomUUID(),confirm_workspace:true,entrypoint:'conversation'});
-        } else {
-          const id=selectedModel.replace(/^profile:/,'');
-          const settings=(await window.localAgent.taskRequest(boundThread.id,'task.catalog.get')).payload?.catalog as {profiles:Array<{model_profile_id:string;connection_id:string}>;connections:Array<{connection_id:string;provider_type:string}>};
-          const profile=settings.profiles.find(p=>p.model_profile_id===id);
-          const local=settings.connections.find(c=>c.connection_id===profile?.connection_id)?.provider_type==='ollama';
-          const roles=Object.fromEntries((local?['planner','executor','reviewer','escalation']:['executor']).map(role=>[role,{model_profile_id:id}]));
-          await window.localAgent.taskRequest(boundThread.id,'task.start',{goal:prompt,entrypoint:'conversation',config_overrides:{strategy:local?'local-only':'single-agent',roles}});
-        }
-      } else {
-      const started = await window.localAgent.startTurn(
-        boundThread.id,
-        prompt,
-        selectedModel
-      );
-      if (started.turn_id) {
-        setRunningTurnId(started.turn_id);
-      }
-      }
+      const started = await window.localAgent.startTurn(boundThread.id,prompt,selectedModel,true);
+      if (started.turn_id) setRunningTurnId(started.turn_id);
       setInput(current => current.trim() === prompt ? "" : current);
     } catch (error) {
       inputDrafts.current.set(workspace.id + ":" + (boundThread?.id ?? "draft"), prompt);
@@ -1663,7 +1653,19 @@ function App() {
                   </div>
                 </div>
               ))}
-          {developmentMode && conversationTasks.task ? <ConversationTask task={conversationTasks.task}
+          {unifiedRun ? <UnifiedProgress run={unifiedRun} onDiagnostics={()=>togglePanel('diagnostics')} onExport={async()=>{
+            if(!activeThread)throw new Error('没有当前会话');
+            return (await window.localAgent.taskRequest(activeThread.id,'task.runtime.diagnostics',{run_id:unifiedRun.id})).payload || {};
+          }} onResume={()=>{
+            const planId=unifiedRun.recovery_plan_id || unifiedRun.plan_id;
+            if (!activeThread || !planId || runningTurnId) return;
+            void (async()=>{
+              await window.localAgent.planRequest(activeThread.id,'plan.recover',{plan_id:planId});
+              const result=await window.localAgent.startTurn(activeThread.id,'继续原始需求，只完成当前未完成步骤；先检查现状，保留已完成操作，重新验证并用中文报告。',selectedModel,true);
+              if(result.turn_id)setRunningTurnId(result.turn_id);
+            })().catch(error=>setUiError(String(error)));
+          }}/>:null}
+          {!taskOpen && conversationTasks.task ? <ConversationTask task={conversationTasks.task}
             onDetails={()=>togglePanel('task')} onAction={operation=>{
               if (!activeThread || (operation==='task.resume' && !window.confirm('确认检查开发工作区后继续？'))) return;
               void window.localAgent.taskRequest(activeThread.id,operation,{task_id:conversationTasks.task.id,confirm_workspace:true}).catch(error=>setUiError(String(error)));
@@ -1734,11 +1736,7 @@ function App() {
                 event.currentTarget.form?.requestSubmit();
               }
             }}
-            disabled={
-              !workspace ||
-              status.state !== "ready" ||
-              !providerReady
-            }
+            disabled={!workspace}
             placeholder={
               !workspace
                 ? "Open a project first."
@@ -1751,9 +1749,7 @@ function App() {
           />
           <div className="composer-row">
             <div className="model-controls">
-              <select aria-label="对话执行方式" value={developmentMode?'development':'chat'} disabled={Boolean(runningTurnId) || Boolean(conversationTasks.active)} onChange={event=>setDevelopmentMode(event.target.value==='development')}>
-                <option value="chat">对话与代码操作</option><option value="development">自主开发 · 自动验证</option>
-              </select>
+
               <select
                 className={
                   "permission-select permission-" + permissionMode
@@ -1775,7 +1771,7 @@ function App() {
               <select
                 className="model-select"
                 aria-label="Chat model"
-                title={developmentMode ? '新开发使用所选模型；已开始的开发保留模型与预算快照，高级配置可在暂停后调整。' : 'Chat model'}
+                title="Agent model"
                 value={selectedModel}
                 disabled={
                   !provider?.online ||

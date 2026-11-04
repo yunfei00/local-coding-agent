@@ -2,7 +2,7 @@
 
 v0.5.0 使用用户确认的在线模型验收标准：同页自主开发、真实在线工程及 GUI/视觉路径已通过。版本说明与已知限制见 [v0.5.0](docs/releases/v0.5.0.md)。以下阶段性记录保留历史验收范围；正式安装包及当前发布状态以 [Latest Release](https://github.com/yunfei00/local-coding-agent/releases/latest) 页面为准。
 
-当前验证分支增加同页自主开发：在聊天输入框选择“自主开发 · 自动验证”并发送目标，进度、计划、测试、Diff 与接受结果都在消息区展示。结束或暂停后可继续在原输入框追加需求，复用同一 Task/Worktree、模型与累计预算。高级 Task 面板继续提供多角色策略、验证命令和诊断。使用与边界见[公司部署与使用](docs/v0.4/user-guide.md)。源码验证结果与正式发布分别记录，不代表旧安装包已更新。
+当前开发分支增加统一 Agent 入口：直接在聊天框输入需求，无需选择模式。概念问答不创建计划；分析默认只读；修改后程序自动执行工程检查；复杂开发使用持久化计划和检查点。阶段、文件变化、验证结果及恢复入口在同一消息区展示。统一入口使用当前工作区和底部所选模型；需要隔离 Worktree、多角色或 Local-first 编排时仍可使用高级 Task。架构见[统一执行架构](docs/UNIFIED_AGENT_RUNTIME_ARCHITECTURE.md)，实际结果见[统一入口验收](acceptance/UNIFIED_AGENT_RUNTIME_VALIDATION_REPORT.md)。这是源码变更，不代表旧安装包已更新。
 
 本轮真实阿里模型、同页续作、GUI/视觉和双平台回归的分项结果见[综合验收报告](acceptance/L3_ALI_CONVERSATION_VALIDATION_REPORT.md)，包括未通过的模型与运行边界；验证分支没有自动合并 main。
 
