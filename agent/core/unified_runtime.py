@@ -126,6 +126,7 @@ def export_diagnostics(root, owner, data, plans, *, exact_secrets=()):
 
 def verification_policy(root: Path, paths, configured=(), override="auto"):
     """Bounded discovery, only existing project capabilities. Commands still require approval."""
+    root=root.resolve()  # Windows TEMP may use an 8.3 alias while children resolve to long paths.
     if override not in {"auto", "none", "basic", "targeted", "full", "manual"}:
         raise ValueError("Invalid unified verification level")
     paths = sorted(set(str(p).replace("\\", "/") for p in paths))

@@ -83,7 +83,7 @@ async function main(){
    await runCase(profile,'question','请解释 Python 装饰器的作用。这是概念问答，不涉及项目操作。',r=>r.runtime.intent==='question'&&!r.runtime.plan_id&&r.tools.length===0&&r.dirty==='');
    if(item.category==='tool-capable'){
     await runCase(profile,'analysis','分析 calculator.py 为什么不能通过 tests/test_calc.py。读取必要文件，给出具体原因；本轮只分析，不修改文件。',r=>r.runtime.intent==='analysis'&&r.runtime.phase==='completed'&&r.answer.length>0&&r.tools.some(t=>t.name==='read_file')&&r.dirty==='');
-    await runCase(profile,'change','为 calculator.py 的 add 函数增加输入校验，只接受有限的 int/float 数字，拒绝 bool 和字符串并抛 ValueError；修复加法，保留原测试，新增 unittest 覆盖输入校验。使用 uv run --no-project python -m unittest discover -s tests -v，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.runtime.changed_paths.includes('calculator.py')&&r.independent?.exit_code===0);
+    await runCase(profile,'change','为 calculator.py 的 add 函数增加输入校验，只接受有限的 int/float 数字；任一参数为 bool、字符串、None、NaN、正负 Infinity 时抛 ValueError。修复加法，保留原测试，新增 unittest 覆盖上述全部边界。使用 uv run --no-project python -m unittest discover -s tests -v，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.runtime.changed_paths.includes('calculator.py')&&r.independent?.exit_code===0);
    }
   }
   if(manifest.suite){

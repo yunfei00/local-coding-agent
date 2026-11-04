@@ -2431,6 +2431,11 @@ class AgentServer:
                                 "模型拒绝了响应，未接受完成状态。" if finish_reason == "content_filter" else
                                 f"模型响应被截断（finish_reason={finish_reason}, max_output_tokens={limit}）；未执行本批工具。请分段生成，或在 Models & Routing 调整该模型单次输出上限后新建任务。")
                         break
+                    except TimeoutError as exc:
+                        if perf_counter()>=deadline:
+                            raise
+                        execution.finish_api(model_request_id,status='failed',error_code='MODEL_REQUEST_TIMEOUT',metadata=getattr(getattr(provider,'provider',provider),'response_metadata',{}))
+                        raise ProviderError('MODEL_REQUEST_TIMEOUT',f"模型单次请求超过 {getattr(provider,'request_timeout',120)} 秒；不是累计任务时间耗尽。未执行该响应，调用与保守预留保留，请检查连接后恢复。") from exc
                     except ProviderError as exc:
                         execution.finish_api(model_request_id,status='failed',error_code=exc.code,metadata=getattr(getattr(provider,'provider',provider),'response_metadata',{}))
                         protocol_error = exc.code in {"MODEL_INVALID_TOOL_CALL", "MODEL_TOOL_ARGUMENTS_TRUNCATED", "MODEL_TRUNCATED"}
@@ -2568,7 +2573,7 @@ class AgentServer:
                                 unresolved_tool_failures.discard('run_command')
                                 unresolved_failure_codes.pop('run_command',None)
                             runtime['reason'] = policy['reason'] if not failed else '; '.join(r['category']+': '+r['command']+' (exit '+str(r['exit_code'])+') '+r['summary'][-500:] for r in failed)[:2000]
-                            runtime['validation_blocked'] = bool(failed or (not results and not intermediate))
+                            runtime['validation_blocked'] = bool(failed or (not results and not intermediate and policy['level']!='none'))
                             # Diff inspection is also authorized, but never substitutes for tests.
                             await verify_execute('git_diff',{})
                         if runtime.get('validation_blocked'):
@@ -2623,7 +2628,7 @@ class AgentServer:
                         )
                         verified = verification_passed(
                             active_step_id, requirement, evidence,
-                            loop_complete=not gaps or bool(plan_id) or (unified and runtime['intent']=='complex') or (not requirement.strip() and
+                            loop_complete=not gaps or bool(plan_id) or (unified and (runtime['intent']=='complex' or (not requirement.strip() and verification_options.get('verification_level')=='none'))) or (not requirement.strip() and
                                 active_plan["steps"][-1]["id"] != active_step_id))
                         advanced=self.store.task_plans.advance_verified(
                             active_plan["id"], active_step_id, evidence, verified)

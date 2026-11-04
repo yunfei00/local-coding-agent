@@ -20,6 +20,10 @@ describe('统一 Agent 结果',()=>{
     const html=renderToStaticMarkup(<UnifiedProgress run={{...base,intent:'complex',plan:{steps:[{id:'s',description:'原步骤',state:'completed'}]}}} {...actions}/>);
     expect(html).toContain('原步骤');expect(html).toContain('completed');expect(html).toContain('持久化计划');
   });
+  it('只读分析的失败命令是诊断证据，不显示验证通过',()=>{
+    const html=renderToStaticMarkup(<UnifiedProgress run={{...base,intent:'analysis',diagnostic_checks:[{command:'uv run python -m unittest',exit_code:1,summary:'AssertionError'}]}} {...actions}/>);
+    expect(html).toContain('只读诊断');expect(html).toContain('exit 1');expect(html).toContain('不代表测试通过');expect(html).not.toContain('已完成 · 验证通过');
+  });
   it('诊断只按需加载，不自动展示历史',()=>{
     const onExport=vi.fn(async()=>({markdown:'历史不可默认展示',json_path:'history.json'}));
     const html=renderToStaticMarkup(<UnifiedProgress run={{...base,intent:'change'}} {...actions} onExport={onExport}/>);

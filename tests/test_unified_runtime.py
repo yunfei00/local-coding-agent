@@ -63,6 +63,17 @@ class UnifiedPolicyTests(unittest.TestCase):
             self.assertEqual(result['level'],'manual');self.assertEqual(result['commands'],[])
             self.assertIn('TypeScript',result['reason'])
 
+    def test_package_discovery_resolves_root_alias_before_relative_paths(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);(root/'package.json').write_text('{"scripts":{"typecheck":"tsc --noEmit"}}')
+            original=Path.cwd()
+            try:
+                os.chdir(root)
+                result=verification_policy(Path('.'),['src/a.ts'])
+            finally:
+                os.chdir(original)
+            self.assertIn('npm run typecheck',result['commands'])
+
     def test_result_cannot_trust_model_claims_or_diff_only(self):
         self.assertEqual(result_view(changed=True,results=[]),'completed_unverified')
         self.assertEqual(result_view(changed=True,results=[{'ok':False,'category':'environment'}]),'awaiting_user')
@@ -180,6 +191,27 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(p.calls,2);self.assertEqual(r['outcome'],'awaiting_user')
         self.assertEqual(r['verification'][0]['category'],'environment')
         self.assertEqual(r['verification'][0]['exit_code'],1)
+
+    async def test_explicit_none_finishes_unverified_without_false_pass_or_block(self):
+        self.server.store.set_setting('orchestration.config',json.dumps(validate_config({'verification_level':'none'})))
+        _,r=await self.run_steps([tool_step('write_file',{'path':'calculator.py','content':'def add(a,b): return a+b\n'}),final_step('修改完成，未运行测试')])
+        self.assertEqual(r['phase'],'completed');self.assertEqual(r['outcome'],'completed_unverified')
+        self.assertEqual(r['verification'],[]);self.assertFalse(r['validation_blocked'])
+
+    async def test_request_timeout_is_not_reported_as_total_task_timeout(self):
+        class SlowProvider(ScriptedProvider):
+            request_timeout=.02
+            async def stream_chat(self,**kwargs):
+                self.calls+=1
+                await asyncio.sleep(1)
+                if False:yield
+        p=SlowProvider([])
+        await self.server.run_tool_turn(self.ws,thread_id=self.thread.id,turn_id='request-timeout',prompt='解释装饰器',model='mock',provider=p,unified=True)
+        errors=[e['payload'] for e in self.ws.messages if e['type']=='turn.failed']
+        self.assertEqual(p.calls,1);self.assertEqual(errors[-1]['code'],'MODEL_REQUEST_TIMEOUT')
+        data=json.loads(self.server.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',('request-timeout',)).fetchone()[0])
+        self.assertEqual(data['unified_api_requests'][0]['status'],'failed')
+        self.assertGreater(data['unified_api_requests'][0]['reserved_tokens'],0)
 
     async def test_explicit_zero_budget_sends_no_request(self):
         self.server.store.set_setting('orchestration.config',json.dumps(validate_config({'budget':{'api_calls':0}})))
