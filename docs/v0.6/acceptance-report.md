@@ -29,7 +29,7 @@
 | 混合 Provider | 19 PASS | `validation-reports/v06-mixed-final.log` |
 | 前端 | 18 文件、62 PASS | `validation-reports/v06-frontend-serial.log` |
 | 类型检查、前端/Electron 构建 | PASS | `validation-reports/v06-complete-validation.log` |
-| 实际 Electron desktop-smoke | 53 PASS、0 SKIP | `validation-reports/v06-desktop-smoke.log` |
+| 实际 Electron desktop-smoke | 53 PASS、0 SKIP；最终构建复测同样通过 | `validation-reports/v06-desktop-smoke-final.log` |
 
 定向套件包含在完整 Python 中，不能相加；原有两项条件跳过未改成通过。全量摘要 Errors=0；最后一次自然 GUI 意图修复另经 29 项验证，最终 HEAD 仍须 CI 全量覆盖。
 
@@ -88,9 +88,13 @@ Usage 属于相应数据库累计快照，包含失败/恢复时不能直接相�
 
 ## CI 与最终门禁
 
-19bd207、27a12c1 的 Windows/Ubuntu 全部通过；最近已确认：[41820041422](https://github.com/yunfei00/local-coding-agent/actions/runs/41820041422)。865990a 和最终文档/驱动提交须等待各自 CI，不沿用旧提交绿色状态。
+源码与驱动提交 `8329cc158f13703584c08da4953e1c1817c45789` 的 push 和 PR 两次 CI 均为 Windows/Ubuntu 全通过：[push 41826050081](https://github.com/yunfei00/local-coding-agent/actions/runs/41826050081)、[PR 41826117426](https://github.com/yunfei00/local-coding-agent/actions/runs/41826117426)。包含 Python、类型检查、前端测试、构建、实际 Windows Electron GUI 与 desktop-smoke。PR 为 [#29](https://github.com/yunfei00/local-coding-agent/pull/29)，无合并冲突。
 
-最终结论：**BLOCKED**。18 项已成功在线用例和完整回归有效，但最终纯 GUI 补充验收未完成，不宣称全部功能已验收。保留 PR；本轮不绕过门槛合并 main。最终 HEAD CI 和 desktop-smoke 结果另记录。没有创建正式 Release、Tag 或安装包。
+此前 `865990a` 的 Windows smoke 曾在 More → Diagnostics 菜单等待超时，Ubuntu 通过。该失败记录保留为 `validation-reports/v06-ci-8659-failed.log`，没有删断言；同一产品代码在本机最终 smoke 及上述两个独立 CI 均通过。仍属一次发生过的时序失败，不能声称从未失败。本文后续仅补充验收证据，最新 HEAD 的 CI 以 PR Checks 为准。
+
+最终结论：**BLOCKED**。18 项已成功在线用例、完整回归、最终 desktop-smoke 和已确认 CI 有效，但纯 GUI 补充验收未完成，不宣称全部功能已验收。2026-11-05 继续时主机可用内存仅 147 MB、系统提交量 44872859648 / 45414780928 字节，未继续重复启动在线 GUI 任务。保留 PR，本轮不绕过门槛合并 main。没有创建正式 Release、Tag 或安装包。
+
+下一步是主机资源恢复后，只执行 `gui --gui-only` 补充用例，检查真实桌面动作、无源码变更以及 `completed_unverified/manual` 结果；已有 Python/React/Electron 等 18 项不需要重新消耗模型额度。无需重新配置 Key 或增加日常预算。
 
 ## 公司更新
 

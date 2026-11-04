@@ -28,3 +28,5 @@ node scripts/validation/desktop-smoke.cjs
 只操作测试程序及隔离目录，不删除用户历史、关闭无关应用或自动恢复用户任务。
 
 本机曾在并行 Vitest/多个桌面运行叠加时遇到 VirtualAlloc/V8 内存失败，原始失败报告保留。后续采用串行桌面验收、单 worker 前端测试；一次 React 进程回归在资源恢复后单独复测通过。CI 的首次冷启动窗口枚举超时已按真实 UIA 工具允许的 60 秒预算处理，保留所有窗口、输入、截图、停止和恢复断言，没有跳过真实 GUI 测试。
+
+最终构建的 desktop-smoke 已再次 53 项全部通过，`8329cc1` 的 push/PR 两次 Windows CI 亦通过。但新增的纯 GUI 结果语义补充在线用例在资源耗尽时无响应，标记 BLOCKED，详见 [验收报告](acceptance-report.md)。已有动作成功不替代这项最终语义验收，因此当前保留 PR，未合并 main。

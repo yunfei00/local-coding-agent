@@ -938,12 +938,49 @@
     },
     "desktop_smoke": {
       "passed": 53,
-      "skipped": 0
+      "skipped": 0,
+      "final_log": "validation-reports/v06-desktop-smoke-final.log"
     },
     "full_log": "validation-reports/20261104-191955-799454.log",
     "focused_last_code": {
       "passed": 29,
       "log": "validation-reports/v06-focused-final.log"
     }
+  },
+  "supplemental_checks": [
+    {
+      "case": "gui-only-final-outcome",
+      "model": "qwen3.7-flash",
+      "result": "BLOCKED",
+      "reason": "HOST_RESOURCE_EXHAUSTED_DESKTOP_UNRESPONSIVE",
+      "report_ref": "validation-reports/v06-real-gui-semantics-20261104/report.json",
+      "report_sha256": "4bd668e07c9e36787153426b6aeef4a6be9b9d8823dd87e3a9617bb132ed0afc",
+      "host_memory": {
+        "available_mb": 288,
+        "committed_bytes": 44935430144,
+        "commit_limit_bytes": 45414780928,
+        "nonpaged_pool_bytes": 9358344192
+      },
+      "owned_process_tree_stopped": true,
+      "included_in_pass_count": false
+    }
+  ],
+  "confirmed_ci": {
+    "head": "8329cc158f13703584c08da4953e1c1817c45789",
+    "push": {
+      "run_id": 41826050081,
+      "windows": "PASS",
+      "ubuntu": "PASS"
+    },
+    "pull_request": {
+      "number": 29,
+      "run_id": 41826117426,
+      "windows": "PASS",
+      "ubuntu": "PASS"
+    }
+  },
+  "merge_gate": {
+    "result": "BLOCKED",
+    "reason": "纯 GUI 最终结果语义补充验收未通过；保留 PR，不合并 main。"
   }
 }
