@@ -3110,7 +3110,10 @@ class AgentServer:
                             }
                     else:
                         uncertain = active_plan and self.store.task_plans.uncertain_operation(active_plan['id'], fingerprint)
-                        async with asyncio.timeout(min(getattr(provider,'request_timeout',120),max(.01, deadline - perf_counter()))):
+                        # Provider request_timeout 仅限制模型 HTTP 请求。工具和
+                        # 审批沿用各自限制，并受任务总截止时间约束，不能在
+                        # 模型的 60 秒窗口到期时误报累计执行时间耗尽。
+                        async with asyncio.timeout(max(.01, deadline - perf_counter())):
                             payload = await self._authorize_tool(
                             ws, project=project, call=call, call_id=call_id,
                             thread_id=thread_id, turn_id=turn_id,

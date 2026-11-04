@@ -52,6 +52,34 @@ class RuntimeIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(runtime['phase'],'completed');self.assertEqual(runtime['outcome'],'completed_unverified')
         self.assertEqual(runtime['level'],'manual')
 
+    async def test_tool_and_approval_wait_do_not_use_model_request_timeout(self):
+        async def approved_action(*args,**kwargs):
+            await asyncio.sleep(.08)
+            return {'ok':True,'changed_paths':[],'summary':'unit action','data':{}}
+        self.server._authorize_tool=approved_action
+        provider=ScriptedProvider([tool_step('desktop_click',{'window_id':'unit-window','selector':{'name':'Settings'}}),final_step('动作完成，待独立验收')])
+        provider.request_timeout=.02
+        ws=FakeWebSocket()
+        await self.server.run_tool_turn(ws,thread_id=self.thread.id,turn_id='slow-tool',prompt='在桌面窗口点击 Settings',model='mock',provider=provider,unified=True)
+        runtime=[e['payload']['runtime'] for e in ws.messages if e['type']=='agent.runtime.updated'][-1]
+        self.assertEqual(runtime['phase'],'completed')
+        self.assertEqual(runtime['outcome'],'completed_unverified')
+        self.assertFalse(any(e['payload'].get('code')=='EXECUTION_TIMEOUT' for e in ws.messages))
+
+    async def test_tool_wait_still_obeys_total_task_deadline(self):
+        cancelled=asyncio.Event()
+        async def waiting_action(*args,**kwargs):
+            try:await asyncio.sleep(5)
+            finally:cancelled.set()
+        self.server._authorize_tool=waiting_action
+        self.server.continuation_policy={**self.server.continuation_policy,'seconds':.5}
+        provider=ScriptedProvider([tool_step('desktop_click',{'window_id':'unit-window','selector':{'name':'Settings'}})])
+        provider.request_timeout=10
+        ws=FakeWebSocket()
+        await self.server.run_tool_turn(ws,thread_id=self.thread.id,turn_id='deadline-tool',prompt='在桌面窗口点击 Settings',model='mock',provider=provider,unified=True)
+        self.assertTrue(cancelled.is_set())
+        self.assertTrue(any(e['payload'].get('code')=='EXECUTION_TIMEOUT' for e in ws.messages))
+
     async def test_interrupted_review_requires_approval_and_is_not_success_evidence(self):
         plans=self.server.store.task_plans
         plan_id=plans.create(self.thread.id,'核对中断',[{'description':'验证'}]);step=plans.active_step(plan_id)

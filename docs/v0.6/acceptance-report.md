@@ -14,6 +14,7 @@
 - 计划步骤已完成但最终检查阻断时恢复 owner 错误：保留原执行，只重做未完成检查。
 - 未知中断操作需审阅：用户核对后记 reviewed 而非 succeeded，不伪造步骤完成；后续副作用仍需审批。审批异步派发避免同一 WebSocket 等待死锁。
 - 桌面动作曾被当作只读分析、运行产物误触发代码验证：修正动作意图解析，忽略生成的 `.runtime`；没有独立 GUI 合约时显示待独立验收。
+- 最后补充用例进一步确认：工具/审批等待错误套用模型请求超时，600 秒任务实际约 100 秒即报累计耗尽。已将该边界改为任务 deadline，保留工具自身超时、取消和审批；模型 HTTP 仍有独立请求超时。没有增加任务默认预算。
 
 详细文件与协议见 [implementation.md](implementation.md)、[state-machine.md](state-machine.md)、[api-tracing.md](api-tracing.md)、[recovery.md](recovery.md)。
 
@@ -23,7 +24,7 @@
 | --- | --- | --- |
 | 修改前 Python 基线 | 520 项：518 PASS、2 SKIP | 基线审计 |
 | 完整 Python | 549 项：547 PASS、2 SKIP、0 FAIL | `validation-reports/20261104-191955-799454.log` |
-| 新增事件/HTTP/集成定向 | 29 PASS | `validation-reports/v06-focused-final.log` |
+| 新增事件/HTTP/集成定向 | 最后修复后 31 PASS（新增超时隔离与总任务取消两项） | `validation-reports/v06-timeout-after.log` |
 | 原统一运行时 | 41 PASS | `validation-reports/v06-unified-final.log` |
 | 恢复回归 | 19 PASS | `validation-reports/v06-recovery-final.log` |
 | 混合 Provider | 19 PASS | `validation-reports/v06-mixed-final.log` |
@@ -31,7 +32,7 @@
 | 类型检查、前端/Electron 构建 | PASS | `validation-reports/v06-complete-validation.log` |
 | 实际 Electron desktop-smoke | 53 PASS、0 SKIP；最终构建复测同样通过 | `validation-reports/v06-desktop-smoke-final.log` |
 
-定向套件包含在完整 Python 中，不能相加；原有两项条件跳过未改成通过。全量摘要 Errors=0；最后一次自然 GUI 意图修复另经 29 项验证，最终 HEAD 仍须 CI 全量覆盖。
+定向套件包含在完整 Python 中，不能相加；原有两项条件跳过未改成通过。549 项全量摘要 Errors=0；最后工具超时修复新增两项（修复前一项实际失败，修复后 31 项全部通过），最终 HEAD 的 551 项完整回归由 CI 继续验证，不预先计为通过。
 
 ```powershell
 uv sync --locked
@@ -85,6 +86,8 @@ Usage 属于相应数据库累计快照，包含失败/恢复时不能直接相�
 中途实际出现 VirtualAlloc failed、Node OOM 和低可用内存。保留失败日志，串行/单 worker 后全量通过；没有重启 Windows、停止无关应用或更改全局内存设置。
 
 最终纯 GUI 结果语义补充用例 `v06-real-gui-semantics-20261104` 为 **BLOCKED**：可用内存 288 MB、系统提交量 44935430144 / 45414780928 字节、非分页池 9358344192 字节，桌面/IPC 无响应；后端记录 EXECUTION_TIMEOUT。已停止严格限定的本次驱动进程树、删除隔离的加密凭据副本，保留任务数据库及失败报告。不能仅凭资源指标排除产品缺陷，故不将本次失败改为 PASS。该补充用例未进入 18 项通过统计。驱动补上 IPC 90 秒和清理 10 秒等待上限，避免控制器本身无限等待；没有再次重复在线调用。
+
+2026-11-05 只读检查同一数据库进一步发现：16 次模型调用、elapsed=99.734 秒、任务 limits.seconds=600，却为 EXECUTION_TIMEOUT。源码确认 `_authorize_tool` 外层错误使用 Provider 请求超时；修复前自动复现“工具等待超过模型请求上限导致 failed”，修复后该用例完成为未独立验证，并另证总任务到期仍取消。该软件缺陷已修正，不能把原失败完全归咎于主机资源；尚无修复后的真实 GUI 补充通过证据。
 
 ## CI 与最终门禁
 

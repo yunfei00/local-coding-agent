@@ -943,8 +943,12 @@
     },
     "full_log": "validation-reports/20261104-191955-799454.log",
     "focused_last_code": {
-      "passed": 29,
-      "log": "validation-reports/v06-focused-final.log"
+      "passed": 31,
+      "log": "validation-reports/v06-timeout-after.log"
+    },
+    "unified_after_timeout_fix": {
+      "passed": 41,
+      "log": "validation-reports/v06-unified-timeout-final.log"
     }
   },
   "supplemental_checks": [
@@ -962,7 +966,15 @@
         "nonpaged_pool_bytes": 9358344192
       },
       "owned_process_tree_stopped": true,
-      "included_in_pass_count": false
+      "included_in_pass_count": false,
+      "subsequent_read_only_diagnosis": {
+        "calls": 16,
+        "elapsed_seconds": 99.734,
+        "task_limit_seconds": 600,
+        "error_code": "EXECUTION_TIMEOUT",
+        "confirmed_code_defect": "工具和审批错误套用模型 HTTP 请求超时，已修复并通过先失败后通过的回归。",
+        "live_after_fix": "NOT RUN"
+      }
     }
   ],
   "confirmed_ci": {
