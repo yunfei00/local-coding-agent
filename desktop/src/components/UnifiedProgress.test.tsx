@@ -4,6 +4,16 @@ import {UnifiedProgress,type UnifiedRun} from './UnifiedProgress';
 const base:UnifiedRun={id:'run',intent:'question',phase:'completed',outcome:'completed_verified',level:'none',changed_paths:[],verification:[]};
 const actions={onResume:()=>{},onDiagnostics:()=>{}};
 describe('统一 Agent 结果',()=>{
+  it('没有持久化 Plan 的中断运行也有明确的原运行恢复入口',()=>{
+    const html=renderToStaticMarkup(<UnifiedProgress run={{...base,intent:'analysis',phase:'paused',outcome:'awaiting_user',reason:'后端中断'}} {...actions}/>);
+    expect(html).toContain('检查并恢复原运行');expect(html).toContain('后端中断');
+    expect(html).not.toContain('已完成 · 验证通过');
+  });
+  it('取消不显示成功，并保留显式恢复入口',()=>{
+    const html=renderToStaticMarkup(<UnifiedProgress run={{...base,intent:'change',phase:'cancelled',outcome:'cancelled'}} {...actions}/>);
+    expect(html).toContain('已取消');expect(html).toContain('检查并恢复原运行');
+    expect(html).not.toContain('已完成 · 验证通过');
+  });
   it('问答不显示开发计划和测试面板',()=>{
     expect(renderToStaticMarkup(<UnifiedProgress run={base} {...actions}/>)).toBe('');
   });

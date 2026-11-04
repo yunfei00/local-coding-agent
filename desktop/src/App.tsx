@@ -268,6 +268,7 @@ function App() {
   useLayoutEffect(() => {setInput(inputDrafts.current.get(inputOwner) ?? "");}, [inputOwner]);
   const [runningTurnId, setRunningTurnId] = useState<string | null>(null);
   const [uiError, setUiError] = useState<string | null>(null);
+  const [followupNotice,setFollowupNotice]=useState<string | null>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -283,6 +284,10 @@ function App() {
   const autoFollowRef = useRef(true);
   const navigationInitializedRef = useRef(localStorage.getItem("lca-expanded-projects") !== null);
   const sendingRef = useRef(false);
+  const followupRetryRef=useRef<{owner:string;prompt:string;id:string}|undefined>(undefined);
+  const streamSegments=useRef(new Map<string,number>());
+  const appliedFollowups=useRef(new Set<string>());
+  useEffect(()=>setFollowupNotice(null),[inputOwner]);
 
   useEffect(() => {localStorage.setItem("lca-sidebar-collapsed", String(sidebarCollapsed));}, [sidebarCollapsed]);
   useEffect(() => {
@@ -540,6 +545,7 @@ function App() {
       }
 
       if (event.type === "turn.started" && event.turn_id) {
+        streamSegments.current.set(event.turn_id,0);
         setRunningTurnId(event.turn_id);
         setContextUsage(null);
         return;
@@ -557,10 +563,21 @@ function App() {
         return;
       }
 
+      if(event.type==='turn.followup.applied' && event.turn_id){
+        const key=(event.payload?.message_ids as string[] || []).join(':');
+        if(!appliedFollowups.current.has(key)){
+          appliedFollowups.current.add(key);
+          streamSegments.current.set(event.turn_id,(streamSegments.current.get(event.turn_id)||0)+1);
+          setItems(current=>[...current,{id:'followup-boundary:'+key,role:'system',text:'追加需求已生效：从此处继续原任务，已完成操作不重放。'}]);
+        }
+        setFollowupNotice('追加需求已生效');
+        return;
+      }
       if (event.type === "turn.delta" && event.turn_id) {
         const delta = String(event.payload?.delta ?? "");
         setItems((current) => {
-          const id = "agent:" + event.turn_id;
+          const segment=streamSegments.current.get(String(event.turn_id))||0;
+          const id = "agent:" + event.turn_id+(segment?':followup:'+segment:'');
           const existing = current.find((item) => item.id === id);
           if (existing) {
             return current.map((item) =>
@@ -892,7 +909,7 @@ function App() {
         const discarded = Number(event.payload?.discard_response_characters ?? 0);
         setItems((current) => {
           const retained = Number.isInteger(discarded) && discarded > 0 ? current.map(item =>
-            item.id === "agent:" + event.turn_id ? {...item, text:[...item.text].slice(0, -discarded).join("")} : item) : current;
+            item.id === "agent:" + event.turn_id+((streamSegments.current.get(String(event.turn_id))||0)?':followup:'+streamSegments.current.get(String(event.turn_id)):'') ? {...item, text:[...item.text].slice(0, -discarded).join("")} : item) : current;
           const existing = retained.find((item) => item.id === id);
           if (existing) {
             return retained.map((item) =>
@@ -1356,8 +1373,6 @@ function App() {
     if (
       !workspace ||
       !prompt ||
-      runningTurnId ||
-      conversationTasks.active ||
       historyBusy ||
       !providerReady
       || sendingRef.current
@@ -1368,6 +1383,7 @@ function App() {
     setUiError(null);
     sendingRef.current = true;
     const userItemId = "user:" + Date.now();
+    const appending=Boolean(runningTurnId || conversationTasks.active);
     autoFollowRef.current = true;
     setShowJumpToBottom(false);
     inputDrafts.current.delete(inputOwner);
@@ -1375,14 +1391,24 @@ function App() {
     try {
       boundThread = await ensureConversation(prompt);
       setItems(current => [...current, {id:userItemId, role:"user", text:prompt}]);
-      const started = await window.localAgent.startTurn(boundThread.id,prompt,selectedModel,true);
-      if (started.turn_id) setRunningTurnId(started.turn_id);
+      if(appending){
+        const retry=followupRetryRef.current;
+        const id=retry?.owner===inputOwner && retry.prompt===prompt ? retry.id : crypto.randomUUID();
+        followupRetryRef.current={owner:inputOwner,prompt,id};
+        if(conversationTasks.active)await window.localAgent.taskRequest(boundThread.id,'task.append',{task_id:conversationTasks.active.id,prompt,message_id:id});
+        else await window.localAgent.appendTurn(boundThread.id,runningTurnId!,prompt,id);
+        followupRetryRef.current=undefined;
+        setFollowupNotice('追加需求已排队，将在完整工具批次结束后的下一次模型请求前生效。');
+      }else{
+        const started = await window.localAgent.startTurn(boundThread.id,prompt,selectedModel,true);
+        if (started.turn_id) setRunningTurnId(started.turn_id);
+      }
       setInput(current => current.trim() === prompt ? "" : current);
     } catch (error) {
       inputDrafts.current.set(workspace.id + ":" + (boundThread?.id ?? "draft"), prompt);
       setInput(current => current || prompt);
       setUiError(String(error));
-      setRunningTurnId(null);
+      if(!appending)setRunningTurnId(null);
       setItems(current => current.filter(item => item.id !== userItemId));
     } finally {
       sendingRef.current = false;
@@ -1658,10 +1684,10 @@ function App() {
             return (await window.localAgent.taskRequest(activeThread.id,'task.runtime.diagnostics',{run_id:unifiedRun.id})).payload || {};
           }} onResume={()=>{
             const planId=unifiedRun.recovery_plan_id || unifiedRun.plan_id;
-            if (!activeThread || !planId || runningTurnId) return;
+            if (!activeThread || runningTurnId) return;
             void (async()=>{
-              await window.localAgent.planRequest(activeThread.id,'plan.recover',{plan_id:planId});
-              const result=await window.localAgent.startTurn(activeThread.id,'继续原始需求，只完成当前未完成步骤；先检查现状，保留已完成操作，重新验证并用中文报告。',selectedModel,true);
+              if(planId)await window.localAgent.planRequest(activeThread.id,'plan.recover',{plan_id:planId});
+              const result=await window.localAgent.startTurn(activeThread.id,'继续原始需求，只完成当前未完成步骤；先检查现状，保留已完成操作，重新验证并用中文报告。',selectedModel,true,planId?undefined:{run_id:unifiedRun.id,confirm_workspace:true});
               if(result.turn_id)setRunningTurnId(result.turn_id);
             })().catch(error=>setUiError(String(error)));
           }}/>:null}
@@ -1713,7 +1739,7 @@ function App() {
               onClose={() => setContextOpen(false)}
             />
           ) : null}
-          {diagnosticsOpen ? <DiagnosticsPanel onClose={() => setDiagnosticsOpen(false)} /> : null}
+          {diagnosticsOpen ? <DiagnosticsPanel threadId={activeThread?.id} onClose={() => setDiagnosticsOpen(false)} /> : null}
         </div>
 
         <form className="composer" onSubmit={submit}>
@@ -1721,6 +1747,7 @@ function App() {
             {status.error ?? "Agent unavailable. Open More → Diagnostics for details."}
           </div> : null}
           {uiError ? <div className="error-banner">{uiError}</div> : null}
+          {followupNotice?<div className="composer-hints" role="status">{followupNotice}</div>:null}
           <textarea
             value={input}
             onChange={(event) => {setInput(event.target.value); inputDrafts.current.set(inputOwner, event.target.value);}}
@@ -1801,6 +1828,8 @@ function App() {
               </span>
             </div>
             {runningTurnId || conversationTasks.active ? (
+              <>
+              <button type="submit" className="followup-send-button" disabled={!input.trim() || status.state!=='ready' || !providerReady}>追加需求</button>
               <button
                 type="button"
                 className="stop-button"
@@ -1808,6 +1837,7 @@ function App() {
               >
                 Stop
               </button>
+              </>
             ) : (
               <button
                 type="submit"

@@ -8,6 +8,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 
 _SECRET_PATTERNS = (
+    re.compile(r'''(?im)((?:cookie|set-cookie)["']?\s*[:=]\s*)[^\r\n]+'''),
     re.compile(r"(?i)(authorization\s*[:=]\s*bearer\s+)[^\s,;]+"),
     re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+"),
     re.compile(

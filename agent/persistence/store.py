@@ -384,6 +384,7 @@ class SQLiteStore:
         role: str,
         content: str,
         created_at: str,
+        commit: bool = True,
     ) -> None:
         self.connection.execute(
             """
@@ -392,7 +393,7 @@ class SQLiteStore:
             """,
             (thread_id, role, content, created_at),
         )
-        self.connection.commit()
+        if commit:self.connection.commit()
 
     def list_messages(self, thread_id: str) -> list[dict[str, str]]:
         rows = self.connection.execute(

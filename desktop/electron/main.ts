@@ -1468,6 +1468,7 @@ ipcMain.handle("agent:task-request", async (_event, threadId: string, operation:
   }
   const allowed = new Set(["task.runtime.list", "task.catalog.get", "task.catalog.update", "task.settings.get", "task.settings.update", "task.connection.test", "task.list", "task.start", "task.resume", "task.continue", "task.pause", "task.cancel", "task.budget.add", "task.configure", "task.approve", "task.diagnostics"]);
   allowed.add("task.runtime.diagnostics");
+  allowed.add('task.append'); allowed.add('task.runtime.events');
   allowed.add("task.model.diagnostic"); allowed.add("task.model.diagnostic.cancel");
   if (!allowed.has(operation)) throw new Error("Unsupported task operation");
   return sendRequest(operation, "task.loaded", payload, {threadId}, operation === "task.model.diagnostic" ? 300000 : operation === "task.connection.test" ? 30000 : 15000);
@@ -1491,14 +1492,16 @@ ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
     { threadId }
   );
 });
-ipcMain.handle("agent:turn-start", async (_event, threadId: string, prompt: string, model?: string, unified?: boolean) => {
+ipcMain.handle("agent:turn-start", async (_event, threadId: string, prompt: string, model?: string, unified?: boolean, resume?:{run_id:string;confirm_workspace:boolean}) => {
   return sendRequest(
     "turn.start",
     "turn.started",
-    { prompt, model, unified:unified === true },
+    { prompt, model, unified:unified === true, resume_run_id:resume?.run_id, confirm_workspace:resume?.confirm_workspace === true },
     { threadId }
   );
 });
+ipcMain.handle('agent:turn-append',async (_event,threadId:string,turnId:string,prompt:string,messageId:string)=>
+  sendRequest('turn.append','turn.appended',{prompt,message_id:messageId},{threadId,turnId}));
 ipcMain.handle("agent:turn-cancel", async (_event, turnId: string) => {
   const socket = agentSocket;
   if (!socket || socket.readyState !== WebSocket.OPEN) {

@@ -7,6 +7,10 @@ import {
 } from "./diagnostics";
 
 describe("diagnostics redaction", () => {
+  it('移除 Cookie 键和嵌入文本中的会话值',()=>{
+    const result=JSON.stringify(sanitizeDiagnostics({Cookie:'session-private',note:'Cookie: account-private; session=session-other'}));
+    expect(result).not.toContain('session-private');expect(result).not.toContain('account-private');expect(result).not.toContain('session-other');
+  });
   it("redacts sensitive keys and string patterns", () => {
     const safe = sanitizeDiagnostics({
       api_key: "top-secret",
