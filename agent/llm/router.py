@@ -35,9 +35,12 @@ def apply_config_overrides(saved: dict, overrides: dict) -> dict:
 
 def validate_config(raw: dict | None = None) -> dict:
     raw = raw or {}
-    if set(raw) - {"strategy", "roles", "budget", "verification_commands", "gui_verification", "vision_profile_id"}:
+    if set(raw) - {"strategy", "roles", "budget", "verification_commands", "gui_verification", "vision_profile_id", "verification_level"}:
         raise ValueError("Unknown orchestration configuration")
     strategy = raw.get("strategy", "local-first")
+    level = raw.get('verification_level','auto')
+    if level not in {'auto','none','basic','targeted','full','manual'}:
+        raise ValueError('Invalid verification level')
     if strategy not in STRATEGIES:
         raise ValueError("Invalid model strategy")
     roles = {}
@@ -71,7 +74,7 @@ def validate_config(raw: dict | None = None) -> dict:
     if not isinstance(commands, list) or len(commands) > 12 or any(not isinstance(c, str) or not c.strip() or len(c) > 2000 for c in commands):
         raise ValueError("Provide up to 12 nonempty verification commands")
     from agent.core.gui_verification import validate_gui
-    result = {"strategy": strategy, "roles": roles, "budget": validate_limits(raw.get("budget")), "verification_commands": commands}
+    result = {"strategy": strategy, "roles": roles, "budget": validate_limits(raw.get("budget")), "verification_commands": commands, "verification_level":level}
     if raw.get('gui_verification') is not None:
         result['gui_verification'] = validate_gui(raw['gui_verification'])
     if 'vision_profile_id' in raw:

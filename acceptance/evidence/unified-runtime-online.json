@@ -1,0 +1,2938 @@
+{
+  "scope": "Production Electron IPC/composer, isolated fixtures; no direct API key access or raw prompt/log publication",
+  "excluded_after_user_instruction": [
+    "qwen3.7-plus",
+    "qwen3.8-flash"
+  ],
+  "runs": [
+    {
+      "run": "unified-live-01",
+      "source_commit": "UNRECORDED",
+      "source_note": "development working tree",
+      "started_at": "2026-11-04T03:01:03.890Z",
+      "result": "PASS",
+      "limits": {
+        "calls": 180,
+        "tokens": 20000000,
+        "request_seconds": 60,
+        "wall_seconds": 3600
+      },
+      "cost": "UNKNOWN",
+      "usage_reported_by_controller": {
+        "calls": 58,
+        "tokens": 596249,
+        "estimated": false
+      },
+      "runtime_ledger": {
+        "requests": 48,
+        "tokens_actual_or_reserved": 587582,
+        "provider_reported_input_tokens": 568674,
+        "provider_reported_output_tokens": 18908,
+        "estimated_requests": 0
+      },
+      "models": [
+        {
+          "model": "qwen3.8-max",
+          "category": "unavailable",
+          "text": "FAIL",
+          "tools": "NOT RUN",
+          "capability_evidence_reused": false,
+          "http_statuses": [
+            403
+          ],
+          "errors": [
+            "OPENAI_COMPATIBLE_AUTH_FAILED"
+          ]
+        },
+        {
+          "model": "qwen3.8-flash",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "capability_evidence_reused": false,
+          "http_statuses": [
+            200,
+            200
+          ],
+          "errors": []
+        },
+        {
+          "model": "glm-5.3",
+          "category": "unavailable",
+          "text": "FAIL",
+          "tools": "NOT RUN",
+          "capability_evidence_reused": false,
+          "http_statuses": [
+            403
+          ],
+          "errors": [
+            "OPENAI_COMPATIBLE_AUTH_FAILED"
+          ]
+        },
+        {
+          "model": "qwen3.7-plus",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "capability_evidence_reused": false,
+          "http_statuses": [
+            200,
+            200
+          ],
+          "errors": []
+        },
+        {
+          "model": "deepseek-v4.1-flash",
+          "category": "unavailable",
+          "text": "FAIL",
+          "tools": "NOT RUN",
+          "capability_evidence_reused": false,
+          "http_statuses": [
+            403
+          ],
+          "errors": [
+            "OPENAI_COMPATIBLE_AUTH_FAILED"
+          ]
+        },
+        {
+          "model": "kimi-k3",
+          "category": "unavailable",
+          "text": "FAIL",
+          "tools": "NOT RUN",
+          "capability_evidence_reused": false,
+          "http_statuses": [
+            400
+          ],
+          "errors": [
+            "OPENAI_COMPATIBLE_REQUEST_FAILED"
+          ]
+        },
+        {
+          "model": "qwen3.8-omni-flash",
+          "category": "unavailable",
+          "text": "FAIL",
+          "tools": "NOT RUN",
+          "capability_evidence_reused": false,
+          "http_statuses": [
+            403
+          ],
+          "errors": [
+            "OPENAI_COMPATIBLE_AUTH_FAILED"
+          ]
+        },
+        {
+          "model": "kimi/kimi-k3",
+          "category": "unavailable",
+          "text": "FAIL",
+          "tools": "NOT RUN",
+          "capability_evidence_reused": false,
+          "http_statuses": [
+            400
+          ],
+          "errors": [
+            "OPENAI_COMPATIBLE_REQUEST_FAILED"
+          ]
+        }
+      ],
+      "cases": [
+        {
+          "model": "qwen3.8-flash",
+          "name": "question",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": null,
+          "diagnostics": null
+        },
+        {
+          "model": "qwen3.8-flash",
+          "name": "analysis",
+          "controller_result": "PASS",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "PLAN_TOOLS_UNRESOLVED",
+          "changed_paths": [],
+          "plan_states": [
+            "blocked"
+          ],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": null,
+          "diagnostics": null
+        },
+        {
+          "model": "qwen3.8-flash",
+          "name": "change",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py",
+            "tests/test_calc.py"
+          ],
+          "plan_states": [
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": null,
+          "diagnostics": null
+        },
+        {
+          "model": "qwen3.7-plus",
+          "name": "question",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": null,
+          "diagnostics": null
+        },
+        {
+          "model": "qwen3.7-plus",
+          "name": "analysis",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": null,
+          "diagnostics": null
+        },
+        {
+          "model": "qwen3.7-plus",
+          "name": "change",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py",
+            "tests/test_calc.py"
+          ],
+          "plan_states": [
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": null,
+          "diagnostics": null
+        },
+        {
+          "model": "qwen3.7-plus",
+          "name": "coupon",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "DELIVERY.md",
+            "calculator.py",
+            "coupon_engine.py",
+            "tests/test_coupon_engine.py"
+          ],
+          "plan_states": [
+            "completed",
+            "completed",
+            "completed",
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": null,
+          "diagnostics": null
+        },
+        {
+          "model": "qwen3.7-plus",
+          "name": "environment",
+          "controller_result": "PASS",
+          "phase": "paused",
+          "outcome": "awaiting_user",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py"
+          ],
+          "plan_states": [
+            "in_progress"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -c \"import lca_deliberately_missing_dependency_01983\"",
+              "exit_code": 1,
+              "category": "environment",
+              "ok": false
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": null,
+          "diagnostics": null
+        },
+        {
+          "model": "qwen3.7-plus",
+          "name": "repair",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py"
+          ],
+          "plan_states": [
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": null,
+          "diagnostics": null
+        }
+      ]
+    },
+    {
+      "run": "unified-live-allowed-01",
+      "source_commit": "489157e197f63c57db2af827610e3010e0f3f9ab",
+      "source_note": "development working tree",
+      "started_at": "2026-11-04T03:37:04.740Z",
+      "result": "PARTIAL",
+      "limits": {
+        "calls": 160,
+        "tokens": 15000000,
+        "request_seconds": 60,
+        "wall_seconds": 3600
+      },
+      "cost": "UNKNOWN",
+      "usage_reported_by_controller": {
+        "calls": 160,
+        "tokens": 1240026,
+        "estimated": true
+      },
+      "runtime_ledger": {
+        "requests": 144,
+        "tokens_actual_or_reserved": 1235664,
+        "provider_reported_input_tokens": 1089838,
+        "provider_reported_output_tokens": 32350,
+        "estimated_requests": 2
+      },
+      "models": [
+        {
+          "model": "qwen3.8-max",
+          "category": "unavailable",
+          "text": "FAIL",
+          "tools": "NOT RUN",
+          "capability_evidence_reused": true,
+          "http_statuses": [
+            403
+          ],
+          "errors": [
+            "OPENAI_COMPATIBLE_AUTH_FAILED"
+          ]
+        },
+        {
+          "model": "glm-5.3",
+          "category": "unavailable",
+          "text": "FAIL",
+          "tools": "NOT RUN",
+          "capability_evidence_reused": true,
+          "http_statuses": [
+            403
+          ],
+          "errors": [
+            "OPENAI_COMPATIBLE_AUTH_FAILED"
+          ]
+        },
+        {
+          "model": "deepseek-v4.1-flash",
+          "category": "unavailable",
+          "text": "FAIL",
+          "tools": "NOT RUN",
+          "capability_evidence_reused": true,
+          "http_statuses": [
+            403
+          ],
+          "errors": [
+            "OPENAI_COMPATIBLE_AUTH_FAILED"
+          ]
+        },
+        {
+          "model": "kimi-k3",
+          "category": "unavailable",
+          "text": "FAIL",
+          "tools": "NOT RUN",
+          "capability_evidence_reused": true,
+          "http_statuses": [
+            400
+          ],
+          "errors": [
+            "OPENAI_COMPATIBLE_REQUEST_FAILED"
+          ]
+        },
+        {
+          "model": "qwen3.8-omni-flash",
+          "category": "unavailable",
+          "text": "FAIL",
+          "tools": "NOT RUN",
+          "capability_evidence_reused": true,
+          "http_statuses": [
+            403
+          ],
+          "errors": [
+            "OPENAI_COMPATIBLE_AUTH_FAILED"
+          ]
+        },
+        {
+          "model": "kimi/kimi-k3",
+          "category": "unavailable",
+          "text": "FAIL",
+          "tools": "NOT RUN",
+          "capability_evidence_reused": true,
+          "http_statuses": [
+            400
+          ],
+          "errors": [
+            "OPENAI_COMPATIBLE_REQUEST_FAILED"
+          ]
+        },
+        {
+          "model": "qwen3-coder-flash",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "capability_evidence_reused": false,
+          "http_statuses": [
+            200,
+            200
+          ],
+          "errors": []
+        },
+        {
+          "model": "qwen3.7-flash",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "capability_evidence_reused": false,
+          "http_statuses": [
+            200,
+            200
+          ],
+          "errors": []
+        },
+        {
+          "model": "qwen3.8-27b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "capability_evidence_reused": false,
+          "http_statuses": [
+            200,
+            200
+          ],
+          "errors": []
+        },
+        {
+          "model": "qwen3.6-flash",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "capability_evidence_reused": false,
+          "http_statuses": [
+            200,
+            200
+          ],
+          "errors": []
+        },
+        {
+          "model": "qwen3.5-flash",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "capability_evidence_reused": false,
+          "http_statuses": [
+            200,
+            200
+          ],
+          "errors": []
+        },
+        {
+          "model": "qwen3-omni-flash",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "capability_evidence_reused": false,
+          "http_statuses": [
+            200,
+            200
+          ],
+          "errors": []
+        },
+        {
+          "model": "qwen3-vl-plus",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "capability_evidence_reused": false,
+          "http_statuses": [
+            200,
+            200
+          ],
+          "errors": []
+        },
+        {
+          "model": "qwen-plus",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "capability_evidence_reused": false,
+          "http_statuses": [
+            200,
+            200
+          ],
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "model": "qwen3-coder-flash",
+          "name": "question",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3-coder-flash",
+          "name": "analysis",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3-coder-flash",
+          "name": "change",
+          "controller_result": "FAIL",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py",
+            "tests/test_calc.py"
+          ],
+          "plan_states": [
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": false,
+          "diagnostics": {
+            "line_count": 23,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "question",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "analysis",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "change",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py",
+            "tests/test_validation.py"
+          ],
+          "plan_states": [
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 25,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.8-27b",
+          "name": "question",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.8-27b",
+          "name": "analysis",
+          "controller_result": "PASS",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "PLAN_TOOLS_UNRESOLVED",
+          "changed_paths": [],
+          "plan_states": [
+            "blocked"
+          ],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 10,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.8-27b",
+          "name": "change",
+          "controller_result": "FAIL",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py",
+            "tests/test_calc.py"
+          ],
+          "plan_states": [
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": false,
+          "diagnostics": {
+            "line_count": 26,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.6-flash",
+          "name": "question",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.6-flash",
+          "name": "analysis",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.6-flash",
+          "name": "change",
+          "controller_result": "FAIL",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py",
+            "tests/test_calc.py"
+          ],
+          "plan_states": [
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": false,
+          "diagnostics": {
+            "line_count": 25,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.5-flash",
+          "name": "question",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.5-flash",
+          "name": "analysis",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.5-flash",
+          "name": "change",
+          "controller_result": "FAIL",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py",
+            "tests/test_calc.py"
+          ],
+          "plan_states": [
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": false,
+          "diagnostics": {
+            "line_count": 25,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3-omni-flash",
+          "name": "question",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3-omni-flash",
+          "name": "analysis",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3-omni-flash",
+          "name": "change",
+          "controller_result": "FAIL",
+          "phase": "failed",
+          "outcome": "partially_completed",
+          "error_code": "OPENAI_COMPATIBLE_RATE_LIMITED",
+          "changed_paths": [
+            "calculator.py",
+            "tests/test_calc.py"
+          ],
+          "plan_states": [
+            "blocked"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 1,
+              "category": "assertion",
+              "ok": false
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 2,
+              "category": "code",
+              "ok": false
+            }
+          ],
+          "external_unittest_exit": 1,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": false,
+          "diagnostics": {
+            "line_count": 32,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3-vl-plus",
+          "name": "question",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3-vl-plus",
+          "name": "analysis",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3-vl-plus",
+          "name": "change",
+          "controller_result": "FAIL",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py",
+            "tests/test_calc.py"
+          ],
+          "plan_states": [
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": false,
+          "diagnostics": {
+            "line_count": 25,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen-plus",
+          "name": "question",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen-plus",
+          "name": "analysis",
+          "controller_result": "PASS",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "PLAN_TOOLS_UNRESOLVED",
+          "changed_paths": [],
+          "plan_states": [
+            "blocked"
+          ],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 10,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen-plus",
+          "name": "change",
+          "controller_result": "FAIL",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py",
+            "tests/test_calc.py"
+          ],
+          "plan_states": [
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": false,
+          "diagnostics": {
+            "line_count": 25,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3-coder-flash",
+          "name": "coupon",
+          "controller_result": "FAIL",
+          "phase": "failed",
+          "outcome": "partially_completed",
+          "error_code": "BUDGET_EXHAUSTED",
+          "changed_paths": [
+            "calculator.py",
+            "coupon_engine.py"
+          ],
+          "plan_states": [
+            "blocked",
+            "pending",
+            "pending",
+            "pending",
+            "pending",
+            "pending"
+          ],
+          "verification": [],
+          "external_unittest_exit": 1,
+          "coupon_contract_exit": 1,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 15,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3-coder-flash",
+          "name": "environment",
+          "controller_result": "BLOCKED",
+          "phase": null,
+          "outcome": null,
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": null,
+          "diagnostics": null
+        },
+        {
+          "model": "qwen3-coder-flash",
+          "name": "repair",
+          "controller_result": "BLOCKED",
+          "phase": null,
+          "outcome": null,
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": null,
+          "diagnostics": null
+        },
+        {
+          "model": "qwen3-coder-flash",
+          "name": "context",
+          "controller_result": "BLOCKED",
+          "phase": null,
+          "outcome": null,
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": null,
+          "diagnostics": null
+        },
+        {
+          "model": "qwen3-coder-flash",
+          "name": "interruption",
+          "controller_result": "BLOCKED",
+          "phase": null,
+          "outcome": null,
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": null,
+          "diagnostics": null
+        },
+        {
+          "model": "qwen3-coder-flash",
+          "name": "websocket",
+          "controller_result": "BLOCKED",
+          "phase": null,
+          "outcome": null,
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": null,
+          "diagnostics": null
+        },
+        {
+          "model": "qwen3-coder-flash",
+          "name": "json",
+          "controller_result": "BLOCKED",
+          "phase": null,
+          "outcome": null,
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": null,
+          "diagnostics": null
+        }
+      ]
+    },
+    {
+      "run": "unified-live-final-01",
+      "source_commit": "20b795af29436119d4a4de425e97ad54f40609ea",
+      "source_note": "committed product code",
+      "started_at": "2026-11-04T04:42:30.971Z",
+      "result": "BLOCKED",
+      "limits": {
+        "calls": 100,
+        "tokens": 10000000,
+        "request_seconds": 60,
+        "wall_seconds": 3600
+      },
+      "cost": "UNKNOWN",
+      "usage_reported_by_controller": null,
+      "runtime_ledger": {
+        "requests": 51,
+        "tokens_actual_or_reserved": 565654,
+        "provider_reported_input_tokens": 455691,
+        "provider_reported_output_tokens": 19585,
+        "estimated_requests": 2
+      },
+      "models": [
+        {
+          "model": "qwen3.7-flash",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "capability_evidence_reused": true,
+          "http_statuses": [
+            200,
+            200
+          ],
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "model": "qwen3.7-flash",
+          "name": "question",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "analysis",
+          "controller_result": "PASS",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "PLAN_TOOLS_UNRESOLVED",
+          "changed_paths": [],
+          "plan_states": [
+            "blocked"
+          ],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 10,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "change",
+          "controller_result": "FAIL",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py",
+            "tests/test_calc.py"
+          ],
+          "plan_states": [
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 1,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 26,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "coupon",
+          "controller_result": "FAIL",
+          "phase": "completed",
+          "outcome": "partially_completed",
+          "error_code": null,
+          "changed_paths": [
+            "DELIVERY.md",
+            "calculator.py",
+            "coupon_engine.py",
+            "tests/test_coupon_engine.py"
+          ],
+          "plan_states": [
+            "completed",
+            "completed",
+            "pending",
+            "pending"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -c \"import ast,base64,pathlib; ast.parse(pathlib.Path(base64.b64decode('Y2FsY3VsYXRvci5weQ==').decode()).read_text(encoding='utf-8-sig'))\"",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "uv run --no-project python -c \"import ast,base64,pathlib; ast.parse(pathlib.Path(base64.b64decode('Y291cG9uX2VuZ2luZS5weQ==').decode()).read_text(encoding='utf-8-sig'))\"",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "uv run --no-project python -c \"import ast,base64,pathlib; ast.parse(pathlib.Path(base64.b64decode('dGVzdHMvdGVzdF9jb3Vwb25fZW5naW5lLnB5').decode()).read_text(encoding='utf-8-sig'))\"",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": 0,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 23,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "environment",
+          "controller_result": "PASS",
+          "phase": "paused",
+          "outcome": "awaiting_user",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py"
+          ],
+          "plan_states": [
+            "blocked"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -c \"import lca_deliberately_missing_dependency_01983\"",
+              "exit_code": 1,
+              "category": "environment",
+              "ok": false
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 18,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "repair",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py"
+          ],
+          "plan_states": [
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 22,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "context",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "interruption",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "DELIVERY.md",
+            "calculator.py",
+            "tests/test_validation.py",
+            "validation.py"
+          ],
+          "plan_states": [
+            "completed",
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 25,
+            "json_exists": true,
+            "markdown_exists": true
+          },
+          "interruption": {
+            "completed_ids": [
+              "244a6fda-742d-4476-b1ca-235a1ce1902e"
+            ],
+            "restored": false,
+            "paused": false,
+            "resumed": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "websocket",
+          "controller_result": "RUNNING",
+          "phase": null,
+          "outcome": null,
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": null,
+          "original_contract_exit": null,
+          "frozen_config_unchanged": null,
+          "diagnostics": null,
+          "reconnect": {
+            "completed_ids": [],
+            "restored": true,
+            "paused": true,
+            "resumed": false
+          }
+        }
+      ]
+    },
+    {
+      "run": "unified-live-final-02",
+      "source_commit": "1a1d4c4399ec41d4a49bc23413f8d48b71314d6d",
+      "source_note": "committed product code",
+      "started_at": "2026-11-04T04:50:51.771Z",
+      "result": "PARTIAL",
+      "limits": {
+        "calls": 100,
+        "tokens": 10000000,
+        "request_seconds": 60,
+        "wall_seconds": 3600
+      },
+      "cost": "UNKNOWN",
+      "usage_reported_by_controller": {
+        "calls": 46,
+        "tokens": 383691,
+        "estimated": true
+      },
+      "runtime_ledger": {
+        "requests": 46,
+        "tokens_actual_or_reserved": 383691,
+        "provider_reported_input_tokens": 264364,
+        "provider_reported_output_tokens": 11229,
+        "estimated_requests": 3
+      },
+      "models": [
+        {
+          "model": "qwen3.8-27b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "capability_evidence_reused": true,
+          "http_statuses": [
+            200,
+            200
+          ],
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "model": "qwen3.8-27b",
+          "name": "question",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.8-27b",
+          "name": "analysis",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 11,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.8-27b",
+          "name": "change",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py",
+            "tests/test_calc.py"
+          ],
+          "plan_states": [
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 26,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.8-27b",
+          "name": "coupon",
+          "controller_result": "FAIL",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "EXECUTION_TIMEOUT",
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": 1,
+          "coupon_contract_exit": 1,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 1,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.8-27b",
+          "name": "environment",
+          "controller_result": "PASS",
+          "phase": "paused",
+          "outcome": "awaiting_user",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py"
+          ],
+          "plan_states": [
+            "blocked"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -c \"import lca_deliberately_missing_dependency_01983\"",
+              "exit_code": 1,
+              "category": "environment",
+              "ok": false
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 18,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.8-27b",
+          "name": "repair",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py"
+          ],
+          "plan_states": [
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 22,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.8-27b",
+          "name": "context",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.8-27b",
+          "name": "interruption",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "DELIVERY.md",
+            "calculator.py",
+            "tests/test_validation.py",
+            "validation.py"
+          ],
+          "plan_states": [
+            "completed",
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 25,
+            "json_exists": true,
+            "markdown_exists": true
+          },
+          "interruption": {
+            "completed_ids": [
+              "6952964a-2b33-49d5-9977-4b7a594aed18"
+            ],
+            "restored": false,
+            "paused": false,
+            "resumed": true
+          }
+        },
+        {
+          "model": "qwen3.8-27b",
+          "name": "websocket",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "DELIVERY.md",
+            "calculator.py",
+            "tests/test_validation.py",
+            "validation.py"
+          ],
+          "plan_states": [
+            "completed",
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 26,
+            "json_exists": true,
+            "markdown_exists": true
+          },
+          "reconnect": {
+            "completed_ids": [
+              "d1b66f15-46d7-451c-b0bc-8c1757661615"
+            ],
+            "restored": true,
+            "paused": true,
+            "resumed": true
+          }
+        },
+        {
+          "model": "qwen3.8-27b",
+          "name": "json",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ]
+    },
+    {
+      "run": "unified-live-final-03",
+      "source_commit": "80a5d9f721342b69fca52028a072c6ec359bddb5",
+      "source_note": "committed product code",
+      "started_at": "2026-11-04T04:58:32.776Z",
+      "result": "PARTIAL",
+      "limits": {
+        "calls": 100,
+        "tokens": 10000000,
+        "request_seconds": 60,
+        "wall_seconds": 3600
+      },
+      "cost": "UNKNOWN",
+      "usage_reported_by_controller": {
+        "calls": 55,
+        "tokens": 541715,
+        "estimated": true
+      },
+      "runtime_ledger": {
+        "requests": 55,
+        "tokens_actual_or_reserved": 541715,
+        "provider_reported_input_tokens": 376224,
+        "provider_reported_output_tokens": 14192,
+        "estimated_requests": 3
+      },
+      "models": [
+        {
+          "model": "qwen3.7-flash",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "capability_evidence_reused": true,
+          "http_statuses": [
+            200,
+            200
+          ],
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "model": "qwen3.7-flash",
+          "name": "question",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "analysis",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "change",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py",
+            "tests/test_calc.py"
+          ],
+          "plan_states": [
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 26,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "coupon",
+          "controller_result": "FAIL",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "MODEL_REQUEST_TIMEOUT",
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": 1,
+          "coupon_contract_exit": 1,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 1,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "environment",
+          "controller_result": "PASS",
+          "phase": "paused",
+          "outcome": "awaiting_user",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py"
+          ],
+          "plan_states": [
+            "blocked"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -c \"import lca_deliberately_missing_dependency_01983\"",
+              "exit_code": 1,
+              "category": "environment",
+              "ok": false
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 18,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "repair",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "calculator.py"
+          ],
+          "plan_states": [
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 22,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "context",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "interruption",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "DELIVERY.md",
+            "calculator.py",
+            "tests/test_validation.py",
+            "validation.py"
+          ],
+          "plan_states": [
+            "completed",
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 25,
+            "json_exists": true,
+            "markdown_exists": true
+          },
+          "interruption": {
+            "completed_ids": [
+              "b0703e86-0870-419d-b641-1783f21204df"
+            ],
+            "restored": false,
+            "paused": false,
+            "resumed": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "websocket",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [
+            "DELIVERY.md",
+            "calculator.py",
+            "tests/test_validation.py",
+            "validation.py"
+          ],
+          "plan_states": [
+            "completed",
+            "completed"
+          ],
+          "verification": [
+            {
+              "command": "uv run --no-project python -m unittest discover -s tests -v",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            },
+            {
+              "command": "git diff --check",
+              "exit_code": 0,
+              "category": "passed",
+              "ok": true
+            }
+          ],
+          "external_unittest_exit": 0,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 25,
+            "json_exists": true,
+            "markdown_exists": true
+          },
+          "reconnect": {
+            "completed_ids": [
+              "1ad48ba3-1c88-4307-a2ec-642800e65006"
+            ],
+            "restored": true,
+            "paused": true,
+            "resumed": true
+          }
+        },
+        {
+          "model": "qwen3.7-flash",
+          "name": "json",
+          "controller_result": "PASS",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": null,
+          "coupon_contract_exit": null,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 0,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ]
+    },
+    {
+      "run": "unified-live-coupon-120",
+      "source_commit": "636104905e4f44b3fd9f361bc61a1c6cb76af285",
+      "source_note": "committed product code",
+      "started_at": "2026-11-04T05:03:55.683Z",
+      "result": "PARTIAL",
+      "limits": {
+        "calls": 45,
+        "tokens": 5000000,
+        "request_seconds": 120,
+        "wall_seconds": 3600
+      },
+      "cost": "UNKNOWN",
+      "usage_reported_by_controller": {
+        "calls": 4,
+        "tokens": 53546,
+        "estimated": true
+      },
+      "runtime_ledger": {
+        "requests": 4,
+        "tokens_actual_or_reserved": 53546,
+        "provider_reported_input_tokens": 14667,
+        "provider_reported_output_tokens": 3600,
+        "estimated_requests": 1
+      },
+      "models": [
+        {
+          "model": "qwen3.7-flash",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "capability_evidence_reused": true,
+          "http_statuses": [
+            200,
+            200
+          ],
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "model": "qwen3.7-flash",
+          "name": "coupon",
+          "controller_result": "FAIL",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "MODEL_REQUEST_TIMEOUT",
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": 1,
+          "coupon_contract_exit": 1,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 1,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ]
+    },
+    {
+      "run": "unified-live-coder-coupon",
+      "source_commit": "f9eab339cdeb0774e75425eab38911b6fbf878b4",
+      "source_note": "committed product code",
+      "started_at": "2026-11-04T05:09:35.432Z",
+      "result": "PARTIAL",
+      "limits": {
+        "calls": 45,
+        "tokens": 5000000,
+        "request_seconds": 120,
+        "wall_seconds": 3600
+      },
+      "cost": "UNKNOWN",
+      "usage_reported_by_controller": {
+        "calls": 1,
+        "tokens": 25564,
+        "estimated": true
+      },
+      "runtime_ledger": {
+        "requests": 1,
+        "tokens_actual_or_reserved": 25564,
+        "provider_reported_input_tokens": 0,
+        "provider_reported_output_tokens": 0,
+        "estimated_requests": 1
+      },
+      "models": [],
+      "cases": [
+        {
+          "model": "qwen3-coder-flash",
+          "name": "coupon",
+          "controller_result": "FAIL",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": 1,
+          "coupon_contract_exit": 1,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 1,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ],
+      "request_diagnostics": [
+        {
+          "status": "failed",
+          "http_status": 403,
+          "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+          "stream_events": 0,
+          "content_chars": 0,
+          "reasoning_chars": 0,
+          "tool_argument_chars": 0,
+          "response_complete": false
+        }
+      ]
+    },
+    {
+      "run": "unified-live-27b-coupon",
+      "source_commit": "f9eab339cdeb0774e75425eab38911b6fbf878b4",
+      "source_note": "committed product code",
+      "started_at": "2026-11-04T05:12:15.111Z",
+      "result": "PARTIAL",
+      "limits": {
+        "calls": 45,
+        "tokens": 5000000,
+        "request_seconds": 120,
+        "wall_seconds": 3600
+      },
+      "cost": "UNKNOWN",
+      "usage_reported_by_controller": {
+        "calls": 1,
+        "tokens": 25562,
+        "estimated": true
+      },
+      "runtime_ledger": {
+        "requests": 1,
+        "tokens_actual_or_reserved": 25562,
+        "provider_reported_input_tokens": 0,
+        "provider_reported_output_tokens": 0,
+        "estimated_requests": 1
+      },
+      "models": [],
+      "cases": [
+        {
+          "model": "qwen3.8-27b",
+          "name": "coupon",
+          "controller_result": "FAIL",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": 1,
+          "coupon_contract_exit": 1,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 1,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ],
+      "request_diagnostics": [
+        {
+          "status": "failed",
+          "http_status": 403,
+          "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+          "stream_events": 0,
+          "content_chars": 0,
+          "reasoning_chars": 0,
+          "tool_argument_chars": 0,
+          "response_complete": false
+        }
+      ]
+    },
+    {
+      "run": "unified-live-coupon-qwen3.6-flash",
+      "source_commit": "f9eab339cdeb0774e75425eab38911b6fbf878b4",
+      "source_note": "committed product code",
+      "started_at": "2026-11-04T05:15:28.327Z",
+      "result": "PARTIAL",
+      "limits": {
+        "calls": 45,
+        "tokens": 5000000,
+        "request_seconds": 120,
+        "wall_seconds": 3600
+      },
+      "cost": "UNKNOWN",
+      "usage_reported_by_controller": {
+        "calls": 1,
+        "tokens": 25572,
+        "estimated": true
+      },
+      "runtime_ledger": {
+        "requests": 1,
+        "tokens_actual_or_reserved": 25572,
+        "provider_reported_input_tokens": 0,
+        "provider_reported_output_tokens": 0,
+        "estimated_requests": 1
+      },
+      "models": [],
+      "cases": [
+        {
+          "model": "qwen3.6-flash",
+          "name": "coupon",
+          "controller_result": "FAIL",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": 1,
+          "coupon_contract_exit": 1,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 1,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ],
+      "request_diagnostics": [
+        {
+          "status": "failed",
+          "http_status": 403,
+          "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+          "stream_events": 0,
+          "content_chars": 0,
+          "reasoning_chars": 0,
+          "tool_argument_chars": 0,
+          "response_complete": false
+        }
+      ]
+    },
+    {
+      "run": "unified-live-coupon-qwen3.5-flash",
+      "source_commit": "f9eab339cdeb0774e75425eab38911b6fbf878b4",
+      "source_note": "committed product code",
+      "started_at": "2026-11-04T05:15:38.468Z",
+      "result": "PARTIAL",
+      "limits": {
+        "calls": 45,
+        "tokens": 5000000,
+        "request_seconds": 120,
+        "wall_seconds": 3600
+      },
+      "cost": "UNKNOWN",
+      "usage_reported_by_controller": {
+        "calls": 1,
+        "tokens": 25572,
+        "estimated": true
+      },
+      "runtime_ledger": {
+        "requests": 1,
+        "tokens_actual_or_reserved": 25572,
+        "provider_reported_input_tokens": 0,
+        "provider_reported_output_tokens": 0,
+        "estimated_requests": 1
+      },
+      "models": [],
+      "cases": [
+        {
+          "model": "qwen3.5-flash",
+          "name": "coupon",
+          "controller_result": "FAIL",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": 1,
+          "coupon_contract_exit": 1,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 1,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ],
+      "request_diagnostics": [
+        {
+          "status": "failed",
+          "http_status": 403,
+          "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+          "stream_events": 0,
+          "content_chars": 0,
+          "reasoning_chars": 0,
+          "tool_argument_chars": 0,
+          "response_complete": false
+        }
+      ]
+    },
+    {
+      "run": "unified-live-coupon-qwen3-vl-plus",
+      "source_commit": "3745f813fe4a020eec8496191990be4496e7f585",
+      "source_note": "committed product code",
+      "started_at": "2026-11-04T05:26:00.585Z",
+      "result": "PARTIAL",
+      "limits": {
+        "calls": 45,
+        "tokens": 5000000,
+        "request_seconds": 120,
+        "wall_seconds": 3600
+      },
+      "cost": "UNKNOWN",
+      "usage_reported_by_controller": {
+        "calls": 1,
+        "tokens": 25572,
+        "estimated": true
+      },
+      "runtime_ledger": {
+        "requests": 1,
+        "tokens_actual_or_reserved": 25572,
+        "provider_reported_input_tokens": 0,
+        "provider_reported_output_tokens": 0,
+        "estimated_requests": 1
+      },
+      "models": [],
+      "cases": [
+        {
+          "model": "qwen3-vl-plus",
+          "name": "coupon",
+          "controller_result": "FAIL",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": 1,
+          "coupon_contract_exit": 1,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 1,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ],
+      "request_diagnostics": [
+        {
+          "status": "failed",
+          "http_status": 403,
+          "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+          "stream_events": 0,
+          "content_chars": 0,
+          "reasoning_chars": 0,
+          "tool_argument_chars": 0,
+          "response_complete": false
+        }
+      ]
+    },
+    {
+      "run": "unified-live-coupon-qwen3-omni-flash",
+      "source_commit": "3745f813fe4a020eec8496191990be4496e7f585",
+      "source_note": "committed product code",
+      "started_at": "2026-11-04T05:26:10.317Z",
+      "result": "PARTIAL",
+      "limits": {
+        "calls": 45,
+        "tokens": 5000000,
+        "request_seconds": 120,
+        "wall_seconds": 3600
+      },
+      "cost": "UNKNOWN",
+      "usage_reported_by_controller": {
+        "calls": 1,
+        "tokens": 25575,
+        "estimated": true
+      },
+      "runtime_ledger": {
+        "requests": 1,
+        "tokens_actual_or_reserved": 25575,
+        "provider_reported_input_tokens": 0,
+        "provider_reported_output_tokens": 0,
+        "estimated_requests": 1
+      },
+      "models": [],
+      "cases": [
+        {
+          "model": "qwen3-omni-flash",
+          "name": "coupon",
+          "controller_result": "FAIL",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+          "changed_paths": [],
+          "plan_states": [],
+          "verification": [],
+          "external_unittest_exit": 1,
+          "coupon_contract_exit": 1,
+          "original_assertions_preserved": true,
+          "original_contract_exit": 1,
+          "frozen_config_unchanged": true,
+          "diagnostics": {
+            "line_count": 8,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ],
+      "request_diagnostics": [
+        {
+          "status": "failed",
+          "http_status": 403,
+          "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+          "stream_events": 0,
+          "content_chars": 0,
+          "reasoning_chars": 0,
+          "tool_argument_chars": 0,
+          "response_complete": false
+        }
+      ]
+    }
+  ],
+  "independent_reassessment": [
+    {
+      "model": "qwen3-coder-flash",
+      "original_controller_result": "FAIL",
+      "independent_reassessment": "FAIL",
+      "original_assertions_preserved": true,
+      "tests": 3,
+      "failures": 6,
+      "errors": 0
+    },
+    {
+      "model": "qwen3.7-flash",
+      "original_controller_result": "PASS",
+      "independent_reassessment": "FAIL",
+      "original_assertions_preserved": true,
+      "tests": 3,
+      "failures": 6,
+      "errors": 0
+    },
+    {
+      "model": "qwen3.8-27b",
+      "original_controller_result": "FAIL",
+      "independent_reassessment": "PASS",
+      "original_assertions_preserved": true,
+      "tests": 3,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "model": "qwen3.6-flash",
+      "original_controller_result": "FAIL",
+      "independent_reassessment": "FAIL",
+      "original_assertions_preserved": true,
+      "tests": 3,
+      "failures": 6,
+      "errors": 0
+    },
+    {
+      "model": "qwen3.5-flash",
+      "original_controller_result": "FAIL",
+      "independent_reassessment": "FAIL",
+      "original_assertions_preserved": true,
+      "tests": 3,
+      "failures": 6,
+      "errors": 0
+    },
+    {
+      "model": "qwen3-omni-flash",
+      "original_controller_result": "FAIL",
+      "independent_reassessment": "FAIL",
+      "original_assertions_preserved": true,
+      "tests": 3,
+      "failures": 10,
+      "errors": 0
+    },
+    {
+      "model": "qwen3-vl-plus",
+      "original_controller_result": "FAIL",
+      "independent_reassessment": "FAIL",
+      "original_assertions_preserved": true,
+      "tests": 3,
+      "failures": 6,
+      "errors": 0
+    },
+    {
+      "model": "qwen-plus",
+      "original_controller_result": "FAIL",
+      "independent_reassessment": "FAIL",
+      "original_assertions_preserved": true,
+      "tests": 3,
+      "failures": 6,
+      "errors": 0
+    }
+  ],
+  "important_corrections": [
+    "Initial coupon controller PASS was disproved by the independent 12-case contract; not a final PASS",
+    "Byte-freezing rejected valid added tests. AST preservation and independent original test execution replaced it; stricter non-finite boundaries still failed for several initial models",
+    "Initial analysis controller accepted phase=failed; final suite requires phase=completed and actual answer",
+    "Final-01 WS interruption occurred before a plan existed. Later test interrupts after a real completed persistent step; pre-plan read-only questions must be resubmitted",
+    "Early estimated flag omitted uncertain capability probes; runtime ledger and known provider Usage are separated",
+    "Provider maximum context and actual money cost UNKNOWN. Client test window 65536 is not a provider specification",
+    "Final original-test checker also permits appending assertions inside an existing method while preserving its header and original statement prefix. Early returns, skips and assertion changes remain rejected. All eight original assertions were preserved; seven initial models still failed the independent input contract."
+  ],
+  "final_conclusion": "PARTIAL: runtime and nine real cases passed; coupon acceptance remains blocked by request timeout and subsequent 403. Do not merge based on an all-PASS claim."
+}

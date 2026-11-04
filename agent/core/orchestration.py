@@ -206,7 +206,28 @@ class TaskService:
             else:
                 if not project or not project.state.get_thread(thread_id):
                     raise ValueError("Open a valid project and thread")
-                if kind == "task.list":
+                if kind == 'task.runtime.diagnostics':
+                    owner=str(payload.get('run_id') or '')
+                    if not self.server.store.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_execution_runs'").fetchone():
+                        raise ValueError('No unified run exists in this thread')
+                    row=self.server.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE id=? AND thread_id=?',(owner,thread_id)).fetchone()
+                    if not row or not json.loads(row[0]).get('unified'):
+                        raise ValueError('Unified run not found in this thread')
+                    from agent.core.unified_runtime import export_diagnostics
+                    result=export_diagnostics(self.server.store.path.parent/'unified-diagnostics',owner,json.loads(row[0]),self.runtime.plans,exact_secrets=self.server._exact_secrets())
+                elif kind == "task.runtime.list":
+                    rows = self.server.store.connection.execute("SELECT id,data_json FROM agent_execution_runs WHERE thread_id=? AND json_type(data_json,'$.unified')='object' ORDER BY json_extract(data_json,'$.unified.updated_at') DESC,rowid DESC LIMIT 1",(thread_id,)).fetchall() if self.server.store.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_execution_runs'").fetchone() else []
+                    runtimes=[]
+                    for row in rows:
+                        runtime=json.loads(row['data_json']).get('unified')
+                        if runtime:
+                            value={**runtime,'id':row['id']}
+                            if value.get('plan_id'):
+                                from agent.core.unified_runtime import plan_view
+                                value['plan']=plan_view(self.runtime.plans.get(value['plan_id']))
+                            runtimes.append(value)
+                    result={'runtimes':runtimes,'active_turn_ids':[tid for tid,turn in self.server.active_turns.items() if not turn.done() and self.server.active_turn_threads.get(tid)==thread_id and tid not in self.server.disconnected_turns]}
+                elif kind == "task.list":
                     result = {"tasks": [self.public(t) for t in self.runtime.list(thread_id)]}
                 elif kind == "task.start":
                     if any(not t.done() for t in self.server.active_turns.values()):
@@ -279,7 +300,7 @@ class TaskService:
                                 await ws.send_json(envelope('task.loaded', {'task':self.public(self.runtime.get(plan_id))},request_id=request_id,thread_id=thread_id))
                                 return
                             task = self.runtime.get(plan_id)
-                            if payload.get('entrypoint') == 'conversation':
+                            if payload.get('entrypoint') == 'conversation' or task.get('entrypoint') == 'conversation':
                                 task['entrypoint'] = 'conversation'
                                 self.runtime.save(task)
                                 project.state.append_message(thread_id,role='user',content=payload['prompt'].strip())

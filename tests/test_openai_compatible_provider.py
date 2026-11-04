@@ -73,7 +73,7 @@ class OpenAICompatibleProviderIntegrationTests(unittest.IsolatedAsyncioTestCase)
                 {
                     "choices": [
                         {
-                            "delta": {"content": "Hello "},
+                            "delta": {"content": "Hello ","reasoning_content":"private reasoning must never be logged"},
                             "finish_reason": None,
                         }
                     ]
@@ -188,6 +188,12 @@ class OpenAICompatibleProviderIntegrationTests(unittest.IsolatedAsyncioTestCase)
         self.assertEqual(self.last_wire_body['max_tokens'],8192)
         self.assertEqual(self.provider.response_metadata['requested_max_tokens'],8192)
         self.assertNotIn('test-key',json.dumps(self.provider.response_metadata))
+        self.assertEqual(self.provider.response_metadata['stream_events'],4)
+        self.assertEqual(self.provider.response_metadata['content_chars'],6)
+        self.assertEqual(self.provider.response_metadata['tool_argument_chars'],len('{"path":"README.md"}'))
+        self.assertGreater(self.provider.response_metadata['reasoning_chars'],0)
+        self.assertNotIn('private reasoning',json.dumps(self.provider.response_metadata))
+        self.assertGreaterEqual(self.provider.response_metadata['last_event_at'],self.provider.response_metadata['first_event_at'])
 
         self.assertEqual(
             "".join(chunk.content for chunk in chunks),

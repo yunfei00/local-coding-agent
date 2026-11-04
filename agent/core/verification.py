@@ -60,7 +60,7 @@ def discover_commands(root: Path, configured: list[str]) -> list[str]:
     if custom.exists():
         if not custom.resolve().is_relative_to(root.resolve()) or custom.stat().st_size > 32768:
             raise ValueError("Verification configuration outside workspace or too large")
-        values = json.loads(custom.read_text(encoding="utf-8"))
+        values = json.loads(custom.read_text(encoding="utf-8-sig"))
         commands = values.get("commands") if isinstance(values, dict) else None
         if not isinstance(commands, list) or not 1 <= len(commands) <= 12 or any(not isinstance(c, str) or not c.strip() or len(c) > 2000 for c in commands):
             raise ValueError(".lca/verification.json requires 1..12 commands")
@@ -73,7 +73,10 @@ def discover_commands(root: Path, configured: list[str]) -> list[str]:
         if path.exists() and not confined(path):
             raise ValueError("Verification discovery cannot read a path outside the workspace")
     if package.is_file() and package.stat().st_size < 100000:
-        scripts = json.loads(package.read_text(encoding="utf-8")).get("scripts", {})
+        manifest = json.loads(package.read_text(encoding="utf-8-sig"))
+        scripts = manifest.get('scripts',{}) if isinstance(manifest,dict) else None
+        if not isinstance(scripts,dict) or any(not isinstance(k,str) or not isinstance(v,str) for k,v in scripts.items()):
+            raise ValueError('package.json scripts must be an object of command strings')
         for name in ("test", "typecheck", "build"):
             if name in scripts:
                 commands.append("npm run " + name)
@@ -93,6 +96,8 @@ def classify(result: dict) -> str:
     if result.get("ok") and result.get("exit_code") == 0:
         return "passed"
     code = str((result.get("error") or {}).get("code", ""))
+    if 'CANCEL' in code:
+        return 'cancelled'
     text = (str(result.get("stdout", "")) + "\n" + str(result.get("stderr", "")) + "\n" + str(result.get("summary", ""))).lower()
     if "PERMISSION" in code or "APPROVAL" in code or "access is denied" in text:
         return "permission"

@@ -77,7 +77,16 @@ const provider = http.createServer((req, res) => {
     res.writeHead(200, {"Content-Type": "text/event-stream"});
     if (payload.model === "api-reviewer") {
       let delta = {content:"Review verified tests and Diff."};
-      if (prompt.includes('Conversation acceptance')) {
+      if (prompt.includes('Unified question')) {
+        delta={content:'装饰器通过包装函数添加行为；无需修改工程或创建计划。'};
+      } else if(prompt.includes('Unified acceptance') || prompt.includes('Unified follow-up')) {
+        const seen=name=>payload.messages.some(m=>m.role==='tool' && m.name===name);
+        let name,args;
+        if(prompt.includes('Unified acceptance') && !seen('agent_plan')) {name='agent_plan';args={steps:[{description:'Inspect, implement and independently verify calculator change'}]};}
+        else if(prompt.includes('Unified acceptance') && !seen('apply_patch')) {name='apply_patch';args={path:'calculator.py',old_text:'return a - b',new_text:'return a + b  # unified'};}
+        else if(prompt.includes('Unified follow-up') && !seen('write_file')) {name='write_file';args={path:'UNIFIED_FOLLOWUP.md',content:'Unified follow-up verified\n'};}
+        delta=name?{tool_calls:[{index:0,id:'unified-'+name,type:'function',function:{name,arguments:JSON.stringify(args)}}]}:{content:'实际修改完成，等待程序独立验证；中文交付报告。'};
+      } else if (prompt.includes('Conversation acceptance')) {
         const followup=prompt.includes('Append native follow-up');
         const name=followup?'write_file':'apply_patch';
         if(!payload.messages.some(m=>m.role==='tool' && m.name===name)) {
@@ -761,6 +770,12 @@ async function main() {
     await page.getByRole("menuitem", {name:"Plan",exact:true}).click();
     checks.push("Actual Plan UI exposes collapsed durable tool facts and historical test results without covering composer or requesting models");
 
+    // Zero-budget snapshots above remain unchanged. The following UI tests
+    // start new unified turns, which now correctly honor saved API limits.
+    await page.evaluate(async()=>{
+      const {config}=(await window.localAgent.taskRequest('','task.settings.get')).payload;
+      await window.localAgent.taskRequest('','task.settings.update',{config:{...config,budget:{...config.budget,api_calls:100,api_tokens:2000000,global_api_calls:1000,global_api_tokens:20000000}}});
+    });
     for (const panel of ["Task", "Context", "Git", "Plan", "Diagnostics"]) {
       if (["Plan", "Diagnostics"].includes(panel)) {
         await page.getByRole("button", {name:"More",exact:true}).click();
@@ -804,10 +819,14 @@ async function main() {
       await window.localAgent.planRequest(thread, "plan.step.update", {plan_id: plan.id, step_id: plan.steps[0].id, state: "blocked"});
       return {thread, plan: plan.id, step: plan.steps[0].id};
     });
+    const beforeDraftFailure=modelRequests.length;
+    const draftSettings=(await page.evaluate(()=>window.localAgent.taskRequest('','task.settings.get'))).payload.config;
+    await page.evaluate(config=>window.localAgent.taskRequest('','task.settings.update',{config:{...config,budget:{...config.budget,api_calls:0}}}),draftSettings);
     await page.locator(".composer textarea").fill("Keep this draft when start fails");
     await page.locator(".composer textarea").press("Enter");
     await page.locator(".composer .error-banner").waitFor();
     assert.equal(await page.locator(".composer textarea").inputValue(), "Keep this draft when start fails");
+    assert.equal(modelRequests.length,beforeDraftFailure);
     const recoveredPlan = await page.evaluate(ids => window.localAgent.planRequest(ids.thread, "plan.recover", {plan_id:ids.plan}), blockedPlan);
     const recoveredStep = recoveredPlan.payload.plans.find(p => p.id === blockedPlan.plan).steps[0];
     assert.equal(recoveredStep.state,"in_progress");
@@ -816,6 +835,7 @@ async function main() {
     // Recovery discovers real state; it must not manufacture completed evidence.
     assert.notEqual(recoveredStep.state,"completed");
     await page.evaluate(ids => window.localAgent.planRequest(ids.thread, "plan.step.update", {plan_id: ids.plan, step_id: ids.step, state: "skipped"}), blockedPlan);
+    await page.evaluate(config=>window.localAgent.taskRequest('','task.settings.update',{config}),draftSettings);
     checks.push("Failed send preserves draft");
     checks.push("Blocked plan safely recovers through a real workspace probe without forged completion or replay");
 
@@ -1085,10 +1105,13 @@ async function main() {
     await page.getByRole('button',{name:'New chat in calculator-project',exact:true}).click();
     await page.evaluate(config=>window.localAgent.taskRequest('','task.settings.update',{config:{...config,
       budget:{...config.budget,api_calls:12,global_api_calls:100,api_tokens:250000,global_api_tokens:2000000}}}),defaultsBeforeBudgetCheck);
-    await page.getByLabel('对话执行方式',{exact:true}).selectOption('development');
+    assert.equal(await page.getByLabel('对话执行方式',{exact:true}).count(),0);
     await page.getByLabel('Chat model',{exact:true}).selectOption('profile:'+profileIds['api-reviewer']);
-    await page.locator('.composer textarea').fill('Conversation acceptance: fix calculator and independently test');
-    await page.locator('.composer textarea').press('Enter');
+    await page.evaluate(async id=>{
+      const session=(await window.localAgent.getProject()).payload;
+      const thread=(await window.localAgent.createThread('profile:'+id)).payload.thread;
+      return window.localAgent.taskRequest(thread.id,'task.start',{goal:'Conversation acceptance: fix calculator and independently test',entrypoint:'conversation',config_overrides:{strategy:'single-agent',roles:{executor:{model_profile_id:id}}}});
+    },profileIds['api-reviewer']);
     await page.getByRole('button',{name:'Allow once',exact:true}).click();
     const waitConversation=async(minCalls=0)=>{
       const deadline=Date.now()+60000;
@@ -1105,8 +1128,7 @@ async function main() {
     await page.locator('[data-conversation-task="'+conversation.id+'"]').waitFor();
     assert.equal(await page.getByLabel('Autonomous task goal').count(),0);
     await page.locator('.send-button').waitFor({state:'visible'});
-    await page.locator('.composer textarea').fill('Append native follow-up: create FOLLOWUP.md and retest');
-    await page.locator('.composer textarea').press('Enter');
+    await page.evaluate(task=>window.localAgent.taskRequest(task.thread_id,'task.continue',{task_id:task.id,prompt:'Append native follow-up: create FOLLOWUP.md and retest',followup_id:'legacy-continuation-regression',confirm_workspace:true}),conversation);
     const followed=await waitConversation(conversation.usage.api_calls);
     assert.equal(followed.status,'awaiting_approval',followed.reason);
     assert.equal(followed.id,conversation.id);assert.equal(followed.workspace,conversation.workspace);
@@ -1122,7 +1144,7 @@ async function main() {
     const beforeRestartCalls=modelRequests.length;
     await application.close();page=await launch();
     await page.locator('[data-conversation-task="'+followed.id+'"]').waitFor();
-    assert.equal(await page.getByLabel('对话执行方式',{exact:true}).inputValue(),'development');
+    assert.equal(await page.getByLabel('对话执行方式',{exact:true}).count(),0);
     const restored=(await page.evaluate(()=>window.localAgent.getProject())).payload;
     assert.deepEqual(restored.messages.filter(m=>m.role==='user').map(m=>m.content),[
       'Conversation acceptance: fix calculator and independently test','Append native follow-up: create FOLLOWUP.md and retest']);
@@ -1130,7 +1152,56 @@ async function main() {
     assert.equal(persisted.length,1);assert.deepEqual(persisted[0].usage,followed.usage);
     assert.equal(modelRequests.length,beforeRestartCalls);
     assert(await page.locator('.composer textarea').isEnabled());
-    checks.push('Same composer starts and continues one Task/Worktree with real HTTP tools, immutable Completed steps, cumulative budget and persisted user messages; restart restores inline progress without another request');
+    checks.push('Legacy conversation Task IPC retains one Task/Worktree, real HTTP tools, immutable Completed steps, cumulative budget and persisted messages across restart without another request');
+    // Unified UI: the user never selects a mode. Existing legacy assertions above stay intact.
+    await page.getByRole('button',{name:'New chat in calculator-project',exact:true}).click();
+    await page.getByLabel('Chat model',{exact:true}).selectOption('profile:'+profileIds['api-reviewer']);
+    const waitUnified=async(previous)=>{
+      const deadline=Date.now()+60000;
+      while(Date.now()<deadline){
+        const session=(await page.evaluate(()=>window.localAgent.getProject())).payload;
+        if(session.active_thread){
+          const run=(await page.evaluate(t=>window.localAgent.taskRequest(t,'task.runtime.list'),session.active_thread.id)).payload.runtimes[0];
+          if(run && run.id!==previous && ['completed','paused','failed'].includes(run.phase))return {...run,thread_id:session.active_thread.id};
+        }
+        const approval=page.getByRole('button',{name:'Allow once',exact:true});
+        if(await approval.count())await approval.click();
+        await new Promise(resolve=>setTimeout(resolve,100));
+      }
+      throw Error('Unified runtime did not settle');
+    };
+    await page.locator('.composer textarea').fill('Unified question: 请解释 Python 装饰器');await page.locator('.composer textarea').press('Enter');
+    const question=await waitUnified();
+    assert.equal(question.intent,'question');assert.equal(question.plan_id,null);assert.deepEqual(question.changed_paths,[]);assert.deepEqual(question.verification,[]);
+    await page.locator('.composer textarea').fill('Unified acceptance: implement calculator change and verify');await page.locator('.composer textarea').press('Enter');
+    const changed=await waitUnified(question.id);
+    assert.equal(changed.intent,'complex');assert.equal(changed.outcome,'completed_verified',changed.reason);
+    assert(changed.plan.steps.every(step=>step.state==='completed'));
+    assert(changed.verification.some(result=>result.ok && result.command.includes('unittest') && result.exit_code===0));
+    assert(fs.readFileSync(path.join(project,'calculator.py'),'utf8').includes('# unified'));
+    const completedStepIds=changed.plan.steps.map(step=>step.id);
+    await page.locator('.composer textarea').fill('Unified follow-up: create the requested documentation');await page.locator('.composer textarea').press('Enter');
+    const appended=await waitUnified(changed.id);
+    assert.equal(appended.outcome,'completed_verified',appended.reason);
+    assert.equal(appended.thread_id,changed.thread_id);
+    assert(fs.readFileSync(path.join(project,'UNIFIED_FOLLOWUP.md'),'utf8').includes('verified'));
+    const plans=(await page.evaluate(t=>window.localAgent.planRequest(t,'plan.list'),changed.thread_id)).payload.plans;
+    assert(completedStepIds.every(id=>plans.some(plan=>plan.steps.some(step=>step.id===id && step.state==='completed'))));
+    const resultCard=page.getByLabel('Agent 执行结果',{exact:true});await resultCard.scrollIntoViewIfNeeded();
+    const rect=await resultCard.boundingBox(),column=await page.locator('.conversation').boundingBox();
+    assert(rect.x>=column.x && rect.x+rect.width<=column.x+column.width);
+    await resultCard.getByRole('button',{name:'查看当前诊断',exact:true}).click();
+    await resultCard.getByText('当前诊断快照',{exact:true}).waitFor();
+    const noReplay=modelRequests.length;
+    await application.close();page=await launch();
+    await page.getByLabel('Agent 执行结果',{exact:true}).waitFor();
+    const reloaded=(await page.evaluate(()=>window.localAgent.getProject())).payload;
+    assert.equal(reloaded.active_thread.id,changed.thread_id);
+    assert.equal(reloaded.messages.filter(m=>m.role==='user').length,3);
+    assert.equal(modelRequests.length,noReplay);
+    assert.equal(await page.getByLabel('对话执行方式',{exact:true}).count(),0);
+    assert(await page.locator('.composer textarea').isEnabled());
+    checks.push('Unified composer routes question without a plan, complex native plan with automatic real unittest/Diff, same-chat follow-up, immutable completed steps, on-demand diagnosis and restart without replay or mode selection');
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ok: true, checks, skipped}, null, 2));
     fs.writeFileSync(path.join(reportDir, "desktop-smoke.json"), JSON.stringify({ok: true, checks, skipped}, null, 2));

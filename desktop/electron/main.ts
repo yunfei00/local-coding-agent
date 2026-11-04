@@ -1466,7 +1466,8 @@ ipcMain.handle("agent:task-request", async (_event, threadId: string, operation:
     storeModelCredentials(values);
     return {type:"task.loaded", payload:{mode:safeStorage.isEncryptionAvailable() ? "os_protected" : "session_only", configured:!!key}};
   }
-  const allowed = new Set(["task.catalog.get", "task.catalog.update", "task.settings.get", "task.settings.update", "task.connection.test", "task.list", "task.start", "task.resume", "task.continue", "task.pause", "task.cancel", "task.budget.add", "task.configure", "task.approve", "task.diagnostics"]);
+  const allowed = new Set(["task.runtime.list", "task.catalog.get", "task.catalog.update", "task.settings.get", "task.settings.update", "task.connection.test", "task.list", "task.start", "task.resume", "task.continue", "task.pause", "task.cancel", "task.budget.add", "task.configure", "task.approve", "task.diagnostics"]);
+  allowed.add("task.runtime.diagnostics");
   allowed.add("task.model.diagnostic"); allowed.add("task.model.diagnostic.cancel");
   if (!allowed.has(operation)) throw new Error("Unsupported task operation");
   return sendRequest(operation, "task.loaded", payload, {threadId}, operation === "task.model.diagnostic" ? 300000 : operation === "task.connection.test" ? 30000 : 15000);
@@ -1490,11 +1491,11 @@ ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
     { threadId }
   );
 });
-ipcMain.handle("agent:turn-start", async (_event, threadId: string, prompt: string, model?: string) => {
+ipcMain.handle("agent:turn-start", async (_event, threadId: string, prompt: string, model?: string, unified?: boolean) => {
   return sendRequest(
     "turn.start",
     "turn.started",
-    { prompt, model },
+    { prompt, model, unified:unified === true },
     { threadId }
   );
 });
