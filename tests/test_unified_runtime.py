@@ -203,6 +203,7 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
             request_timeout=.02
             async def stream_chat(self,**kwargs):
                 self.calls+=1
+                self.response_metadata={'http_status':200,'request_sent':True,'stream_events':8,'tool_argument_chars':600,'reasoning_chars':250,'response_complete':False}
                 await asyncio.sleep(1)
                 if False:yield
         p=SlowProvider([])
@@ -212,6 +213,7 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
         data=json.loads(self.server.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',('request-timeout',)).fetchone()[0])
         self.assertEqual(data['unified_api_requests'][0]['status'],'failed')
         self.assertGreater(data['unified_api_requests'][0]['reserved_tokens'],0)
+        self.assertEqual(data['unified_api_requests'][0]['tool_argument_chars'],600)
 
     async def test_explicit_zero_budget_sends_no_request(self):
         self.server.store.set_setting('orchestration.config',json.dumps(validate_config({'budget':{'api_calls':0}})))

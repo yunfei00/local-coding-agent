@@ -18,6 +18,7 @@ PLAN_TOOL = {"type": "function", "function": {
 INSTRUCTIONS = """Unified Agent: infer intent from the user's goal, repository context and actual tools, not keywords.
 Answer ordinary questions directly, with no tools or plan. Analyze using relevant read-only tools; do not edit without a change request.
 For a small change use normal tools directly. For complex multi-file development call agent_plan with 1-4 cohesive executable steps before editing.
+Keep each tool batch small: create a short file skeleton then apply small focused patches (about 80 lines per edit). Do not emit an entire multi-file project in one tool response; each response must finish within the configured request timeout.
 Each step must have real tool evidence; avoid prose-only steps. Use an empty verification for edit/inspection steps, a concrete command for test steps.
 Do not ask the user to choose chat/development modes. You may upgrade a small task using agent_plan, preserving all existing changes and evidence.
 After code changes the runtime independently runs verification. Never claim tests passed without actual exit-code evidence.

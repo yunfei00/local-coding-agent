@@ -153,7 +153,8 @@ class ExecutionBudget:
                 continue
             row.update(status=status,ended_at=time.time(),error_code=error_code)
             metadata=metadata or {}
-            row.update({k:metadata[k] for k in ('http_status','request_sent','finish_reason','parse_success','response_complete','response_type') if k in metadata})
+            row.update({k:metadata[k] for k in ('http_status','request_sent','finish_reason','parse_success','response_complete','response_type',
+                'stream_events','content_chars','reasoning_chars','tool_argument_chars','first_event_at','last_event_at') if k in metadata})
             values=(getattr(chunk,'prompt_eval_count',None),getattr(chunk,'eval_count',None))
             usage=metadata.get('reported_usage') if metadata.get('response_complete') else None
             if chunk is None and isinstance(usage,dict):

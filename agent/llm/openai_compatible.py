@@ -262,7 +262,8 @@ class OpenAICompatibleProvider:
         self.response_metadata = {"http_status":None, "response_type":None, "request_sent":False, "response_complete":False,
                                   "requested_max_tokens":request_body.get('max_tokens'),
                                   "wire_images":request_image_evidence(request_body['messages']),
-                                  "tool_schema_count":len(tools or [])}
+                                  "tool_schema_count":len(tools or []),"stream_events":0,
+                                  "content_chars":0,"reasoning_chars":0,"tool_argument_chars":0}
 
         try:
             async with aiohttp.ClientSession(
@@ -302,6 +303,9 @@ class OpenAICompatibleProvider:
                         if not isinstance(payload, dict):
                             raise OpenAICompatibleProviderError("OPENAI_COMPATIBLE_INVALID_RESPONSE", "Chat event must be an object")
                         self.response_metadata["parse_success"] = True
+                        now=time.time()
+                        self.response_metadata.setdefault('first_event_at',now)
+                        self.response_metadata.update(last_event_at=now,stream_events=self.response_metadata['stream_events']+1)
 
                         usage = payload.get("usage")
                         if isinstance(usage, dict):
@@ -337,6 +341,8 @@ class OpenAICompatibleProvider:
                         delta = choice.get("delta", choice.get("message"))
                         if not isinstance(delta, dict):
                             delta = {}
+                        for field,counter in (('content','content_chars'),('reasoning_content','reasoning_chars')):
+                            if isinstance(delta.get(field),str):self.response_metadata[counter]+=len(delta[field])
                         if delta.get("refusal"):
                             raise OpenAICompatibleProviderError("MODEL_REFUSED", "Provider refused the requested response")
 
@@ -372,6 +378,7 @@ class OpenAICompatibleProvider:
                                     arguments = function.get("arguments")
                                     if isinstance(arguments, str):
                                         state["arguments"] += arguments
+                                        self.response_metadata['tool_argument_chars']+=len(arguments)
 
                         if content:
                             yield ProviderChunk(content=content)
