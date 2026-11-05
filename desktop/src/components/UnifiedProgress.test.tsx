@@ -4,6 +4,11 @@ import {UnifiedProgress,type UnifiedRun} from './UnifiedProgress';
 const base:UnifiedRun={id:'run',intent:'question',phase:'completed',outcome:'completed_verified',level:'none',changed_paths:[],verification:[]};
 const actions={onResume:()=>{},onDiagnostics:()=>{}};
 describe('统一 Agent 结果',()=>{
+  it('实际模型切换、压缩、记忆命中及恢复状态在同页可追踪',()=>{
+    const html=renderToStaticMarkup(<UnifiedProgress run={{...base,model:'actual-model',routing:{mode:'auto',reason:['能力匹配：工具调用'],switches:[{from:'a',to:'b',code:'MODEL_QUOTA_EXHAUSTED'}]},context_state:{compressed:true,recovered:true,memory_hits:2,retrieval_hits:3,index_version:4}}} {...actions}/>);
+    expect(html).toContain('actual-model');expect(html).toContain('MODEL_QUOTA_EXHAUSTED');expect(html).toContain('上下文已压缩');expect(html).toContain('已恢复原执行状态');expect(html).toContain('记忆命中 2');
+    expect(html).not.toContain('已完成 · 验证通过');
+  });
   it('未知中断有明确的原计划审阅入口',()=>{
     const html=renderToStaticMarkup(<UnifiedProgress run={{...base,intent:'change',phase:'failed',outcome:'failed',error_code:'PLAN_UNCERTAIN_EFFECTS'}} {...actions} onPlan={()=>{}}/>);
     expect(html).toContain('核对中断操作');expect(html).not.toContain('验证通过');

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import {ProjectKnowledgePanel} from './ProjectKnowledgePanel';
 
 type PinnedFile = {
   path: string;
@@ -143,6 +144,7 @@ export function ContextPanel({
           </button>
         </header>
 
+        <ProjectKnowledgePanel key={threadId} threadId={threadId} running={running}/>
         {error ? <div className="error-banner">{error}</div> : null}
 
         <section className="context-repo-summary">

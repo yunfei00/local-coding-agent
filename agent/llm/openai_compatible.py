@@ -243,6 +243,8 @@ class OpenAICompatibleProvider:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[ProviderChunk]:
+        from agent.core.model_routing import require_allowed
+        require_allowed(model)
         timeout = aiohttp.ClientTimeout(
             total=getattr(self, "request_timeout", None),
             connect=10,
@@ -282,6 +284,8 @@ class OpenAICompatibleProvider:
                 ) as response:
                     self.response_metadata.update(http_status=response.status,request_sent=True,
                         response_type=response.headers.get("Content-Type", "").split(";")[0][:100])
+                    try:self.response_metadata['retry_after']=max(0,min(float(response.headers.get('Retry-After','0')),3600))
+                    except ValueError:self.response_metadata['retry_after']=0
                     observe_request(self,'response.headers_received')
                     if response.status >= 400:
                         payload = await self._read_json_response(response)
@@ -520,14 +524,29 @@ class OpenAICompatibleProvider:
         payload: dict[str, Any],
         fallback: str,
     ) -> OpenAICompatibleProviderError:
-        if status in (401, 403):
+        error=payload.get('error') or {}
+        error=error if isinstance(error,dict) else {}
+        hint=str(error.get('code','')).lower()+ ' '+str(error.get('type','')).lower()
+        detail=str(error.get('message',''))[:2000].lower()
+        parameter=str(error.get('param','')).lower()
+        if any(v in hint for v in ('insufficient_quota','allocationquota','freetieronly','quota_exceeded','quota.exceeded','arrearage')):
+            code='MODEL_QUOTA_EXHAUSTED'
+        elif 'context_length' in hint or 'context_window' in hint:
+            code='MODEL_CONTEXT_LIMIT'
+        elif status==400 and (any(s in hint for s in ('tools_not_supported','unsupported_function_calling')) or parameter in {'tools','tool_choice','functions'} and 'unsupported' in hint or 'tool' in detail and any(s in detail for s in ('not supported','does not support','unsupported'))):
+            code='MODEL_TOOLS_UNAVAILABLE'
+        elif status==400 and (any(s in hint for s in ('unsupported_image','image_not_supported')) or any(s in detail for s in ('image','vision')) and any(s in detail for s in ('not supported','does not support','unsupported'))):
+            code='MODEL_VISION_UNAVAILABLE'
+        elif status==404:
+            code='MODEL_NOT_FOUND'
+        elif status in (401, 403):
             code = "OPENAI_COMPATIBLE_AUTH_FAILED"
         elif status == 429:
             code = "OPENAI_COMPATIBLE_RATE_LIMITED"
         else:
             code = "OPENAI_COMPATIBLE_REQUEST_FAILED"
 
-        return OpenAICompatibleProviderError(
+        result=OpenAICompatibleProviderError(
             code,
             # Gateways may echo the full request in their error message. Keep
             # diagnostics actionable without persisting that sensitive body.
@@ -535,3 +554,9 @@ class OpenAICompatibleProvider:
             recoverable=True,
             transient=status == 429 or status >= 500,
         )
+        result.http_status=status
+        result.retry_after=getattr(self,'response_metadata',{}).get('retry_after',0)
+        if status==429 and result.retry_after>10:
+            result.transient=False
+            result.message+=f' 建议等待 {int(result.retry_after)} 秒，超过自动退避上限，已停止请求。'
+        return result

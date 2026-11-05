@@ -41,6 +41,8 @@ class ModelDiagnostics:
             pending.cancel()
 
     async def run(self, provider, connection, profile, *, live=False, vision=True):
+        from agent.core.model_routing import require_allowed
+        require_allowed(profile['model_id'])
         cid = connection['connection_id']
         if cid in self.running:
             raise ValueError('Diagnostic already running for this connection')
@@ -121,7 +123,7 @@ class ModelDiagnostics:
                         if report['connection'] != 'PASS':
                             report['connection'] = 'FAIL'
                         # Auth/model/network failures do not warrant spending the remaining requests.
-                        if stage == 'text':
+                        if stage == 'text' or code_value in {'MODEL_QUOTA_EXHAUSTED','OPENAI_COMPATIBLE_AUTH_FAILED','OPENAI_COMPATIBLE_CONNECTION_FAILED','OPENAI_COMPATIBLE_RATE_LIMITED','DNS_FAILED'}:
                             break
                     finally:
                         report['usage'].append({'stage': stage, 'http_status': getattr(provider, 'response_metadata', {}).get('http_status'), **usage})

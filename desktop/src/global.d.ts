@@ -199,7 +199,7 @@ declare global {
       getThread: (threadId: string) => Promise<AgentEnvelope>;
       taskRequest: (threadId: string, operation: string, payload?: Record<string, unknown>) => Promise<AgentEnvelope>;
       planRequest: (threadId: string, operation: string, payload?: Record<string, unknown>) => Promise<AgentEnvelope>;
-      startTurn: (threadId: string, prompt: string, model?: string, unified?: boolean, resume?:{run_id:string;confirm_workspace:boolean}) => Promise<AgentEnvelope>;
+      startTurn: (threadId: string, prompt: string, model?: string, unified?: boolean, resume?:{run_id:string;confirm_workspace:boolean},routing?:{allow_fallback:boolean}) => Promise<AgentEnvelope>;
       appendTurn:(threadId:string,turnId:string,prompt:string,messageId:string)=>Promise<AgentEnvelope>;
       cancelTurn: (turnId: string) => Promise<{ ok: boolean }>;
       onAgentEvent: (handler: (event: AgentEnvelope) => void) => () => void;

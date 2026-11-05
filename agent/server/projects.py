@@ -51,6 +51,29 @@ class ProjectSession:
     active_thread_id: str | None = None
     store: SQLiteStore | None = None
     repository_map: RepositoryMap | None = None
+    _knowledge: Any = None
+
+    def __post_init__(self):
+        import json
+        try:
+            prefix=json.loads(self.store.get_setting('project.path:'+self.id) or '[]') if self.store else []
+            if not isinstance(prefix,list) or len(prefix)>8 or any(not isinstance(p,str) or len(p)>2000 or not Path(p).is_absolute() for p in prefix):raise ValueError('项目 PATH 设置损坏')
+        except ValueError:prefix=[]
+        self.tools.processes.project_path_prefix=list(prefix)
+        self.workspace.project_path_prefix=list(prefix)
+
+    def knowledge(self):
+        if self._knowledge is None and self.store:
+            from agent.core.project_knowledge import ProjectKnowledge
+            from agent.tools.knowledge import KnowledgeSearchTool,ProjectMemoryTool,ProjectMemorySearchTool
+            self._knowledge=ProjectKnowledge(self.store,self.id,self.workspace.root)
+            for tool in (KnowledgeSearchTool(self._knowledge),ProjectMemoryTool(self._knowledge),ProjectMemorySearchTool(self._knowledge)):
+                self.tools.register(tool,replace=True)
+            from agent.core.environment_diagnostics import EnvironmentDiagnostics
+            from agent.tools.environment import EnvironmentDiagnoseTool,EnvironmentRepairTool
+            diagnostic=EnvironmentDiagnostics(self.workspace,self.tools.processes,self._knowledge)
+            for tool in (EnvironmentDiagnoseTool(diagnostic),EnvironmentRepairTool(diagnostic)):self.tools.register(tool,replace=True)
+        return self._knowledge
 
     @property
     def name(self) -> str:

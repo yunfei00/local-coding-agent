@@ -22,6 +22,7 @@ Keep each tool batch small: create a short file skeleton then apply small focuse
 Each step must have real tool evidence; avoid prose-only steps. Use an empty verification for edit/inspection steps, a concrete command for test steps.
 Do not ask the user to choose chat/development modes. You may upgrade a small task using agent_plan, preserving all existing changes and evidence.
 After code changes the runtime independently runs verification. Never claim tests passed without actual exit-code evidence.
+For project questions use knowledge_search to retrieve actual paths/lines and read the relevant files. project_memory may search or save concise candidate knowledge, never raw chat or secrets. Candidate memory is unverified; current code and real test evidence take priority. Do not overwrite user rules. environment_diagnose performs read-only checks; environment_repair always requires the existing approval and a real re-check. Never modify global settings to hide environment errors.
 Keep the final report in Chinese, including changed files, actual verification and unresolved issues. Environment failures must not cause endless retries.
 For Windows computer tasks discover and authorize the exact window, focus it, then inspect live UIA controls. Verify actual state after actions; do not confuse a request being sent with its effect being verified.
 Only when UIA cannot locate/invoke the target, request an authorized screenshot for a vision-capable model. Use desktop_click method=coordinate, coordinate_space=model_image, artifact_id from that capture and its image-pixel x/y, with fresh confirm_risk approval. Do not guess coordinates, read source code to bypass the interface, or fallback after a privacy/approval/session denial. Re-capture after movement, resizing or stale capture errors.
@@ -39,22 +40,36 @@ def plan_view(plan):
     return {key:value for key,value in plan.items() if key!='execution'}
 
 
+def memory_authorization_text(prompt):
+    text=re.sub(r'(?s)```.*?(?:```|$)|~~~.*?(?:~~~|$)','',prompt)
+    return '\n'.join(line for line in text.splitlines() if not line.lstrip().startswith('>'))
+
+def explicit_memory_rules(prompt):
+    return re.findall(r'(?:^|[。；;\n])\s*(?:请)?记住[:：]\s*([^\r\n]{1,1500})',memory_authorization_text(prompt))[:12]
+
 def requested_intent(prompt):
     """Conservative request-shape fallback; model plans and tool evidence refine it."""
     paths=set(re.findall(r'[\w./\\-]+\.(?:py|tsx?|jsx?|json|toml|ya?ml|md)\b',prompt,re.I))
     text=re.sub(r'[\w./\\-]+\.(?:py|tsx?|jsx?|json|toml|ya?ml|md)\b',' FILE ',prompt,flags=re.I)
-    readonly=bool(re.search(r'只分析|仅分析|只读|不要修改任何文件|不修改任何文件|不(?:读取或)?修改工程|本轮只分析|do not (?:edit|modify) (?:any )?files',text,re.I))
+    readonly=bool(re.search(r'只分析|仅分析|只读|(?:不|不要|禁止|不得)(?:修改|改动|编辑)(?:任何)?(?:代码|源码|文件|工程)|不(?:读取或)?修改工程|本轮只分析|do not (?:edit|modify) (?:any )?(?:files|code)',text,re.I))
     question=bool(re.search(r'^\s*(?:请)?(?:解释|讲解|如何|怎么|什么|只回答|仅回答|只返回|仅返回|what\b|how\b|why\b|explain\b)|是什么|什么意思',text,re.I))
     direct=bool(re.search(r'(?:请|帮我|直接|现在)(?:实现|开发|修复|修改|重构|新增)|can you (?:add|fix|implement|create|change)',text,re.I))
     change=not readonly and bool(re.search(r'实现|开发|修复|修改|重构|新增|增加|改成|改为|改中文|编写|创建|\b(?:implement|develop|refactor|create|fix|add|change|update)\b',text,re.I)) and (not question or direct)
     listed=len(re.findall(r'(?m)^\s*(?:\d+[.)、]|[-*])\s*\S',prompt))
     kind='question' if question and not direct else 'complex' if change and (listed>=3 or len(paths)>=3) else 'change' if change else 'analysis' if readonly or re.search(r'分析|诊断|检查|inspect|analy[sz]e|diagnos',text,re.I) else 'question'
-    positive=re.sub(r'(?:禁止|不要|不得|不允许)[^。；;\n]*','',text)
+    positive=re.sub(r'(?:禁止|不要|不得|不允许|不(?:修改|改动|编辑))[^。；;\n]*','',text)
     code_request=bool(re.search(r'开发|实现|编写|重构|修复|源码|代码|组件|函数|模块|\b(?:develop|implement|refactor|fix|function|component)\b',positive,re.I)) or (change and bool(re.search(r'\bFILE\b',positive)))
-    interaction=not readonly and not question and not code_request and bool(re.search(r'(?:桌面|窗口|界面|Settings|Display name).*(?:输入|点击|键入|填写)|(?:click|type|enter).*(?:button|window|settings|field)',positive,re.I|re.S))
+    analysis_only=bool(re.search(r'只分析|仅分析|只读|本轮只分析|analysis only|only analy[sz]e',text,re.I))
+    interaction=not analysis_only and not question and not code_request and bool(re.search(r'(?:桌面|窗口|界面|Settings|Display name).*(?:输入|点击|键入|填写)|(?:click|type|enter).*(?:button|window|settings|field)',positive,re.I|re.S))
     if interaction:kind='interaction'
-    project_question=bool(re.search(r'(?:本|当前|这个|该|this)\s*(?:项目|工程|仓库|程序|project|repo)|(?:分析|解释|检查).{0,8}(?:项目|工程|仓库|程序)',text,re.I))
-    return {'kind':kind,'read_only':readonly or kind=='analysis' or (question and not direct),'pure_question':kind=='question' and question and not project_question and not paths,'referenced_files':len(paths),'listed_steps':listed}
+    environment_write=not question and not analysis_only and bool(re.search(r'environment_repair|(?:修复|恢复|重置).{0,16}(?:环境|PATH|代理|依赖)|(?:环境|PATH|代理|依赖).{0,16}(?:修复|恢复|重置)',positive,re.I))
+    code_edit=bool(re.search(r'(?:修复|修改|开发|实现|重构).{0,16}(?:代码|源码|函数|组件)',positive)) or (change and any(not p.lower().endswith(('.md','.json','.toml','.yaml','.yml')) for p in paths))
+    environment_write=environment_write and not code_edit and not interaction
+    if environment_write:kind='analysis';readonly=True
+    project_question=bool(re.search(r'(?:本|当前|这个|该|this)\s*(?:项目|工程|仓库|程序|模块|文件|project|repo)|(?:分析|解释|检查).{0,8}(?:项目|工程|仓库|程序)',text,re.I))
+    if kind=='question' and (project_question or paths):kind='analysis'
+    memory_write=bool(re.search(r'记住|保存.{0,20}(?:知识|记忆|约定)|(?:知识|记忆).{0,12}保存|remember|save.{0,20}memor',memory_authorization_text(prompt),re.I))
+    return {'kind':kind,'read_only':kind!='interaction' and (readonly or kind=='analysis' or (question and not direct)),'pure_question':kind=='question' and question and not project_question and not paths and not memory_write,'memory_write':memory_write,'environment_write':environment_write,'referenced_files':len(paths),'listed_steps':listed}
 
 
 COMPUTER_TOOLS={'start_process','read_process','stop_process','list_directory','file_exists','agent_plan',*('desktop_'+n for n in ('list_windows','inspect','screenshot','focus_window','click','type_text','keypress','scroll','wait'))}
@@ -75,24 +90,48 @@ def infer_intent(previous, tool, *, changed_paths=(), read_only=False, operation
 
 
 def workspace_snapshot(root):
-    """Bounded metadata only, detects shell/MCP writes and deletes without reading file content."""
-    result = {}
+    """Bounded metadata plus safe-source digests; never persist file contents."""
+    from agent.core.project_files import ProjectFiles,EXTENSIONS,MAX_BYTES
+    root=Path(root).resolve()
+    policy=ProjectFiles(root);result={};hashed_bytes=0
     excluded = {'.git','.runtime','node_modules','.venv','venv','__pycache__','.pytest_cache','.mypy_cache','.ruff_cache','dist','build','release','coverage','validation-reports'}
     for directory, dirs, files in os.walk(root,followlinks=False):
-        dirs[:] = [d for d in dirs if d not in excluded and not (Path(directory)/d).is_symlink()]
+        dirs[:] = [d for d in dirs if d not in excluded and not d.lower().endswith(('.egg-info','.dist-info')) and not (Path(directory)/d).is_symlink()]
         for name in files:
             path = Path(directory)/name
             if path.is_symlink():
                 continue
             try:
                 stat = path.stat()
-                result[path.relative_to(root).as_posix()] = [stat.st_size,stat.st_mtime_ns]
+                signature=[stat.st_size,stat.st_mtime_ns]
+                if path.suffix.lower() in EXTENSIONS and stat.st_size<=MAX_BYTES and policy.allowed(path):
+                    if hashed_bytes+stat.st_size<=8*1024*1024:
+                        hashed_bytes+=stat.st_size
+                        content=policy.read(path)
+                        if content is not None:signature.append(hashlib.sha256(content.encode()).hexdigest())
+                    else:result['.lca-snapshot-incomplete']=[-1,-1]
+                result[path.relative_to(root).as_posix()]=signature
             except OSError:
                 continue
             if len(result) >= 20000:
                 result['.lca-snapshot-incomplete']=[-1,-1]
                 return result
     return result
+
+def changed_since_snapshot(before,after):
+    """Preserve legacy two-field checkpoints; compare new source hashes over timestamps."""
+    changed=set()
+    for path in set(before)|set(after):
+        if any(part.lower().endswith(('.egg-info','.dist-info')) for part in Path(path).parts):continue
+        old,new=before.get(path),after.get(path)
+        if old is None or new is None:changed.add(path)
+        elif len(old)>2:
+            if len(new)<3 or old[0]!=new[0] or old[2]!=new[2]:changed.add(path)
+        elif old[:2]!=new[:2]:changed.add(path)
+    return changed
+
+def snapshot_fingerprint(snapshot):
+    return json.dumps({p:[v[0],v[2]] if len(v)>2 else v for p,v in snapshot.items()},sort_keys=True)
 
 
 class RuntimeEvents:

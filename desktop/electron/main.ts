@@ -1470,8 +1470,9 @@ ipcMain.handle("agent:task-request", async (_event, threadId: string, operation:
   allowed.add("task.runtime.diagnostics");
   allowed.add('task.append'); allowed.add('task.runtime.events');
   allowed.add("task.model.diagnostic"); allowed.add("task.model.diagnostic.cancel");
+  for(const operation of ['knowledge.get','knowledge.search','knowledge.save','knowledge.delete','knowledge.settings','model.capabilities'])allowed.add(operation);
   if (!allowed.has(operation)) throw new Error("Unsupported task operation");
-  return sendRequest(operation, "task.loaded", payload, {threadId}, operation === "task.model.diagnostic" ? 300000 : operation === "task.connection.test" ? 30000 : 15000);
+  return sendRequest(operation, operation.startsWith('knowledge.')?'knowledge.loaded':operation==='model.capabilities'?'model.capabilities.loaded':"task.loaded", payload, {threadId}, operation === "task.model.diagnostic" ? 300000 : operation === "task.connection.test" ? 30000 : 15000);
 });
 ipcMain.handle("agent:plan-request", async (_event, threadId: string, operation: string, payload: Record<string, unknown> = {}) => {
   const allowed = new Set(["plan.list", "plan.create", "plan.step.update", "plan.step.edit", "plan.steps.reorder", "plan.checkpoint", "plan.resume", "plan.resume.confirm", "plan.recover", "plan.execution.extend", "plan.operation.review"]);
@@ -1492,11 +1493,11 @@ ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
     { threadId }
   );
 });
-ipcMain.handle("agent:turn-start", async (_event, threadId: string, prompt: string, model?: string, unified?: boolean, resume?:{run_id:string;confirm_workspace:boolean}) => {
+ipcMain.handle("agent:turn-start", async (_event, threadId: string, prompt: string, model?: string, unified?: boolean, resume?:{run_id:string;confirm_workspace:boolean},routing?:{allow_fallback:boolean}) => {
   return sendRequest(
     "turn.start",
     "turn.started",
-    { prompt, model, unified:unified === true, resume_run_id:resume?.run_id, confirm_workspace:resume?.confirm_workspace === true },
+    { prompt, model, unified:unified === true, resume_run_id:resume?.run_id, confirm_workspace:resume?.confirm_workspace === true,allow_model_fallback:routing?.allow_fallback===true },
     { threadId }
   );
 });

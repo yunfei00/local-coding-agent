@@ -14,7 +14,8 @@ def execution_policy():
     result = {}
     for name, default, minimum, maximum in (
         ('max_continuations', 2, 0, 8), ('model_calls', 512, 1, 512),
-        ('tokens', 200000000, 1, 1000000000), ('seconds', 7200, 1, 86400)):
+        ('tokens', 200000000, 1, 1000000000), ('seconds', 7200, 1, 86400),
+        ('tool_calls',1000,1,10000),('stage_tokens',50000000,1,1000000000)):
         value = int(os.getenv('LCA_EXECUTION_' + name.upper(), str(default)))
         if not minimum <= value <= maximum:
             raise ValueError('Invalid bounded execution policy: ' + name)
@@ -95,6 +96,8 @@ class ExecutionBudget:
         db.execute('CREATE TABLE IF NOT EXISTS agent_execution_runs (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, data_json TEXT NOT NULL)')
         row = db.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',(key,)).fetchone()
         self.data = json.loads(row[0]) if row else {'limits':dict(policy),'calls':0,'reserved_tokens':0,'continuations':0,'elapsed':0.0,'status':'running'}
+        self.data.setdefault('tool_calls',self.data.get('working_memory',{}).get('sequence',0))
+        self.data.setdefault('stage_reserved_tokens',{'executing':self.data.get('reserved_tokens',0)})
         self.thread_id, self.started = thread_id, time.monotonic()
         self.data['status'] = 'running'
         self.save()
@@ -113,11 +116,18 @@ class ExecutionBudget:
             if self.ledger:self.ledger.rebind(self.key,plan_id,commit=False)
         self.key = plan_id
 
-    def reserve(self, messages, tools, output_limit, *, api_budget=None, runtime=None, pricing=None, identity=None, request_id=None):
+    def reserve_tool(self):
+        count=self.data.get('tool_calls',0)
+        if count>=self.data['limits'].get('tool_calls',1000):raise ProviderError('TOOL_BUDGET_EXHAUSTED','工具调用预算耗尽，已保留执行证据；没有执行新操作。')
+        self.data['tool_calls']=count+1;self.save()
+
+    def reserve(self, messages, tools, output_limit, *, api_budget=None, runtime=None, pricing=None, identity=None, request_id=None,stage='executing'):
         # Conservative byte reservation includes schemas and actual image payloads.
         amount = len(json.dumps([messages,tools],ensure_ascii=False).encode()) + output_limit
         self.save()
         limits = self.data['limits']
+        stage_used=self.data.setdefault('stage_reserved_tokens',{}).get(stage,0)
+        if stage_used+amount>limits.get('stage_tokens',limits['tokens']):raise ProviderError('STAGE_BUDGET_EXHAUSTED','当前阶段的 Token 保守预留预算不足；进度保留，没有发送请求。')
         if self.data['calls'] >= limits['model_calls'] or self.data['reserved_tokens'] + amount > limits['tokens'] or self.data['elapsed'] >= limits['seconds']:
             raise ProviderError('EXECUTION_BUDGET_EXHAUSTED','累计调用、Token 保守预留或执行时间预算耗尽；检查 checkpoint 后调整预算。')
         if api_budget is None:request_id=None
@@ -140,6 +150,7 @@ class ExecutionBudget:
                     'input_tokens':input_estimate,'output_tokens':output_limit,'estimated':True,'started_at':time.time(),**(identity or {})})
                 self.data['calls'] += 1
                 self.data['reserved_tokens'] += amount
+                self.data['stage_reserved_tokens'][stage]=stage_used+amount
                 if self.ledger:self.ledger.record(self.key,self.thread_id,'request.reserved',{'reserved_tokens':tokens,'reserved_cost':cost,'request_sent':False},request_id=request_id,event_key=request_id+':reserved',commit=False)
                 self.save()
             except BaseException:
@@ -148,6 +159,7 @@ class ExecutionBudget:
             return request_id
         self.data['calls'] += 1
         self.data['reserved_tokens'] += amount
+        self.data['stage_reserved_tokens'][stage]=stage_used+amount
         self.save()
         return request_id
 

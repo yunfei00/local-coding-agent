@@ -97,9 +97,12 @@ class ModelCatalog:
         return hashlib.sha256(json.dumps([profile,connection],sort_keys=True).encode()).hexdigest()
 
     def test_result(self, profile_id):
-        result=json.loads(self.store.get_setting('model.test.'+profile_id) or '{}')
+        try:
+            result=json.loads(self.store.get_setting('model.test.'+profile_id) or '{}')
+            if not isinstance(result,dict):raise ValueError()
+        except (ValueError,TypeError):return {'configuration':'INVALID','errors':[{'code':'CAPABILITY_CACHE_INVALID'}]}
         if result and result.get('config_fingerprint') != self.fingerprint(profile_id):
-            result={**result,'vision':'STALE','configuration':'STALE'}
+            result={**result,**{key:'STALE' for key in ('vision','tools','text','configuration')}}
         return result
 
     def import_legacy_models(self, models):

@@ -22,6 +22,9 @@ _locks = {}
 
 
 def public_arguments(name, arguments):
+    if name in {'project_memory','project_memory_search'}:
+        return {'action':arguments.get('action') if arguments.get('action') in {'save','search'} else 'invalid','content':'[记忆内容或检索词略]'}
+    if name=='knowledge_search':return {'query':'[检索词略]','mode':arguments.get('mode') if arguments.get('mode') in {'all','filename','content','symbol'} else 'all'}
     return {k: ('[input omitted]' if name == 'desktop_type_text' and k == 'text' else v) for k, v in arguments.items()}
 
 

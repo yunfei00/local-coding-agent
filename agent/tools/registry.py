@@ -143,6 +143,6 @@ class ToolRegistry:
             return await tool.execute(arguments, owner_id=owner_id, desktop_authorized=desktop_authorized, supports_vision=supports_vision)
         if name == "run_command":
             return await tool.execute(arguments, on_output=on_output, on_raw_output=on_raw_output, environment=environment, owner_id=owner_id)
-        if name in {"start_process", "read_process", "stop_process"}:
+        if name in {"start_process", "read_process", "stop_process","environment_diagnose","environment_repair","project_memory"}:
             return await tool.execute(arguments, on_output=on_output, owner_id=owner_id)
         return await tool.execute(arguments, on_output=on_output)

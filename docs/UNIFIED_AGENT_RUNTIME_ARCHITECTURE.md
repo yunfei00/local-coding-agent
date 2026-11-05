@@ -44,3 +44,7 @@
 `task.runtime.diagnostics` 导出约 140 行以内当前 Markdown 和本机完整 JSON，WebSocket 不传完整历史。过滤 Prompt、用户文件内容、原始参数和输出；继续调用原密钥脱敏，日志/数据库历史不删除。高级 Task 的 Worktree、角色绑定、追加需求、审批与接受报告流程保留；统一入口默认当前工作区，并不等于自动隔离 Worktree 或运行中引导。
 
 兼容 Provider 的流诊断只增加事件/字符计数和首末时间，不记录 content、reasoning_content 或工具参数正文。单请求超时保留这些计数与不确定预留，和整个任务耗时分别处理。提示模型分批创建文件/小补丁，避免一次输出整个多文件项目；这不替代真实模型验收。
+
+## v0.8 扩展
+
+继续使用同一个 AgentServer 工具循环、RuntimeLedger、ExecutionBudget 和 Checkpoint。新增能力路由解析实际 Provider，项目知识在同一个 SQLite 中按工程隔离；检索、记忆与环境检查进入原 ToolRegistry。模型切换不重置累计预算或重放副作用。高级 Task 的旧入口不额外注入知识工具开销，统一入口默认可用。详见 [v0.8 架构](v0.8/architecture.md)及[验收](v0.8/acceptance-report.md)。
