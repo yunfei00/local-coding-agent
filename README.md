@@ -1,6 +1,6 @@
 # Local Coding Agent
 
-v0.7.0 Windows Computer Agent 开发分支增加授权截图坐标映射、视觉坐标网格、现代 RichEdit 记事本输入、有界深层 UIA 和低内存门禁。真实系统应用/本地浏览器已执行；真实模型视觉回退尚未验收通过，不能作为已完成版本合并或发布。当前结果与限制见 [v0.7 验收](docs/v0.7/acceptance-report.md)。本轮只处理 v0.7，不创建 Release/Tag。
+v0.7.0 Windows Computer Agent 增加授权截图坐标映射、视觉坐标网格、现代 RichEdit 记事本输入、有界深层 UIA 和低内存门禁。真实系统应用/本地浏览器工具集成、qwen3.8-max-0902 视觉操作及失败恢复已通过本轮验收；其他模型失败与测试边界见 [v0.7 验收](docs/v0.7/acceptance-report.md)。最终合并以 PR CI 为门禁，本轮不创建 Release/Tag，不进入 v0.8/v0.9。
 
 v0.6.0 扩展统一运行可靠性：运行中持久追加需求、取消/终态保护、无 Plan 中断恢复和脱敏请求事件。Python、React、Electron 已通过真实在线模型开发验证；各项结果与限制见 [v0.6 实现](docs/v0.6/implementation.md)及[验收报告](docs/v0.6/acceptance-report.md)。本轮不创建正式 Release 或 Tag。
 

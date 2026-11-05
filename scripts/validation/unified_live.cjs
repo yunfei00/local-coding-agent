@@ -3,7 +3,7 @@ const fs=require('node:fs'), path=require('node:path'), cp=require('node:child_p
 const crypto=require('node:crypto');
 const http=require('node:http'),https=require('node:https');
 const {_electron}=require('../../desktop/node_modules/playwright-core');
-const {readyProcessId,matchesReadyProcess,closeOwnedApplication}=require('./live_gui_guard.cjs');
+const {readyProcessId,matchesReadyProcess,closeOwnedApplication,visualWaitEvidence}=require('./live_gui_guard.cjs');
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const manifest=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const policyPath=path.join(manifest.root,'validation-reports/unified-model-policy.json');
@@ -121,6 +121,7 @@ async function main(){
    if(currentCase?.name==='visual'&&e.type==='model.attachment'){currentCase.attachment=p;save();}
    if(currentCase?.name==='visual'&&e.type==='vision.observed'){currentCase.attachment=p;save();}
    if(currentCase?.name==='visual'&&e.type==='tool.started'&&p.name==='desktop_click'){currentCase.visual_actions||=[];currentCase.visual_actions.push({method:p.arguments?.method,space:p.arguments?.coordinate_space,x:p.arguments?.x,y:p.arguments?.y,artifact_id:p.arguments?.artifact_id});save();}
+   if(currentCase?.name==='visual'&&e.type==='tool.started'&&p.name==='desktop_wait'){currentCase.visual_waits||=[];currentCase.visual_waits.push(visualWaitEvidence(p.arguments));save();}
    if(['turn.started','tool.started','tool.completed','turn.completed','turn.failed','turn.cancelled'].includes(e.type)){report.lifecycle.phase=e.type;save();}
    if(e.type==='turn.started')ownedTurn=e.turn_id;
    if(['turn.completed','turn.failed','turn.cancelled'].includes(e.type))turnTerminal.set(e.turn_id,{type:e.type,code:p.code,message:p.message,verification:p.verification});

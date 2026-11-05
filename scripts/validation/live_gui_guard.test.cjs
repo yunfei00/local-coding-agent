@@ -2,6 +2,14 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {readyProcessId,matchesReadyProcess,closeOwnedApplication}=require('./live_gui_guard.cjs');
+test('视觉等待证据区分缺失选择器并脱敏非夹具内容',()=>{
+ const {visualWaitEvidence}=require('./live_gui_guard.cjs');
+ assert.deepEqual(visualWaitEvidence(),{state:'exists',seconds:5,selector_present:false,selector_keys:[],selector_name:null,expected:null});
+ const data=visualWaitEvidence({state:'name',seconds:4,selector:{name:'Visual fallback verified',automation_id:'private-value'},expected:'sensitive-text'});
+ assert.equal(data.selector_present,true);assert.equal(data.selector_name,'Visual fallback verified');assert.equal(data.expected,'[redacted]');
+ assert.equal(data.state,'name');assert.equal(data.seconds,4);assert.equal(JSON.stringify(data).includes('private-value'),false);assert.equal(JSON.stringify(data).includes('sensitive-text'),false);
+ assert.equal(visualWaitEvidence({state:'private-state',seconds:'private-time'}).state,'[invalid]');assert.equal(visualWaitEvidence({seconds:'private-time'}).seconds,null);
+});
 test('历史 PID 文件不足以授权，必须匹配本次实际就绪输出',()=>{
  const folder=fs.mkdtempSync(path.join(os.tmpdir(),'lca-guard-')),file=path.join(folder,'process.json');
  try{fs.writeFileSync(file,JSON.stringify({pid:1234}));assert.equal(matchesReadyProcess(1234,null,file),false);assert.equal(readyProcessId('npm started'),null);assert.equal(readyProcessId('M5_ELECTRON_READY {bad}'),null);assert.equal(readyProcessId('M5_ELECTRON_READY {"pid":1234}\n'),1234);assert.equal(matchesReadyProcess(1234,1234,file),true);assert.equal(matchesReadyProcess(5678,1234,file),false);fs.writeFileSync(file,JSON.stringify({pid:5678}));assert.equal(matchesReadyProcess(1234,1234,file),false);}finally{fs.unlinkSync(file);fs.rmdirSync(folder);}
