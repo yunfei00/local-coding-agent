@@ -1170,9 +1170,11 @@
     "typecheck_exit": 0,
     "build_exit": 0,
     "electron_smoke": {
-      "passed": 53,
+      "passed": 54,
       "skipped": 0,
-      "failed": 0
+      "failed": 0,
+      "log": "validation-reports/v07-menu-desktop-smoke.log",
+      "sha256": "4600668fd022e72b244fe808290e5923ba7cd034f346e602f0d42c20bf53d4a2"
     },
     "gui_guard": {
       "passed": 4,
@@ -1198,5 +1200,19 @@
     "valid_acceptance": false,
     "cause": "supervisor wrote read-only diagnostic output inside workspace; subsequent unrelated code verification invalidates this acceptance run",
     "clean_rerun": "v07-user-max-clean-visual"
+  },
+  "ci_regression_fix": {
+    "failed_run": 41971358619,
+    "platform": "windows-latest",
+    "step": "Actual desktop task and regression smoke",
+    "cause": "ActionMenu capture listener dismissed on unrelated conversation scroll; Diagnostics target detached",
+    "fix": "dismiss only on document/window or anchor-ancestor scroll; resize/outside/keyboard behavior preserved",
+    "real_electron_regression": "unrelated conversation scroll preserves menu; document scroll dismisses; Diagnostics click succeeds",
+    "after_fix": {
+      "frontend_passed": 62,
+      "typecheck_exit": 0,
+      "build_exit": 0,
+      "smoke_passed": 54
+    }
   }
 }

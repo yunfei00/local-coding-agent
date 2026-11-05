@@ -37,6 +37,7 @@ PASS 仅指所列范围。原生测试使用真实 Windows 窗口、生产 ToolR
 - 补充视觉等待证据：记录 state、秒数、是否提供 selector 及允许字段；非夹具文字脱敏，避免再次因参数未留存而无法定位。新增保护回归，不冒充过去的调用参数。
 - `unified_live.py/cjs`：真实 Electron/API 驱动、图片传输/坐标证据、进程退出和内存，有限重试；隔离配置不覆盖用户设置。
 - 新增 `tests/test_v07_computer.py` 16 项回归；`manual-fixtures/v07-computer-agent` 随机 Canvas 按钮、独立点击状态和指针证据。已有 M3/M4/M5 路径、契约不变。
+- `ActionMenu.tsx`：旧 HEAD 的 PR CI（run `41971358619`，Windows Smoke）暴露后台聊天滚动误关闭 Diagnostics 菜单。原捕获监听器对任意 scroll 都关闭；改为仅文档/窗口或锚点祖先滚动关闭，保留真实窗口 resize、外部点击、键盘行为。真实 Electron 新增“聊天滚动保留、文档滚动关闭、Diagnostics 可点”回归；类型/62 前端/build 重测通过，Smoke 54/54。没有增加超时、force click 或降低断言。
 - 版本元数据 0.7.0 开发版；协议/数据库兼容，不等于发布。
 
 ## 命令及自动化结果
@@ -64,7 +65,7 @@ git diff --check
 | M3 真实 Windows GUI 回归 | PASS：11 项中 10 通过、1 条件跳过，`v07-m3-regression.log` |
 | 版本元数据一致性 | PASS：4/4，`v07-release-metadata.log` |
 | 全量 Python / 类型 / 前端 / build | PASS：Python 567 项，565 通过、2 平台跳过、0 失败；前端 62/62；类型检查/build exit=0。`20261105-124815-729605.json/.log` |
-| Electron Smoke / 驱动保护 | PASS：53/53，0 跳过；保护测试 4/4；`v07-desktop-smoke.log`、`v07-live-gui-guard.log` |
+| Electron Smoke / 驱动保护 | PASS：修复菜单后 54/54，0 跳过（初次 53/53 记录保留）；保护测试 4/4；`v07-desktop-smoke.log`、`v07-live-gui-guard.log` |
 | Windows / Ubuntu CI | 实现提交 `6f78fc7` 双平台 PASS，run `41970333245`；最终文档/驱动提交仍须检查 PR #30 最新 Checks |
 
 原生 GUI 可复现命令（输出目录使用新路径，各项依次执行）：
@@ -123,5 +124,14 @@ Explorer 关闭 Invoke 异常原样保留；独立 `v07-owned-cleanup/report.jso
 1. 十项能力在上表范围通过；模型自主视觉闭环以 `qwen3.8-max-0902` 为本次有效证据，不泛化成所有模型/所有 Windows 应用都已验收。
 2. 任意 UIA/视觉目标、受保护窗口、非当前会话、资源不足仍可能被拒绝；Ollama 真实连接按用户要求 SKIPPED。
 3. 原生系统应用的启动宿主、界面版本和 UIA 树会变化；优先 inspect，不使用猜测的 DOM id。Explorer 初次关闭失败及补救记录保留。
-4. 最新代码提交 Windows/Ubuntu CI 必须通过后才可合并。实现提交 run `41970333245` 已双平台 PASS；PR 最终 Checks 是合并前权威状态，不能以历史结果替代。
+4. 最新代码提交 Windows/Ubuntu CI 必须通过后才可合并。旧 PR CI 的真实菜单失败已记录并修复，不以旧 push CI 的成功掩盖它。实现提交 run `41970333245` 已双平台 PASS；PR 最终 Checks 是合并前权威状态，不能以历史结果替代。
 5. 不创建 Release/Tag，不进入 v0.8/v0.9。PR： https://github.com/yunfei00/local-coding-agent/pull/30 。
+
+真实模型视觉复验命令（已有安全配置，输出目录使用新路径；不会改日常模型配置）：
+
+```powershell
+uv run --locked python scripts/validation/unified_live.py --live --discover-only --output validation-reports/v07-company-discovery --max-calls 2 --max-tokens 10000 --request-seconds 30
+uv run --locked python scripts/validation/unified_live.py --live --case visual --discovery-report validation-reports/v07-company-discovery/report.json --candidate-model qwen3.8-max-0902 --only-model qwen3.8-max-0902 --vision-candidate-model qwen3.8-max-0902 --output validation-reports/v07-company-visual --max-calls 30 --max-tokens 500000 --validation-task-calls 30 --validation-task-tokens 500000 --output-tokens 4096 --request-seconds 60
+```
+
+以上是真实在线调用；额度由用户阿里云后台控制，驱动另设有限请求/时间/Token 保护。实际使用量依模型结果变化，不承诺相同 Token 或所有模型都通过。不得把监督诊断写入被测工作区。

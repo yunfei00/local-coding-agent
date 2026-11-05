@@ -797,7 +797,13 @@ async function main() {
       checks.push(`Send works with ${panel} open and composer remains unobstructed`);
     }
     await page.getByRole("button", {name:"More",exact:true}).click();
+    await page.locator('.conversation').dispatchEvent('scroll');
+    await page.getByRole('menu',{name:'More',exact:true}).waitFor({state:'visible'});
+    await page.evaluate(()=>document.dispatchEvent(new Event('scroll')));
+    await page.getByRole('menu',{name:'More',exact:true}).waitFor({state:'hidden'});
+    await page.getByRole("button", {name:"More",exact:true}).click();
     await page.getByRole("menuitem", {name:"Diagnostics",exact:true}).click();
+    checks.push('Streaming conversation scroll preserves the real action menu; document scroll still dismisses it and Diagnostics remains clickable');
     assert(await page.locator(".message.agent h3").count() > 0);
     assert(await page.locator(".message.agent table").count() > 0);
     const codeBlock = page.locator(".message.agent .code-block").filter({hasText:"print('local agent')"}).first();

@@ -26,13 +26,20 @@ export function ActionMenu({label, children, actions, disabled = false, classNam
       if (!element.contains(event.target as Node) && !trigger.current?.contains(event.target as Node)) close();
     };
     const dismiss = () => close();
+    const onScroll = (event:Event) => {
+      // Only scrolling the anchor's ancestors changes the menu position.
+      // Streaming conversation/diagnostic content must not dismiss a menu.
+      const target = event.target;
+      if (target === document || target === window ||
+          (target instanceof Element && trigger.current && target.contains(trigger.current))) close();
+    };
     document.addEventListener("pointerdown", outside);
     window.addEventListener("resize", dismiss);
-    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       document.removeEventListener("pointerdown", outside);
       window.removeEventListener("resize", dismiss);
-      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [position]);
   useEffect(() => {if (disabled) setPosition(null);}, [disabled]);
