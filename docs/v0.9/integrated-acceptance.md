@@ -13,6 +13,7 @@
 | E 修改后中断 | v09-runtime-continuity/report.json interruption 子项：实际修改后暂停恢复，原 2 个完成步骤保留 | PASS；该历史报告收尾驱动错误不改写 |
 | E WebSocket | v09-runtime-websocket-offline/report.json：核对原同 generation 重连运行、真实 unittest 和 Git 契约，没增加模型请求 | PASS（原运行补验，非新在线任务） |
 | F 自动修复 | v09-runtime-repair-protected/report.json：真实测试 exit 1→修改→exit 0，原冻结测试字节不变 | PASS |
+| F 后台入口复测 | v09-background-repair-review/report.json：实际桌面生产后台入口，真实失败命令→apply_patch→复测与独立 unittest 通过；5 请求，38,884 Token | PASS；独立验证的 repairs=1 分支另由新增定向回归验证 |
 | F 环境阻断 | v09-runtime-repair-environment/report.json environment 子项：真实 ModuleNotFoundError，environment，暂停 awaiting_user，无无限修复 | PASS（正确阻断）；报告另一 repair 子项 FAIL 保留 |
 | G Windows 应用 | v09-gui-unlocked/report.json：在线 Qwen 实际定位/激活、UIA 输入/保存/读取/截图/停止，随机值 GUI-554fdf9f 与磁盘一致；cleanup-check.json 无本次残留 PID | PASS；原锁屏/内存 BLOCKED 证据保留 |
 | H Git 交付 | A/B/F 真 Diff/验证/报告/原文件核对；审批、Worktree、私密 origin 有自动化回归 | PASS；未授权业务 commit/push，不执行 |
@@ -30,10 +31,12 @@
 
 ## 调用与边界
 
-原轮次去重：continuity 24、React 17、repair/environment 25、protected repair 12、Python 14，共 92；能力另 5。新增 GUI 17，共 114 模型请求，另 1 目录 GET。已知实际 1,329,344 Token，一次取消与一次 HTTP 400 无准确 Usage，保留预留/估算，费用 UNKNOWN。见[验收报告](acceptance-report.md)。
+原轮次去重：continuity 24、React 17、repair/environment 25、protected repair 12、Python 14，共 92；能力另 5。新增 GUI 17、审查修复后后台任务 5，共 119 模型请求，另 1 目录 GET。已知实际 1,368,228 Token，一次取消与一次 HTTP 400 无准确 Usage，保留预留/估算，费用 UNKNOWN。见[验收报告](acceptance-report.md)。
 
 最新原生 pending 调整、全局配置、额度回退跨角色快照为自动化集成 PASS，没有再发在线请求声称全部分支都真实覆盖。没有无限预算、未知副作用重放或额外聊天模式。
 
 本机大测试及模型串行；锁屏/资源不足时未反复启动。解锁后只启动一组受控桌面验收（产品控制器与目标测试应用），未并行启动其他浏览器或 GUI 用例，结束核对 9 个自有 PID 全部退出，不结束无关用户程序。CI Mock Provider 桌面 Smoke、实际 M5 工具与 G 在线 Windows 操作分别计数。
 
 GUI 补测没有改源码；保留了权限系统对两次目录越界和一次缺风险确认点击的拒绝。模型在本轮有限调用内纠正，实际读到 Saved 并正常清理。运行正确结束为 completed_unverified/manual、changed_paths=[]，没有运行 unittest 冒充代码验收。诊断 22 行，真实截图只保存在本机。
+
+随后 PR 审查确认后台独立验证失败缺 repairs 默认值和快照短时限失效。源码 36603f8 补齐入队/旧快照缺省值及冻结时限，新增 3 个集成回归（14 项定向全通过），再执行一项受影响的真实后台修复。没有重复此前全部场景或重放 GUI 操作；原通过结论限定于各自实际源码版本。

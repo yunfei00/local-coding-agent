@@ -27,6 +27,7 @@
 | 该次 Python | `validation-reports/20261106-014335-670546.log` | 共 664：648 PASS、16 SKIP、0 FAIL |
 | 最后定向 | `uv run --locked python -m unittest discover -s tests -p 'test_v09_*.py' -v` | 33 PASS、0 FAIL；覆盖最后新增 3 项，与全量重叠，不相加 |
 | 最终源码 Python CI | 92b83c2 的 PR CI | Windows 667：665 PASS、2 SKIP；Ubuntu 667：650 PASS、17 SKIP；均 0 FAIL |
+| 审查补充定向回归 | `uv run --locked python -m unittest discover -s tests -p test_v09_runtime_queue.py -v` | 14 PASS，新增 3 项；当前收集 670，最新完整结果见 PR Checks |
 | 前端 | `npm --prefix desktop run test` | 19 文件、67 PASS、0 FAIL，串行 |
 | 类型/构建 | `npm --prefix desktop run typecheck`、`npm --prefix desktop run build` | PASS；既有 bundle 体积提示保留 |
 | 凭据扫描 | `uv run --locked python scripts/validation/credential_scan.py` | 496 文件、0 findings；不保证覆盖任意未知密钥格式 |
@@ -46,7 +47,7 @@
 
 两个禁止模型调用数 0，无 Ollama 真实请求。两个候选 profile 仅在隔离配置副本添加，原用户 Key、Endpoint、模型配置及额度不改。不用图像/视频生成模型做编程。
 
-原轮次独立数据库去重后 92 次业务模型请求，另 5 次能力请求；本次 GUI 追加 17 次，共 **114 次模型 HTTP 请求**，另 1 次目录 GET。已知实际 Usage **1,329,344 Token**：DeepSeek 863,983，Qwen 465,361。缓存 275,200 是输入子集，不再叠加。一次取消 Qwen 请求缺准确 Usage，保留 42,727 的保守预留；kimi 失败请求 10,256 是估算，不冒充实际。费用 UNKNOWN。原轮次统计在本机 `validation-reports/v09-model-summary.json`，新增 GUI 统计单列在本轮报告及证据清单。
+原轮次独立数据库去重后 92 次业务模型请求，另 5 次能力请求；本次 GUI 追加 17 次、审查修复后的后台任务追加 5 次，共 **119 次模型 HTTP 请求**，另 1 次目录 GET。已知实际 Usage **1,368,228 Token**：DeepSeek 863,983，Qwen 504,245。缓存 295,680 是输入子集，不再叠加。一次取消 Qwen 请求缺准确 Usage，保留 42,727 的保守预留；kimi 失败请求 10,256 是估算，不冒充实际。费用 UNKNOWN。原轮次统计在本机 `validation-reports/v09-model-summary.json`，新增验收统计单列在本轮报告及证据清单。
 
 真实角色模型切换 PASS；额度耗尽故障回退仅 Mock 集成验证，没有刻意耗尽真实额度。每次运行有请求、工具、Token、时间上限；没有无限重试。未知副作用不自动重放。
 
@@ -59,6 +60,14 @@
 证据：`validation-reports/v09-gui-unlocked/report.json`、`cleanup-check.json` 及本机脱敏窗口截图。报告 PASS、控制器退出 0、无强制终止。运行状态 completed，outcome=completed_unverified，level=manual，changed_paths=[]：这是 GUI 操作验收通过，未运行代码测试，不伪造 completed_verified。诊断 22 行，Markdown/JSON 文件均存在。React DOM 结果与本次 Windows 工具闭环分别记录。
 
 ## Git 和 CI
+
+### PR 审查后补充修复
+
+真实 GUI 通过后，PR 自动审查发现并确认两项缺陷：排队时预建 unified 字典缺少 repairs，后续 setdefault 不补子字段，首次独立验证失败会 KeyError；预建 unified_config 跳过原初始化的时间收紧逻辑，使较短 API 任务时限未生效。源码修复提交 `36603f834545fdee08ddcf2b9a1cca828ebb2839` 在入队时初始化计数/收紧时限，并在读取旧快照时补缺省字段、重新应用冻结时限，保留既有次数、证据和设置快照。
+
+新增回归覆盖实际后台路径的独立 unittest 失败→repairs=1→修改→复测通过、旧排队快照缺字段恢复及新 Settings 不污染旧任务、已累计超时的旧任务不发送首次请求。14 项定向测试 PASS。新在线后台任务 `v09-background-repair-review/report.json` 使用 Qwen 5 请求、38,884 实际 Token，真实命令 exit 1→Agent apply_patch→复测和独立 unittest exit 0，原测试未变、completed_verified、诊断 35 行。该在线任务 repairs=0（初始失败来自显式测试工具），不能冒充独立验证修复计数分支的在线覆盖；该分支由 Mock Provider 配合真实工具的新增回归证明。
+
+补充修复只涉及快照缺省值及时间预算，没有修改 Windows 工具；无需重放已成功的 GUI 输入/保存。保留原 GUI 源码版本、时间与全部历史失败证据。
 
 本次 GUI 实际源码 `92b83c2a3a6031602a26c1b617fc42cbf712bf77` 的 [PR CI](https://github.com/yunfei00/local-coding-agent/actions/runs/42082600128) 和 [push CI](https://github.com/yunfei00/local-coding-agent/actions/runs/42082591651) 均 PASS，Windows/Ubuntu 全绿，M5 3 项及 Smoke 55 项均通过。GUI 补验仅更新验收文档和脱敏证据，没有改业务源码。最终文档提交及合并后检查以 [PR Checks](https://github.com/yunfei00/local-coding-agent/pull/32/checks) 和 [main CI](https://github.com/yunfei00/local-coding-agent/actions/workflows/ci.yml?query=branch%3Amain) 为准，不用旧提交 CI 冒充新提交 CI。
 

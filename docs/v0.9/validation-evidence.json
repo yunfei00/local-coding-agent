@@ -78,10 +78,18 @@
     {
       "path": "validation-reports/v09-gui-fixture/frontend/.runtime/saved.json",
       "sha256": "c9a884832d70eb70c14abfbbcc0e7d87fbd2eedb19eb06d959113910a4629321"
+    },
+    {
+      "path": "validation-reports/v09-review-regression-fixed.log",
+      "sha256": "a274482651fe63d23cc91cdabc9de460cc2f19e34ee52bb1441b37c32faeb3fe"
+    },
+    {
+      "path": "validation-reports/v09-background-repair-review/report.json",
+      "sha256": "2fdfed0fc5f7fdf0eb7bad2ff63f3877c034c6bb473fb3f9ed8e181b47f369d2"
     }
   ],
-  "model_requests": 114,
-  "known_actual_tokens": 1329344,
+  "model_requests": 119,
+  "known_actual_tokens": 1368228,
   "cost": "UNKNOWN",
   "gui_followup": {
     "source_commit": "92b83c2a3a6031602a26c1b617fc42cbf712bf77",
@@ -96,5 +104,22 @@
     "level": "manual",
     "changed_paths": [],
     "owned_pids_remaining": []
+  },
+  "review_fixes": {
+    "source_commit": "36603f834545fdee08ddcf2b9a1cca828ebb2839",
+    "targeted_tests": 14,
+    "pass": 14,
+    "fail": 0,
+    "new_tests": 3,
+    "current_collected_tests": 670,
+    "live_background_repair": {
+      "result": "PASS",
+      "model": "qwen3.8-2.4t-a95b",
+      "calls": 5,
+      "actual_tokens": 38884,
+      "repairs": 0,
+      "independent_exit_code": 0,
+      "frozen_original_tests": true
+    }
   }
 }
