@@ -1,5 +1,7 @@
 # Local Coding Agent
 
+v0.7.0 Windows Computer Agent 增加授权截图坐标映射、视觉坐标网格、现代 RichEdit 记事本输入、有界深层 UIA 和低内存门禁。真实系统应用/本地浏览器工具集成、qwen3.8-max-0902 视觉操作及失败恢复已通过本轮验收；其他模型失败与测试边界见 [v0.7 验收](docs/v0.7/acceptance-report.md)。最终合并以 PR CI 为门禁，本轮不创建 Release/Tag，不进入 v0.8/v0.9。
+
 v0.6.0 扩展统一运行可靠性：运行中持久追加需求、取消/终态保护、无 Plan 中断恢复和脱敏请求事件。Python、React、Electron 已通过真实在线模型开发验证；各项结果与限制见 [v0.6 实现](docs/v0.6/implementation.md)及[验收报告](docs/v0.6/acceptance-report.md)。本轮不创建正式 Release 或 Tag。
 
 v0.5.0 使用用户确认的在线模型验收标准：同页自主开发、真实在线工程及 GUI/视觉路径已通过。版本说明与已知限制见 [v0.5.0](docs/releases/v0.5.0.md)。以下阶段性记录保留历史验收范围；正式安装包及当前发布状态以 [Latest Release](https://github.com/yunfei00/local-coding-agent/releases/latest) 页面为准。
@@ -16,7 +18,7 @@ M4 全面修复统一了 Chat/Task 的连接和模型目录，支持独立 Visio
 
 Local Coding Agent 是一个面向 Windows 本地开发环境的桌面 Coding Agent。目标是提供类似 Codex Desktop 的核心开发体验，同时让模型、Agent、工具链、数据和权限边界保持在用户自己的环境中。
 
-> 当前开发代码版本：**v0.6.0**（验收状态见上文）
+> 当前开发代码版本：**v0.7.0**（验收状态见上文）
 >
 > 最近正式发布：[**Latest Release / Windows 下载**](https://github.com/yunfei00/local-coding-agent/releases/latest)
 

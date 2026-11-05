@@ -284,7 +284,9 @@ def controls(window):
         control_id=tuple(control.element_info.runtime_id)
         parents[control_id]=parent_id
         children = control.children()
-        if depth < 8:
+        # 现代 Chromium/WinUI 的真实可交互控件常位于第 9~16 层。
+        # 保持 200 节点硬上限和不完整树拒绝策略，只提高有界深度。
+        if depth < 24:
             remaining = max(0,200-len(result)-len(queue))
             truncated |= len(children)>remaining
             queue.extend((child, depth+1, list(control_id)) for child in children[:remaining])
@@ -314,6 +316,25 @@ def private_editor(control):
             return False
 
 
+def document_reader(control):
+    """仅支持可识别 RichEdit Document，不把网页 Document 当作输入框。"""
+    if control.element_info.control_type!='Document' or 'richedit' not in str(control.element_info.class_name).lower():
+        fail('DESKTOP_EDIT_REQUIRED','仅支持精确 Edit 或 RichEdit Document；未输入。')
+    try:
+        pattern=control.iface_text
+        readonly=pattern.DocumentRange.GetAttributeValue(40015)
+        if readonly not in (False,0):
+            fail('DESKTOP_CONTROL_UNAVAILABLE','Document 只读属性不允许输入。')
+        def read():
+            value=pattern.DocumentRange.GetText(4001)
+            if value.endswith('\r'):value=value[:-1]
+            return value.replace('\r\n','\n').replace('\r','\n')
+        read()
+        return read
+    except DesktopError:raise
+    except Exception:fail('DESKTOP_UIA_PATTERN_UNAVAILABLE','Document 没有可验证的 TextPattern；未盲目输入。')
+
+
 def describe(control, parent_id=None):
     info = control.element_info
     hidden = sensitive(control)
@@ -322,7 +343,7 @@ def describe(control, parent_id=None):
     return {'name':'[redacted]' if hidden or editable else redact_text(str(info.name))[:200],
             'automation_id':str(info.automation_id)[:160], 'control_type':info.control_type,
             'runtime_id':list(info.runtime_id), 'parent_runtime_id':parent_id, 'enabled':bool(control.is_enabled()), 'visible':bool(control.is_visible()),
-            'sensitive':hidden, 'bounds':[rect.left, rect.top, rect.right, rect.bottom]}
+            'sensitive':hidden, 'editable_document':info.control_type=='Document' and 'richedit' in str(info.class_name).lower(), 'bounds':[rect.left, rect.top, rect.right, rect.bottom]}
 
 
 def find(window, selector):
@@ -508,13 +529,13 @@ def execute(request):
     if op == 'desktop_click' and a.get('method','uia') == 'coordinate':
         current=geometry(hwnd)
         expected=request.get('expected_geometry')
-        if not expected or any(current[k]!=expected[k] for k in ('client_size','dpi')):
+        if not expected or any(current[k]!=expected[k] for k in ('client_size','dpi')) or ('client_origin' in expected and current['client_origin']!=expected['client_origin']):
             fail('DESKTOP_GEOMETRY_CHANGED','Inspect/capture the window after resize or DPI change before coordinate fallback')
         if not a.get('confirm_risk'):
             fail('DESKTOP_RISK_APPROVAL_REQUIRED', 'Coordinate fallback requires fresh confirm_risk approval')
         x,y = a.get('x'),a.get('y')
         rect = gui.GetClientRect(hwnd)
-        if not isinstance(x,int) or not isinstance(y,int) or not 0 <= x < rect[2] or not 0 <= y < rect[3]:
+        if isinstance(x,bool) or isinstance(y,bool) or not isinstance(x,int) or not isinstance(y,int) or not 0 <= x < rect[2] or not 0 <= y < rect[3]:
             fail('DESKTOP_COORDINATES_INVALID','Coordinates must be current window client physical pixels')
         focus(binding)
         point = gui.ClientToScreen(hwnd, (x,y))
@@ -542,7 +563,10 @@ def execute(request):
         text = a.get('text')
         if not isinstance(text,str) or len(text)>4000 or SECRET.search(text) or re.search(r'\b(?:sk-|ghp_|github_pat_|eyJ)[A-Za-z0-9_-]{12,}',text):
             fail('DESKTOP_SENSITIVE_INPUT','Use ordinary non-secret text only; input was not logged or entered')
-        if control.element_info.control_type != 'Edit':
+        document=control.element_info.control_type=='Document' and 'richedit' in str(control.element_info.class_name).lower()
+        if document and not a.get('confirm_risk'):
+            fail('DESKTOP_RISK_APPROVAL_REQUIRED','RichEdit Document 输入需要明确 confirm_risk 审批。')
+        if control.element_info.control_type != 'Edit' and not document:
             # A model sometimes selects a Tkinter frame/window rather than
             # the child Entry. Report bounded structural hints, never names,
             # text, selectors or identifiers of unrelated controls.
@@ -562,15 +586,17 @@ def execute(request):
                 f'Selected UIA control type is {actual_type}, not Edit; {hint}. '
                 'Inspect again and select an exact Edit runtime_id or automation_id. '
                 'No input was entered.')
-        try:
-            value_pattern=control.iface_value
-            if value_pattern.CurrentIsReadOnly:
-                fail('DESKTOP_CONTROL_UNAVAILABLE','Selected Edit is read-only; no input sent')
-        except DesktopError:
-            raise
-        except Exception:
-            fail('DESKTOP_UIA_PATTERN_UNAVAILABLE','ValuePattern unavailable; no blind typing fallback')
-        chromium=gui.GetClassName(hwnd).startswith('Chrome_WidgetWin')
+        if document:
+            value_pattern=None;read_value=document_reader(control)
+        else:
+            try:
+                value_pattern=control.iface_value
+                if value_pattern.CurrentIsReadOnly:
+                    fail('DESKTOP_CONTROL_UNAVAILABLE','Selected Edit is read-only; no input sent')
+                read_value=lambda:value_pattern.CurrentValue
+            except DesktopError:raise
+            except Exception:fail('DESKTOP_UIA_PATTERN_UNAVAILABLE','ValuePattern unavailable; no blind typing fallback')
+        chromium=document or gui.GetClassName(hwnd).startswith('Chrome_WidgetWin')
         if chromium:
             # Chromium SetValue can bypass React's input event and be reverted.
             # This is an explicit Edit input path, never a fallback on an
@@ -599,7 +625,7 @@ def execute(request):
                 if gui.GetForegroundWindow()!=hwnd or tuple(focused.GetRuntimeId())!=tuple(control.element_info.runtime_id):
                     fail('DESKTOP_FOCUS_FAILED','Edit lost focus while awaiting input acknowledgement; no further characters sent')
             input_batch([(1,17,0),(1,65,0),(1,65,2),(1,17,2),(1,8,0),(1,8,2)])
-            acknowledge_edit(lambda:value_pattern.CurrentValue,verify_edit_focus,'',timeout=2,stage='clear')
+            acknowledge_edit(read_value,verify_edit_focus,'',timeout=2,stage='clear')
             # A fixed pacing sleep still drops characters when Chromium/React
             # is busy. Require the actual Edit to acknowledge each prefix before
             # sending the next character. Each character is sent exactly once;
@@ -611,11 +637,13 @@ def execute(request):
                 focused=IUIA().iuia.GetFocusedElement()
                 if gui.GetForegroundWindow()!=hwnd or tuple(focused.GetRuntimeId())!=tuple(control.element_info.runtime_id):
                     fail('DESKTOP_FOCUS_FAILED','Edit lost focus during input; no further characters sent')
-                encoded=character.encode('utf-16-le')
-                units=[int.from_bytes(encoded[i:i+2],'little') for i in range(0,len(encoded),2)]
-                input_batch([event for unit in units for event in ((1,unit,4),(1,unit,6))])
+                if document and character=='\n':input_batch([(1,13,0),(1,13,2)])
+                else:
+                    encoded=character.encode('utf-16-le')
+                    units=[int.from_bytes(encoded[i:i+2],'little') for i in range(0,len(encoded),2)]
+                    input_batch([event for unit in units for event in ((1,unit,4),(1,unit,6))])
                 prefix+=character
-                acknowledge_edit(lambda:value_pattern.CurrentValue,verify_edit_focus,prefix)
+                acknowledge_edit(read_value,verify_edit_focus,prefix)
         else:
             try:
                 value_pattern.SetValue(text)
@@ -627,7 +655,7 @@ def execute(request):
         deadline=time.monotonic()+(3 if chromium else .5)
         while time.monotonic()<deadline:
             check(binding)
-            retained=value_pattern.CurrentValue
+            retained=read_value()
             observed_length=len(retained)
             stable_reads=stable_reads+1 if retained==text else 0
             if stable_reads>=(2 if chromium else 1):
@@ -638,7 +666,7 @@ def execute(request):
             fail('DESKTOP_VALUE_MISMATCH',f'Edit value did not stabilize: requested {len(text)} characters, observed {observed_length}; no text logged or input replayed')
         return {'entered':True,'characters':len(text),'value_verified':True,'input_logged':False,
                 'acknowledgement':'each_prefix' if chromium else 'complete_value',
-                'method':'uia_edit_unicode_input' if chromium else 'uia_value'}
+                'method':'uia_document_unicode_input' if document else 'uia_edit_unicode_input' if chromium else 'uia_value'}
     if op == 'desktop_keypress':
         keys = a.get('keys','').upper().split('+')
         names = {'CTRL':17,'ALT':18,'SHIFT':16,'TAB':9,'ENTER':13,'ESC':27,'ESCAPE':27,'SPACE':32,'BACKSPACE':8,'DELETE':46,'HOME':36,'END':35,'UP':38,'DOWN':40,'LEFT':37,'RIGHT':39,'PAGEUP':33,'PAGEDOWN':34}

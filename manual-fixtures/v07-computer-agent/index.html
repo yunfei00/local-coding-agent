@@ -1,0 +1,14 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>V07 Canvas acceptance</title>
+<style>body{font:22px system-ui;background:#fff;margin:24px}canvas{display:block;background:#eff2f5}#result{font-size:24px}</style>
+<h1>Local browser computer test</h1><p>Use the blue VERIFY button. Its position changes on every launch.</p>
+<canvas width="860" height="420"></canvas><p id="result" role="status">Waiting for real pointer input</p>
+<script>
+const canvas=document.querySelector('canvas'),context=canvas.getContext('2d');
+const bytes=crypto.getRandomValues(new Uint32Array(2));
+const target={x:40+bytes[0]%600,y:40+bytes[1]%270,w:150,h:64};
+context.fillStyle='#1769dc';context.fillRect(target.x,target.y,target.w,target.h);
+context.fillStyle='white';context.font='bold 24px system-ui';context.fillText('VERIFY',target.x+24,target.y+41);
+document.addEventListener('pointerdown',e=>{const r=canvas.getBoundingClientRect();window.fixture.pointer({client:[e.clientX,e.clientY],viewport:[innerWidth,innerHeight],canvas:[r.x,r.y,r.width,r.height],scale:devicePixelRatio});});
+canvas.addEventListener('click',async e=>{const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)*canvas.width/r.width,y=(e.clientY-r.top)*canvas.height/r.height;
+ if(x>=target.x&&x<target.x+target.w&&y>=target.y&&y<target.y+target.h){await window.fixture.verified();document.querySelector('#result').textContent='Visual fallback verified';}});
+</script></html>

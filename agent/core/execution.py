@@ -57,7 +57,9 @@ def failure_diagnosis(tool, code):
     if not re.fullmatch(r'[A-Z][A-Z0-9_]{0,79}',code):
         code = 'TOOL_FAILED'
     category, action, safe = 'tool', 'inspect_workspace', False
-    if code in ('APPROVAL_DENIED','PERMISSION_DENIED') or 'SENSITIVE' in code or 'RISK_APPROVAL' in code:
+    if code=='BLOCKED_RESOURCE':
+        category,action='environment','wait_for_memory_without_relaunch_or_model_retry'
+    elif code in ('APPROVAL_DENIED','PERMISSION_DENIED') or 'SENSITIVE' in code or 'RISK_APPROVAL' in code:
         category, action = 'permission', 'request_explicit_approval'
     elif code.startswith('REPEATED_') or code == 'PLAN_OPERATION_ALREADY_APPLIED':
         category, action = 'repetition', 'inspect_existing_result'

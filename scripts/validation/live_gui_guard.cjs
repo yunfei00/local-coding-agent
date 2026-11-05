@@ -15,4 +15,13 @@ async function closeOwnedApplication(app,child,{timeout=10000,kill=pid=>{if(proc
  if(child?.exitCode===null&&child.pid){forced=true;kill(child.pid);await new Promise(resolve=>setTimeout(resolve,50));}
  return {exit_code:child?.exitCode??null,signal:child?.signalCode??null,forced};
 }
-module.exports={readyProcessId,matchesReadyProcess,closeOwnedApplication};
+function visualWaitEvidence(args={}){
+ // Only the controlled fixture's public labels may enter a report.
+ const label=value=>value===undefined?null:['Visual fallback verified','Waiting for real pointer input'].includes(value)?value:'[redacted]';
+ const selector=args.selector;
+ const state=args.state??'exists',seconds=args.seconds??5;
+ return {state:['exists','enabled','disabled','visible','hidden','name'].includes(state)?state:'[invalid]',seconds:typeof seconds==='number'&&Number.isFinite(seconds)&&seconds>=0&&seconds<=30?seconds:null,selector_present:selector!=null,
+  selector_keys:selector&&typeof selector==='object'?Object.keys(selector).filter(k=>['name','automation_id','control_type','runtime_id'].includes(k)):[],
+  selector_name:label(selector?.name),expected:label(args.expected)};
+}
+module.exports={readyProcessId,matchesReadyProcess,closeOwnedApplication,visualWaitEvidence};

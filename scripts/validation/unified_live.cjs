@@ -3,7 +3,7 @@ const fs=require('node:fs'), path=require('node:path'), cp=require('node:child_p
 const crypto=require('node:crypto');
 const http=require('node:http'),https=require('node:https');
 const {_electron}=require('../../desktop/node_modules/playwright-core');
-const {readyProcessId,matchesReadyProcess,closeOwnedApplication}=require('./live_gui_guard.cjs');
+const {readyProcessId,matchesReadyProcess,closeOwnedApplication,visualWaitEvidence}=require('./live_gui_guard.cjs');
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const manifest=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const policyPath=path.join(manifest.root,'validation-reports/unified-model-policy.json');
@@ -117,6 +117,11 @@ async function main(){
   }
   await page.exposeFunction('unifiedValidationEvent',async e=>{
    const p=e.payload||{};
+   const guiCase=currentCase?.name==='gui'||currentCase?.name==='visual';
+   if(currentCase?.name==='visual'&&e.type==='model.attachment'){currentCase.attachment=p;save();}
+   if(currentCase?.name==='visual'&&e.type==='vision.observed'){currentCase.attachment=p;save();}
+   if(currentCase?.name==='visual'&&e.type==='tool.started'&&p.name==='desktop_click'){currentCase.visual_actions||=[];currentCase.visual_actions.push({method:p.arguments?.method,space:p.arguments?.coordinate_space,x:p.arguments?.x,y:p.arguments?.y,artifact_id:p.arguments?.artifact_id});save();}
+   if(currentCase?.name==='visual'&&e.type==='tool.started'&&p.name==='desktop_wait'){currentCase.visual_waits||=[];currentCase.visual_waits.push(visualWaitEvidence(p.arguments));save();}
    if(['turn.started','tool.started','tool.completed','turn.completed','turn.failed','turn.cancelled'].includes(e.type)){report.lifecycle.phase=e.type;save();}
    if(e.type==='turn.started')ownedTurn=e.turn_id;
    if(['turn.completed','turn.failed','turn.cancelled'].includes(e.type))turnTerminal.set(e.turn_id,{type:e.type,code:p.code,message:p.message,verification:p.verification});
@@ -124,15 +129,15 @@ async function main(){
    if(e.type==='context.updated')events.push({type:e.type,turn_id:e.turn_id,context:p});
    if(e.type==='plan.step.completed')events.push({type:e.type,turn_id:e.turn_id,plan_id:p.plan_id,step_id:p.step_id});
    if(e.type==='tool.completed'){
-    events.push({type:e.type,turn_id:e.turn_id,name:p.name,ok:p.result?.ok,exit_code:p.result?.exit_code,changed_paths:p.result?.changed_paths,error_code:p.result?.error?.code});
+    events.push({type:e.type,turn_id:e.turn_id,name:p.name,ok:p.result?.ok,exit_code:p.result?.exit_code,changed_paths:p.result?.changed_paths,error_code:p.result?.error?.code,...(currentCase?.name==='visual'?{method:p.result?.data?.method,mapping:p.result?.data?.coordinate_mapping}:{})});
     if(currentCase){currentCase.tools=events.filter(e=>e.type==='tool.completed');save();}
-    if(currentCase?.name==='gui'&&p.name==='desktop_list_windows')for(const w of p.result?.data?.windows||[])if(w.title==='M5 Electron acceptance')guiWindows.add(w.window_id);
-    if(currentCase?.name==='gui'&&p.name==='read_process'){
+    if(guiCase&&p.name==='desktop_list_windows')for(const w of p.result?.data?.windows||[])if(w.title===(currentCase?.name==='visual'?'V07 Canvas acceptance':'M5 Electron acceptance'))guiWindows.add(w.window_id);
+    if(guiCase&&p.name==='read_process'){
      const ready=readyProcessId(p.result?.stdout);
      if(ready){guiReadyPid=ready;currentCase.ready_pid=guiReadyPid;}
     }
-    if(currentCase?.name==='gui'&&p.name==='desktop_inspect'&&guiInspectTarget)guiControls.set(guiInspectTarget,p.result?.data?.controls||[]);
-    if(currentCase?.name==='gui'&&p.name==='desktop_screenshot')currentCase.capture={exists:!!p.result?.data?.path&&fs.existsSync(p.result.data.path),local_only:p.result?.data?.local_only===true};
+    if(guiCase&&p.name==='desktop_inspect'&&guiInspectTarget)guiControls.set(guiInspectTarget,p.result?.data?.controls||[]);
+    if(guiCase&&p.name==='desktop_screenshot'&&p.result?.ok)currentCase.capture={exists:!!p.result?.data?.path&&fs.existsSync(p.result.data.path),local_only:p.result?.data?.local_only===true};
    }
    if(e.type==='approval.requested'){
     const args=p.arguments||{},tool=String(p.tool||'');
@@ -140,7 +145,7 @@ async function main(){
     let allowed=['read_file','list_directory','search_files','file_exists','inspect_workspace','git_status','git_diff'].includes(tool)&&(!args.path||inside(args.path));
     if(tool==='review_interrupted_operation'&&args.tool==='run_command'&&reviewAllowed.has(args.call_id))allowed=true;
     if(['write_file','apply_patch'].includes(tool))allowed=inside(args.path);
-    if(currentCase?.name==='gui'){
+    if(guiCase){
      if(['write_file','apply_patch'].includes(tool))allowed=false;
      if(tool==='start_process')allowed=args.command==='npm --prefix frontend start'&&(!args.cwd||inside(args.cwd));
      if(tool==='desktop_list_windows'){
@@ -149,19 +154,22 @@ async function main(){
      }
      const selector=args.selector||{};
      const matches=(guiControls.get(args.window_id)||[]).filter(c=>Object.keys(selector).length>0&&Object.entries(selector).every(([k,v])=>JSON.stringify(c[k])===JSON.stringify(v)));
-     const safeSelector=['Settings','Save','Display name'].includes(selector.name)||(matches.length===1&&!matches[0].sensitive&&(['Settings','Save'].includes(matches[0].name)||matches[0].control_type==='Edit'));
+     const safeSelector=(currentCase?.name==='visual'&&selector.name==='VERIFY'&&selector.control_type==='Button')||['Settings','Save','Display name'].includes(selector.name)||(matches.length===1&&!matches[0].sensitive&&(['Settings','Save'].includes(matches[0].name)||matches[0].control_type==='Edit'));
      if(tool.startsWith('desktop_')&&tool!=='desktop_list_windows')allowed=guiWindows.has(args.window_id)&&
       (!['desktop_click','desktop_type_text'].includes(tool)||safeSelector)&&
       (tool!=='desktop_screenshot'||args.share_with_model!==true);
      if(tool==='desktop_inspect'&&allowed)guiInspectTarget=args.window_id;
+     if(currentCase?.name==='visual'&&tool==='desktop_screenshot')allowed=guiWindows.has(args.window_id);
+     if(currentCase?.name==='visual'&&tool==='desktop_click'&&args.method==='coordinate')allowed=guiWindows.has(args.window_id)&&['model_image','normalized_1000'].includes(args.coordinate_space)&&!!args.artifact_id&&args.confirm_risk===true;
     }
     if(tool==='run_command'){
      allowed=(!args.cwd||inside(args.cwd)) && /^(uv run(?: --no-project)? python|python -m unittest|git (?:diff|status))\b/.test(args.command||'') && !/[;&|`]|\$\(/.test(args.command||'');
      if((!args.cwd||inside(args.cwd)) && /^(?:npm --prefix frontend (?:run (?:typecheck|build)|test)|npm (?:run (?:typecheck|build)|test))$/.test(args.command||''))allowed=true;
      const basic=/^uv run(?: --no-project)? python -c "import (ast|json),base64,pathlib; (ast\.parse|json\.loads)\(pathlib.Path\(base64.b64decode\('([A-Za-z0-9+/=]+)'\)\.decode\(\)\)\.read_text\(encoding='utf-8-sig'\)\)"$/.exec(args.command||'');
      if(basic && (!args.cwd||inside(args.cwd)))allowed=inside(Buffer.from(basic[3],'base64').toString('utf8'));
-     if(currentCase?.name==='gui')allowed=/^git (?:diff|status)(?: --check)?$/.test(args.command||'');
+     if(guiCase)allowed=/^git (?:diff|status)(?: --check)?$/.test(args.command||'');
     }
+    if(currentCase?.name==='visual'&&['read_file','search_files','run_command','write_file','apply_patch'].includes(tool))allowed=false;
     if(currentCase){currentCase.approvals||=[];currentCase.approvals.push({tool,risk:p.risk,decision:allowed?'allow_once':'deny',...(tool==='desktop_list_windows'?{requested_pid:args.pid,expected_pid:fs.existsSync(path.join(currentFolder,'frontend/.runtime/process.json'))?JSON.parse(fs.readFileSync(path.join(currentFolder,'frontend/.runtime/process.json'),'utf8')).pid:null}:{})});}
     await page.evaluate(({id,decision,turn})=>window.localAgent.respondApproval(id,decision,turn),{id:p.approval_id,decision:allowed?'allow_once':'deny',turn:e.turn_id});
    }
@@ -235,15 +243,18 @@ async function main(){
    if(diagnosticCalls+2>manifest.max_calls||diagnosticTokens+20000>manifest.max_tokens){report.models.push({model_id:profile.model_id,profile_id:profile.model_profile_id,category:'unavailable',reason:'CAPABILITY_BUDGET_BLOCKED'});save();continue;}
    const item={model_id:profile.model_id,profile_id:profile.model_profile_id,configured_context_window:profile.context_window,context_limit_source:'isolated test configuration; provider maximum UNKNOWN',output_limit:profile.max_output_tokens,timeout:manifest.request_seconds||60};
    report.models.push(item);save();
-   const result=(await page.evaluate(p=>window.localAgent.taskRequest('','task.model.diagnostic',{connection_id:p.connection_id,model_profile_id:p.model_profile_id,live:true,vision:false}),profile)).payload;
+   const result=(await page.evaluate(p=>window.localAgent.taskRequest('','task.model.diagnostic',{connection_id:p.connection_id,model_profile_id:p.model_profile_id,live:true,vision:!!p.supports_vision}),profile)).payload;
    item.capability=result;diagnosticCalls+=result.requests||0;diagnosticTokens+=result.usage.reduce((n,u)=>n+(u.input_tokens ?? 10000)+(u.output_tokens ?? 256),0);diagnosticEstimated ||= result.usage.some(u=>u.input_tokens==null||u.output_tokens==null);
    item.category=result.tools==='PASS'?'tool-capable':result.text==='PASS'?'question-only':'unavailable';save();
   }
   const usable=report.models.filter(m=>m.category!=='unavailable');
+  if(manifest.capabilities_only){report.usage=await budgetUsed();report.result=report.models.some(m=>m.capability?.vision==='PASS')?'PASS':'BLOCKED';return;}
   for(const item of usable){
+   if(manifest.executor_model&&item.model_id!==manifest.executor_model)continue;
    const profile=manifest.profiles.find(p=>p.model_profile_id===item.profile_id);
    await runCase(profile,'question','请解释 Python 装饰器的作用。这是概念问答，不涉及项目操作。',r=>r.runtime.intent==='question'&&!r.runtime.plan_id&&r.tools.length===0&&r.dirty==='');
    if(item.category==='tool-capable'){
+    await runCase(profile,'visual','使用桌面工具启动 npm --prefix frontend start。通过 read_process（wait_seconds=2，持续使用 next_cursor）等到 M5_ELECTRON_READY 后使用本次 PID，定位 V07 Canvas acceptance 窗口。先 desktop_focus_window 确认目标窗口已激活，再 inspect，实际尝试 UIA desktop_click，selector={"name":"VERIFY","control_type":"Button"}。该 Canvas 不暴露按钮控件；UIA 失败后调用 desktop_screenshot（share_with_model=true、coordinate_grid=true），根据实际图片中的蓝色 VERIFY 按钮与灰色0..1000坐标网格定位；先判断按钮中心所在网格，再精确点击，使用 desktop_click method=coordinate、coordinate_space=normalized_1000、x/y 为0..1000归一化坐标，或明确使用 model_image 的实际图片像素坐标，artifact_id=本次截图，禁止混用坐标空间、confirm_risk=true。然后用 desktop_wait 验证 Visual fallback verified；若失败，必须重新激活、重新截图、修正定位后再试一次（最多两次定位），不得把点击已发出当作成功。验证成功后最终截图并停止本次进程，两次都失败则停止并如实报告，中文报告。禁止读取 HTML/JS 源码、运行脚本或通过 IPC 得到坐标；不得修改任何文件。所有桌面操作 timeout_seconds=60。',r=>r.runtime.phase==='completed'&&r.visual_verified&&r.tools.some(t=>!t.ok&&['DESKTOP_CONTROL_NOT_FOUND','DESKTOP_UIA_PATTERN_UNAVAILABLE'].includes(t.error_code))&&r.tools.some(t=>t.ok&&t.name==='desktop_click'&&t.method==='coordinate')&&(r.attachment?.http_image_accepted===true||(r.attachment?.attachment_transport==='jpeg_multimodal'&&r.attachment?.tools_allowed===false)),{gui:true,visual:true});
     await runCase(profile,'analysis','分析 calculator.py 为什么不能通过 tests/test_calc.py。读取必要文件，给出具体原因；本轮只分析，不修改文件。',r=>r.runtime.intent==='analysis'&&r.runtime.phase==='completed'&&r.answer.length>0&&r.tools.some(t=>t.name==='read_file')&&r.dirty==='');
     await runCase(profile,'change','为 calculator.py 的 add 函数增加输入校验，只接受有限的 int/float 数字；任一参数为 bool、字符串、None、NaN、正负 Infinity 时抛 ValueError。修复加法，保留原测试，新增 unittest 覆盖上述全部边界。使用 uv run --no-project python -m unittest discover -s tests -v，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.runtime.changed_paths.includes('calculator.py')&&r.independent?.exit_code===0);
    }
@@ -273,6 +284,7 @@ async function main(){
   async function runCase(profile,name,goal,assertion,options={}){
    if(manifest.case_names?.length&&!manifest.case_names.includes(name))return;
    if(denied(profile.model_id))throw Error('USER_EXCLUDED_MODEL');
+   if(options.visual){const folder=project('visual-'+report.cases.length);const target=path.join(folder,'frontend');fs.cpSync(path.join(manifest.root,'manual-fixtures/v07-computer-agent'),target,{recursive:true});fs.symlinkSync(path.join(manifest.root,'desktop/node_modules'),path.join(target,'node_modules'),'junction');fs.appendFileSync(path.join(folder,'.gitignore'),'node_modules/\n.runtime/\n');options={...options,folder};}
    if(options.gui&&!options.folder){
     options={...options,folder:report.cases.find(c=>c.name==='electron'&&c.result==='PASS')?.folder};
     if(!options.folder){report.cases.push({model:profile.model_id,name,result:'BLOCKED',reason:'GUI_REQUIRES_REPAIRED_ELECTRON_PROJECT'});save();return;}
@@ -303,7 +315,7 @@ async function main(){
    const baselineFolder=path.join(manifest.output,'acceptance-inputs');fs.mkdirSync(baselineFolder,{recursive:true});
    const baselineTest=path.join(baselineFolder,String(report.cases.length)+'-original-test.py');fs.copyFileSync(path.join(currentFolder,'tests/test_calc.py'),baselineTest);
    const frozen=Object.fromEntries([path.join(currentFolder,'.lca/verification.json'),...(name==='coupon'?[path.join(currentFolder,'tests/test_external_coupon_contract.py')]:[])].filter(f=>fs.existsSync(f)).map(f=>[f,crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex')]));
-   if(options.gui)for(const name of ['package.json','package-lock.json','main.cjs','preload.cjs','launch.cjs','src/App.tsx','src/settings.ts']){const file=path.join(currentFolder,'frontend',name);frozen[file]=crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');}
+   if(options.gui)for(const name of options.visual?['package.json','main.cjs','preload.cjs','launch.cjs','index.html']:['package.json','package-lock.json','main.cjs','preload.cjs','launch.cjs','src/App.tsx','src/settings.ts']){const file=path.join(currentFolder,'frontend',name);frozen[file]=crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');}
    if(options.frontend){
     const tests=path.join(currentFolder,'frontend',name==='react'?'test':'tests');
     for(const entry of fs.readdirSync(tests)){const file=path.join(tests,entry);if(fs.statSync(file).isFile())frozen[file]=crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');}
@@ -376,6 +388,7 @@ async function main(){
    currentCase.frozen_unchanged=Object.entries(frozen).every(([file,digest])=>fs.existsSync(file)&&crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')===digest);
    currentCase.head_unchanged=shell(['rev-parse','HEAD'],currentFolder).stdout.trim()===initialHead;
    if(options.gui){const file=path.join(currentFolder,'frontend/.runtime/saved.json');currentCase.gui={saved:fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')).value:null};}
+   if(options.visual){const file=path.join(currentFolder,'frontend/.runtime/result.json');currentCase.visual_verified=fs.existsSync(file)&&JSON.parse(fs.readFileSync(file,'utf8')).verified===true;}
    const contractArgs=['run','--locked','python','scripts/validation/unified_contract.py','--original',baselineTest,'--project',currentFolder,...(['change','followup'].includes(name)?['--input-validation']:[]),...(['question','analysis','context','json'].includes(name)||options.frontend||options.gui||options.approval?['--structure-only']:[])];
    const originalCheck=cp.spawnSync('uv',contractArgs,{cwd:manifest.root,encoding:'utf8',windowsHide:true,timeout:60000});
    currentCase.original_test_contract={exit_code:originalCheck.status,...JSON.parse(originalCheck.stdout||'{}')};
@@ -400,7 +413,7 @@ async function main(){
     currentCase.independent={exit_code:check.status,summary:(check.stdout+check.stderr).slice(-2500)};
    }
    currentCase.result=runtime&&assertion(currentCase)&&currentCase.frozen_unchanged&&originalCheck.status===0?'PASS':'FAIL';
-   if(options.gui&&(!currentCase.capture?.exists||!currentCase.capture.local_only||currentCase.tools.some(t=>t.ok&&['write_file','apply_patch','run_command'].includes(t.name))))currentCase.result='FAIL';
+   if(options.gui&&(!currentCase.capture?.exists||(!options.visual&&!currentCase.capture.local_only)||currentCase.tools.some(t=>t.ok&&['write_file','apply_patch','run_command'].includes(t.name))))currentCase.result='FAIL';
    if(options.gui&&manifest.gui_only){currentCase.gui_only=true;if(runtime?.outcome!=='completed_unverified'||runtime.level!=='manual'||runtime.changed_paths.length)currentCase.result='FAIL';}
    currentCase.usage=await budgetUsed();
    if(runtime){const diagnostic=(await page.evaluate(({thread,id})=>window.localAgent.taskRequest(thread,'task.runtime.diagnostics',{run_id:id}),{thread:thread.id,id:runtime.id})).payload;currentCase.diagnostics={line_count:diagnostic.markdown.split('\n').length,json_exists:fs.existsSync(diagnostic.json_path),markdown_exists:fs.existsSync(diagnostic.markdown_path)};if(currentCase.diagnostics.line_count>150||!currentCase.diagnostics.json_exists)currentCase.result='FAIL';}

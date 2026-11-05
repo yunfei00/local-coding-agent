@@ -23,6 +23,10 @@ Each step must have real tool evidence; avoid prose-only steps. Use an empty ver
 Do not ask the user to choose chat/development modes. You may upgrade a small task using agent_plan, preserving all existing changes and evidence.
 After code changes the runtime independently runs verification. Never claim tests passed without actual exit-code evidence.
 Keep the final report in Chinese, including changed files, actual verification and unresolved issues. Environment failures must not cause endless retries.
+For Windows computer tasks discover and authorize the exact window, focus it, then inspect live UIA controls. Verify actual state after actions; do not confuse a request being sent with its effect being verified.
+Only when UIA cannot locate/invoke the target, request an authorized screenshot for a vision-capable model. Use desktop_click method=coordinate, coordinate_space=model_image, artifact_id from that capture and its image-pixel x/y, with fresh confirm_risk approval. Do not guess coordinates, read source code to bypass the interface, or fallback after a privacy/approval/session denial. Re-capture after movement, resizing or stale capture errors.
+Ordinary editable controls use exact selectors. RichEdit Document controls require confirm_risk and verified text readback; webpage Document or arbitrary Pane is not an editor.
+Windows app activation can reuse a process/window: use a unique task-owned file/window and actual discovery, not an assumed launcher PID. Never terminate a pre-existing user application. On BLOCKED_RESOURCE stop launching GUI processes; preserve progress and continue unrelated checks.
 """
 
 
@@ -51,6 +55,13 @@ def requested_intent(prompt):
     if interaction:kind='interaction'
     project_question=bool(re.search(r'(?:本|当前|这个|该|this)\s*(?:项目|工程|仓库|程序|project|repo)|(?:分析|解释|检查).{0,8}(?:项目|工程|仓库|程序)',text,re.I))
     return {'kind':kind,'read_only':readonly or kind=='analysis' or (question and not direct),'pure_question':kind=='question' and question and not project_question and not paths,'referenced_files':len(paths),'listed_steps':listed}
+
+
+COMPUTER_TOOLS={'start_process','read_process','stop_process','list_directory','file_exists','agent_plan',*('desktop_'+n for n in ('list_windows','inspect','screenshot','focus_window','click','type_text','keypress','scroll','wait'))}
+
+def computer_only(goal):
+    """明确的仅界面授权边界，不改变普通代码/分析任务的工具范围。"""
+    return requested_intent(goal)['kind']=='interaction' and bool(re.search(r'只操作界面|仅(?:限)?(?:界面|桌面)操作|禁止读取.{0,24}(?:源码|HTML|JS)',goal,re.I))
 
 
 def infer_intent(previous, tool, *, changed_paths=(), read_only=False, operations=0):

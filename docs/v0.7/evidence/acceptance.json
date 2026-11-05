@@ -1,0 +1,1218 @@
+{
+  "date": "2026-11-05",
+  "baseline": "d385d95feac4f9a889ecd699edebcdaa89b75dc2",
+  "implementation_commit": "6f78fc76e244e5dad6e8b7d3fc21fd605ee92ae9",
+  "native": [
+    {
+      "scenario": "notepad",
+      "result": "PASS",
+      "model": "无（真实生产工具集成）",
+      "file_readback_verified": true,
+      "characters": 27,
+      "memory_before": {
+        "supported": true,
+        "available_bytes": 7444742144,
+        "commit_available_bytes": 28254265344,
+        "commit_limit_bytes": 39106084864,
+        "method": "Windows GlobalMemoryStatusEx"
+      },
+      "local_evidence": "validation-reports/v07-notepad-verified/report.json",
+      "sha256": "82c807f980880a0570134807973b679a2d322c99b6200fcfc129cb2adb8220c6"
+    },
+    {
+      "scenario": "calculator",
+      "result": "PASS",
+      "model": "无（真实生产工具集成）",
+      "readback_verified": true,
+      "calculation": "2+3=5",
+      "memory_before": {
+        "supported": true,
+        "available_bytes": 7504916480,
+        "commit_available_bytes": 28377288704,
+        "commit_limit_bytes": 39106084864,
+        "method": "Windows GlobalMemoryStatusEx"
+      },
+      "local_evidence": "validation-reports/v07-calculator-verified/report.json",
+      "sha256": "c8f6c929e18c2518a4423067f3863436ae8fc1eb1944eb9aa93c162d65964a02"
+    },
+    {
+      "scenario": "explorer",
+      "result": "PASS",
+      "model": "无（真实生产工具集成）",
+      "close_error": "DESKTOP_API_FAILED",
+      "cleanup": {
+        "active_workers": 0,
+        "running_managed_processes": 0
+      },
+      "memory_before": {
+        "supported": true,
+        "available_bytes": 7480610816,
+        "commit_available_bytes": 28387405824,
+        "commit_limit_bytes": 39106084864,
+        "method": "Windows GlobalMemoryStatusEx"
+      },
+      "local_evidence": "validation-reports/v07-explorer-verified/report.json",
+      "sha256": "c83e9cabababf22f3b570b883dac1184c9822aa9f82b3ddb7328be2a1386bfb5"
+    },
+    {
+      "scenario": "browser",
+      "result": "PASS",
+      "model": "无（真实生产工具集成）",
+      "local_page_verified": true,
+      "window_closed": true,
+      "cleanup": {
+        "active_workers": 0,
+        "running_managed_processes": 0
+      },
+      "memory_before": {
+        "supported": true,
+        "available_bytes": 7231868928,
+        "commit_available_bytes": 28101042176,
+        "commit_limit_bytes": 39106084864,
+        "method": "Windows GlobalMemoryStatusEx"
+      },
+      "local_evidence": "validation-reports/v07-browser-final/report.json",
+      "sha256": "5beba77d63634ad628abc8216dbc645e3c7bf321f12aa7fb8b2c92dfd1181389"
+    }
+  ],
+  "model_cases": [
+    {
+      "evidence": "validation-reports/v07-user-max-clean-visual/report.json",
+      "sha256": "7629930755d2883cafc59ade0fa55e9e035113bac53842b48cead4488402aa68",
+      "model": "qwen3.8-max-0902",
+      "case_result": "PASS",
+      "valid_acceptance": true,
+      "phase": "completed",
+      "outcome": "completed_unverified",
+      "error_code": null,
+      "usage": {
+        "calls": 16,
+        "tokens": 172692,
+        "estimated": false
+      },
+      "actual_target_verified": true,
+      "http_image_accepted": true,
+      "image_http_status": 200,
+      "visual_waits": [
+        {
+          "state": "name",
+          "seconds": 5,
+          "selector_present": true,
+          "selector_keys": [
+            "automation_id",
+            "control_type"
+          ],
+          "selector_name": null,
+          "expected": "Visual fallback verified"
+        },
+        {
+          "state": "name",
+          "seconds": 5,
+          "selector_present": true,
+          "selector_keys": [
+            "control_type",
+            "name",
+            "runtime_id"
+          ],
+          "selector_name": "Visual fallback verified",
+          "expected": "Visual fallback verified"
+        }
+      ],
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true
+        },
+        {
+          "name": "file_exists",
+          "ok": true
+        },
+        {
+          "name": "start_process",
+          "ok": true
+        },
+        {
+          "name": "read_process",
+          "ok": true
+        },
+        {
+          "name": "desktop_list_windows",
+          "ok": true
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true
+        },
+        {
+          "name": "desktop_click",
+          "ok": false,
+          "error_code": "DESKTOP_CONTROL_NOT_FOUND"
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": true
+        },
+        {
+          "name": "desktop_click",
+          "ok": true,
+          "method": "coordinate",
+          "mapping": {
+            "artifact_id": "capture_d14c6d0e939c470698b09e22f90d334b",
+            "space": "normalized_1000",
+            "input_point": [
+              615,
+              635
+            ],
+            "client_point": [
+              890,
+              650
+            ]
+          }
+        },
+        {
+          "name": "desktop_wait",
+          "ok": false,
+          "error_code": "DESKTOP_WAIT_TIMEOUT"
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true
+        },
+        {
+          "name": "desktop_wait",
+          "ok": true
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": true
+        },
+        {
+          "name": "stop_process",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "evidence": "validation-reports/v07-user-max-visual/report.json",
+      "sha256": "a3074ddd4829d589cc9c3f27cdc2e595c08d6248ac961c7c624d93b97b688e14",
+      "model": "qwen3.8-max-0902",
+      "case_result": "FAIL",
+      "valid_acceptance": false,
+      "phase": "completed",
+      "outcome": "completed_verified",
+      "error_code": null,
+      "usage": {
+        "calls": 23,
+        "tokens": 313901,
+        "estimated": false
+      },
+      "actual_target_verified": true,
+      "http_image_accepted": true,
+      "image_http_status": 200,
+      "visual_waits": [
+        {
+          "state": "name",
+          "seconds": 5,
+          "selector_present": true,
+          "selector_keys": [
+            "automation_id",
+            "control_type"
+          ],
+          "selector_name": null,
+          "expected": "Visual fallback verified"
+        },
+        {
+          "state": "name",
+          "seconds": 5,
+          "selector_present": true,
+          "selector_keys": [
+            "control_type",
+            "name"
+          ],
+          "selector_name": "Visual fallback verified",
+          "expected": "Visual fallback verified"
+        }
+      ],
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true
+        },
+        {
+          "name": "file_exists",
+          "ok": true
+        },
+        {
+          "name": "start_process",
+          "ok": true
+        },
+        {
+          "name": "read_process",
+          "ok": true
+        },
+        {
+          "name": "desktop_list_windows",
+          "ok": true
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true
+        },
+        {
+          "name": "desktop_click",
+          "ok": false,
+          "error_code": "DESKTOP_CONTROL_NOT_FOUND"
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": true
+        },
+        {
+          "name": "desktop_click",
+          "ok": true,
+          "method": "coordinate",
+          "mapping": {
+            "artifact_id": "capture_aec38a0792234405966224684578eab1",
+            "space": "normalized_1000",
+            "input_point": [
+              650,
+              755
+            ],
+            "client_point": [
+              941,
+              773
+            ]
+          }
+        },
+        {
+          "name": "desktop_wait",
+          "ok": false,
+          "error_code": "DESKTOP_WAIT_TIMEOUT"
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true
+        },
+        {
+          "name": "desktop_wait",
+          "ok": true
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": true
+        },
+        {
+          "name": "stop_process",
+          "ok": true
+        },
+        {
+          "name": "run_command",
+          "ok": false
+        },
+        {
+          "name": "run_command",
+          "ok": true
+        },
+        {
+          "name": "start_process",
+          "ok": true
+        },
+        {
+          "name": "read_process",
+          "ok": true
+        },
+        {
+          "name": "start_process",
+          "ok": true
+        },
+        {
+          "name": "read_process",
+          "ok": true
+        },
+        {
+          "name": "start_process",
+          "ok": true
+        },
+        {
+          "name": "read_process",
+          "ok": true
+        },
+        {
+          "name": "run_command",
+          "ok": true
+        },
+        {
+          "name": "run_command",
+          "ok": true
+        },
+        {
+          "name": "git_diff",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "evidence": "validation-reports/v07-visual-acknowledged/report.json",
+      "sha256": "cebf44ade20c2990d4cd729dec29fa7baf62763bcb57141072623cb79da29595",
+      "model": "qwen3-vl-plus",
+      "case_result": "FAIL",
+      "valid_acceptance": true,
+      "phase": "failed",
+      "outcome": "failed",
+      "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+      "usage": {
+        "calls": 1,
+        "tokens": 15495,
+        "estimated": true
+      },
+      "actual_target_verified": false,
+      "http_image_accepted": null,
+      "image_http_status": null,
+      "visual_waits": null,
+      "tools": []
+    },
+    {
+      "evidence": "validation-reports/v07-visual-final/report.json",
+      "sha256": "a45fef58bca438c05c60936a4376e48291849a9c108e67975cac1bfc7f8458a3",
+      "model": "qwen3.5-omni-flash",
+      "case_result": "FAIL",
+      "valid_acceptance": true,
+      "phase": "failed",
+      "outcome": "failed",
+      "error_code": "OPENAI_COMPATIBLE_INCOMPLETE_STREAM",
+      "usage": {
+        "calls": 7,
+        "tokens": 70260,
+        "estimated": true
+      },
+      "actual_target_verified": false,
+      "http_image_accepted": null,
+      "image_http_status": null,
+      "visual_waits": null,
+      "tools": [
+        {
+          "name": "start_process",
+          "ok": true
+        },
+        {
+          "name": "read_process",
+          "ok": true
+        },
+        {
+          "name": "read_process",
+          "ok": true
+        },
+        {
+          "name": "desktop_list_windows",
+          "ok": false,
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": false,
+          "error_code": "DESKTOP_WINDOW_SCOPE"
+        },
+        {
+          "name": "desktop_list_windows",
+          "ok": false,
+          "error_code": "APPROVAL_DENIED"
+        }
+      ]
+    },
+    {
+      "evidence": "validation-reports/v07-visual-grid/report.json",
+      "sha256": "55178f675adc212db618698bf3bead2bee13879fa9a1343d95dafc3d631922d0",
+      "model": "qwen3-omni-flash",
+      "case_result": "FAIL",
+      "valid_acceptance": true,
+      "phase": "failed",
+      "outcome": "failed",
+      "error_code": "PLAN_TOOLS_UNRESOLVED",
+      "usage": {
+        "calls": 13,
+        "tokens": 113311,
+        "estimated": false
+      },
+      "actual_target_verified": true,
+      "http_image_accepted": true,
+      "image_http_status": 200,
+      "visual_waits": null,
+      "tools": [
+        {
+          "name": "start_process",
+          "ok": true
+        },
+        {
+          "name": "read_process",
+          "ok": true
+        },
+        {
+          "name": "desktop_list_windows",
+          "ok": true
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true
+        },
+        {
+          "name": "desktop_click",
+          "ok": false,
+          "error_code": "DESKTOP_CONTROL_NOT_FOUND"
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": true
+        },
+        {
+          "name": "desktop_click",
+          "ok": true,
+          "method": "coordinate",
+          "mapping": {
+            "artifact_id": "capture_29eacc139e094e56959cc690f5af2afd",
+            "space": "normalized_1000",
+            "input_point": [
+              750,
+              550
+            ],
+            "client_point": [
+              1086,
+              563
+            ]
+          }
+        },
+        {
+          "name": "desktop_wait",
+          "ok": false,
+          "error_code": "DESKTOP_WAIT_TIMEOUT"
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": true
+        },
+        {
+          "name": "stop_process",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "evidence": "validation-reports/v07-visual-last-receipt/report.json",
+      "sha256": "8d1ec2f7b324a1f48f5e885675b38f906325dd30e008fe532c850c47d67f3fdc",
+      "model": "qwen3-omni-flash",
+      "case_result": "FAIL",
+      "valid_acceptance": true,
+      "phase": "failed",
+      "outcome": "failed",
+      "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+      "usage": {
+        "calls": 1,
+        "tokens": 15495,
+        "estimated": true
+      },
+      "actual_target_verified": false,
+      "http_image_accepted": null,
+      "image_http_status": null,
+      "visual_waits": null,
+      "tools": []
+    },
+    {
+      "evidence": "validation-reports/v07-visual-paired/report.json",
+      "sha256": "2c4d8a12e1d3e088126be0a65a33f8bf19442f4ea5b8510d686cdd4e1813ae1a",
+      "model": "qwen3.7-flash",
+      "case_result": "FAIL",
+      "valid_acceptance": true,
+      "phase": "failed",
+      "outcome": "failed",
+      "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+      "usage": {
+        "calls": 1,
+        "tokens": 15489,
+        "estimated": true
+      },
+      "actual_target_verified": false,
+      "http_image_accepted": null,
+      "image_http_status": null,
+      "visual_waits": null,
+      "tools": []
+    },
+    {
+      "evidence": "validation-reports/v07-visual-paired-glm/report.json",
+      "sha256": "c37f1ce6bc0f5d790a63097895634ba0b8d2cc49e993942a5ada86d3c6b89f42",
+      "model": "glm-5.2",
+      "case_result": "FAIL",
+      "valid_acceptance": true,
+      "phase": "failed",
+      "outcome": "failed",
+      "error_code": "OPENAI_COMPATIBLE_AUTH_FAILED",
+      "usage": {
+        "calls": 1,
+        "tokens": 15493,
+        "estimated": true
+      },
+      "actual_target_verified": false,
+      "http_image_accepted": null,
+      "image_http_status": null,
+      "visual_waits": null,
+      "tools": []
+    },
+    {
+      "evidence": "validation-reports/v07-visual-real/report.json",
+      "sha256": "398eb6c01692755e340940fd589f46027658263f10793c4ae4cf7b14fad05f0b",
+      "model": "qwen3-vl-plus",
+      "case_result": "FAIL",
+      "valid_acceptance": true,
+      "phase": "failed",
+      "outcome": "failed",
+      "error_code": "PLAN_TOOLS_UNRESOLVED",
+      "usage": {
+        "calls": 16,
+        "tokens": 188640,
+        "estimated": false
+      },
+      "actual_target_verified": false,
+      "http_image_accepted": true,
+      "image_http_status": 200,
+      "visual_waits": null,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true
+        },
+        {
+          "name": "file_exists",
+          "ok": true
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "error_code": "COMMAND_TIMEOUT"
+        },
+        {
+          "name": "start_process",
+          "ok": true
+        },
+        {
+          "name": "read_process",
+          "ok": true
+        },
+        {
+          "name": "desktop_list_windows",
+          "ok": true
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true
+        },
+        {
+          "name": "desktop_click",
+          "ok": false,
+          "error_code": "DESKTOP_CONTROL_NOT_FOUND"
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": true
+        },
+        {
+          "name": "desktop_click",
+          "ok": false,
+          "error_code": "DESKTOP_COORDINATES_INVALID"
+        },
+        {
+          "name": "desktop_click",
+          "ok": false,
+          "error_code": "DESKTOP_WINDOW_OCCLUDED"
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true
+        },
+        {
+          "name": "desktop_click",
+          "ok": true,
+          "method": "coordinate"
+        },
+        {
+          "name": "desktop_wait",
+          "ok": false,
+          "error_code": "DESKTOP_WAIT_TIMEOUT"
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": false,
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "stop_process",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "evidence": "validation-reports/v07-visual-receipt/report.json",
+      "sha256": "db281a62bdc772258cf41cd9bef9bd83164f05c5e35679b97fc517c0d6992aca",
+      "model": "qwen3.5-omni-flash",
+      "case_result": "FAIL",
+      "valid_acceptance": true,
+      "phase": "failed",
+      "outcome": "failed",
+      "error_code": "OPENAI_COMPATIBLE_INCOMPLETE_STREAM",
+      "usage": {
+        "calls": 10,
+        "tokens": 78993,
+        "estimated": true
+      },
+      "actual_target_verified": false,
+      "http_image_accepted": null,
+      "image_http_status": null,
+      "visual_waits": null,
+      "tools": [
+        {
+          "name": "start_process",
+          "ok": true
+        },
+        {
+          "name": "read_process",
+          "ok": false,
+          "error_code": "PROCESS_NOT_FOUND"
+        },
+        {
+          "name": "start_process",
+          "ok": true
+        },
+        {
+          "name": "read_process",
+          "ok": false
+        },
+        {
+          "name": "list_directory",
+          "ok": true
+        },
+        {
+          "name": "list_directory",
+          "ok": false,
+          "error_code": "PATH_OUTSIDE_WORKSPACE"
+        },
+        {
+          "name": "list_directory",
+          "ok": false,
+          "error_code": "PATH_OUTSIDE_WORKSPACE"
+        },
+        {
+          "name": "start_process",
+          "ok": true
+        },
+        {
+          "name": "read_process",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "evidence": "validation-reports/v07-visual-verified/report.json",
+      "sha256": "1a1a500bae30beb3f10dbe380498ac0b9faccee1b2ba69cb02bbcabcb5555d72",
+      "model": "qwen3-vl-plus",
+      "case_result": "FAIL",
+      "valid_acceptance": true,
+      "phase": "failed",
+      "outcome": "failed",
+      "error_code": "PLAN_TOOLS_UNRESOLVED",
+      "usage": {
+        "calls": 14,
+        "tokens": 137550,
+        "estimated": false
+      },
+      "actual_target_verified": false,
+      "http_image_accepted": true,
+      "image_http_status": 200,
+      "visual_waits": null,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true
+        },
+        {
+          "name": "file_exists",
+          "ok": true
+        },
+        {
+          "name": "start_process",
+          "ok": true
+        },
+        {
+          "name": "read_process",
+          "ok": true
+        },
+        {
+          "name": "desktop_list_windows",
+          "ok": true
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true
+        },
+        {
+          "name": "desktop_click",
+          "ok": false,
+          "error_code": "DESKTOP_CONTROL_NOT_FOUND"
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": true
+        },
+        {
+          "name": "desktop_click",
+          "ok": true,
+          "method": "coordinate"
+        },
+        {
+          "name": "desktop_wait",
+          "ok": false,
+          "error_code": "DESKTOP_WAIT_TIMEOUT"
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": true
+        },
+        {
+          "name": "stop_process",
+          "ok": true
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": false,
+          "error_code": "DESKTOP_WINDOW_STALE"
+        }
+      ]
+    }
+  ],
+  "capability_probes": [
+    {
+      "model": "qwen3-vl-plus",
+      "text": "PASS",
+      "vision": "PASS",
+      "tools": "PASS",
+      "requests": 3,
+      "usage": [
+        {
+          "stage": "text",
+          "http_status": 200,
+          "input_tokens": 15,
+          "output_tokens": 4,
+          "actual_cost": null
+        },
+        {
+          "stage": "vision",
+          "http_status": 200,
+          "input_tokens": 268,
+          "output_tokens": 50,
+          "actual_cost": null
+        },
+        {
+          "stage": "tools",
+          "http_status": 200,
+          "input_tokens": 280,
+          "output_tokens": 26,
+          "actual_cost": null
+        }
+      ],
+      "live": true
+    },
+    {
+      "model": "qwen3.5-omni-flash",
+      "text": "PASS",
+      "vision": "PASS",
+      "tools": "PASS",
+      "requests": 3,
+      "usage": [
+        {
+          "stage": "text",
+          "http_status": 200,
+          "input_tokens": 19,
+          "output_tokens": 4,
+          "actual_cost": null
+        },
+        {
+          "stage": "vision",
+          "http_status": 200,
+          "input_tokens": 272,
+          "output_tokens": 62,
+          "actual_cost": null
+        },
+        {
+          "stage": "tools",
+          "http_status": 200,
+          "input_tokens": 296,
+          "output_tokens": 30,
+          "actual_cost": null
+        }
+      ],
+      "live": true
+    },
+    {
+      "model": "qwen3-omni-flash",
+      "text": "PASS",
+      "vision": "PASS",
+      "tools": "PASS",
+      "requests": 3,
+      "usage": [
+        {
+          "stage": "text",
+          "http_status": 200,
+          "input_tokens": 15,
+          "output_tokens": 3,
+          "actual_cost": null
+        },
+        {
+          "stage": "vision",
+          "http_status": 200,
+          "input_tokens": 268,
+          "output_tokens": 50,
+          "actual_cost": null
+        },
+        {
+          "stage": "tools",
+          "http_status": 200,
+          "input_tokens": 173,
+          "output_tokens": 24,
+          "actual_cost": null
+        }
+      ],
+      "live": true
+    },
+    {
+      "model": "qwen3.8-max-0902",
+      "text": "PASS",
+      "vision": "PASS",
+      "tools": "PASS",
+      "requests": 3,
+      "usage": [
+        {
+          "stage": "text",
+          "http_status": 200,
+          "input_tokens": 68,
+          "output_tokens": 32,
+          "actual_cost": null
+        },
+        {
+          "stage": "vision",
+          "http_status": 200,
+          "input_tokens": 283,
+          "output_tokens": 124,
+          "actual_cost": null
+        },
+        {
+          "stage": "tools",
+          "http_status": 200,
+          "input_tokens": 341,
+          "output_tokens": 54,
+          "actual_cost": null
+        }
+      ],
+      "live": true
+    },
+    {
+      "model": "qwen3.8-27b",
+      "text": "PASS",
+      "vision": "PASS",
+      "tools": "PASS",
+      "requests": 3,
+      "usage": [
+        {
+          "stage": "text",
+          "http_status": 200,
+          "input_tokens": 55,
+          "output_tokens": 29,
+          "actual_cost": null
+        },
+        {
+          "stage": "vision",
+          "http_status": 200,
+          "input_tokens": 308,
+          "output_tokens": 190,
+          "actual_cost": null
+        },
+        {
+          "stage": "tools",
+          "http_status": 200,
+          "input_tokens": 328,
+          "output_tokens": 69,
+          "actual_cost": null
+        }
+      ],
+      "live": true
+    }
+  ],
+  "other": [
+    {
+      "evidence": "validation-reports/v07-owned-cleanup/report.json",
+      "sha256": "d702472bbd11c035d14f1507f09e74359c869e6fb696f3058fea52742a042c51",
+      "data": [
+        {
+          "case": "v07-notepad-verified",
+          "original_pid": 2184,
+          "window_closed_or_no_longer_visible": true,
+          "matched_windows": 0
+        },
+        {
+          "case": "v07-calculator-verified",
+          "original_pid": 3728,
+          "window_closed_or_no_longer_visible": true,
+          "matched_windows": 0
+        },
+        {
+          "case": "v07-explorer-verified",
+          "original_pid": 20268,
+          "window_closed_or_no_longer_visible": true,
+          "matched_windows": 1
+        }
+      ]
+    },
+    {
+      "evidence": "validation-reports/v07-coordinate-edge/report.json",
+      "sha256": "c507910a5570dea84cdc8c88bbbaf55bbf6f4d7f02ce36ae8d6575ad3a8ba3d9",
+      "data": {
+        "kind": "真实坐标工具集成，像素算法独立验证，不是模型视觉验收",
+        "result": "PASS",
+        "point": [
+          522,
+          387
+        ],
+        "capture": {
+          "client_size": [
+            1448,
+            1024
+          ],
+          "client_origin": [
+            236,
+            45
+          ],
+          "model_image_size": [
+            768,
+            543
+          ],
+          "width": 1448,
+          "height": 1024,
+          "dpi": 144
+        },
+        "action": {
+          "method": "coordinate",
+          "clicked": true,
+          "coordinate_mapping": {
+            "artifact_id": "capture_2c8da22a6fb948d7835de8a6e514e6d9",
+            "space": "model_image",
+            "input_point": [
+              522,
+              387
+            ],
+            "client_point": [
+              985,
+              730
+            ]
+          }
+        },
+        "pointer": {
+          "client": [
+            656.6666870117188,
+            460.66668701171875
+          ],
+          "viewport": [
+            966,
+            657
+          ],
+          "canvas": [
+            24,
+            164.95834350585938,
+            860,
+            420
+          ],
+          "scale": 1.5
+        }
+      }
+    },
+    {
+      "evidence": "validation-reports/v07-coordinate-oracle-verified/report.json",
+      "sha256": "c42539f70bb22263eeb4e7885bffb3c71b25a837c67ccc93f38c01f8933b6d5b",
+      "data": {
+        "kind": "真实坐标工具集成，像素算法独立验证，不是模型视觉验收",
+        "result": "PASS",
+        "point": [
+          518,
+          208
+        ],
+        "capture": {
+          "client_size": [
+            1448,
+            1024
+          ],
+          "client_origin": [
+            236,
+            45
+          ],
+          "model_image_size": [
+            768,
+            543
+          ],
+          "width": 1448,
+          "height": 1024,
+          "dpi": 144
+        },
+        "action": {
+          "method": "coordinate",
+          "clicked": true,
+          "coordinate_mapping": {
+            "artifact_id": "capture_d54d75faa58c4e7d822a0ffa776331cf",
+            "space": "model_image",
+            "input_point": [
+              518,
+              208
+            ],
+            "client_point": [
+              977,
+              393
+            ]
+          }
+        }
+      }
+    },
+    {
+      "evidence": "validation-reports/v07-coordinate-wait-verified/report.json",
+      "sha256": "079bc6f7c9eb71069e9845c25ebe7a1203a22a75d93d2ee96cb7226cb9861da0",
+      "data": {
+        "kind": "真实坐标工具集成，像素算法独立验证，不是模型视觉验收",
+        "result": "PASS",
+        "point": [
+          385,
+          242
+        ],
+        "capture": {
+          "client_size": [
+            1448,
+            1024
+          ],
+          "client_origin": [
+            236,
+            45
+          ],
+          "model_image_size": [
+            768,
+            543
+          ],
+          "width": 1448,
+          "height": 1024,
+          "dpi": 144
+        },
+        "action": {
+          "method": "coordinate",
+          "clicked": true,
+          "coordinate_mapping": {
+            "artifact_id": "capture_1b9fe7f19c004dad9d2cdddea2b43f25",
+            "space": "model_image",
+            "input_point": [
+              385,
+              242
+            ],
+            "client_point": [
+              726,
+              457
+            ]
+          }
+        },
+        "wait": {
+          "matched": true,
+          "state": "exists"
+        }
+      }
+    }
+  ],
+  "capability_probe_usage": {
+    "calls": 9,
+    "tokens": 1859,
+    "estimated": false
+  },
+  "new_candidate_probe_usage": {
+    "calls": 6,
+    "tokens": 1881,
+    "estimated": false
+  },
+  "local_regression": {
+    "run_id": "20261105-124815-729605",
+    "python": {
+      "total": 567,
+      "passed": 565,
+      "skipped": 2,
+      "failed": 0
+    },
+    "frontend": {
+      "total": 62,
+      "passed": 62,
+      "failed": 0
+    },
+    "typecheck_exit": 0,
+    "build_exit": 0,
+    "electron_smoke": {
+      "passed": 54,
+      "skipped": 0,
+      "failed": 0,
+      "log": "validation-reports/v07-menu-desktop-smoke.log",
+      "sha256": "4600668fd022e72b244fe808290e5923ba7cd034f346e602f0d42c20bf53d4a2"
+    },
+    "gui_guard": {
+      "passed": 4,
+      "failed": 0
+    },
+    "model_decisions": "Mock; M3/M5 operate real GUI"
+  },
+  "implementation_ci": {
+    "commit": "6f78fc76e244e5dad6e8b7d3fc21fd605ee92ae9",
+    "run_id": 41970333245,
+    "windows": "PASS",
+    "ubuntu": "PASS"
+  },
+  "conclusion": "Functional acceptance PASS; final PR CI is a separate merge gate.",
+  "screenshot": {
+    "file": "visual-final.png",
+    "sha256": "c2dbdece95ef529b04f5a85a364cf802b4e416cbdb0e6917187895154c954422",
+    "source_sha256": "c2dbdece95ef529b04f5a85a364cf802b4e416cbdb0e6917187895154c954422",
+    "scope": "unmodified authorized controlled test window; visually inspected; no user application pixels"
+  },
+  "supervisor_contamination": {
+    "case": "v07-user-max-visual",
+    "valid_acceptance": false,
+    "cause": "supervisor wrote read-only diagnostic output inside workspace; subsequent unrelated code verification invalidates this acceptance run",
+    "clean_rerun": "v07-user-max-clean-visual"
+  },
+  "ci_regression_fix": {
+    "failed_run": 41971358619,
+    "platform": "windows-latest",
+    "step": "Actual desktop task and regression smoke",
+    "cause": "ActionMenu capture listener dismissed on unrelated conversation scroll; Diagnostics target detached",
+    "fix": "dismiss only on document/window or anchor-ancestor scroll; resize/outside/keyboard behavior preserved",
+    "real_electron_regression": "unrelated conversation scroll preserves menu; document scroll dismisses; Diagnostics click succeeds",
+    "after_fix": {
+      "frontend_passed": 62,
+      "typecheck_exit": 0,
+      "build_exit": 0,
+      "smoke_passed": 54
+    }
+  }
+}
