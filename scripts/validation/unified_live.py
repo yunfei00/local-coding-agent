@@ -42,13 +42,17 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--live',action='store_true')
     parser.add_argument('--suite',action='store_true')
-    parser.add_argument('--case',action='append',choices=['question','analysis','change','python-smoke','react','electron','gui','approval','network','followup','coupon','environment','repair','context','interruption','websocket','json'],default=[])
+    parser.add_argument('--case',action='append',choices=['question','analysis','change','python-smoke','react','electron','gui','visual','approval','network','followup','coupon','environment','repair','context','interruption','websocket','json'],default=[])
     parser.add_argument('--request-seconds',type=int,default=60)
     parser.add_argument('--output-tokens',type=int,default=8192)
     parser.add_argument('--validation-task-calls',type=int,help='用户授权的隔离验收任务请求上限，不修改原 Settings')
     parser.add_argument('--validation-task-tokens',type=int,help='用户授权的隔离验收任务 Token 上限，不修改原 Settings')
     parser.add_argument('--reuse-capabilities',type=Path,help='Reuse this session capability evidence; actual Agent cases still run')
     parser.add_argument('--discover-only',action='store_true',help='List provider model IDs over the existing connection; no generation')
+    parser.add_argument('--capabilities-only',action='store_true',help='只探测实际模型能力，不启动 Agent 工程用例')
+    parser.add_argument('--vision-candidate-model',action='append',default=[],help='仅在隔离验收配置中声明待验证视觉候选，必须通过实际图片请求才算支持')
+    parser.add_argument('--vision-observer-model',help='隔离验收的独立视觉观察模型，不获得工具权限')
+    parser.add_argument('--executor-model',help='只对该执行模型运行工程用例；其他模型只作观察者')
     parser.add_argument('--exclude-model',action='append',default=[])
     parser.add_argument('--candidate-model',action='append',default=[],help='Exact model ID returned by the discovery report; isolated catalog only')
     parser.add_argument('--discovery-report',type=Path)
@@ -111,10 +115,16 @@ def main():
     if args.only_model:
         profiles=[p for p in profiles if p['model_id'] in args.only_model]
         if set(args.only_model)-{p['model_id'] for p in profiles}:parser.error('Requested model missing or excluded')
+    profiles=[{**p,'supports_vision':True} if p['model_id'] in args.vision_candidate_model else p for p in profiles]
     inventory=[{k:p.get(k) for k in ('model_profile_id','model_id','context_window','max_output_tokens','tool_mode')} for p in profiles]
     if not args.live:
         print(json.dumps({'result':'NOT RUN','inventory':inventory,'credentials_read':False},ensure_ascii=False));return
     args.output.mkdir(parents=True,exist_ok=False)
+    from agent.desktop.resources import require_resources,MIB,memory_snapshot
+    try:require_resources(minimum_available=1024*MIB,minimum_commit=1024*MIB)
+    except Exception as exc:
+        (args.output/'report.json').write_text(json.dumps({'result':'BLOCKED_RESOURCE','error_code':getattr(exc,'code',type(exc).__name__),'memory':memory_snapshot(),'models':[],'cases':[]}),encoding='utf-8')
+        print('BLOCKED_RESOURCE: 未启动 Electron 或模型请求。');return 1
     data=args.output/'agent';data.mkdir()
     # Isolated profile output/context limits, original catalog and keys stay unchanged.
     profiles=[{**p,'max_output_tokens':min(args.output_tokens,p.get('max_output_tokens') or args.output_tokens),'context_window':p.get('context_window') or 65536} for p in profiles]
@@ -122,6 +132,10 @@ def main():
     with sqlite3.connect((args.data_dir/'local-coding-agent.sqlite3').resolve().as_uri()+'?mode=ro',uri=True) as connection:
         row=connection.execute('SELECT value FROM settings WHERE key=?',('orchestration.config',)).fetchone()
     saved=validate_config(json.loads(row[0]) if row else {})
+    if args.vision_observer_model:
+        observer=next((p for p in profiles if p['model_id']==args.vision_observer_model and p.get('supports_vision')),None)
+        if not observer:parser.error('Observer must be an explicitly declared vision profile')
+        saved={**saved,'vision_profile_id':observer['model_profile_id']}
     limits={**saved['budget']}
     if args.validation_task_calls is not None:limits['api_calls']=args.validation_task_calls
     if args.validation_task_tokens is not None:limits['api_tokens']=args.validation_task_tokens
@@ -156,6 +170,8 @@ def main():
               'context_project':str(context.resolve()),'reuse_capabilities':str(args.reuse_capabilities.resolve()) if args.reuse_capabilities else None,
               'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()}
     manifest.update(excluded_models=excluded,discover_only=args.discover_only,case_names=args.case,request_seconds=args.request_seconds)
+    manifest['capabilities_only']=args.capabilities_only
+    manifest['executor_model']=args.executor_model
     if args.prepared_fixture:manifest['prepared_fixture']=str(args.prepared_fixture.resolve())
     if args.reuse_project:manifest['reuse_project']=str(args.reuse_project.resolve())
     manifest['gui_only']=args.gui_only

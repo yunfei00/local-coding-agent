@@ -34,6 +34,8 @@ class DesktopRuntime:
         self.image_metadata = {}
         self.shared_hashes = {}
         self.pending_hashes = {}
+        self.shared_formats = {}
+        self.pending_formats = {}
         self.workers = set()
         self.root = Path(os.getenv('LCA_DATA_DIR') or Path.home() / '.local-coding-agent') / 'desktop-artifacts'
 
@@ -46,6 +48,8 @@ class DesktopRuntime:
     async def _worker(self, request, timeout):
         if sys.platform != 'win32':
             raise ToolError('DESKTOP_UNSUPPORTED', 'Windows desktop tools require Windows 10/11 and an interactive user session')
+        from agent.desktop.resources import require_resources
+        require_resources()
         command = [sys.executable,'--desktop-worker'] if getattr(sys,'frozen',False) else [sys.executable,'-m','agent.desktop.worker']
         process = await asyncio.create_subprocess_exec(*command,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
@@ -77,9 +81,11 @@ class DesktopRuntime:
     async def execute(self, name, arguments, *, owner, authorized=False, supports_vision=False):
         if not authorized:
             raise ToolError('DESKTOP_CONSENT_REQUIRED', 'Desktop access requires explicit approval, including in Full Access mode')
-        for flag in ('share_with_model','confirm_risk'):
+        for flag in ('share_with_model','confirm_risk','coordinate_grid'):
             if flag in arguments and not isinstance(arguments[flag],bool):
                 raise ToolError('DESKTOP_INVALID_ARGUMENT', flag + ' must be a boolean')
+        if name=='desktop_click' and (arguments.get('method','uia') not in ('uia','coordinate') or arguments.get('coordinate_space','client') not in ('client','model_image','normalized_1000')):
+            raise ToolError('DESKTOP_INVALID_ARGUMENT','未知的点击方式或坐标空间；未执行。')
         if name == 'desktop_screenshot' and arguments.get('scope','window') not in ('window','screen'):
             raise ToolError('DESKTOP_INVALID_ARGUMENT','Screenshot scope must be window or screen')
         if name == 'desktop_list_windows' and 'pid' in arguments and (isinstance(arguments['pid'],bool) or not isinstance(arguments['pid'],int) or arguments['pid']<1):
@@ -91,6 +97,13 @@ class DesktopRuntime:
         if name != 'desktop_list_windows':
             request['binding'] = self.binding(arguments.get('window_id'), owner)['native']
             request['expected_geometry'] = self.binding(arguments.get('window_id'),owner).get('geometry')
+        if name=='desktop_click' and arguments.get('coordinate_space') in ('model_image','normalized_1000'):
+            if arguments.get('method')!='coordinate':
+                raise ToolError('DESKTOP_INVALID_ARGUMENT','模型图片坐标只用于明确的 coordinate 回退。')
+            from agent.desktop.visual_target import resolve_visual_point
+            x,y=resolve_visual_point(arguments,self.artifacts.get(arguments.get('artifact_id')),
+                owner=owner,window_id=arguments.get('window_id'),geometry=request['expected_geometry'] or {})
+            request['arguments'].update(x=x,y=y)
         if name == 'desktop_screenshot':
             artifact_id = 'capture_' + uuid.uuid4().hex
             directory = self.root / ('turn_' + uuid.uuid5(uuid.NAMESPACE_OID, owner).hex)
@@ -103,6 +116,8 @@ class DesktopRuntime:
             async with asyncio.timeout(timeout):
                 async with lock:
                     data = await self._worker(request, timeout)
+                    if name=='desktop_click' and arguments.get('coordinate_space') in ('model_image','normalized_1000'):
+                        data['coordinate_mapping']={'artifact_id':arguments['artifact_id'],'space':arguments['coordinate_space'],'input_point':[arguments['x'],arguments['y']],'client_point':[request['arguments']['x'],request['arguments']['y']]}
         except TimeoutError as exc:
             if request.get('artifact_path'):
                 Path(request['artifact_path']).unlink(missing_ok=True)
@@ -120,7 +135,7 @@ class DesktopRuntime:
                 windows.append({**{k:v for k,v in native.items() if k != 'identity'}, 'window_id': ident})
             data = {'windows': windows, 'session_scope': 'current interactive user only'}
         if name in ('desktop_inspect','desktop_screenshot'):
-            self.binding(arguments.get('window_id'),owner)['geometry']={k:data[k] for k in ('client_size','dpi')}
+            self.binding(arguments.get('window_id'),owner)['geometry']={k:data[k] for k in ('client_size','dpi','client_origin')}
         if name == 'desktop_screenshot':
             path = Path(request['artifact_path'])
             if path.stat().st_size > 32*1024*1024:
@@ -130,29 +145,41 @@ class DesktopRuntime:
             data.update(artifact_id=artifact_id, path=str(path), local_only=True,
                         sha256=hashlib.sha256(path.read_bytes()).hexdigest(),window_id=arguments['window_id'],
                         pid=request['binding']['pid'],window_generation=request['binding']['generation'],captured_at=time.time())
-            if arguments.get('share_with_model') and supports_vision and self.shared_hashes.get(owner) == data['sha256']:
+            if arguments.get('share_with_model') and supports_vision and self.shared_hashes.get(owner) == data['sha256'] and self.shared_formats.get(owner,False)==bool(arguments.get('coordinate_grid')):
                 data['vision_feedback'] = 'unchanged_capture_not_attached'
+                data['model_image_size']=self.image_metadata.get(owner,{}).get('model_image_size')
             elif arguments.get('share_with_model') and supports_vision:
                 from PIL import Image
                 with Image.open(path) as image:
                     image = image.convert('RGB')
                     image.thumbnail((768, 768))
+                    if arguments.get('coordinate_grid'):
+                        from agent.desktop.visual_target import coordinate_grid
+                        image=coordinate_grid(image)
                     stream = BytesIO()
                     image.save(stream, format='JPEG', quality=65)
                 self.images[owner] = {'type':'image_url', 'image_url':{'url':'data:image/jpeg;base64,' + base64.b64encode(stream.getvalue()).decode(), 'detail':'low'}}
                 self.pending_hashes[owner] = data['sha256']
+                self.pending_formats[owner]=bool(arguments.get('coordinate_grid'))
                 self.image_context[owner] = f"{artifact_id}, window={arguments['window_id']}, captured_at={data['captured_at']}"
-                self.image_metadata[owner] = {'artifact_id':artifact_id,'upload_authorized':True,'image_attached':True,'captured_at':data['captured_at']}
+                self.image_metadata[owner] = {'artifact_id':artifact_id,'upload_authorized':True,'image_attached':True,'captured_at':data['captured_at'],'model_image_size':list(image.size)}
                 self.image_metadata[owner]['redacted_controls'] = data.get('redacted_controls')
                 data.update(vision_feedback='image_attached', local_only=False, model_image_size=list(image.size))
+                if arguments.get('coordinate_grid'):
+                    data['model_coordinate_grid']='normalized_1000'
+                    self.image_context[owner]+='; 灰色坐标网格是模型定位辅助，不是应用控件；横纵坐标均为 0..1000，使用 normalized_1000 返回按钮中心。'
             else:
                 data['vision_feedback'] = 'model_not_vision_capable_use_control_tree' if arguments.get('share_with_model') else 'local_artifact_only'
+            self.artifacts[artifact_id].update(window_id=arguments['window_id'],scope=arguments.get('scope','window'),
+                captured_at=data['captured_at'],client_size=data['client_size'],client_origin=data['client_origin'],dpi=data['dpi'],
+                image_size=[data['width'],data['height']],model_image_size=data.get('model_image_size'),shared=not data['local_only'] or data['vision_feedback']=='unchanged_capture_not_attached')
         return ToolResult(ok=True, summary=name + ' completed', data=data)
 
     def image_message(self, owner, consume=False):
         image = self.images.pop(owner, None) if consume else self.images.get(owner)
         if image and consume:
             self.shared_hashes[owner] = self.pending_hashes.pop(owner, None)
+            self.shared_formats[owner]=self.pending_formats.pop(owner,False)
         count=self.image_metadata.get(owner,{}).get('redacted_controls')
         privacy=(' Capture sanitization metadata: '+str(count)+' controls intentionally concealed for privacy. '
             'EDIT CONTENT REDACTED labels, light placeholders and black sensitive-control masks are capture overlays, not application defects. '
@@ -167,4 +194,7 @@ class DesktopRuntime:
         self.image_metadata.pop(owner, None)
         self.shared_hashes.pop(owner, None)
         self.pending_hashes.pop(owner, None)
+        self.shared_formats.pop(owner,None)
+        self.pending_formats.pop(owner,None)
+        self.artifacts={key:value for key,value in self.artifacts.items() if value.get('owner')!=owner}
         # PNG artifacts stay local for review, independent of expiring window handles.

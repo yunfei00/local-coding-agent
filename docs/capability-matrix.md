@@ -1,5 +1,7 @@
 # M1～M5 能力矩阵
 
+2026-11-05：v0.7 Windows Computer Agent 专项见 [v0.7 验收](v0.7/acceptance-report.md)。窗口/UIA/输入/记事本/计算器/文件管理器与本地浏览器执行结果分别记录，真实模型视觉回退仍有失败及服务端 403 阻断；不把 Mock、坐标工具集成或图片接口成功当作真实视觉任务通过。
+
 2026-11-04：v0.6 已实现运行中追加需求、关联事件与普通统一运行中断恢复。三个阿里云模型完成实际开发测试，Python、React、Electron、网络断流及原运行恢复已有证据。见 [v0.6 验收](v0.6/acceptance-report.md)中的逐项结果与未验证限制；下文历史矩阵保留原阶段证据。
 
 2026-10-28 更新：下表保留阶段范围；当前源码/真实模型证据以[基础 Agent 差距审计](validation/basic-agent-gap-2026-10-28.md)、[阿里真实仓库验收](validation/alibaba-repository-acceptance-2026-10-27.md)为准。当前仍缺执行中追加指令、通用 Skills 和模型语义压缩，不宣称与 Codex 完全等同。

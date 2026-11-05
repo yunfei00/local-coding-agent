@@ -1,0 +1,1 @@
+{"name":"v07-computer-local-page","version":"1.0.0","private":true,"main":"main.cjs","scripts":{"start":"node launch.cjs"}}

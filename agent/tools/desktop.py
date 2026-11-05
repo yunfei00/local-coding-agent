@@ -10,9 +10,10 @@ PROPERTIES = {
 }
 EXTRA = {
     'desktop_list_windows': {'pid':{'type':'integer','minimum':1}},
-    'desktop_screenshot': {'scope':{'type':'string','enum':['window','screen']}, 'share_with_model':{'type':'boolean','default':False}},
+    'desktop_screenshot': {'scope':{'type':'string','enum':['window','screen']}, 'share_with_model':{'type':'boolean','default':False},'coordinate_grid':{'type':'boolean','default':False,'description':'仅在已授权发送的模型缩略图上标注0..1000坐标网格，原截图不改；辅助视觉定位。'}},
     'desktop_inspect': {}, 'desktop_focus_window': {},
-    'desktop_click': {'x':{'type':'integer'},'y':{'type':'integer'}, 'method':{'type':'string','enum':['uia','coordinate']}},
+    'desktop_click': {'x':{'type':'integer'},'y':{'type':'integer'}, 'method':{'type':'string','enum':['uia','coordinate']},
+                      'coordinate_space':{'type':'string','enum':['client','model_image','normalized_1000'],'description':'model_image 为本次缩放图片的像素；normalized_1000 为0..1000归一化坐标。视觉回退必须提供 artifact_id 并再次批准，不能混用空间。'},'artifact_id':{'type':'string'}},
     'desktop_type_text': {'text':{'type':'string','maxLength':4000}},
     'desktop_keypress': {'keys':{'type':'string','description':'Named key or chord e.g. CTRL+A, TAB, ENTER, CTRL+K (no arbitrary key script)'}},
     'desktop_scroll': {'direction':{'type':'string','enum':['up','down','left','right']},'amount':{'type':'integer','minimum':1,'maximum':10}},
@@ -29,7 +30,7 @@ class DesktopTool(BaseTool):
             keys.add('window_id')
         if name in ('desktop_click','desktop_type_text','desktop_keypress','desktop_scroll','desktop_wait'):
             keys.add('selector')
-        if name in ('desktop_click','desktop_keypress','desktop_scroll'):
+        if name in ('desktop_click','desktop_keypress','desktop_scroll','desktop_type_text'):
             keys.add('confirm_risk')
         required = [] if name == 'desktop_list_windows' else ['window_id']
         self.parameters = {'type':'object','properties':{**{k:v for k,v in PROPERTIES.items() if k in keys}, **EXTRA[name]}, 'required':required, 'additionalProperties':False}
