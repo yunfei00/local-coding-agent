@@ -32,6 +32,53 @@ class RuntimeQueueTests(unittest.IsolatedAsyncioTestCase):
     def run_data(self,ident):
         return json.loads(self.server.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',(ident,)).fetchone()[0])
 
+    async def test_background_independent_verification_failure_repairs_without_missing_counter(self):
+        self.server.provider=fixture.ScriptedProvider([
+            fixture.tool_step('write_file',{'path':'calculator.py','content':'def add(a,b): return a*b\n'}),fixture.final_step('implementation ready'),
+            fixture.tool_step('write_file',{'path':'calculator.py','content':'def add(a,b): return a+b\n'}),fixture.final_step('repaired'),
+        ])
+        self.server.ensure_model_available=AsyncMock(return_value=True);self.server.background.clients.add(self.ws)
+        ident=await self.start(self.thread.id,'修复计算器并自动验证，保留原测试')
+        await self.server.active_turns[ident]
+        runtime=[event['payload']['runtime'] for event in self.ws.messages if event['type']=='agent.runtime.updated'][-1]
+        data=self.run_data(runtime['id'])
+        self.assertEqual(data['unified']['outcome'],'completed_verified')
+        self.assertEqual(data['unified']['repairs'],1);self.assertEqual(self.server.provider.calls,4)
+        history=data['unified_verification_history']
+        self.assertTrue(any(not result['ok'] for result in history[0]['results']))
+        self.assertTrue(all(result['ok'] for result in history[-1]['results']))
+
+    async def test_queued_time_budget_is_frozen_and_legacy_snapshot_is_normalized(self):
+        config=self.server.tasks.settings();config['budget']['task_seconds']=60
+        self.server.store.set_setting('orchestration.config',json.dumps(config))
+        first,second,other=await self.setup_queue()
+        queued=self.run_data(second)
+        self.assertEqual(queued['limits']['seconds'],60)
+        # Emulate a persisted snapshot from before the queue initialization fix.
+        queued['limits']['seconds']=7200;queued['unified'].pop('repairs',None)
+        self.server.store.connection.execute('UPDATE agent_execution_runs SET data_json=? WHERE id=?',(json.dumps(queued),second));self.server.store.connection.commit()
+        config['budget']['task_seconds']=3600;self.server.store.set_setting('orchestration.config',json.dumps(config))
+        self.provider.started.clear();first_task=self.server.active_turns[first];first_task.cancel()
+        await asyncio.gather(first_task,return_exceptions=True)
+        await asyncio.wait_for(self.provider.started.wait(),5)
+        restored=self.run_data(second)
+        self.assertEqual(restored['limits']['seconds'],60)
+        self.assertEqual(restored['unified_config']['budget']['task_seconds'],60)
+        self.assertEqual(restored['unified']['repairs'],0)
+
+    async def test_expired_legacy_queued_task_never_sends_first_request(self):
+        config=self.server.tasks.settings();config['budget']['task_seconds']=60
+        self.server.store.set_setting('orchestration.config',json.dumps(config))
+        first,second,other=await self.setup_queue()
+        queued=self.run_data(second);queued['limits']['seconds']=7200;queued['elapsed']=61
+        self.server.store.connection.execute('UPDATE agent_execution_runs SET data_json=? WHERE id=?',(json.dumps(queued),second));self.server.store.connection.commit()
+        second_task=self.server.active_turns[second];first_task=self.server.active_turns[first];first_task.cancel()
+        await asyncio.gather(first_task,return_exceptions=True);await asyncio.wait_for(second_task,5)
+        stopped=self.run_data(second)
+        self.assertEqual(stopped['limits']['seconds'],60);self.assertEqual(stopped['calls'],0)
+        self.assertEqual(self.server.tasks.runtime.usage()['api_calls'],1)
+        self.assertNotEqual(stopped['unified']['phase'],'executing')
+
     async def test_queued_cancel_is_persisted_without_model_request(self):
         first,second,other=await self.setup_queue()
         queued=self.run_data(second)

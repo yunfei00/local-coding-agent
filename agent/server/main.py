@@ -1797,7 +1797,9 @@ class AgentServer:
                         workflow_config=queued_snapshot['workflow'],workflow_models=queued_roles,
                         workflow_chat_model=getattr(selected_provider,'profile_snapshot',None),unified_provider_snapshot=getattr(selected_provider,'profile_snapshot',None))
                     queued_execution.data['unified']={'id':turn_id,'intent':queue_intent(prompt)['kind'],'phase':'queued','generation':turn_id,
-                        'revision':1,'updated_at':__import__('time').time(),'level':'none','changed_paths':[],'verification':[],'outcome':None}
+                        'revision':1,'updated_at':__import__('time').time(),'level':'none','changed_paths':[],'verification':[],'outcome':None,'repairs':0}
+                    if selected_provider.provider_name!='ollama':
+                        queued_execution.data['limits']['seconds']=min(queued_execution.data['limits']['seconds'],queued_snapshot['orchestration']['budget']['task_seconds'])
                     queued_execution.save()
                     resume_key=turn_id
                 self.background.add(turn_id,thread_id,project.id)
@@ -2547,7 +2549,12 @@ class AgentServer:
         from agent.core.unified_runtime import INSTRUCTIONS as UNIFIED_INSTRUCTIONS, PLAN_TOOL as UNIFIED_PLAN_TOOL, infer_intent, plan_steps, plan_view, verification_policy, result_view, workspace_snapshot,changed_since_snapshot,snapshot_fingerprint, RuntimeEvents, requested_intent, computer_only, COMPUTER_TOOLS
         unified = unified or bool(execution.data.get('unified'))
         requested=execution.data.setdefault('unified_request',requested_intent(prompt)) if unified else None
-        runtime = execution.data.setdefault('unified', {'intent':'question', 'phase':'executing', 'outcome':None, 'changed_paths':[], 'verification':[], 'level':'none', 'repairs':0}) if unified else None
+        runtime = execution.data.setdefault('unified', {}) if unified else None
+        if unified:
+            # Add missing fields for pre-created/older queue snapshots without
+            # resetting accumulated repairs, evidence or the frozen config.
+            for key,value in {'intent':'question','phase':'executing','outcome':None,'changed_paths':[], 'verification':[], 'level':'none','repairs':0}.items():
+                runtime.setdefault(key,value)
         initial_queued=bool(runtime and runtime.get('phase')=='queued')
         if unified:
             runtime['knowledge']=knowledge_status
@@ -2568,11 +2575,10 @@ class AgentServer:
         verification_options = (config_snapshot or {}).get('orchestration') or (self.tasks.settings() if unified else {})
         if unified and 'unified_config' not in execution.data:
             execution.data['unified_config'] = verification_options
-            if provider.provider_name != 'ollama':
-                limits = verification_options['budget']
-                execution.data['limits']['seconds']=min(execution.data['limits']['seconds'],limits['task_seconds'])
         if unified:
             verification_options = execution.data['unified_config']
+            if provider.provider_name != 'ollama':
+                execution.data['limits']['seconds']=min(execution.data['limits']['seconds'],verification_options['budget']['task_seconds'])
             from agent.core.workflow import load_workflow_config,workflow_config
             execution.data['workflow_config']=workflow_config(execution.data['workflow_config']) if 'workflow_config' in execution.data else (config_snapshot or {}).get('workflow') or load_workflow_config(self.store)
             snapshot=getattr(provider,'profile_snapshot',None)
