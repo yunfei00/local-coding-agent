@@ -132,6 +132,11 @@ class AgentServer:
     def __init__(self, token: str) -> None:
         self.token = token
         self.store = SQLiteStore()
+        from agent.core.runtime_events import RuntimeLedger
+        self.runtime_ledger=RuntimeLedger(self.store.connection,lambda: tuple(filter(None,[getattr(self,'openai_api_key',None),*getattr(getattr(self,'tasks',None),'credentials',{}).values()])))
+        self.turn_start_lock=asyncio.Lock()
+        self.active_executions={}
+        self.cancelling_turns=set()
         self.last_turn_trace: dict[str, Any] | None = None
         self.confirmed_plan_resumes: set[tuple[str, str]] = set()
         self.disconnected_turns: set[str] = set()
@@ -173,6 +178,7 @@ class AgentServer:
         self._sync_workspace_permissions()
         from agent.core.orchestration import TaskService
         self.tasks = TaskService(self)
+        self.runtime_ledger.recover_executions()
 
     def authorized(self, request: web.Request) -> bool:
         return request.headers.get("Authorization") == f"Bearer {self.token}"
@@ -241,7 +247,7 @@ class AgentServer:
                         )
                         continue
 
-                    if data['type'] == 'task.model.diagnostic':
+                    if data['type'] in {'task.model.diagnostic','plan.operation.review'}:
                         diagnostic = asyncio.create_task(self.handle_message(ws, data, owned_turns))
                         diagnostic_requests.add(diagnostic)
                         diagnostic.add_done_callback(diagnostic_requests.discard)
@@ -259,7 +265,7 @@ class AgentServer:
                     self.disconnected_turns.add(turn_id)
                     for plan_id, running_turn in self.tasks.running.items():
                         if running_turn == turn_id:
-                            self.tasks.stop_reasons[plan_id]='paused'
+                            self.tasks.stop_reasons.setdefault(plan_id,'paused')
                     task.cancel()
             # MCP belongs to AgentServer, not one WebSocket. Shutdown/settings
             # changes own its lifetime; reconnect must not leave stale adapters.
@@ -291,10 +297,19 @@ class AgentServer:
 
     def forget_turn(self, turn_id: str) -> None:
         self.disconnected_turns.discard(turn_id)
+        self.cancelling_turns.discard(turn_id)
         self.active_turns.pop(turn_id, None)
         self.active_turn_threads.pop(turn_id, None)
 
     async def handle_message(
+        self, ws, data, owned_turns,
+    ) -> None:
+        if data.get('type') in {'turn.start','task.start','task.resume','task.continue'}:
+            async with self.turn_start_lock:
+                return await self._handle_message(ws,data,owned_turns)
+        return await self._handle_message(ws,data,owned_turns)
+
+    async def _handle_message(
         self,
         ws: web.WebSocketResponse,
         data: dict[str, Any],
@@ -311,10 +326,13 @@ class AgentServer:
             return
 
         if message_type == "diagnostics.get":
+            diagnostic=await self._diagnostics_payload()
+            project=self.projects.active
+            diagnostic['runtime_events']=self.runtime_ledger.events(thread_id=project.active_thread_id if project else '',limit=20)
             await ws.send_json(
                 envelope(
                     "diagnostics.loaded",
-                    await self._diagnostics_payload(),
+                    diagnostic,
                     request_id=request_id,
                 )
             )
@@ -1425,17 +1443,53 @@ class AgentServer:
                     await self.recover_plan(ws, project, plan_id, thread_id)
                     checkpoint = plans.latest_checkpoint(plan_id)
                     self.confirmed_plan_resumes.add((thread_id,checkpoint['id']))
+                elif message_type == 'plan.operation.review':
+                    if plans.get(plan_id)['thread_id']!=thread_id or payload.get('confirm_workspace') is not True:
+                        raise ValueError('先核对当前会话的工作区与中断日志')
+                    if self.active_turns:raise ValueError('先停止执行，再审阅中断记录')
+                    call_id=str(payload.get('call_id') or '')
+                    row=self.store.connection.execute("SELECT tool FROM task_plan_executions WHERE plan_id=? AND call_id=? AND status='interrupted'",(plan_id,call_id)).fetchone()
+                    if not row:raise ValueError('没有待审阅的中断记录')
+                    decision=await self.approvals.request(ws,turn_id='review-'+plan_id,thread_id=thread_id,approval_key=new_id('review'),
+                        tool_name='review_interrupted_operation',arguments={'call_id':call_id,'tool':row[0]},
+                        reason='确认已经核对工作区和日志。只解除未知结果的完成阻塞，不认定操作成功、不重放；后续修改仍需明确审批。',risk='uncertain_operation_review')
+                    if decision==APPROVAL_DENY:raise ValueError('中断审阅未获明确授权')
+                    if self.active_turns:raise ValueError('审批期间已有运行启动；请停止后重新核对')
+                    has_runs=self.store.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_execution_runs'").fetchone()
+                    saved=self.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',(plan_id,)).fetchone() if has_runs else None
+                    with self.store.connection:
+                        plans.review_interrupted(plan_id,call_id,commit=False)
+                        if saved:
+                            value=json.loads(saved[0]);value['recovery_count']=0
+                            self.store.connection.execute('UPDATE agent_execution_runs SET data_json=? WHERE id=?',(json.dumps(value),plan_id))
+                        self.runtime_ledger.record(plan_id,thread_id,'execution.operation_reviewed',{'tool':row[0],'boundary':'用户核对未知结果；未标记成功，后续修改仍需审批'},commit=False)
+                    plans.checkpoint(plan_id,'interrupted_operation_reviewed')
                 elif message_type == 'plan.execution.extend':
                     if plans.get(plan_id)['thread_id'] != thread_id:
                         raise ValueError('Plan belongs to another thread')
+                    if any(item.key==plan_id for item in self.active_executions.values()):
+                        raise ValueError('请先停止原运行，再明确追加预算')
                     row=self.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',(plan_id,)).fetchone()
                     if not row:
                         raise ValueError('No execution budget exists for this plan')
                     value=json.loads(row[0])
-                    for key,delta,cap in (('model_calls',16,512),('tokens',500000,1000000000),('seconds',300,86400),('max_continuations',1,8)):
+                    calls=payload.get('additional_calls',16);tokens=payload.get('additional_tokens',500000)
+                    if isinstance(calls,bool) or not isinstance(calls,int) or not 1<=calls<=1000 or isinstance(tokens,bool) or not isinstance(tokens,int) or not 1<=tokens<=100000000:
+                        raise ValueError('追加调用须为 1～1000，Token 须为 1～100000000')
+                    for key,delta,cap in (('model_calls',calls,512),('tokens',tokens,1000000000),('seconds',300,86400),('max_continuations',1,8)):
                         value['limits'][key]=max(value['limits'][key],min(cap,value['limits'][key]+delta))
+                    if value.get('unified_config'):
+                        limits=value['unified_config']['budget']
+                        # 只由已确认的“增加执行预算”操作修改原任务快照。
+                        # Settings 保存和普通恢复仍不能重置/扩张旧任务预算。
+                        for key,delta,cap in (('api_calls',calls,10**9),('api_tokens',tokens,10**9),('task_seconds',300,86400)):
+                            limits[key]=min(cap,limits[key]+delta)
+                        if payload.get('include_global') is True:
+                            for key,delta in (('global_api_calls',calls),('global_api_tokens',tokens)):
+                                limits[key]=min(10**9,limits[key]+delta)
                     with self.store.connection:
                         self.store.connection.execute('UPDATE agent_execution_runs SET data_json=? WHERE id=?',(json.dumps(value),plan_id))
+                        self.runtime_ledger.record(plan_id,thread_id,'execution.budget_extended',{'scope':'task_and_global_snapshot' if payload.get('include_global') is True else 'task','boundary':'用户明确确认；既有消耗及费用上限保留'},commit=False)
                     plans.checkpoint(plan_id,'user_extended_execution_budget')
                 elif message_type != "plan.list":
                     raise ValueError("Unsupported plan operation")
@@ -1467,6 +1521,29 @@ class AgentServer:
                     thread_id=thread.id,
                 )
             )
+            return
+
+        if message_type == 'turn.append':
+            turn_id=str(data.get('turn_id') or payload.get('turn_id') or '')
+            thread_id=str(data.get('thread_id') or payload.get('thread_id') or '')
+            running=self.active_turns.get(turn_id)
+            execution=self.active_executions.get(turn_id)
+            project=next((p for p in self.projects.list_projects() if p.state.get_thread(thread_id)),None)
+            try:
+                if not running or running.done() or turn_id in self.cancelling_turns or self.active_turn_threads.get(turn_id)!=thread_id:
+                    raise ValueError('当前运行已停止或不属于此会话；追加需求未发送模型')
+                if not execution or not execution.data.get('unified') or not project:
+                    raise ValueError('运行上下文尚未就绪，请等待工具开始后重试')
+                if execution.data['unified'].get('phase') in {'completed','failed','paused','cancelled'}:
+                    raise ValueError('本轮已进入终态，请等待停止后发送新的需求')
+                prompt=payload.get('prompt');identifier=payload.get('message_id')
+                if not isinstance(prompt,str):raise ValueError('追加需求必须是文本')
+                size=len(execution.data.get('unified_goal',''))+sum(len(x['text']) for x in self.runtime_ledger.pending(execution.key))+len(prompt)+32
+                if size>16000:raise ValueError('当前目标及追加内容超过 16000 字符，请结束本轮后分拆任务')
+                self.enqueue_followup(project,execution.key,thread_id,identifier,prompt)
+                await ws.send_json(envelope('turn.appended',{'message_id':identifier,'queued':True,'boundary':'当前完整工具批次结束后的下一次模型请求前'},request_id=request_id,thread_id=thread_id,turn_id=turn_id))
+            except ValueError as exc:
+                await self.send_error(ws,'FOLLOWUP_REJECTED',str(exc),request_id=request_id,thread_id=thread_id,turn_id=turn_id)
             return
 
         if message_type == "turn.start":
@@ -1531,13 +1608,27 @@ class AgentServer:
             model = requested_model.strip() if requested_model is not None else (thread.active_model or self.default_model or self.provider.preferred_model)
             resume_key=None
             resume_data={}
-            if payload.get('unified') is True and self.store.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_execution_runs'").fetchone():
+            explicit_run=payload.get('resume_run_id')
+            if explicit_run:
+                row=self.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE id=? AND thread_id=?',(str(explicit_run),thread_id)).fetchone() if self.store.connection.execute("SELECT 1 FROM sqlite_master WHERE name='agent_execution_runs'").fetchone() else None
+                resume_data=json.loads(row[0]) if row else {}
+                if not resume_data.get('unified') or payload.get('confirm_workspace') is not True:
+                    await self.send_error(ws,'RUN_RESUME_REQUIRES_REVIEW','请检查本会话原运行的工作区后确认恢复。',request_id=request_id,thread_id=thread_id);return
+                if resume_data['unified'].get('phase') not in {'paused','failed','cancelled'}:
+                    await self.send_error(ws,'RUN_NOT_RECOVERABLE','此运行不处于可恢复状态。',request_id=request_id,thread_id=thread_id);return
+                if not resume_data.get('unified_goal'):
+                    await self.send_error(ws,'LEGACY_GOAL_UNAVAILABLE','旧版运行未保存完整原始目标，无法安全猜测；历史保留，请重新输入需求。',request_id=request_id,thread_id=thread_id);return
+                resume_key=str(explicit_run)
+            if not explicit_run and payload.get('unified') is True and self.store.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_execution_runs'").fetchone():
                 for plan in self.store.task_plans.list_for_thread(thread_id):
                     if plan['id'] in deferred_plan_ids or not self.store.task_plans.active_step(plan['id']):continue
                     row=self.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',(plan['id'],)).fetchone()
                     if row and json.loads(row[0]).get('unified'):
                         resume_key,resume_data=plan['id'],json.loads(row[0]);break
             frozen=resume_data.get('unified_provider_snapshot')
+            if resume_key and frozen:
+                # 恢复原运行使用原模型快照；Settings/聊天下拉框变化仅影响新任务。
+                model='profile:'+frozen['profile']['model_profile_id']
             if model.startswith('profile:') and frozen and frozen['profile']['model_profile_id']==model.removeprefix('profile:'):
                 try:
                     selected_provider,selected_model=self.chat_provider(model,frozen)
@@ -1553,7 +1644,11 @@ class AgentServer:
                     check_api_scope(scope='task',caps=limits,used=self.tasks.runtime.usage(resume_key) if resume_key else {'api_calls':0,'reserved_tokens':0,'reserved_cost':0},tokens=1,cost=0,context={'phase':'preflight','role':'executor','model':selected_model,'input_token_estimate':1,'output_limit':getattr(selected_provider,'max_output_tokens',None)})
                     check_api_scope(scope='global',caps=limits,used=self.tasks.runtime.usage(),tokens=1,cost=0,context={'phase':'preflight','role':'executor','model':selected_model})
                 except BudgetExceeded as exc:
-                    await self.send_error(ws,exc.code,str(exc),request_id=request_id,thread_id=thread_id)
+                    trace_id=new_id('request')
+                    observe=self.runtime_ledger.request_callback('preflight:'+str(request_id or trace_id),thread_id,trace_id,{'phase':'preflight','model':selected_model,'provider':selected_provider.provider_name})
+                    observe('request.prepared',{'request_sent':False})
+                    observe('request.failed',{'request_sent':False,'error_code':exc.code,**{k:v for k,v in (getattr(exc,'details',{}) or {}).items() if k in {'field','limit','used','required','scope'}}})
+                    await self.send_error(ws,exc.code,'请求未发出：'+str(exc),request_id=request_id,thread_id=thread_id)
                     return
 
             # Persist only after validation, in the same request that starts this turn.
@@ -1597,11 +1692,12 @@ class AgentServer:
                     ws,
                     thread_id=thread_id,
                     turn_id=turn_id,
-                    prompt=prompt,
+                    prompt=resume_data.get('unified_goal',prompt) if explicit_run else prompt,
                     model=selected_model,
                     provider=selected_provider,
                     unified=payload.get('unified') is True,
                     deferred_plan_ids=deferred_plan_ids,
+                    execution_id=resume_key,
                 ),
                 name=turn_id,
             )
@@ -1617,8 +1713,15 @@ class AgentServer:
             if not task or task.done():
                 await self.send_error(ws, "TURN_NOT_RUNNING", "Turn is not running.", request_id=request_id, turn_id=turn_id or None)
                 return
+            self.cancelling_turns.add(turn_id)
+            execution=self.active_executions.get(turn_id)
+            if execution and execution.data.get('unified'):
+                self.runtime_ledger.transition(execution,'cancelled',turn_id,outcome='cancelled',reason='用户取消；不会自动恢复本次尝试')
             self.approvals.cancel_turn(turn_id)
             task.cancel()
+            if execution is None:
+                self.runtime_ledger.record(turn_id,self.active_turn_threads.get(turn_id,''),'execution.cancelled',{'phase':'cancelled','generation':turn_id})
+                await ws.send_json(envelope('turn.cancelled',{'reason':'user_cancelled','code':'TURN_CANCELLED'},turn_id=turn_id,thread_id=self.active_turn_threads.get(turn_id)))
             return
 
         await self.send_error(
@@ -1627,6 +1730,15 @@ class AgentServer:
             f"Unsupported message type: {message_type}",
             request_id=request_id,
         )
+
+    def enqueue_followup(self,project,run_id,thread_id,identifier,prompt):
+        from agent.server.state import now_iso
+        inserted=self.runtime_ledger.enqueue(run_id,thread_id,identifier,prompt,persist=lambda text:
+            self.store.append_message(thread_id=thread_id,role='user',content=text,created_at=now_iso(),commit=False))
+        if inserted:
+            project.state.refresh_messages(thread_id)
+            project.state.touch_thread(thread_id)
+        return inserted
 
     def _resolve_prompt_rule_scope_id(
         self,
@@ -2046,6 +2158,7 @@ class AgentServer:
         vision_observer=None,
         unified: bool = False,
         deferred_plan_ids=(),
+        execution_id=None,
     ) -> None:
         if provider is None:
             provider = self.provider
@@ -2083,9 +2196,10 @@ class AgentServer:
 
         active_plans = [
             plan for plan in self.store.task_plans.list_for_thread(thread_id)
+            if execution_id is None or plan['id']==execution_id
             if plan['id'] not in deferred_plan_ids
             if plan_id or not self.store.connection.execute('SELECT 1 FROM autonomous_tasks WHERE plan_id=?',(plan['id'],)).fetchone()
-            if (plan_id is None or plan["id"] == plan_id) and any(item["state"] in ("pending", "in_progress", "blocked") for item in plan["steps"])
+            if (plan_id is None or plan["id"] == plan_id) and (execution_id==plan['id'] or any(item["state"] in ("pending", "in_progress", "blocked") for item in plan["steps"]))
         ]
         # Existing plans are explicit user intent. Do not create plans for simple turns.
         active_plan = self.store.task_plans.get(plan_id) if plan_id else (active_plans[0] if active_plans else None)
@@ -2218,12 +2332,21 @@ class AgentServer:
         explicit_tool_denial = False
         previous_checkpoint = self.store.task_plans.latest_checkpoint(active_plan["id"]) if active_plan else None
         from agent.core.execution import ExecutionBudget
-        execution = ExecutionBudget(self.store.connection, active_plan['id'] if active_plan else turn_id, thread_id, self.continuation_policy)
+        execution = ExecutionBudget(self.store.connection, execution_id or (active_plan['id'] if active_plan else turn_id), thread_id, self.continuation_policy,ledger=self.runtime_ledger)
+        self.active_executions[turn_id]=execution
         from agent.core.unified_runtime import INSTRUCTIONS as UNIFIED_INSTRUCTIONS, PLAN_TOOL as UNIFIED_PLAN_TOOL, infer_intent, plan_steps, plan_view, verification_policy, result_view, workspace_snapshot, RuntimeEvents, requested_intent
         unified = unified or bool(execution.data.get('unified'))
         requested=execution.data.setdefault('unified_request',requested_intent(prompt)) if unified else None
         runtime = execution.data.setdefault('unified', {'intent':'question', 'phase':'executing', 'outcome':None, 'changed_paths':[], 'verification':[], 'level':'none', 'repairs':0}) if unified else None
         if unified:
+            execution.data.setdefault('unified_goal',active_plan['goal'] if active_plan else prompt)
+            previous_phase=runtime.get('phase')
+            recovery_error=None
+            if previous_phase in {'paused','failed','cancelled'}:
+                execution.data['recovery_count']=execution.data.get('recovery_count',0)+1
+                if execution.data['recovery_count']>execution.data.get('recovery_limit',3):
+                    recovery_error='已达到本次运行的恢复上限；检查诊断后创建新的明确任务，不能无限重新恢复'
+            runtime.update(generation=turn_id,phase='executing')
             runtime.update(outcome=None,reason='',error_code=None,validation_blocked=False,verification=[])
             if runtime['intent']=='question':runtime['intent']=requested['kind']
         unified_baseline = execution.data.get('unified_baseline') if unified else {}
@@ -2245,11 +2368,25 @@ class AgentServer:
             messages.append({'role':'system','content':UNIFIED_INSTRUCTIONS})
         if unified:
             ws=RuntimeEvents(ws,execution,runtime)
+            with self.store.connection:
+                execution.save(commit=False)
+                self.runtime_ledger.record(execution.key,thread_id,'execution.started',{'phase':runtime['phase'],'generation':turn_id},event_key='started:'+turn_id,commit=False)
         def reserve_model(target,messages,schemas,requested_model=None):
             api = unified and target.provider_name != 'ollama'
-            return execution.reserve(messages,schemas,getattr(target,'max_output_tokens',None) or self.context_reserved_output_tokens,
-                api_budget=verification_options['budget'] if api else None,runtime=self.tasks.runtime if api else None,
-                pricing=getattr(target,'billing_prices',None),identity={'provider':target.provider_name,'model':requested_model or getattr(target,'preferred_model',model),**getattr(target,'chat_identity',{})})
+            identifier=new_id('request') if unified else None
+            raw=getattr(target,'provider',target)
+            observe=self.runtime_ledger.request_callback(lambda:execution.key,thread_id,identifier,{
+                'phase':runtime['phase'],'provider':target.provider_name,'model':requested_model or getattr(target,'preferred_model',model),'role':'executor' if target is provider else 'vision-observer','retry':execution.data.get('current_retry',0)}) if unified else None
+            if observe:observe('request.prepared',{'request_sent':False,'output_limit':getattr(target,'max_output_tokens',None)})
+            try:
+                result=execution.reserve(messages,schemas,getattr(target,'max_output_tokens',None) or self.context_reserved_output_tokens,
+                    api_budget=verification_options['budget'] if api else None,runtime=self.tasks.runtime if api else None,
+                    pricing=getattr(target,'billing_prices',None),identity={'provider':target.provider_name,'model':requested_model or getattr(target,'preferred_model',model),**getattr(target,'chat_identity',{})},request_id=identifier)
+            except ProviderError as exc:
+                if observe:observe('request.failed',{'request_sent':False,'error_code':exc.code,**{k:v for k,v in (getattr(exc,'details',{}) or {}).items() if k in {'field','limit','used','required','scope'}}})
+                raise
+            if observe:raw.request_observer=observe
+            return result
         async def publish_runtime(phase, **values):
             if runtime is None:
                 return
@@ -2259,8 +2396,11 @@ class AgentServer:
                 runtime['recovery_plan_id']=deferred_plan_ids[0]
             if active_plan and runtime['intent'] == 'complex':
                 runtime['plan'] = plan_view(self.store.task_plans.get(active_plan['id']))
-            execution.save()
-            await ws.send_json(envelope('agent.runtime.updated', {'runtime':dict(runtime)}, thread_id=thread_id, turn_id=turn_id))
+            event=self.runtime_ledger.transition(execution,phase,turn_id)
+            if event is None:return
+            message=envelope('agent.runtime.updated', {'runtime':dict(runtime)}, thread_id=thread_id, turn_id=turn_id)
+            message['event_id']=event['event_id']
+            await ws.send_json(message)
         await publish_runtime('executing')
         execution.data['repository_instructions'] = [
             {'path': path, 'sha256': digest} for path, (digest, _) in instructions.sources.items()]
@@ -2269,6 +2409,37 @@ class AgentServer:
 
         try:
             for step in range(1, self.max_model_steps * (1 + execution.data['limits']['max_continuations']) + 1):
+                if turn_id in self.cancelling_turns:raise asyncio.CancelledError()
+                if unified and recovery_error:raise ProviderError('RECOVERY_LIMIT',recovery_error)
+                if self.runtime_ledger.pending(execution.key):
+                    def apply_followups(rows):
+                        nonlocal prompt,requested,active_plan
+                        goal=execution.data.get('unified_goal',active_plan['goal'] if active_plan else prompt)
+                        goal+=''.join('\n\n用户追加需求：\n'+r['text'] for r in rows)
+                        if len(goal)>32000:raise ValueError('追加需求超过目标长度上限')
+                        if active_plan:
+                            autonomous=self.store.connection.execute('SELECT 1 FROM autonomous_tasks WHERE plan_id=?',(active_plan['id'],)).fetchone()
+                            if autonomous:
+                                for item in rows:self.tasks.runtime.append_followup(active_plan['id'],item['text'],item['message_id'],live=True,commit=False)
+                                goal=self.tasks.runtime.get(active_plan['id'])['goal']
+                            else:
+                                self.store.task_plans.append_steps(active_plan['id'],[{'description':r['text'][:1000]} for r in rows],commit=False)
+                                self.store.connection.execute('UPDATE task_plans SET goal=? WHERE id=?',(goal,active_plan['id']))
+                        execution.data['unified_goal']=goal
+                        execution.data.setdefault('applied_followups',[]).extend(r['message_id'] for r in rows)
+                    applied=self.runtime_ledger.apply_followups(execution,apply_followups)
+                    if applied:
+                        prompt=execution.data['unified_goal']
+                        if active_plan:
+                            active_plan=self.store.task_plans.get(active_plan['id'])
+                            current=self.store.task_plans.active_step(active_plan['id'])
+                            active_step_id=current['id'] if current else None
+                        if unified:
+                            latest=requested_intent(applied[-1]['text'])
+                            if latest['kind'] in {'change','complex'} or latest['read_only']:requested.update(latest)
+                            runtime['intent']=infer_intent(runtime['intent'],'',changed_paths=runtime['changed_paths'])
+                        for item in applied:messages.append({'role':'user','content':'用户在运行中追加需求（现在生效）：'+item['text']})
+                        await ws.send_json(envelope('turn.followup.applied',{'message_ids':[r['message_id'] for r in applied],'boundary':'模型请求之前'},thread_id=thread_id,turn_id=turn_id))
                 if unified and requested['kind'] in {'change','complex'} and not getattr(provider,'agent_tools_enabled',True):
                     raise ProviderError('MODEL_TOOLS_UNAVAILABLE','该模型当前只通过问答能力检查，无法执行代码修改；没有发送新的模型请求。')
                 if step > 1 and (step - 1) % self.max_model_steps == 0:
@@ -2288,6 +2459,8 @@ class AgentServer:
 
                 for attempt in range(1, self.model_retry_attempts + 1):
                     model_request_id=None
+                    final_chunk=None
+                    execution.data['current_retry']=attempt-1
                     try:
                         fitted_context = context_manager.fit_runtime(
                             messages,
@@ -2332,6 +2505,8 @@ class AgentServer:
                         runtime_suffix = instruction_suffix + ('\n\n' + runtime_observation['content'] if runtime_observation else '')
                         if (plan_id or unified) and not single_agent and active_plan:
                             current_step = self.store.task_plans.active_step(active_plan['id'])
+                            if current_step is None:
+                                runtime_suffix+='\nAll persistent plan steps are already completed. Do not replay edits or create a replacement plan. Inspect only if needed, then return the Chinese report; the runtime independently verifies the existing changes.'
                             if current_step:
                                 if unified:
                                     runtime_suffix += '\nOriginal user goal (not a new request): '+active_plan['goal']+'\nCompleted step IDs: '+json.dumps([s['id'] for s in self.store.task_plans.get(active_plan['id'])['steps'] if s['state']=='completed'])
@@ -2411,7 +2586,7 @@ class AgentServer:
                                             tool_calls.append(call)
 
                                 if chunk.done:
-                                    execution.finish_api(model_request_id,chunk=chunk,metadata=getattr(getattr(provider,'provider',provider),'response_metadata',{}))
+                                    final_chunk=chunk
                                     finish_reason = chunk.finish_reason
                                     prompt_eval_count = chunk.prompt_eval_count
                                     eval_count = chunk.eval_count
@@ -2430,14 +2605,23 @@ class AgentServer:
                             raise ProviderError("MODEL_REFUSED" if finish_reason == "content_filter" else "MODEL_TRUNCATED",
                                 "模型拒绝了响应，未接受完成状态。" if finish_reason == "content_filter" else
                                 f"模型响应被截断（finish_reason={finish_reason}, max_output_tokens={limit}）；未执行本批工具。请分段生成，或在 Models & Routing 调整该模型单次输出上限后新建任务。")
+                        if not ''.join(assistant_parts).strip() and not tool_calls:
+                            raise ProviderError('MODEL_EMPTY_RESPONSE','模型响应没有正文或工具调用，未接受完成状态。')
+                        execution.finish_api(model_request_id,chunk=final_chunk,metadata=getattr(getattr(provider,'provider',provider),'response_metadata',{}))
                         break
                     except TimeoutError as exc:
                         if perf_counter()>=deadline:
                             raise
                         execution.finish_api(model_request_id,status='failed',error_code='MODEL_REQUEST_TIMEOUT',metadata=getattr(getattr(provider,'provider',provider),'response_metadata',{}))
+                        if model_request_id:
+                            from agent.llm.base import observe_request
+                            observe_request(getattr(provider,'provider',provider),'request.failed',error_code='MODEL_REQUEST_TIMEOUT')
                         raise ProviderError('MODEL_REQUEST_TIMEOUT',f"模型单次请求超过 {getattr(provider,'request_timeout',120)} 秒；不是累计任务时间耗尽。未执行该响应，调用与保守预留保留，请检查连接后恢复。") from exc
                     except ProviderError as exc:
                         execution.finish_api(model_request_id,status='failed',error_code=exc.code,metadata=getattr(getattr(provider,'provider',provider),'response_metadata',{}))
+                        if model_request_id:
+                            from agent.llm.base import observe_request
+                            observe_request(getattr(provider,'provider',provider),'request.failed',error_code=exc.code)
                         protocol_error = exc.code in {"MODEL_INVALID_TOOL_CALL", "MODEL_TOOL_ARGUMENTS_TRUNCATED", "MODEL_TRUNCATED"}
                         repairs = execution.data.get("tool_protocol_repairs", 0)
                         if protocol_error and not tool_calls and attempt < self.model_retry_attempts and repairs < self.model_retry_attempts - 1:
@@ -2461,6 +2645,7 @@ class AgentServer:
                             continue
                         can_retry = (
                             exc.transient
+                            and not getattr(exc,'retry_exhausted',False)
                             and not observed_output
                             and attempt < self.model_retry_attempts
                         )
@@ -2468,6 +2653,9 @@ class AgentServer:
                             raise
 
                         metrics.retries += 1
+                        execution.data['network_retries']=execution.data.get('network_retries',0)+1
+                        execution.save()
+                        self.runtime_ledger.record(execution.key,thread_id,'request.retry_scheduled',{'retry':attempt,'error_code':exc.code,'request_sent':getattr(getattr(provider,'provider',provider),'response_metadata',{}).get('request_sent')},request_id=model_request_id)
 
                         await ws.send_json(
                             envelope(
@@ -2508,6 +2696,8 @@ class AgentServer:
                     continue
 
                 if not tool_calls:
+                    if unified and requested['kind']=='interaction' and not execution.data.get('unified_interaction_evidence'):
+                        raise ProviderError('AGENT_NO_INTERACTION_EVIDENCE','用户要求实际界面操作，但没有成功的桌面动作证据；不能仅用文字宣布完成。')
                     if unified:
                         current_snapshot = workspace_snapshot(workspace.root) if unified_baseline is not None else {}
                         baseline=unified_baseline or {}
@@ -2680,12 +2870,18 @@ class AgentServer:
                             continue
                     # Record the exchange once, at the real end of the turn.
                     if active_plan and self.store.task_plans.uncertain_operation(active_plan['id'], 'check'):
-                        raise ProviderError('PLAN_UNCERTAIN_EFFECTS','仍有重启前未确认的副作用，不能宣告完成；检查实际状态并明确审批。')
+                        raise ProviderError('PLAN_UNCERTAIN_EFFECTS','仍有重启前未确认结果的操作，不能宣告完成；打开任务计划，核对 Diff 和日志后点击“审阅中断记录”。审阅不代表操作成功。')
                     if active_plan and (self.store.task_plans.active_step(active_plan['id']) or {}).get('state') == 'blocked':
                         raise ProviderError('PLAN_BLOCKED','步骤仍被阻塞；失败原因与安全恢复动作已保存在 Plan。')
+                    if self.runtime_ledger.pending(execution.key):
+                        messages.append({'role':'assistant','content':assistant_text})
+                        continue
                     execution.data['status'] = 'completed'
                     if unified:
-                        await publish_runtime('completed', outcome=result_view(changed=bool(runtime['changed_paths']),results=runtime['verification'],level=runtime['level'],pending=bool(active_plan and self.store.task_plans.active_step(active_plan['id']))))
+                        if runtime['intent']=='interaction' and not runtime['changed_paths']:
+                            await publish_runtime('completed',outcome='completed_unverified',level='manual',reason='桌面动作已有真实工具证据；尚未附加独立 GUI 验收合约。')
+                        else:
+                            await publish_runtime('completed', outcome=result_view(changed=bool(runtime['changed_paths']),results=runtime['verification'],level=runtime['level'],pending=bool(active_plan and self.store.task_plans.active_step(active_plan['id']))))
                     execution.data.pop('last_error', None)
                     # Intermediate plan steps must not create duplicate user turns.
                     autonomous = plan_id and self.store.connection.execute('SELECT 1 FROM autonomous_tasks WHERE plan_id=?',(plan_id,)).fetchone()
@@ -2914,7 +3110,10 @@ class AgentServer:
                             }
                     else:
                         uncertain = active_plan and self.store.task_plans.uncertain_operation(active_plan['id'], fingerprint)
-                        async with asyncio.timeout(min(getattr(provider,'request_timeout',120),max(.01, deadline - perf_counter()))):
+                        # Provider request_timeout 仅限制模型 HTTP 请求。工具和
+                        # 审批沿用各自限制，并受任务总截止时间约束，不能在
+                        # 模型的 60 秒窗口到期时误报累计执行时间耗尽。
+                        async with asyncio.timeout(max(.01, deadline - perf_counter())):
                             payload = await self._authorize_tool(
                             ws, project=project, call=call, call_id=call_id,
                             thread_id=thread_id, turn_id=turn_id,
@@ -2927,6 +3126,9 @@ class AgentServer:
 
                     payload['duration_ms'] = round((perf_counter() - tool_started) * 1000)
                     metrics.record_tool(payload['duration_ms'], ok=bool(payload.get("ok")))
+                    if unified and payload.get('ok') and call.name in {'desktop_click','desktop_type_text','desktop_keypress','desktop_scroll'}:
+                        execution.data['unified_interaction_evidence']=[*execution.data.get('unified_interaction_evidence',[]),{'tool':call.name,'call_id':call_id}][-32:]
+                        execution.save()
                     if active_plan and journal_step_id and not replay:
                         self.store.task_plans.record_execution(active_plan["id"], journal_step_id,
                             call_id, turn_id, call.name, payload)
@@ -3159,7 +3361,7 @@ class AgentServer:
                 )
             )
         except asyncio.CancelledError:
-            disconnected=turn_id in self.disconnected_turns
+            disconnected=turn_id in self.disconnected_turns and turn_id not in self.cancelling_turns
             with suppress(ConnectionResetError,RuntimeError):
                 await publish_runtime('paused' if disconnected else 'cancelled',outcome='awaiting_user' if disconnected else 'cancelled',reason='连接中断；检查点和执行证据保留，重连后可检查恢复' if disconnected else '用户取消；检查点和执行证据保留')
             await self._checkpoint_thread_plans(thread_id, "turn_cancelled", sorted(plan_files_changed), plan_commands_run, project_override=project, target_plan_id=active_plan['id'] if active_plan else None)
@@ -3230,6 +3432,7 @@ class AgentServer:
                 await ws.send_json(envelope('turn.failed',{'code':execution.data['last_error'],'message':reason},thread_id=thread_id,turn_id=turn_id))
             return
         finally:
+            self.active_executions.pop(turn_id,None)
             for request in execution.data.get('unified_api_requests',[]):
                 if request['status']=='reserved':
                     execution.finish_api(request['id'],status='interrupted',error_code=execution.data.get('last_error') or runtime.get('error_code') if runtime else None)

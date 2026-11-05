@@ -26,6 +26,7 @@ let protectedCredentialSeen = false;
 let mcpProcess;
 let blockPlanning = false;
 let planningRequests = 0;
+let queuedResponseHeld = false;
 const modelRequests = [];
 const checks = [];
 const skipped = [];
@@ -76,6 +77,10 @@ const provider = http.createServer((req, res) => {
     for (const message of payload.messages ?? []) for (const item of message.tool_calls ?? []) assert.equal(typeof item.function.arguments, "string", "OpenAI wire tool arguments must be JSON strings");
     res.writeHead(200, {"Content-Type": "text/event-stream"});
     if (payload.model === "api-reviewer") {
+      if(prompt.includes('Unified queued question') && !queuedResponseHeld){
+        queuedResponseHeld=true;
+        return setTimeout(()=>res.end('data: '+JSON.stringify({choices:[{delta:{content:'第一部分回答完成。'},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n'),1500);
+      }
       let delta = {content:"Review verified tests and Diff."};
       if (prompt.includes('Unified question')) {
         delta={content:'装饰器通过包装函数添加行为；无需修改工程或创建计划。'};
@@ -1202,6 +1207,24 @@ async function main() {
     assert.equal(await page.getByLabel('对话执行方式',{exact:true}).count(),0);
     assert(await page.locator('.composer textarea').isEnabled());
     checks.push('Unified composer routes question without a plan, complex native plan with automatic real unittest/Diff, same-chat follow-up, immutable completed steps, on-demand diagnosis and restart without replay or mode selection');
+    await page.locator('.composer textarea').fill('Unified queued question: 请解释 Python 装饰器');
+    const beforeQueued=modelRequests.length;
+    await page.locator('.composer textarea').press('Enter');
+    await page.locator('.stop-button').waitFor();
+    while(modelRequests.length===beforeQueued)await new Promise(resolve=>setTimeout(resolve,20));
+    await page.locator('.composer textarea').fill('请解释装饰器如何保留函数元数据');
+    await page.locator('.followup-send-button').click();
+    await page.waitForFunction(()=>document.querySelector('.composer textarea')?.value==='');
+    const queued=await waitUnified(appended.id);
+    assert.equal(queued.phase,'completed',queued.reason);
+    const runtimeEvents=(await page.evaluate(t=>window.localAgent.taskRequest(t,'task.runtime.events',{export:true}),queued.thread_id)).payload;
+    assert(runtimeEvents.events.some(e=>e.kind==='followup.queued'));
+    assert.equal(runtimeEvents.events.filter(e=>e.run_id===queued.id && e.kind==='followup.applied').length,1);
+    assert(runtimeEvents.events.some(e=>e.kind==='response.completed' && e.request_id));
+    assert(runtimeEvents.json_path && fs.existsSync(runtimeEvents.json_path));
+    assert(Array.isArray(JSON.parse(fs.readFileSync(runtimeEvents.json_path,'utf8'))));
+    assert(await page.locator('.composer textarea').isEnabled());
+    checks.push('v0.6 running composer accepts a durable follow-up before the first response ends; applies it once and exports real correlated HTTP events without breaking chat');
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ok: true, checks, skipped}, null, 2));
     fs.writeFileSync(path.join(reportDir, "desktop-smoke.json"), JSON.stringify({ok: true, checks, skipped}, null, 2));

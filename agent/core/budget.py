@@ -91,9 +91,21 @@ class BudgetGuard:
         self.runtime, self.db, self.plan_id = runtime, runtime.db, plan_id
         self.global_limits = global_limits
 
-    def reserve(self, *, route: str, role: str, model: str, messages: list,
+    def reserve(self, **parameters):
+        request_id=str(uuid.uuid4())
+        retry=parameters.pop('retry',0)
+        task=self.runtime.get(self.plan_id)
+        observe=self.runtime.ledger.request_callback(self.plan_id,task['thread_id'],request_id,{
+            'phase':task['status'],'model':parameters.get('model'),'role':parameters.get('role'),'route':parameters.get('route'),'retry':retry})
+        observe('request.prepared',{'request_sent':False,'output_limit':parameters.get('output_limit'),'context_window':parameters.get('context_window')})
+        try:return self._reserve(request_id=request_id,**parameters)
+        except ProviderError as exc:
+            observe('request.failed',{'request_sent':False,'error_code':exc.code,**{k:v for k,v in (getattr(exc,'details',{}) or {}).items() if k in {'field','limit','used','required','scope'}}})
+            raise
+
+    def _reserve(self, *, route: str, role: str, model: str, messages: list,
                 tools: list | None, context_window: int, output_limit: int,
-                input_price: float | None = None, output_price: float | None = None) -> str:
+                input_price: float | None = None, output_price: float | None = None, request_id=None) -> str:
         task = self.runtime.get(self.plan_id)
         limits = task["config"]["budget"]
         elapsed = task["elapsed_seconds"] + (max(0, time.time() - task["active_since"]) if task.get("active_since") else 0)
@@ -112,7 +124,7 @@ class BudgetGuard:
         if route == "api" and (limits["api_cost"] is not None or self.global_limits["global_api_cost"] is not None):
             if input_price is None or output_price is None:
                 raise BudgetExceeded("Cost cap requires configured input and output prices")
-        request_id = str(uuid.uuid4())
+        request_id = request_id or str(uuid.uuid4())
         # No await between BEGIN and COMMIT. SQLite also serializes other processes.
         self.db.execute("BEGIN IMMEDIATE")
         try:
@@ -133,6 +145,7 @@ class BudgetGuard:
                              "task_id":self.plan_id, "call_id":request_id, "sequence":self.db.execute("SELECT COUNT(*) FROM model_requests WHERE plan_id=?", (self.plan_id,)).fetchone()[0] + 1,
                              "phase":task["status"], "retry":max(0, task.get("planning_attempts", 1) - 1) if role == "planner" else 0,
                              "started_at":time.time(), "parse_success":None, "schema_valid":None}), time.time()))
+            self.runtime.ledger.record(self.plan_id,task['thread_id'],'request.reserved',{'reserved_tokens':tokens if route=='api' else 0,'reserved_cost':cost if route=='api' else 0,'request_sent':False},request_id=request_id,event_key=request_id+':reserved',commit=False)
             self.db.commit()
         except BaseException:
             self.db.rollback()
@@ -166,3 +179,6 @@ class BudgetGuard:
                           settlement="not_sent_released" if status == "not_sent" else "provider_usage" if known else "conservative_retained")
             self.db.execute("UPDATE model_requests SET status=?,usage_json=?,reserved_tokens=?,reserved_cost=? WHERE id=? AND plan_id=? AND status IN ('reserved','interrupted')",
                             (status, json.dumps(values), tokens, cost, request_id, self.plan_id))
+            self.runtime.ledger.record(self.plan_id,self.runtime.get(self.plan_id)['thread_id'],'request.settled',{
+                **{k:values[k] for k in ('request_sent','input_tokens','output_tokens','cached_tokens','estimated','released_tokens','actual_cost','settlement','error_code') if k in values},
+                'status':status,'reserved_tokens':tokens,'reserved_cost':cost},request_id=request_id,event_key=request_id+':settled',commit=False)

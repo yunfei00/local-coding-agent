@@ -153,6 +153,10 @@ class InMemoryState:
     def get_messages(self, thread_id: str) -> list[dict[str, str]]:
         return [dict(item) for item in self._messages.get(thread_id, [])]
 
+    def refresh_messages(self, thread_id: str) -> None:
+        if self.store and self.get_thread(thread_id):
+            self._messages[thread_id]=self.store.list_messages(thread_id)
+
     def append_exchange(
         self,
         thread_id: str,

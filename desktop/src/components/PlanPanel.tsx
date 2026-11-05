@@ -13,6 +13,9 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [checkpoint, setCheckpoint] = useState<Record<string, unknown> | null>(null);
+  const [extendGlobal,setExtendGlobal]=useState(false);
+  const [additionalCalls,setAdditionalCalls]=useState(16);
+  const [additionalTokens,setAdditionalTokens]=useState(500000);
   const request = async (operation: string, payload: Record<string, unknown> = {}) => {
     setBusy(true); setError("");
     try {
@@ -74,11 +77,12 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
         {plan.execution ? <p>活动执行 {plan.execution.elapsed.toFixed(1)}/{plan.execution.limits.seconds} 秒 · {plan.execution.status} {plan.execution.last_error ?? ""}</p> : null}
         <AgentContextEvidence memory={plan.execution?.working_memory} instructions={plan.execution?.repository_instructions}/>
         <RecentExecutions calls={plan.steps.flatMap(s => s.executions ?? [])} />
+        {plan.steps.flatMap(s=>s.executions??[]).filter(call=>call.status==='interrupted').map(call=><p key={call.call_id}>未确认结果：{call.tool} · {call.call_id} <button type="button" disabled={busy} onClick={()=>{if(window.confirm('请先核对工作区、Diff 和执行日志。审阅不会认定操作成功或自动重放；后续修改仍需审批。是否审阅这条中断记录？'))void request('plan.operation.review',{plan_id:plan.id,call_id:call.call_id,confirm_workspace:true});}}>审阅中断记录</button></p>)}
         <div className="context-pin-input">
           <button type="button" disabled={busy} onClick={() => void request("plan.checkpoint", {plan_id: plan.id})}>Checkpoint</button>
           <button type="button" disabled={busy} onClick={() => void request("plan.resume", {plan_id: plan.id})}>Resume info</button>
           <button type="button" disabled={busy} onClick={() => void continuePlan(plan)}>Continue plan</button>
-          {plan.execution ? <button disabled={busy} onClick={() => {if (window.confirm("明确增加累计执行预算：16 次模型调用、500000 Token 保守预留、300 秒和 1 次续跑。既有消耗不会清零；恢复后可能产生在线费用。")) void request("plan.execution.extend",{plan_id:plan.id});}}>增加执行预算</button> : null}
+          {plan.execution ? <><label>追加调用 <input type="number" min={1} max={1000} value={additionalCalls} onChange={e=>setAdditionalCalls(Number(e.target.value))}/></label><label>追加 Token <input type="number" min={1} max={100000000} value={additionalTokens} onChange={e=>setAdditionalTokens(Number(e.target.value))}/></label><label><input type="checkbox" checked={extendGlobal} onChange={e=>setExtendGlobal(e.target.checked)}/>同时追加本运行的全局预检上限</label><button disabled={busy} onClick={() => {if (window.confirm(`明确增加本任务执行及 API 预算：${additionalCalls} 次调用、${additionalTokens} Token 保守预留、300 秒和 1 次续跑。`+(extendGlobal?'同时增加本运行的全局预检上限，增量相同。':'全局上限保留。')+"既有消耗和费用上限保留；恢复后可能产生在线费用。")) void request("plan.execution.extend",{plan_id:plan.id,include_global:extendGlobal,additional_calls:additionalCalls,additional_tokens:additionalTokens});}}>增加执行预算</button></> : null}
         </div>
         {checkpoint ? <pre style={{whiteSpace:"pre-wrap", overflowWrap:"anywhere"}}>{JSON.stringify(checkpoint, null, 2)}</pre> : null}
         {plan.steps.map((step, index) => <div className="context-file-row" key={step.id}>

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
+import time
 
 
 class ProviderError(RuntimeError):
@@ -19,6 +20,21 @@ class ProviderError(RuntimeError):
         self.message = message
         self.recoverable = recoverable
         self.transient = transient
+
+
+def observe_request(provider, stage, **metadata):
+    """可选的请求元数据观察，不传入消息、请求正文或凭据。"""
+    callback=getattr(provider,'request_observer',None)
+    if not callback:return
+    current=getattr(provider,'response_metadata',{})
+    usage=current.get('reported_usage') or {}
+    safe={key:current.get(key) for key in ('http_status','request_sent','network_attempted','response_type','response_complete',
+        'stream_events','content_chars','reasoning_chars','tool_argument_chars','first_event_at','last_event_at','finish_reason')}
+    safe.update({key:usage.get(key) for key in ('input_tokens','output_tokens','cached_tokens','estimated')})
+    if current.get('http_started_at'):safe['duration_ms']=round((time.time()-current['http_started_at'])*1000)
+    try:callback(stage,{**safe,**metadata})
+    except Exception as exc:
+        raise ProviderError('REQUEST_TRACE_FAILED','请求状态无法持久化，已停止；没有忽略诊断存储错误。') from exc
 
 
 @dataclass(frozen=True)

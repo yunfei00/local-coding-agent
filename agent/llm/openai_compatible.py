@@ -11,7 +11,7 @@ from typing import Any
 
 import aiohttp
 
-from agent.llm.base import ModelInfo, ProviderChunk, ProviderError, ToolCall
+from agent.llm.base import ModelInfo, ProviderChunk, ProviderError, ToolCall, observe_request
 
 
 class OpenAICompatibleProviderError(ProviderError):
@@ -228,6 +228,14 @@ class OpenAICompatibleProvider:
             "error": None,
         }
 
+    def _prepare_chat_request(self,model,messages,tools):
+        body={'model':model,'messages':self._wire_messages(messages),'stream':True,'temperature':self.temperature}
+        if getattr(self,'max_output_tokens',None):
+            body.update(max_tokens=self.max_output_tokens,stream_options={'include_usage':True})
+        if tools:body['tools']=tools
+        json.dumps(body,allow_nan=False)
+        return body
+
     async def stream_chat(
         self,
         *,
@@ -240,17 +248,12 @@ class OpenAICompatibleProvider:
             connect=10,
             sock_read=600,
         )
-        request_body: dict[str, Any] = {
-            "model": model,
-            "messages": self._wire_messages(messages),
-            "stream": True,
-            "temperature": self.temperature,
-        }
-        if getattr(self, "max_output_tokens", None):
-            request_body["max_tokens"] = self.max_output_tokens
-            request_body["stream_options"] = {"include_usage": True}
-        if tools:
-            request_body["tools"] = tools
+        self.response_metadata={'request_sent':False,'response_complete':False}
+        observe_request(self,'request.prepared',model=model,context_window=self.context_window,output_limit=getattr(self,'max_output_tokens',None))
+        try:request_body=self._prepare_chat_request(model,messages,tools)
+        except (ValueError,TypeError,KeyError) as exc:
+            observe_request(self,'request.failed',error_code='REQUEST_CONSTRUCTION_FAILED',request_sent=False)
+            raise OpenAICompatibleProviderError('REQUEST_CONSTRUCTION_FAILED','模型请求构造或 JSON 序列化失败；HTTP 请求未发出。',recoverable=False) from exc
 
         finish_reason: str | None = None
         prompt_eval_count: int | None = None
@@ -270,14 +273,16 @@ class OpenAICompatibleProvider:
                 timeout=timeout,
                 headers=self._headers(),
             ) as session:
-                self.response_metadata["request_sent"] = True
+                self.response_metadata.update(request_sent=None,network_attempted=True)
                 self.response_metadata["http_started_at"] = time.time()
+                observe_request(self,'request.dispatched')
                 async with session.post(
                     self.base_url + "/chat/completions",
                     json=request_body,
                 ) as response:
-                    self.response_metadata.update(http_status=response.status,
+                    self.response_metadata.update(http_status=response.status,request_sent=True,
                         response_type=response.headers.get("Content-Type", "").split(";")[0][:100])
+                    observe_request(self,'response.headers_received')
                     if response.status >= 400:
                         payload = await self._read_json_response(response)
                         raise self._http_error(
@@ -289,7 +294,7 @@ class OpenAICompatibleProvider:
                     async for payload in self._chat_payloads(response):
                         if payload is None:
                             self.response_metadata["response_complete"] = True
-                            yield ProviderChunk(
+                            final=ProviderChunk(
                                 tool_calls=_finalize_tool_calls(tool_states, finish_reason, self.response_metadata),
                                 done=True,
                                 finish_reason=finish_reason,
@@ -297,6 +302,8 @@ class OpenAICompatibleProvider:
                                 eval_count=eval_count,
                                 cached_tokens=cached_tokens, actual_cost=actual_cost,
                             )
+                            observe_request(self,'response.completed')
+                            yield final
                             emitted_done = True
                             break
 
@@ -306,6 +313,7 @@ class OpenAICompatibleProvider:
                         now=time.time()
                         self.response_metadata.setdefault('first_event_at',now)
                         self.response_metadata.update(last_event_at=now,stream_events=self.response_metadata['stream_events']+1)
+                        if self.response_metadata['stream_events']==1:observe_request(self,'response.streaming')
 
                         usage = payload.get("usage")
                         if isinstance(usage, dict):
@@ -387,7 +395,7 @@ class OpenAICompatibleProvider:
                 if finish_reason is None:
                     raise OpenAICompatibleProviderError("OPENAI_COMPATIBLE_INCOMPLETE_STREAM", "Stream ended without a completion marker or finish_reason")
                 self.response_metadata["response_complete"] = True
-                yield ProviderChunk(
+                final=ProviderChunk(
                     tool_calls=_finalize_tool_calls(tool_states, finish_reason, self.response_metadata),
                     done=True,
                     finish_reason=finish_reason,
@@ -395,13 +403,20 @@ class OpenAICompatibleProvider:
                     eval_count=eval_count,
                                 cached_tokens=cached_tokens, actual_cost=actual_cost,
                 )
-        except OpenAICompatibleProviderError:
+                observe_request(self,'response.completed')
+                yield final
+        except OpenAICompatibleProviderError as exc:
+            observe_request(self,'request.failed',error_code=exc.code)
             raise
         except asyncio.CancelledError:
+            if not self.response_metadata.get('response_complete'):observe_request(self,'request.interrupted',error_code='MODEL_INTERRUPTED')
             raise
         except asyncio.TimeoutError as exc:
+            observe_request(self,'request.failed',error_code='MODEL_TIMEOUT')
             raise OpenAICompatibleProviderError("MODEL_TIMEOUT", "OpenAI-compatible request timed out; usage is uncertain", transient=False) from exc
         except aiohttp.ClientError as exc:
+            if isinstance(exc,aiohttp.ClientConnectorError):self.response_metadata['request_sent']=False
+            observe_request(self,'request.failed',error_code='OPENAI_COMPATIBLE_STREAM_FAILED')
             raise OpenAICompatibleProviderError(
                 "OPENAI_COMPATIBLE_STREAM_FAILED",
                 "The OpenAI-compatible connection was interrupted while generating.",

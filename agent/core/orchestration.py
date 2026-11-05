@@ -52,6 +52,7 @@ class LoopRelay:
 class TaskService:
     def __init__(self, server):
         self.server, self.runtime = server, server.store.task_runtime
+        self.runtime.ledger=server.runtime_ledger
         self.runtime.recover()
         self.running: dict[str, str] = {}
         self.stop_reasons: dict[str, str] = {}
@@ -95,6 +96,7 @@ class TaskService:
         turn_id = self.running.get(plan_id)
         running = self.server.active_turns.get(turn_id)
         if running and not running.done():
+            if self.stop_reasons.get(plan_id)=='cancelled':target='cancelled'
             self.stop_reasons[plan_id] = target
             self.server.approvals.cancel_turn(turn_id)
             running.cancel()
@@ -206,7 +208,14 @@ class TaskService:
             else:
                 if not project or not project.state.get_thread(thread_id):
                     raise ValueError("Open a valid project and thread")
-                if kind == 'task.runtime.diagnostics':
+                if kind == 'task.runtime.events':
+                    result={'events':self.server.runtime_ledger.events(thread_id=thread_id,after=payload.get('after',0),limit=payload.get('limit',100))}
+                    if payload.get('export') is True:
+                        path=self.server.store.data_dir/'unified-diagnostics'/('thread-'+hashlib.sha256(thread_id.encode()).hexdigest()[:24]+'.json')
+                        path.parent.mkdir(parents=True,exist_ok=True)
+                        result['exported_events']=self.server.runtime_ledger.export_run(path,thread_id=thread_id)
+                        result['json_path']=str(path)
+                elif kind == 'task.runtime.diagnostics':
                     owner=str(payload.get('run_id') or '')
                     if not self.server.store.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_execution_runs'").fetchone():
                         raise ValueError('No unified run exists in this thread')
@@ -214,7 +223,7 @@ class TaskService:
                     if not row or not json.loads(row[0]).get('unified'):
                         raise ValueError('Unified run not found in this thread')
                     from agent.core.unified_runtime import export_diagnostics
-                    result=export_diagnostics(self.server.store.path.parent/'unified-diagnostics',owner,json.loads(row[0]),self.runtime.plans,exact_secrets=self.server._exact_secrets())
+                    result=export_diagnostics(self.server.store.path.parent/'unified-diagnostics',owner,json.loads(row[0]),self.runtime.plans,exact_secrets=self.server._exact_secrets(),ledger=self.server.runtime_ledger)
                 elif kind == "task.runtime.list":
                     rows = self.server.store.connection.execute("SELECT id,data_json FROM agent_execution_runs WHERE thread_id=? AND json_type(data_json,'$.unified')='object' ORDER BY json_extract(data_json,'$.unified.updated_at') DESC,rowid DESC LIMIT 1",(thread_id,)).fetchall() if self.server.store.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_execution_runs'").fetchone() else []
                     runtimes=[]
@@ -271,6 +280,13 @@ class TaskService:
                     if task["thread_id"] != thread_id:
                         raise ValueError("Task belongs to another thread")
                     plan_id = task["id"]
+                    if kind=='task.append':
+                        running=self.server.active_turns.get(self.running.get(plan_id))
+                        if task['status'] not in {'planning','executing','repairing','verifying','escalating'} or not running or running.done() or plan_id in self.stop_reasons:
+                            raise ValueError('当前 Task 已停止，追加内容尚未发送模型')
+                        self.server.enqueue_followup(project,plan_id,thread_id,payload.get('message_id'),payload.get('prompt'))
+                        await ws.send_json(envelope('task.loaded',{'task':self.public(task),'followup':{'message_id':payload['message_id'],'queued':True,'boundary':'完整工具批次结束后的模型请求前'}},request_id=request_id,thread_id=thread_id))
+                        return
                     if kind in {"task.pause", "task.cancel"}:
                         await self.interrupt(plan_id, "paused" if kind == "task.pause" else "cancelled")
                     elif kind in {"task.resume", "task.continue"}:
@@ -383,6 +399,8 @@ class TaskService:
         return replace(source, workspace=workspace, tools=ToolRegistry(workspace), repository_map=None)
 
     def launch(self, ws, task, project, owned_turns):
+        if self.runtime.get(task['id'])['status']=='cancelled':
+            raise ValueError('取消已生效，不能由迟到的恢复请求启动 Task')
         turn_id = new_id("turn")
         self.running[task["id"]] = turn_id
         owned_turns.add(turn_id)
@@ -453,7 +471,7 @@ class TaskService:
                     self.runtime.save(task)
                 await update("planning" if not task["planned"] else "executing", "Inspect workspace before resuming; completed mutations are not replayed", report={})
                 budget = BudgetGuard(self.runtime, plan_id, task["global_budget"] if "global_budget" in task else self.settings()["budget"])
-                router = ModelRouter(task["config"], lambda route, profile: self.make_provider(task["provider_settings"], route, profile), budget, emit, task.get("resolved_roles"))
+                router = ModelRouter(task["config"], lambda route, profile: self.make_provider(task["provider_settings"], route, profile), budget, emit, task.get("resolved_roles"),retry_attempts=self.server.model_retry_attempts)
                 # Validate the task's frozen routes before worktree approval or HTTP.
                 single_provider = None
                 for role in (("executor",) if single else ("planner", "executor", "reviewer")):
@@ -507,6 +525,7 @@ class TaskService:
                 # A fixed safety bound supplements configurable time and API limits.
                 for _ in range(200):
                     task = self.runtime.get(plan_id)
+                    goal=task['goal']
                     if not task["planned"]:
                         limit = task["config"]["budget"].get("planning_attempts", 4)
                         if task.get("planning_attempts", 0) >= limit:
@@ -699,6 +718,9 @@ class TaskService:
                          'at': time.time(), 'results': compact_results}][-10:]
                     self.runtime.save(task)
                     await emit("verification.completed", {"results": results, "passed": bool(passed)})
+                    if self.server.runtime_ledger.pending(plan_id) and outcome['type']=='turn.completed':
+                        await update('repairing','追加需求将在下一次模型请求前生效；保留已完成步骤')
+                        continue
                     if passed:
                         review = "Single Agent completed; independent commands and Git Diff passed. Review the evidence below." if single else await router.text("reviewer", [{"role": "system", "content": "Review the bounded evidence. Provide concise risks only. You cannot override test results or execute tools."},
                             {"role": "user", "content": self.diagnostic_context(task, results, diff, "Review final changes")}])
@@ -706,7 +728,10 @@ class TaskService:
                             await update("paused", "Workspace changed during model review. Reopen and verify again.")
                             return
                         task = self.runtime.get(plan_id)
-                        report = {"goal": goal, "passed": True, "tests": results, "review": review[:8000],
+                        if self.server.runtime_ledger.pending(plan_id):
+                            await update('repairing','审查期间收到追加需求，继续原任务')
+                            continue
+                        report = {"goal": task['goal'], "passed": True, "tests": results, "review": review[:8000],
                                   'unfinished': [],
                                   'gui_verification': 'PASS' if task.get('resolved_gui_verification') else 'NOT RUN',
                                   "diff": diff, "workspace": task["workspace"], "branch": task["branch"],

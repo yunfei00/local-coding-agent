@@ -164,9 +164,9 @@
 .settings-panel button:hover:not(:disabled), .context-panel button:hover:not(:disabled), .git-panel button:hover:not(:disabled), .diagnostics-panel button:hover:not(:disabled) { background: var(--hover); }
 .settings-panel :is(input, textarea)::placeholder, .composer input::placeholder { color: var(--muted); }
 .composer input { border-color: var(--border); }
-.composer .send-button { color: var(--canvas) !important; background: var(--ink) !important; border-color: transparent !important; }
-.composer .send-button:disabled { color: var(--muted) !important; background: var(--field) !important; border-color: transparent !important; }
-.composer .send-button:hover:not(:disabled) { color: var(--canvas) !important; background: var(--ink) !important; }
+.composer .send-button, .composer .followup-send-button { color: var(--canvas) !important; background: var(--ink) !important; border-color: transparent !important; }
+.composer .send-button:disabled, .composer .followup-send-button:disabled { color: var(--muted) !important; background: var(--field) !important; border-color: transparent !important; }
+.composer .send-button:hover:not(:disabled), .composer .followup-send-button:hover:not(:disabled) { color: var(--canvas) !important; background: var(--ink) !important; }
 .composer .context-chip { color: var(--muted); background: var(--field); border-color: transparent; }
 .code-block > .copy-button, .message-content > .copy-button { background: transparent; color: var(--muted); border-color: var(--border); }
 :root[data-theme="light"] .app-modal { box-shadow: 0 16px 60px #16333f26; }

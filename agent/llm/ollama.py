@@ -9,7 +9,7 @@ from typing import Any
 
 import aiohttp
 
-from agent.llm.base import ModelInfo, ProviderChunk, ProviderError, ToolCall
+from agent.llm.base import ModelInfo, ProviderChunk, ProviderError, ToolCall, observe_request
 
 
 class OllamaProviderError(ProviderError):
@@ -220,6 +220,14 @@ class OllamaProvider:
         except (aiohttp.ClientError, asyncio.TimeoutError, ProviderError):
             return {"tools": None, "source": "unknown; configure tool mode or test connection"}
 
+    def _prepare_chat_request(self,model,messages,tools):
+        body={'model':model,'messages':self._wire_messages(messages),'stream':True,'keep_alive':'10m',
+              'options':{'num_ctx':self.context_window,'temperature':self.temperature}}
+        if getattr(self,'max_output_tokens',None):body['options']['num_predict']=self.max_output_tokens
+        if tools:body['tools']=tools
+        json.dumps(body,allow_nan=False)
+        return body
+
     async def stream_chat(
         self,
         *,
@@ -232,31 +240,24 @@ class OllamaProvider:
             connect=5,
             sock_read=600,
         )
-        request_body: dict[str, Any] = {
-            "model": model,
-            "messages": self._wire_messages(messages),
-            "stream": True,
-            "keep_alive": "10m",
-            "options": {
-                "num_ctx": self.context_window,
-                "temperature": self.temperature,
-            },
-        }
-        if getattr(self, "max_output_tokens", None):
-            request_body["options"]["num_predict"] = self.max_output_tokens
-        if tools:
-            request_body["tools"] = tools
-
-        self.response_metadata = {"http_status":None, "response_type":None, "request_sent":False}
+        self.response_metadata = {"http_status":None,"response_type":None,"request_sent":False,'response_complete':False}
+        observe_request(self,'request.prepared',model=model,context_window=self.context_window,output_limit=getattr(self,'max_output_tokens',None))
+        try:request_body=self._prepare_chat_request(model,messages,tools)
+        except (TypeError,ValueError,KeyError) as exc:
+            observe_request(self,'request.failed',error_code='REQUEST_CONSTRUCTION_FAILED',request_sent=False)
+            raise OllamaProviderError('REQUEST_CONSTRUCTION_FAILED','Ollama 请求构造失败；HTTP 请求未发出。') from exc
+        observed=False;done=False
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                self.response_metadata.update(request_sent=True, http_started_at=time.time())
+                self.response_metadata.update(request_sent=None,network_attempted=True,http_started_at=time.time())
+                observe_request(self,'request.dispatched')
                 async with session.post(
                     self.base_url + "/api/chat",
                     json=request_body,
                 ) as response:
-                    self.response_metadata.update(http_status=response.status,
+                    self.response_metadata.update(http_status=response.status,request_sent=True,
                         response_type=response.headers.get("Content-Type", "").split(";")[0][:100])
+                    observe_request(self,'response.headers_received')
                     if response.status >= 400:
                         payload = await self._read_json_response(response)
                         raise OllamaProviderError(
@@ -283,6 +284,8 @@ class OllamaProvider:
                                 "Ollama reported a generation error; inspect the selected connection and model.",
                             )
                         self.response_metadata["parse_success"] = True
+                        if not observed:
+                            observe_request(self,'response.streaming');observed=True
 
                         message = payload.get("message")
                         content = ""
@@ -294,6 +297,10 @@ class OllamaProvider:
                             tool_calls = _parse_tool_calls(message)
 
                         done = bool(payload.get("done"))
+                        if done:
+                            self.response_metadata.update(response_complete=True,finish_reason=payload.get('done_reason'),reported_usage={
+                                'input_tokens':_optional_int(payload.get('prompt_eval_count')),'output_tokens':_optional_int(payload.get('eval_count'))})
+                            observe_request(self,'response.completed')
                         yield ProviderChunk(
                             content=content,
                             tool_calls=tool_calls,
@@ -306,11 +313,17 @@ class OllamaProvider:
                             ),
                             eval_count=_optional_int(payload.get("eval_count")),
                         )
-        except OllamaProviderError:
+                        if done:break
+            if not done:raise OllamaProviderError('OLLAMA_INCOMPLETE_STREAM','Ollama 响应缺少完成标记，未接受完成状态。')
+        except OllamaProviderError as exc:
+            observe_request(self,'request.failed',error_code=exc.code)
             raise
         except asyncio.CancelledError:
+            if not done:observe_request(self,'request.interrupted',error_code='MODEL_INTERRUPTED')
             raise
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            if isinstance(exc,aiohttp.ClientConnectorError):self.response_metadata['request_sent']=False
+            observe_request(self,'request.failed',error_code='OLLAMA_STREAM_FAILED')
             raise OllamaProviderError(
                 "OLLAMA_STREAM_FAILED",
                 "Ollama connection was interrupted while generating.",

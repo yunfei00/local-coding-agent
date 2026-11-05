@@ -45,6 +45,10 @@ def requested_intent(prompt):
     change=not readonly and bool(re.search(r'实现|开发|修复|修改|重构|新增|增加|改成|改为|改中文|编写|创建|\b(?:implement|develop|refactor|create|fix|add|change|update)\b',text,re.I)) and (not question or direct)
     listed=len(re.findall(r'(?m)^\s*(?:\d+[.)、]|[-*])\s*\S',prompt))
     kind='question' if question and not direct else 'complex' if change and (listed>=3 or len(paths)>=3) else 'change' if change else 'analysis' if readonly or re.search(r'分析|诊断|检查|inspect|analy[sz]e|diagnos',text,re.I) else 'question'
+    positive=re.sub(r'(?:禁止|不要|不得|不允许)[^。；;\n]*','',text)
+    code_request=bool(re.search(r'开发|实现|编写|重构|修复|源码|代码|组件|函数|模块|\b(?:develop|implement|refactor|fix|function|component)\b',positive,re.I)) or (change and bool(re.search(r'\bFILE\b',positive)))
+    interaction=not readonly and not question and not code_request and bool(re.search(r'(?:桌面|窗口|界面|Settings|Display name).*(?:输入|点击|键入|填写)|(?:click|type|enter).*(?:button|window|settings|field)',positive,re.I|re.S))
+    if interaction:kind='interaction'
     project_question=bool(re.search(r'(?:本|当前|这个|该|this)\s*(?:项目|工程|仓库|程序|project|repo)|(?:分析|解释|检查).{0,8}(?:项目|工程|仓库|程序)',text,re.I))
     return {'kind':kind,'read_only':readonly or kind=='analysis' or (question and not direct),'pure_question':kind=='question' and question and not project_question and not paths,'referenced_files':len(paths),'listed_steps':listed}
 
@@ -54,13 +58,15 @@ def infer_intent(previous, tool, *, changed_paths=(), read_only=False, operation
         return "complex"
     if changed_paths or previous == "change":
         return "change"
+    if previous=='interaction' or tool in {'desktop_click','desktop_type_text','desktop_keypress','desktop_scroll'}:
+        return 'interaction'
     return "analysis" if read_only or tool else previous or "question"
 
 
 def workspace_snapshot(root):
     """Bounded metadata only, detects shell/MCP writes and deletes without reading file content."""
     result = {}
-    excluded = {'.git','node_modules','.venv','venv','__pycache__','.pytest_cache','.mypy_cache','.ruff_cache','dist','build','release','coverage','validation-reports'}
+    excluded = {'.git','.runtime','node_modules','.venv','venv','__pycache__','.pytest_cache','.mypy_cache','.ruff_cache','dist','build','release','coverage','validation-reports'}
     for directory, dirs, files in os.walk(root,followlinks=False):
         dirs[:] = [d for d in dirs if d not in excluded and not (Path(directory)/d).is_symlink()]
         for name in files:
@@ -87,15 +93,21 @@ class RuntimeEvents:
         if event['type'] in {'turn.failed','turn.cancelled'}:
             payload=event.get('payload',{})
             disconnected=payload.get('reason')=='connection_interrupted' or payload.get('code')=='CONNECTION_INTERRUPTED'
-            self.runtime.update(phase='paused' if disconnected else 'cancelled' if event['type']=='turn.cancelled' else 'failed',
+            values=dict(phase='paused' if disconnected else 'cancelled' if event['type']=='turn.cancelled' else 'failed',
                 outcome='awaiting_user' if disconnected else 'cancelled' if event['type']=='turn.cancelled' else 'awaiting_user' if payload.get('code') in {'PLAN_RESUME_CONFIRMATION_REQUIRED','APPROVAL_DENIED','PERMISSION_DENIED'} else 'partially_completed' if self.runtime.get('changed_paths') else 'failed',
                 reason=str(self.runtime.get('reason') if disconnected else payload.get('message') or payload.get('reason') or payload.get('code') or '执行停止')[:2000],
                 error_code=payload.get('code'))
-            self.execution.save()
+            if self.execution.ledger:
+                phase=values.pop('phase')
+                if self.execution.ledger.transition(self.execution,phase,event.get('turn_id'),**values) is None:
+                    return
+            else:
+                self.runtime.update(values)
+                self.execution.save()
         await self.ws.send_json(event)
 
 
-def export_diagnostics(root, owner, data, plans, *, exact_secrets=()):
+def export_diagnostics(root, owner, data, plans, *, exact_secrets=(), ledger=None):
     """Small transport response; complete filtered evidence stays in local files."""
     from agent.core.diagnostics import redact_text
     runtime=data['unified']
@@ -116,10 +128,20 @@ def export_diagnostics(root, owner, data, plans, *, exact_secrets=()):
     if plan:
         rows.append('未完成步骤：')
         rows.extend(f"- {s['id']} / {s['state']} / {safe(s['description'])[:160]}" for s in plan['steps'] if s['state'] not in {'completed','skipped'})
+    if ledger:
+        rows.append('最近请求/执行事件：')
+        for event in ledger.events(run_id=owner,limit=12):
+            meta=event['metadata']
+            rows.append(f"- {event['label']} / {event.get('request_id') or event['event_id']} / HTTP {meta.get('http_status')} / 已发送 {meta.get('request_sent')} / {meta.get('error_code') or ''}")
     markdown='\n'.join('\n'.join(rows).splitlines()[:140])+'\n\n完整请求与工具证据见同目录 JSON；原始日志和数据库历史未删除。\n'
     root.mkdir(parents=True,exist_ok=True)
     stem=hashlib.sha256(owner.encode()).hexdigest()[:24]
     full=root/(stem+'.json');short=root/(stem+'.md')
+    if ledger:
+        events=root/(stem+'-events.json')
+        history['request_events_path']=str(events)
+        history['request_events_count']=ledger.export_run(events,owner)
+        history['recent_request_events']=ledger.events(run_id=owner,limit=40)
     full.write_text(json.dumps(history,ensure_ascii=False,indent=2),encoding='utf-8')
     short.write_text(markdown,encoding='utf-8')
     return {'markdown':markdown,'json_path':str(full),'markdown_path':str(short),'history_source':'existing execution ledger and TaskPlanStore; no history removed'}

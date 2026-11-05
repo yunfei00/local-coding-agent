@@ -6,8 +6,9 @@ export type DiagnosticValue =
   | DiagnosticValue[]
   | { [key: string]: DiagnosticValue };
 
-const SENSITIVE_KEY = /(api[_-]?key|(?:^|[_-])(?:access_token|refresh_token|auth_token|token_value|token)(?:$|[_-])|secret|password|authorization|credential|private[_-]?key|environment|^env$|prompt|messages?|reasoning|chain.of.thought)/i;
+const SENSITIVE_KEY = /(api[_-]?key|(?:^|[_-])(?:access_token|refresh_token|auth_token|token_value|token)(?:$|[_-])|secret|password|authorization|cookie|credential|private[_-]?key|environment|^env$|prompt|messages?|reasoning|chain.of.thought)/i;
 const SECRET_PATTERNS = [
+  /((?:cookie|set-cookie)["']?\s*[:=]\s*)[^\r\n]+/gi,
   /(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi,
   /\bsk-[A-Za-z0-9_-]{8,}\b/g,
   /((?:api[_-]?key|access[_-]?token|secret|password)\s*[:=]\s*)[^\s,;]+/gi

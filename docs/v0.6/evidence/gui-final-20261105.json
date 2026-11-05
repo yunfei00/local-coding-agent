@@ -1,0 +1,2148 @@
+{
+  "result": "PASS",
+  "tested_at": "2026-11-05T00:29:44.788Z",
+  "runtime_source_commit": "c2a30a4f8411fc4122e88e5353cfa11f82cd24ab",
+  "note": "运行时与 4e0a8ec 相同；c2a30a4 仅新增历史归档。验收驱动新增诊断与就绪 PID 约束。",
+  "model": "qwen3.7-flash",
+  "run_id": "b955db61-1e69-4ebf-adfc-8a98a155fd74",
+  "thread_id": "thread_7b281b287e684da2b52294e5cfbb7e13",
+  "phase": "completed",
+  "outcome": "completed_unverified",
+  "verification_level": "manual",
+  "source_paths_changed": [],
+  "frozen_source_unchanged": true,
+  "ready_pid": 16976,
+  "saved_value": "GUI-ddb07d47",
+  "capture": {
+    "path": "docs/v0.6/evidence/gui-final-20261105.png",
+    "sha256": "0ce2174d8edfa2c09582ec96ca264072116228008f7884782df694fe540ee5cd",
+    "local_only": true
+  },
+  "tools": [
+    {
+      "type": "tool.completed",
+      "turn_id": "turn_c67a828e17fd4555a7160b2878de489b",
+      "name": "start_process",
+      "ok": true,
+      "exit_code": null,
+      "changed_paths": []
+    },
+    {
+      "type": "tool.completed",
+      "turn_id": "turn_c67a828e17fd4555a7160b2878de489b",
+      "name": "read_process",
+      "ok": true,
+      "exit_code": null,
+      "changed_paths": []
+    },
+    {
+      "type": "tool.completed",
+      "turn_id": "turn_c67a828e17fd4555a7160b2878de489b",
+      "name": "read_process",
+      "ok": true,
+      "exit_code": null,
+      "changed_paths": []
+    },
+    {
+      "type": "tool.completed",
+      "turn_id": "turn_c67a828e17fd4555a7160b2878de489b",
+      "name": "desktop_list_windows",
+      "ok": true,
+      "exit_code": null,
+      "changed_paths": []
+    },
+    {
+      "type": "tool.completed",
+      "turn_id": "turn_c67a828e17fd4555a7160b2878de489b",
+      "name": "desktop_inspect",
+      "ok": true,
+      "exit_code": null,
+      "changed_paths": []
+    },
+    {
+      "type": "tool.completed",
+      "turn_id": "turn_c67a828e17fd4555a7160b2878de489b",
+      "name": "desktop_click",
+      "ok": true,
+      "exit_code": null,
+      "changed_paths": []
+    },
+    {
+      "type": "tool.completed",
+      "turn_id": "turn_c67a828e17fd4555a7160b2878de489b",
+      "name": "desktop_click",
+      "ok": true,
+      "exit_code": null,
+      "changed_paths": []
+    },
+    {
+      "type": "tool.completed",
+      "turn_id": "turn_c67a828e17fd4555a7160b2878de489b",
+      "name": "desktop_inspect",
+      "ok": true,
+      "exit_code": null,
+      "changed_paths": []
+    },
+    {
+      "type": "tool.completed",
+      "turn_id": "turn_c67a828e17fd4555a7160b2878de489b",
+      "name": "desktop_type_text",
+      "ok": true,
+      "exit_code": null,
+      "changed_paths": []
+    },
+    {
+      "type": "tool.completed",
+      "turn_id": "turn_c67a828e17fd4555a7160b2878de489b",
+      "name": "desktop_click",
+      "ok": false,
+      "changed_paths": [],
+      "error_code": "DESKTOP_RISK_APPROVAL_REQUIRED"
+    },
+    {
+      "type": "tool.completed",
+      "turn_id": "turn_c67a828e17fd4555a7160b2878de489b",
+      "name": "desktop_click",
+      "ok": true,
+      "exit_code": null,
+      "changed_paths": []
+    },
+    {
+      "type": "tool.completed",
+      "turn_id": "turn_c67a828e17fd4555a7160b2878de489b",
+      "name": "desktop_inspect",
+      "ok": true,
+      "exit_code": null,
+      "changed_paths": []
+    },
+    {
+      "type": "tool.completed",
+      "turn_id": "turn_c67a828e17fd4555a7160b2878de489b",
+      "name": "desktop_screenshot",
+      "ok": true,
+      "exit_code": null,
+      "changed_paths": []
+    },
+    {
+      "type": "tool.completed",
+      "turn_id": "turn_c67a828e17fd4555a7160b2878de489b",
+      "name": "stop_process",
+      "ok": true,
+      "exit_code": 0,
+      "changed_paths": []
+    }
+  ],
+  "approvals": [
+    {
+      "tool": "desktop_list_windows",
+      "risk": "desktop",
+      "decision": "allow_once",
+      "requested_pid": 16976,
+      "expected_pid": 16976
+    },
+    {
+      "tool": "desktop_inspect",
+      "risk": "desktop",
+      "decision": "allow_once"
+    },
+    {
+      "tool": "desktop_click",
+      "risk": "desktop",
+      "decision": "allow_once"
+    },
+    {
+      "tool": "desktop_click",
+      "risk": "desktop",
+      "decision": "allow_once"
+    },
+    {
+      "tool": "desktop_inspect",
+      "risk": "desktop",
+      "decision": "allow_once"
+    },
+    {
+      "tool": "desktop_type_text",
+      "risk": "desktop",
+      "decision": "allow_once"
+    },
+    {
+      "tool": "desktop_click",
+      "risk": "desktop",
+      "decision": "allow_once"
+    },
+    {
+      "tool": "desktop_click",
+      "risk": "desktop_fresh",
+      "decision": "allow_once"
+    },
+    {
+      "tool": "desktop_inspect",
+      "risk": "desktop",
+      "decision": "allow_once"
+    },
+    {
+      "tool": "desktop_screenshot",
+      "risk": "desktop",
+      "decision": "allow_once"
+    }
+  ],
+  "usage": {
+    "calls": 14,
+    "tokens": 193899,
+    "estimated": false
+  },
+  "elapsed_seconds": 68,
+  "diagnostics": {
+    "line_count": 22,
+    "json_exists": true,
+    "markdown_exists": true
+  },
+  "lifecycle": {
+    "phase": "turn.completed",
+    "events": [
+      {
+        "at": "2026-11-05T00:30:55.488Z",
+        "kind": "process_exit",
+        "cleanup": true,
+        "code": 0,
+        "signal": null
+      }
+    ],
+    "pid": 4244,
+    "after": {
+      "at": "2026-11-05T00:30:52.923Z",
+      "free_bytes": 6595301376,
+      "total_bytes": 16889192448,
+      "memory": {
+        "committed_bytes": 10183954432,
+        "available_mb": 6288,
+        "commit_limit_bytes": 39106084864,
+        "nonpaged_pool_bytes": 1069641728
+      },
+      "children": [
+        {
+          "ProcessId": 4244,
+          "ParentProcessId": 18492,
+          "Name": "cmd.exe",
+          "CreationDate": "/Date(1793838587629)/"
+        },
+        {
+          "ProcessId": 10120,
+          "ParentProcessId": 4244,
+          "Name": "electron.exe",
+          "CreationDate": "/Date(1793838587769)/"
+        },
+        {
+          "ProcessId": 4804,
+          "ParentProcessId": 10120,
+          "Name": "electron.exe",
+          "CreationDate": "/Date(1793838588498)/"
+        },
+        {
+          "ProcessId": 7944,
+          "ParentProcessId": 10120,
+          "Name": "python.exe",
+          "CreationDate": "/Date(1793838588510)/"
+        },
+        {
+          "ProcessId": 10580,
+          "ParentProcessId": 7944,
+          "Name": "conhost.exe",
+          "CreationDate": "/Date(1793838588520)/"
+        },
+        {
+          "ProcessId": 8328,
+          "ParentProcessId": 10120,
+          "Name": "electron.exe",
+          "CreationDate": "/Date(1793838588543)/"
+        },
+        {
+          "ProcessId": 8264,
+          "ParentProcessId": 10120,
+          "Name": "electron.exe",
+          "CreationDate": "/Date(1793838588569)/"
+        },
+        {
+          "ProcessId": 12028,
+          "ParentProcessId": 7944,
+          "Name": "python.exe",
+          "CreationDate": "/Date(1793838588578)/"
+        }
+      ]
+    },
+    "cleanup_started": true,
+    "renderer.log": [],
+    "desktop.log": [
+      "2026-11-05T00:29:48.501Z Application ready version=0.6.0 packaged=false"
+    ],
+    "exit_code": 0,
+    "signal": null
+  },
+  "memory_before": {
+    "committed_bytes": 9682522112,
+    "available_mb": 6776,
+    "commit_limit_bytes": 39106084864,
+    "nonpaged_pool_bytes": 1065508864
+  },
+  "requests": [
+    {
+      "event_id": "07a51e6393c34d5fad90f66d1eb6f603",
+      "kind": "request.prepared",
+      "request_id": "request_c96b286bcf054b778925b6c9e39d6314",
+      "at": 1793838594.4142954,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "564b3d198d3e4d959bfcca690047a796",
+      "kind": "request.reserved",
+      "request_id": "request_c96b286bcf054b778925b6c9e39d6314",
+      "at": 1793838594.4152963,
+      "metadata": {
+        "reserved_tokens": 22288,
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "a889bcd5769b4f41af9ef401bec4ba9b",
+      "kind": "request.dispatched",
+      "request_id": "request_c96b286bcf054b778925b6c9e39d6314",
+      "at": 1793838594.4162998,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": null,
+        "request_sent": null,
+        "network_attempted": true,
+        "response_type": null,
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 0
+      }
+    },
+    {
+      "event_id": "97672fca479a48099e5d404e56c21a6b",
+      "kind": "response.headers_received",
+      "request_id": "request_c96b286bcf054b778925b6c9e39d6314",
+      "at": 1793838595.0104172,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 594
+      }
+    },
+    {
+      "event_id": "e61294803a1a40c08dbf3dcd7dee8e71",
+      "kind": "response.streaming",
+      "request_id": "request_c96b286bcf054b778925b6c9e39d6314",
+      "at": 1793838595.0119324,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 596
+      }
+    },
+    {
+      "event_id": "cb0468b897584ae0b93904a6797288b4",
+      "kind": "response.completed",
+      "request_id": "request_c96b286bcf054b778925b6c9e39d6314",
+      "at": 1793838597.6476982,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": true,
+        "finish_reason": "tool_calls",
+        "input_tokens": 4368,
+        "output_tokens": 343,
+        "cached_tokens": 0,
+        "estimated": false,
+        "duration_ms": 3231
+      }
+    },
+    {
+      "event_id": "af18fe0382c34d808da4bf8bba840c7f",
+      "kind": "request.settled",
+      "request_id": "request_c96b286bcf054b778925b6c9e39d6314",
+      "at": 1793838597.648616,
+      "metadata": {
+        "status": "completed",
+        "request_sent": true,
+        "input_tokens": 4368,
+        "output_tokens": 343,
+        "cached_tokens": 0,
+        "estimated": false,
+        "reserved_tokens": 4711,
+        "error_code": null,
+        "released_tokens": 17577
+      }
+    },
+    {
+      "event_id": "19c44f955c52480db14c8a9ec62db92d",
+      "kind": "request.prepared",
+      "request_id": "request_99084f7f46174d8881ef49e276fbb957",
+      "at": 1793838597.7087278,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "1254a11495d1415bbd29303d00de9321",
+      "kind": "request.reserved",
+      "request_id": "request_99084f7f46174d8881ef49e276fbb957",
+      "at": 1793838597.7108955,
+      "metadata": {
+        "reserved_tokens": 26631,
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "b298a1ddfd4140e08be2a5f963824340",
+      "kind": "request.dispatched",
+      "request_id": "request_99084f7f46174d8881ef49e276fbb957",
+      "at": 1793838597.7118952,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": null,
+        "request_sent": null,
+        "network_attempted": true,
+        "response_type": null,
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 0
+      }
+    },
+    {
+      "event_id": "e23de60fc2d042659994126b6e6aeccf",
+      "kind": "response.headers_received",
+      "request_id": "request_99084f7f46174d8881ef49e276fbb957",
+      "at": 1793838598.4859388,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 774
+      }
+    },
+    {
+      "event_id": "aed27a62913d48c188413840a12a8f2e",
+      "kind": "response.streaming",
+      "request_id": "request_99084f7f46174d8881ef49e276fbb957",
+      "at": 1793838598.4869435,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 775
+      }
+    },
+    {
+      "event_id": "d2466f8ceb09401c9f2e493d7a6ed70b",
+      "kind": "response.completed",
+      "request_id": "request_99084f7f46174d8881ef49e276fbb957",
+      "at": 1793838599.634651,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": true,
+        "finish_reason": "tool_calls",
+        "input_tokens": 5534,
+        "output_tokens": 140,
+        "cached_tokens": 0,
+        "estimated": false,
+        "duration_ms": 1923
+      }
+    },
+    {
+      "event_id": "5d798c1cf07e4bcf8e168965e4866858",
+      "kind": "request.settled",
+      "request_id": "request_99084f7f46174d8881ef49e276fbb957",
+      "at": 1793838599.6356528,
+      "metadata": {
+        "status": "completed",
+        "request_sent": true,
+        "input_tokens": 5534,
+        "output_tokens": 140,
+        "cached_tokens": 0,
+        "estimated": false,
+        "reserved_tokens": 5674,
+        "error_code": null,
+        "released_tokens": 20957
+      }
+    },
+    {
+      "event_id": "a211a55a1c4043198487a51346599aa6",
+      "kind": "request.prepared",
+      "request_id": "request_06f2b4bdcd7c421396e91fe03c22f1f2",
+      "at": 1793838599.6426907,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "a764c45b8cd34b97a0af99ae4b30eb28",
+      "kind": "request.reserved",
+      "request_id": "request_06f2b4bdcd7c421396e91fe03c22f1f2",
+      "at": 1793838599.6462238,
+      "metadata": {
+        "reserved_tokens": 28509,
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "2989aab6e1b94e008773d4f007097698",
+      "kind": "request.dispatched",
+      "request_id": "request_06f2b4bdcd7c421396e91fe03c22f1f2",
+      "at": 1793838599.648232,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": null,
+        "request_sent": null,
+        "network_attempted": true,
+        "response_type": null,
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 0
+      }
+    },
+    {
+      "event_id": "af4c64a1dc524561b025ed3c164b9924",
+      "kind": "response.headers_received",
+      "request_id": "request_06f2b4bdcd7c421396e91fe03c22f1f2",
+      "at": 1793838600.3300347,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 682
+      }
+    },
+    {
+      "event_id": "8bf22e860f9944449106b9570dbb7b0f",
+      "kind": "response.streaming",
+      "request_id": "request_06f2b4bdcd7c421396e91fe03c22f1f2",
+      "at": 1793838600.3300347,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 682
+      }
+    },
+    {
+      "event_id": "c308260e00ee497a8fa1746b3af365b6",
+      "kind": "response.completed",
+      "request_id": "request_06f2b4bdcd7c421396e91fe03c22f1f2",
+      "at": 1793838601.237309,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": true,
+        "finish_reason": "tool_calls",
+        "input_tokens": 6163,
+        "output_tokens": 114,
+        "cached_tokens": 0,
+        "estimated": false,
+        "duration_ms": 1588
+      }
+    },
+    {
+      "event_id": "a0274658a262410391256d3fb47f7fad",
+      "kind": "request.settled",
+      "request_id": "request_06f2b4bdcd7c421396e91fe03c22f1f2",
+      "at": 1793838601.239015,
+      "metadata": {
+        "status": "completed",
+        "request_sent": true,
+        "input_tokens": 6163,
+        "output_tokens": 114,
+        "cached_tokens": 0,
+        "estimated": false,
+        "reserved_tokens": 6277,
+        "error_code": null,
+        "released_tokens": 22232
+      }
+    },
+    {
+      "event_id": "46c4c03f28f34896b6279d9a621ac468",
+      "kind": "request.prepared",
+      "request_id": "request_ec6505e0949549c0b0bebeb34912027e",
+      "at": 1793838601.2495494,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "815dac89ec7346e09d2198076e1c716b",
+      "kind": "request.reserved",
+      "request_id": "request_ec6505e0949549c0b0bebeb34912027e",
+      "at": 1793838601.251221,
+      "metadata": {
+        "reserved_tokens": 30549,
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "8682bf192e574a3bbc082b10357bdd88",
+      "kind": "request.dispatched",
+      "request_id": "request_ec6505e0949549c0b0bebeb34912027e",
+      "at": 1793838601.2520607,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": null,
+        "request_sent": null,
+        "network_attempted": true,
+        "response_type": null,
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 0
+      }
+    },
+    {
+      "event_id": "73fed57486ce4028a10ed5101534a843",
+      "kind": "response.headers_received",
+      "request_id": "request_ec6505e0949549c0b0bebeb34912027e",
+      "at": 1793838601.9818728,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 730
+      }
+    },
+    {
+      "event_id": "a32c42e315e842fc90c55e907df6ebf6",
+      "kind": "response.streaming",
+      "request_id": "request_ec6505e0949549c0b0bebeb34912027e",
+      "at": 1793838601.9818728,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 730
+      }
+    },
+    {
+      "event_id": "e2791a2fa2654237a7393159afbad879",
+      "kind": "response.completed",
+      "request_id": "request_ec6505e0949549c0b0bebeb34912027e",
+      "at": 1793838602.9662528,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": true,
+        "finish_reason": "tool_calls",
+        "input_tokens": 6848,
+        "output_tokens": 106,
+        "cached_tokens": 0,
+        "estimated": false,
+        "duration_ms": 1714
+      }
+    },
+    {
+      "event_id": "a16dcf8f702d4d28995873c6ad79df7e",
+      "kind": "request.settled",
+      "request_id": "request_ec6505e0949549c0b0bebeb34912027e",
+      "at": 1793838602.9668293,
+      "metadata": {
+        "status": "completed",
+        "request_sent": true,
+        "input_tokens": 6848,
+        "output_tokens": 106,
+        "cached_tokens": 0,
+        "estimated": false,
+        "reserved_tokens": 6954,
+        "error_code": null,
+        "released_tokens": 23595
+      }
+    },
+    {
+      "event_id": "7ee3551333164befa389db50560ef70c",
+      "kind": "request.prepared",
+      "request_id": "request_5b973846ab864b72a16245a893f0b8ee",
+      "at": 1793838603.9089787,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "6da238312588420697ba42ccef3120e7",
+      "kind": "request.reserved",
+      "request_id": "request_5b973846ab864b72a16245a893f0b8ee",
+      "at": 1793838603.9109683,
+      "metadata": {
+        "reserved_tokens": 38346,
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "f92f3e1511cb47d8998aacb4a9299e89",
+      "kind": "request.dispatched",
+      "request_id": "request_5b973846ab864b72a16245a893f0b8ee",
+      "at": 1793838603.912582,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": null,
+        "request_sent": null,
+        "network_attempted": true,
+        "response_type": null,
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 0
+      }
+    },
+    {
+      "event_id": "6a2cefcb469a4e84a39944cb9d654698",
+      "kind": "response.headers_received",
+      "request_id": "request_5b973846ab864b72a16245a893f0b8ee",
+      "at": 1793838604.8394806,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 927
+      }
+    },
+    {
+      "event_id": "146e2a5835904f1b8d77d5fcea36de69",
+      "kind": "response.streaming",
+      "request_id": "request_5b973846ab864b72a16245a893f0b8ee",
+      "at": 1793838604.8404827,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 928
+      }
+    },
+    {
+      "event_id": "ce96cd008b534892811a5dd0740a1724",
+      "kind": "response.completed",
+      "request_id": "request_5b973846ab864b72a16245a893f0b8ee",
+      "at": 1793838606.172604,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": true,
+        "finish_reason": "tool_calls",
+        "input_tokens": 8847,
+        "output_tokens": 171,
+        "cached_tokens": 0,
+        "estimated": false,
+        "duration_ms": 2260
+      }
+    },
+    {
+      "event_id": "3cbdb62b0b594e2ea0f63a48b9811c7d",
+      "kind": "request.settled",
+      "request_id": "request_5b973846ab864b72a16245a893f0b8ee",
+      "at": 1793838606.172604,
+      "metadata": {
+        "status": "completed",
+        "request_sent": true,
+        "input_tokens": 8847,
+        "output_tokens": 171,
+        "cached_tokens": 0,
+        "estimated": false,
+        "reserved_tokens": 9018,
+        "error_code": null,
+        "released_tokens": 29328
+      }
+    },
+    {
+      "event_id": "5cb016f2d09944a98f88956ef4af9c5a",
+      "kind": "request.prepared",
+      "request_id": "request_5112eca0e41049aeb64d2ec43769b1dc",
+      "at": 1793838607.041884,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "d8d38c16652446e4b8f9d4f0d615f3a8",
+      "kind": "request.reserved",
+      "request_id": "request_5112eca0e41049aeb64d2ec43769b1dc",
+      "at": 1793838607.0448782,
+      "metadata": {
+        "reserved_tokens": 46846,
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "9fac1888086d4c08bc0a0e9e80e8d094",
+      "kind": "request.dispatched",
+      "request_id": "request_5112eca0e41049aeb64d2ec43769b1dc",
+      "at": 1793838607.04588,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": null,
+        "request_sent": null,
+        "network_attempted": true,
+        "response_type": null,
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 0
+      }
+    },
+    {
+      "event_id": "d70556e0440846db87300ea586f68087",
+      "kind": "response.headers_received",
+      "request_id": "request_5112eca0e41049aeb64d2ec43769b1dc",
+      "at": 1793838608.376818,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 1331
+      }
+    },
+    {
+      "event_id": "f0ea0242807d45fb9034ff7d30737955",
+      "kind": "response.streaming",
+      "request_id": "request_5112eca0e41049aeb64d2ec43769b1dc",
+      "at": 1793838608.3778317,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 1332
+      }
+    },
+    {
+      "event_id": "469e888e33344a09859cf466e5bcaafd",
+      "kind": "response.completed",
+      "request_id": "request_5112eca0e41049aeb64d2ec43769b1dc",
+      "at": 1793838612.6018276,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": true,
+        "finish_reason": "tool_calls",
+        "input_tokens": 12291,
+        "output_tokens": 376,
+        "cached_tokens": 0,
+        "estimated": false,
+        "duration_ms": 5556
+      }
+    },
+    {
+      "event_id": "652323fd95c94d87b2f80d731ea46f6c",
+      "kind": "request.settled",
+      "request_id": "request_5112eca0e41049aeb64d2ec43769b1dc",
+      "at": 1793838612.6018276,
+      "metadata": {
+        "status": "completed",
+        "request_sent": true,
+        "input_tokens": 12291,
+        "output_tokens": 376,
+        "cached_tokens": 0,
+        "estimated": false,
+        "reserved_tokens": 12667,
+        "error_code": null,
+        "released_tokens": 34179
+      }
+    },
+    {
+      "event_id": "c51759c016a7444b943e17e32fa3c8b8",
+      "kind": "request.prepared",
+      "request_id": "request_a791e039981d4943a6e4f53194f6e59d",
+      "at": 1793838614.2121403,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "757d26a774ed494e8df6f71694cfd1b2",
+      "kind": "request.reserved",
+      "request_id": "request_a791e039981d4943a6e4f53194f6e59d",
+      "at": 1793838614.2121403,
+      "metadata": {
+        "reserved_tokens": 48482,
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "9d497b5223e547bb882406c15fb13905",
+      "kind": "request.dispatched",
+      "request_id": "request_a791e039981d4943a6e4f53194f6e59d",
+      "at": 1793838614.2121403,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": null,
+        "request_sent": null,
+        "network_attempted": true,
+        "response_type": null,
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 0
+      }
+    },
+    {
+      "event_id": "ee376b14c1174b4bbaf2b3aa4801e0ea",
+      "kind": "response.headers_received",
+      "request_id": "request_a791e039981d4943a6e4f53194f6e59d",
+      "at": 1793838615.3800263,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 1168
+      }
+    },
+    {
+      "event_id": "e62f98eb852b4149ab6797db5b3c16f1",
+      "kind": "response.streaming",
+      "request_id": "request_a791e039981d4943a6e4f53194f6e59d",
+      "at": 1793838615.3800263,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 1168
+      }
+    },
+    {
+      "event_id": "6a5f0f7e338046ea9b5075c41a05b975",
+      "kind": "response.completed",
+      "request_id": "request_a791e039981d4943a6e4f53194f6e59d",
+      "at": 1793838616.529956,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": true,
+        "finish_reason": "tool_calls",
+        "input_tokens": 12738,
+        "output_tokens": 136,
+        "cached_tokens": 0,
+        "estimated": false,
+        "duration_ms": 2318
+      }
+    },
+    {
+      "event_id": "f95d54b6bca049769be721b3d9988230",
+      "kind": "request.settled",
+      "request_id": "request_a791e039981d4943a6e4f53194f6e59d",
+      "at": 1793838616.5312538,
+      "metadata": {
+        "status": "completed",
+        "request_sent": true,
+        "input_tokens": 12738,
+        "output_tokens": 136,
+        "cached_tokens": 0,
+        "estimated": false,
+        "reserved_tokens": 12874,
+        "error_code": null,
+        "released_tokens": 35608
+      }
+    },
+    {
+      "event_id": "6c6ff72715e548d1917e712f3751f4a7",
+      "kind": "request.prepared",
+      "request_id": "request_34c62d42ad6c4123a4f12b4648f04c4d",
+      "at": 1793838617.3449712,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "317151a242bd4bce94511fa404e57f9c",
+      "kind": "request.reserved",
+      "request_id": "request_34c62d42ad6c4123a4f12b4648f04c4d",
+      "at": 1793838617.3481193,
+      "metadata": {
+        "reserved_tokens": 57986,
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "49ff5efe31fd4379bca705eddf4c038b",
+      "kind": "request.dispatched",
+      "request_id": "request_34c62d42ad6c4123a4f12b4648f04c4d",
+      "at": 1793838617.3496475,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": null,
+        "request_sent": null,
+        "network_attempted": true,
+        "response_type": null,
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 0
+      }
+    },
+    {
+      "event_id": "ead3d60f76574363a15b1829d2fad8d2",
+      "kind": "response.headers_received",
+      "request_id": "request_34c62d42ad6c4123a4f12b4648f04c4d",
+      "at": 1793838619.2845778,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 1935
+      }
+    },
+    {
+      "event_id": "627ef89aa81e402cbc3b23452901f64b",
+      "kind": "response.streaming",
+      "request_id": "request_34c62d42ad6c4123a4f12b4648f04c4d",
+      "at": 1793838619.2860851,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 1936
+      }
+    },
+    {
+      "event_id": "c7ba2e82a7d74c369c999f4f68d2d883",
+      "kind": "response.completed",
+      "request_id": "request_34c62d42ad6c4123a4f12b4648f04c4d",
+      "at": 1793838622.2718358,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": true,
+        "finish_reason": "tool_calls",
+        "input_tokens": 16575,
+        "output_tokens": 416,
+        "cached_tokens": 0,
+        "estimated": false,
+        "duration_ms": 4922
+      }
+    },
+    {
+      "event_id": "c4b1e53285724d49b1f84a18a6eebafc",
+      "kind": "request.settled",
+      "request_id": "request_34c62d42ad6c4123a4f12b4648f04c4d",
+      "at": 1793838622.2718358,
+      "metadata": {
+        "status": "completed",
+        "request_sent": true,
+        "input_tokens": 16575,
+        "output_tokens": 416,
+        "cached_tokens": 0,
+        "estimated": false,
+        "reserved_tokens": 16991,
+        "error_code": null,
+        "released_tokens": 40995
+      }
+    },
+    {
+      "event_id": "ec69c73a89464d2c86ff2d10d44e6644",
+      "kind": "request.prepared",
+      "request_id": "request_e990b155e0ae4f6fa4f112c7b33a456d",
+      "at": 1793838624.0324726,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "540954e48314475cbcb6151c82754229",
+      "kind": "request.reserved",
+      "request_id": "request_e990b155e0ae4f6fa4f112c7b33a456d",
+      "at": 1793838624.038098,
+      "metadata": {
+        "reserved_tokens": 59187,
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "1634c038abb547e38fa0b5b33f662423",
+      "kind": "request.dispatched",
+      "request_id": "request_e990b155e0ae4f6fa4f112c7b33a456d",
+      "at": 1793838624.0406358,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": null,
+        "request_sent": null,
+        "network_attempted": true,
+        "response_type": null,
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 0
+      }
+    },
+    {
+      "event_id": "8776419412934e248e3c751a75e1c337",
+      "kind": "response.headers_received",
+      "request_id": "request_e990b155e0ae4f6fa4f112c7b33a456d",
+      "at": 1793838626.9626682,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 2922
+      }
+    },
+    {
+      "event_id": "71bb062d13ff45c09984c63afd117353",
+      "kind": "response.streaming",
+      "request_id": "request_e990b155e0ae4f6fa4f112c7b33a456d",
+      "at": 1793838626.9637733,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 2923
+      }
+    },
+    {
+      "event_id": "88bfdb094a5d4a91b867668710953129",
+      "kind": "response.completed",
+      "request_id": "request_e990b155e0ae4f6fa4f112c7b33a456d",
+      "at": 1793838627.8807335,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": true,
+        "finish_reason": "tool_calls",
+        "input_tokens": 16950,
+        "output_tokens": 121,
+        "cached_tokens": 0,
+        "estimated": false,
+        "duration_ms": 3840
+      }
+    },
+    {
+      "event_id": "b594534fe92449bea17ada1df2acf26f",
+      "kind": "request.settled",
+      "request_id": "request_e990b155e0ae4f6fa4f112c7b33a456d",
+      "at": 1793838627.8827333,
+      "metadata": {
+        "status": "completed",
+        "request_sent": true,
+        "input_tokens": 16950,
+        "output_tokens": 121,
+        "cached_tokens": 0,
+        "estimated": false,
+        "reserved_tokens": 17071,
+        "error_code": null,
+        "released_tokens": 42116
+      }
+    },
+    {
+      "event_id": "3f9e2eb034774c28847293e93832049d",
+      "kind": "request.prepared",
+      "request_id": "request_8da8ba5fa2ef4874a3f7854b376951a5",
+      "at": 1793838628.6722124,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "2e7eb47735b04f6f9bfcc028bb5ba0f7",
+      "kind": "request.reserved",
+      "request_id": "request_8da8ba5fa2ef4874a3f7854b376951a5",
+      "at": 1793838628.6752226,
+      "metadata": {
+        "reserved_tokens": 60137,
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "765ac8bc0f3940d39e313684f1735216",
+      "kind": "request.dispatched",
+      "request_id": "request_8da8ba5fa2ef4874a3f7854b376951a5",
+      "at": 1793838628.6762266,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": null,
+        "request_sent": null,
+        "network_attempted": true,
+        "response_type": null,
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 0
+      }
+    },
+    {
+      "event_id": "736410f7080149e08269b5488e6bd300",
+      "kind": "response.headers_received",
+      "request_id": "request_8da8ba5fa2ef4874a3f7854b376951a5",
+      "at": 1793838630.4909186,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 1815
+      }
+    },
+    {
+      "event_id": "c4613936048f44df9750f6c438de1895",
+      "kind": "response.streaming",
+      "request_id": "request_8da8ba5fa2ef4874a3f7854b376951a5",
+      "at": 1793838630.4961739,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 1820
+      }
+    },
+    {
+      "event_id": "0e9af53d6d7c4ff48a597ee254ba2cad",
+      "kind": "response.completed",
+      "request_id": "request_8da8ba5fa2ef4874a3f7854b376951a5",
+      "at": 1793838631.6375988,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": true,
+        "finish_reason": "tool_calls",
+        "input_tokens": 17185,
+        "output_tokens": 142,
+        "cached_tokens": 0,
+        "estimated": false,
+        "duration_ms": 2961
+      }
+    },
+    {
+      "event_id": "22942536212c4fb4ace8eae779c40ca3",
+      "kind": "request.settled",
+      "request_id": "request_8da8ba5fa2ef4874a3f7854b376951a5",
+      "at": 1793838631.6393156,
+      "metadata": {
+        "status": "completed",
+        "request_sent": true,
+        "input_tokens": 17185,
+        "output_tokens": 142,
+        "cached_tokens": 0,
+        "estimated": false,
+        "reserved_tokens": 17327,
+        "error_code": null,
+        "released_tokens": 42810
+      }
+    },
+    {
+      "event_id": "a67e050d9c254c2f96ef8203d1e101f0",
+      "kind": "request.prepared",
+      "request_id": "request_b14b0ce38cbb4e539f998f447cf158a8",
+      "at": 1793838632.4178765,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "e73277d8b110421eb5b63f896a5653d7",
+      "kind": "request.reserved",
+      "request_id": "request_b14b0ce38cbb4e539f998f447cf158a8",
+      "at": 1793838632.4193864,
+      "metadata": {
+        "reserved_tokens": 60959,
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "800dabff78544630963d18045e831a94",
+      "kind": "request.dispatched",
+      "request_id": "request_b14b0ce38cbb4e539f998f447cf158a8",
+      "at": 1793838632.4211469,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": null,
+        "request_sent": null,
+        "network_attempted": true,
+        "response_type": null,
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 0
+      }
+    },
+    {
+      "event_id": "02fc4166f5fb45359ca634939b1c9744",
+      "kind": "response.headers_received",
+      "request_id": "request_b14b0ce38cbb4e539f998f447cf158a8",
+      "at": 1793838633.796806,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 1376
+      }
+    },
+    {
+      "event_id": "7ec8c32d6eae458a87a11e3c464c1923",
+      "kind": "response.streaming",
+      "request_id": "request_b14b0ce38cbb4e539f998f447cf158a8",
+      "at": 1793838633.8001378,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 1379
+      }
+    },
+    {
+      "event_id": "30a717f21d3845da8afc141dafc694d6",
+      "kind": "response.completed",
+      "request_id": "request_b14b0ce38cbb4e539f998f447cf158a8",
+      "at": 1793838634.4623067,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": true,
+        "finish_reason": "tool_calls",
+        "input_tokens": 17400,
+        "output_tokens": 94,
+        "cached_tokens": 0,
+        "estimated": false,
+        "duration_ms": 2041
+      }
+    },
+    {
+      "event_id": "6399c42d1c504a5f8abf7252c6994ce3",
+      "kind": "request.settled",
+      "request_id": "request_b14b0ce38cbb4e539f998f447cf158a8",
+      "at": 1793838634.4623067,
+      "metadata": {
+        "status": "completed",
+        "request_sent": true,
+        "input_tokens": 17400,
+        "output_tokens": 94,
+        "cached_tokens": 0,
+        "estimated": false,
+        "reserved_tokens": 17494,
+        "error_code": null,
+        "released_tokens": 43465
+      }
+    },
+    {
+      "event_id": "6342a6c4ed8f42a593fb3162f7627d8b",
+      "kind": "request.prepared",
+      "request_id": "request_2c850105d7944639bb2b9a9c08b82af9",
+      "at": 1793838635.2911577,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "37d10464a4f0492db4f57c37fba55bae",
+      "kind": "request.reserved",
+      "request_id": "request_2c850105d7944639bb2b9a9c08b82af9",
+      "at": 1793838635.2937272,
+      "metadata": {
+        "reserved_tokens": 70459,
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "d34a0d7c95a24ee1bf3a7bd4fc950312",
+      "kind": "request.dispatched",
+      "request_id": "request_2c850105d7944639bb2b9a9c08b82af9",
+      "at": 1793838635.294832,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": null,
+        "request_sent": null,
+        "network_attempted": true,
+        "response_type": null,
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 0
+      }
+    },
+    {
+      "event_id": "290254b782844a0892cbb12b7cfd5481",
+      "kind": "response.headers_received",
+      "request_id": "request_2c850105d7944639bb2b9a9c08b82af9",
+      "at": 1793838637.023457,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 1728
+      }
+    },
+    {
+      "event_id": "e173357a29754f35aaecbada800526e9",
+      "kind": "response.streaming",
+      "request_id": "request_2c850105d7944639bb2b9a9c08b82af9",
+      "at": 1793838637.023457,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 1729
+      }
+    },
+    {
+      "event_id": "f2bcfc7bc86e44fbba1f4190e4c42581",
+      "kind": "response.completed",
+      "request_id": "request_2c850105d7944639bb2b9a9c08b82af9",
+      "at": 1793838638.6973138,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": true,
+        "finish_reason": "tool_calls",
+        "input_tokens": 21236,
+        "output_tokens": 223,
+        "cached_tokens": 0,
+        "estimated": false,
+        "duration_ms": 3402
+      }
+    },
+    {
+      "event_id": "d9edecc460e640e2898f9a3f54f0f4b5",
+      "kind": "request.settled",
+      "request_id": "request_2c850105d7944639bb2b9a9c08b82af9",
+      "at": 1793838638.6973138,
+      "metadata": {
+        "status": "completed",
+        "request_sent": true,
+        "input_tokens": 21236,
+        "output_tokens": 223,
+        "cached_tokens": 0,
+        "estimated": false,
+        "reserved_tokens": 21459,
+        "error_code": null,
+        "released_tokens": 49000
+      }
+    },
+    {
+      "event_id": "59d63d0527f84fdfbced108b8dec90ce",
+      "kind": "request.prepared",
+      "request_id": "request_85a2bb01aea44ffabc2c7c2044df27dc",
+      "at": 1793838639.5678933,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "6bac2414ee57487895623cd7b0c7aa25",
+      "kind": "request.reserved",
+      "request_id": "request_85a2bb01aea44ffabc2c7c2044df27dc",
+      "at": 1793838639.570773,
+      "metadata": {
+        "reserved_tokens": 72373,
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "d78c6d3d3396415fa7836e0f5bb4e39d",
+      "kind": "request.dispatched",
+      "request_id": "request_85a2bb01aea44ffabc2c7c2044df27dc",
+      "at": 1793838639.5729969,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": null,
+        "request_sent": null,
+        "network_attempted": true,
+        "response_type": null,
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 0
+      }
+    },
+    {
+      "event_id": "807c8972c80047e69a552cb3685df70a",
+      "kind": "response.headers_received",
+      "request_id": "request_85a2bb01aea44ffabc2c7c2044df27dc",
+      "at": 1793838641.4084938,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 1835
+      }
+    },
+    {
+      "event_id": "4f8c01986a034e4688398dcf937316db",
+      "kind": "response.streaming",
+      "request_id": "request_85a2bb01aea44ffabc2c7c2044df27dc",
+      "at": 1793838641.4084938,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 1835
+      }
+    },
+    {
+      "event_id": "accda8bd37fa411b8430fc2366d618a1",
+      "kind": "response.completed",
+      "request_id": "request_85a2bb01aea44ffabc2c7c2044df27dc",
+      "at": 1793838642.4413743,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": true,
+        "finish_reason": "tool_calls",
+        "input_tokens": 21915,
+        "output_tokens": 120,
+        "cached_tokens": 0,
+        "estimated": false,
+        "duration_ms": 2868
+      }
+    },
+    {
+      "event_id": "ade91eee2de54864a80d82dbf2df498f",
+      "kind": "request.settled",
+      "request_id": "request_85a2bb01aea44ffabc2c7c2044df27dc",
+      "at": 1793838642.4427364,
+      "metadata": {
+        "status": "completed",
+        "request_sent": true,
+        "input_tokens": 21915,
+        "output_tokens": 120,
+        "cached_tokens": 0,
+        "estimated": false,
+        "reserved_tokens": 22035,
+        "error_code": null,
+        "released_tokens": 50338
+      }
+    },
+    {
+      "event_id": "a4f8d0ec50cd498895f3ea2b0aefc4bf",
+      "kind": "request.prepared",
+      "request_id": "request_d685a3388de04d118d9735f44ae765fa",
+      "at": 1793838642.6698563,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "f760af1b2a1c4f8f86cd04891895d01b",
+      "kind": "request.reserved",
+      "request_id": "request_d685a3388de04d118d9735f44ae765fa",
+      "at": 1793838642.6731622,
+      "metadata": {
+        "reserved_tokens": 74745,
+        "request_sent": false
+      }
+    },
+    {
+      "event_id": "77325aadb4b4435eb41edae057ed999e",
+      "kind": "request.dispatched",
+      "request_id": "request_d685a3388de04d118d9735f44ae765fa",
+      "at": 1793838642.6742408,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": null,
+        "request_sent": null,
+        "network_attempted": true,
+        "response_type": null,
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 0
+      }
+    },
+    {
+      "event_id": "663f71bbeb7e4d3b8a98d59d6bc7fc1f",
+      "kind": "response.headers_received",
+      "request_id": "request_d685a3388de04d118d9735f44ae765fa",
+      "at": 1793838645.7210698,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 3047
+      }
+    },
+    {
+      "event_id": "f1b0032a0a99486f9468f132bda8e553",
+      "kind": "response.streaming",
+      "request_id": "request_d685a3388de04d118d9735f44ae765fa",
+      "at": 1793838645.7210698,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": false,
+        "finish_reason": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "cached_tokens": null,
+        "estimated": null,
+        "duration_ms": 3047
+      }
+    },
+    {
+      "event_id": "3daa840f364a4d48a403c85eb3ec14b8",
+      "kind": "response.completed",
+      "request_id": "request_d685a3388de04d118d9735f44ae765fa",
+      "at": 1793838652.3472533,
+      "metadata": {
+        "phase": "executing",
+        "provider": "openai_compatible",
+        "model": "qwen3.7-flash",
+        "role": "executor",
+        "http_status": 200,
+        "request_sent": true,
+        "network_attempted": true,
+        "response_type": "text/event-stream",
+        "response_complete": true,
+        "finish_reason": "stop",
+        "input_tokens": 22675,
+        "output_tokens": 672,
+        "cached_tokens": 0,
+        "estimated": false,
+        "duration_ms": 9672
+      }
+    },
+    {
+      "event_id": "39abd8d9b7eb4dc5b1c5eb63f2d7c7cf",
+      "kind": "request.settled",
+      "request_id": "request_d685a3388de04d118d9735f44ae765fa",
+      "at": 1793838652.3482535,
+      "metadata": {
+        "status": "completed",
+        "request_sent": true,
+        "input_tokens": 22675,
+        "output_tokens": 672,
+        "cached_tokens": 0,
+        "estimated": false,
+        "reserved_tokens": 23347,
+        "error_code": null,
+        "released_tokens": 51398
+      }
+    }
+  ],
+  "report_sha256": "846737dfeaf0c5512edf81a15fa1f5985d5158c83f7fbdfc0a0b32e751d6cdfa",
+  "historical_early_exit": {
+    "result": "BLOCKED",
+    "event_id": 2004,
+    "provider": "Microsoft-Windows-Resource-Exhaustion-Detector",
+    "event_utc": "2026-11-04T21:32:22.763340Z",
+    "controller_start_utc": "2026-11-04T21:32:23.462Z",
+    "historical_exit_code": "NOT CAPTURED",
+    "historical_stack": "NOT CAPTURED",
+    "conclusion": "已确认同一时间系统虚拟内存耗尽；无法事后恢复该进程的准确退出码，不将推断当作历史崩溃堆栈。"
+  }
+}

@@ -102,9 +102,10 @@ def json_object(text: str, *, require_object=True):
 
 
 class ModelRouter:
-    def __init__(self, config: dict, provider_factory, budget, notify, resolved_roles=None):
+    def __init__(self, config: dict, provider_factory, budget, notify, resolved_roles=None, *, retry_attempts=3):
         self.config, self.factory, self.budget, self.notify = config, provider_factory, budget, notify
         self.resolved_roles = resolved_roles or config["roles"]
+        self.retry_attempts=max(1,min(10,int(retry_attempts)))
 
     def resolve(self, role: str):
         profile = dict(self.resolved_roles[role])
@@ -189,6 +190,25 @@ class RoutedProvider:
         self.provider.request_timeout = router.config["budget"]["request_seconds"]
 
     async def stream_chat(self, *, model, messages, tools=None):
+        for attempt in range(self.router.retry_attempts):
+            self.retry_index=attempt
+            try:
+                async for chunk in self._stream_chat(model=model,messages=messages,tools=tools):yield chunk
+                return
+            except ProviderError as exc:
+                # Only a failed connection known not to have sent HTTP can be
+                # replayed here; partially streamed requests require the owner.
+                metadata=getattr(self.provider,'response_metadata',{})
+                if not exc.transient or metadata.get('request_sent') is not False:raise
+                if attempt+1>=self.router.retry_attempts:
+                    exc.retry_exhausted=True
+                    raise
+                self.router.budget.runtime.ledger.record(self.router.budget.plan_id,
+                    self.router.budget.runtime.get(self.router.budget.plan_id)['thread_id'],'request.retry_scheduled',
+                    {'request_sent':False,'error_code':exc.code,'retry':attempt+1},request_id=getattr(self,'request_id',None))
+                await asyncio.sleep(.5*(attempt+1))
+
+    async def _stream_chat(self, *, model, messages, tools=None):
         if hasattr(self.provider, "response_metadata"):
             self.provider.response_metadata = {"request_sent":False}
         mode = self.profile["tool_mode"]
@@ -205,8 +225,11 @@ class RoutedProvider:
             await self.router.notify("model.compatibility", {"model": model, "mode": "json", "message": "Native tools unavailable; using validated JSON tool compatibility."})
         request_id = self.router.budget.reserve(route=self.route, role=self.role, model=model,
             messages=messages, tools=None if fallback else tools, context_window=self.context_window,
-            output_limit=self.profile["output_limit"], input_price=self.profile["input_price"], output_price=self.profile["output_price"])
+            output_limit=self.profile["output_limit"], input_price=self.profile["input_price"], output_price=self.profile["output_price"],retry=getattr(self,'retry_index',0))
         self.request_id = request_id
+        self.provider.request_observer=self.router.budget.runtime.ledger.request_callback(
+            self.router.budget.plan_id,self.router.budget.runtime.get(self.router.budget.plan_id)['thread_id'],request_id,
+            {'provider':self.provider_name,'model':model,'role':self.role,'route':self.route,'retry':getattr(self,'retry_index',0)})
         usage = {"estimated": True, "actual_cost": None}
         status, text, dispatched, finish = "uncertain", "", False, None
         try:
@@ -274,7 +297,7 @@ class RoutedProvider:
             if usage.get("estimated") is not False and meta.get("response_complete") is True and reported.get("estimated") is False:
                 usage = reported
             self.router.budget.annotate(request_id, {**meta, "request_dispatched":dispatched})
-            if not meta.get("request_sent", dispatched):
+            if meta.get("request_sent", dispatched) is False:
                 status = "not_sent"
             self.router.budget.finish(request_id, status, usage)
             with suppress(Exception):

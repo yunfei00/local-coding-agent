@@ -1,5 +1,7 @@
 # Local Coding Agent
 
+v0.6.0 扩展统一运行可靠性：运行中持久追加需求、取消/终态保护、无 Plan 中断恢复和脱敏请求事件。Python、React、Electron 已通过真实在线模型开发验证；各项结果与限制见 [v0.6 实现](docs/v0.6/implementation.md)及[验收报告](docs/v0.6/acceptance-report.md)。本轮不创建正式 Release 或 Tag。
+
 v0.5.0 使用用户确认的在线模型验收标准：同页自主开发、真实在线工程及 GUI/视觉路径已通过。版本说明与已知限制见 [v0.5.0](docs/releases/v0.5.0.md)。以下阶段性记录保留历史验收范围；正式安装包及当前发布状态以 [Latest Release](https://github.com/yunfei00/local-coding-agent/releases/latest) 页面为准。
 
 当前开发分支增加统一 Agent 入口：直接在聊天框输入需求，无需选择模式。概念问答不创建计划；分析默认只读；修改后程序自动执行工程检查；复杂开发使用持久化计划和检查点。阶段、文件变化、验证结果及恢复入口在同一消息区展示。统一入口使用当前工作区和底部所选模型；需要隔离 Worktree、多角色或 Local-first 编排时仍可使用高级 Task。架构见[统一执行架构](docs/UNIFIED_AGENT_RUNTIME_ARCHITECTURE.md)，实际结果见[统一入口验收](acceptance/UNIFIED_AGENT_RUNTIME_VALIDATION_REPORT.md)。这是源码变更，不代表旧安装包已更新。
@@ -14,7 +16,7 @@ M4 全面修复统一了 Chat/Task 的连接和模型目录，支持独立 Visio
 
 Local Coding Agent 是一个面向 Windows 本地开发环境的桌面 Coding Agent。目标是提供类似 Codex Desktop 的核心开发体验，同时让模型、Agent、工具链、数据和权限边界保持在用户自己的环境中。
 
-> 当前代码版本：**v0.5.0**
+> 当前开发代码版本：**v0.6.0**（验收状态见上文）
 >
 > 最近正式发布：[**Latest Release / Windows 下载**](https://github.com/yunfei00/local-coding-agent/releases/latest)
 
