@@ -2252,11 +2252,11 @@ class AgentServer:
         knowledge=project.knowledge() if knowledge_enabled else None
         if knowledge:
             knowledge.exact_secrets=self._exact_secrets()
-            from agent.core.unified_runtime import requested_intent as memory_intent
+            from agent.core.unified_runtime import requested_intent as memory_intent,explicit_memory_rules
             if not hasattr(knowledge,'explicit_save_owners'):knowledge.explicit_save_owners=set()
             if memory_intent(authorization_prompt or prompt)['memory_write']:knowledge.explicit_save_owners.add(turn_id)
             if not hasattr(knowledge,'explicit_rules'):knowledge.explicit_rules={}
-            knowledge.explicit_rules[turn_id]=re.findall(r'(?:^|[。；;\n])\s*(?:请)?记住[:：]\s*([^\r\n]{1,1500})',authorization_prompt or prompt)[:12]
+            knowledge.explicit_rules[turn_id]=explicit_memory_rules(authorization_prompt or prompt)
             for rule in knowledge.explicit_rules[turn_id]:
                 try:
                     knowledge.save('用户明确约定：'+hashlib.sha256(rule.encode()).hexdigest()[:16],rule,'convention',trust='user')

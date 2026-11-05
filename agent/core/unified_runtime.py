@@ -40,6 +40,13 @@ def plan_view(plan):
     return {key:value for key,value in plan.items() if key!='execution'}
 
 
+def memory_authorization_text(prompt):
+    text=re.sub(r'(?s)```.*?(?:```|$)|~~~.*?(?:~~~|$)','',prompt)
+    return '\n'.join(line for line in text.splitlines() if not line.lstrip().startswith('>'))
+
+def explicit_memory_rules(prompt):
+    return re.findall(r'(?:^|[。；;\n])\s*(?:请)?记住[:：]\s*([^\r\n]{1,1500})',memory_authorization_text(prompt))[:12]
+
 def requested_intent(prompt):
     """Conservative request-shape fallback; model plans and tool evidence refine it."""
     paths=set(re.findall(r'[\w./\\-]+\.(?:py|tsx?|jsx?|json|toml|ya?ml|md)\b',prompt,re.I))
@@ -60,7 +67,7 @@ def requested_intent(prompt):
     environment_write=environment_write and not code_edit and not interaction
     if environment_write:kind='analysis';readonly=True
     project_question=bool(re.search(r'(?:本|当前|这个|该|this)\s*(?:项目|工程|仓库|程序|project|repo)|(?:分析|解释|检查).{0,8}(?:项目|工程|仓库|程序)',text,re.I))
-    memory_write=bool(re.search(r'记住|保存.{0,20}(?:知识|记忆|约定)|(?:知识|记忆).{0,12}保存|remember|save.{0,20}memor',prompt,re.I))
+    memory_write=bool(re.search(r'记住|保存.{0,20}(?:知识|记忆|约定)|(?:知识|记忆).{0,12}保存|remember|save.{0,20}memor',memory_authorization_text(prompt),re.I))
     return {'kind':kind,'read_only':kind!='interaction' and (readonly or kind=='analysis' or (question and not direct)),'pure_question':kind=='question' and question and not project_question and not paths and not memory_write,'memory_write':memory_write,'environment_write':environment_write,'referenced_files':len(paths),'listed_steps':listed}
 
 
