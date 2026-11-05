@@ -119,7 +119,8 @@ class ModelDiagnostics:
                             code_value = 'MODEL_OR_ENDPOINT_NOT_FOUND'
                         if type(exc.__cause__).__name__ == 'ClientConnectorDNSError':
                             code_value = 'DNS_FAILED'
-                        report['errors'].append({'stage': stage, 'code': code_value})
+                        report['errors'].append({'stage': stage, 'code': code_value,
+                            'http_status':metadata.get('http_status'),'remote_error':getattr(exc,'remote_error',{})})
                         if report['connection'] != 'PASS':
                             report['connection'] = 'FAIL'
                         # Auth/model/network failures do not warrant spending the remaining requests.

@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -555,6 +556,9 @@ class OpenAICompatibleProvider:
             transient=status == 429 or status >= 500,
         )
         result.http_status=status
+        # Only protocol identifiers, never the service's message/request echo.
+        result.remote_error={key:str(error[key]) for key in ('code','type','param')
+                             if key in error and re.fullmatch(r'[A-Za-z0-9_.:/-]{1,120}',str(error[key]))}
         result.retry_after=getattr(self,'response_metadata',{}).get('retry_after',0)
         if status==429 and result.retry_after>10:
             result.transient=False

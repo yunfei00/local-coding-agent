@@ -4,6 +4,15 @@ import {UnifiedProgress,type UnifiedRun} from './UnifiedProgress';
 const base:UnifiedRun={id:'run',intent:'question',phase:'completed',outcome:'completed_verified',level:'none',changed_paths:[],verification:[]};
 const actions={onResume:()=>{},onDiagnostics:()=>{}};
 describe('统一 Agent 结果',()=>{
+  it('工作流进度来自真实步骤并显示角色和交付证据',()=>{
+    const html=renderToStaticMarkup(<UnifiedProgress run={{...base,intent:'complex',current_role:'tester',workflow_progress:{completed:2,total:4,percent:50,blocked:[]},role_handoffs:[{sequence:1,role:'reviewer',model:'actual-model',provider:'API',step_id:'s'}],plan:{steps:[{id:'s',description:'实际审查',state:'completed',workflow:{assigned_role:'reviewer',dependencies:['develop'],acceptance_criteria:['重新读取 Diff']}}]},delivery:{summary:'部分完成',md_path:'report.md',json_path:'report.json'}}} {...actions}/>);
+    expect(html).toContain('2/4 (50%)');expect(html).toContain('actual-model');expect(html).toContain('重新读取 Diff');expect(html).toContain('report.json');
+  });
+  it('运行中提供暂停入口，已结束任务不提供暂停',()=>{
+    const active=renderToStaticMarkup(<UnifiedProgress run={{...base,phase:'executing',outcome:undefined}} {...actions} onPause={()=>{}}/>);
+    const ended=renderToStaticMarkup(<UnifiedProgress run={base} {...actions} onPause={()=>{}}/>);
+    expect(active).toContain('暂停任务');expect(ended).not.toContain('暂停任务');
+  });
   it('实际模型切换、压缩、记忆命中及恢复状态在同页可追踪',()=>{
     const html=renderToStaticMarkup(<UnifiedProgress run={{...base,model:'actual-model',routing:{mode:'auto',reason:['能力匹配：工具调用'],switches:[{from:'a',to:'b',code:'MODEL_QUOTA_EXHAUSTED'}]},context_state:{compressed:true,recovered:true,memory_hits:2,retrieval_hits:3,index_version:4}}} {...actions}/>);
     expect(html).toContain('actual-model');expect(html).toContain('MODEL_QUOTA_EXHAUSTED');expect(html).toContain('上下文已压缩');expect(html).toContain('已恢复原执行状态');expect(html).toContain('记忆命中 2');

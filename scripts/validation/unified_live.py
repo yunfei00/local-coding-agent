@@ -42,11 +42,13 @@ def prepare(root):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--live',action='store_true')
+    parser.add_argument('--allowed-model',action='append',default=[],help='本轮正向模型白名单；原始配置不变，别名不自动放行')
     parser.add_argument('--suite',action='store_true')
+    parser.add_argument('--headless-runtime',action='store_true',help='无桌面窗口，通过同一后端认证 WebSocket 验收；不能计为 GUI PASS')
     parser.add_argument('--isolate-git-path',action='store_true',help='仅本轮 Electron/Agent 子进程移除 Git PATH，保留父进程及用户配置')
     parser.add_argument('--automatic-routing',action='store_true',help='真实聊天选择自动模型，候选来自本轮实际能力探针')
     parser.add_argument('--reopen-memory-report',type=Path,help='仅重启本仓库隔离目录内的记忆验收，不读写用户数据')
-    parser.add_argument('--case',action='append',choices=['question','analysis','change','python-smoke','react','electron','gui','visual','approval','network','followup','coupon','environment','repair','context','interruption','websocket','json','project-memory','memory-reopen','knowledge-fix','environment-repair','environment-git','environment-python','routing'],default=[])
+    parser.add_argument('--case',action='append',choices=['question','analysis','change','python-smoke','react','electron','gui','visual','approval','network','followup','coupon','environment','repair','context','interruption','websocket','json','project-memory','memory-reopen','knowledge-fix','environment-repair','environment-git','environment-python','routing','workflow-python','workflow-react'],default=[])
     parser.add_argument('--request-seconds',type=int,default=60)
     parser.add_argument('--output-tokens',type=int,default=8192)
     parser.add_argument('--validation-task-calls',type=int,help='用户授权的隔离验收任务请求上限，不修改原 Settings')
@@ -61,6 +63,7 @@ def main():
     parser.add_argument('--candidate-model',action='append',default=[],help='Exact model ID returned by the discovery report; isolated catalog only')
     parser.add_argument('--discovery-report',type=Path)
     parser.add_argument('--resume-report',type=Path,help='恢复本轮受控验收工程，不重新实现或重新创建原任务')
+    parser.add_argument('--verify-completed',action='store_true',help='只核对已完成任务及其真实测试，不启动新模型请求')
     parser.add_argument('--resume-case',default='coupon')
     parser.add_argument('--prepared-fixture',type=Path,help='复用已完成依赖安装的受控 React/Electron 工程')
     parser.add_argument('--reuse-project',type=Path,help='真实 GUI 复用先前已由 Agent 修复的受控工程')
@@ -80,14 +83,27 @@ def main():
         previous=json.loads(args.resume_report.read_text(encoding='utf-8'))
         original=json.loads((args.resume_report.parent/'manifest.json').read_text(encoding='utf-8'))
         case=next((c for c in previous['cases'] if c['name']==args.resume_case),None)
-        if not case or (not case.get('runtime',{}).get('plan_id') and case.get('name') not in {'react','electron'}):parser.error('Original case has no recoverable plan')
+        if args.verify_completed and (not case or case.get('runtime',{}).get('phase')!='completed'):
+            parser.error('只允许核对已经完成的真实任务')
+        if not case or (not (case.get('runtime',{}).get('plan_id') or case.get('runtime',{}).get('recovery_plan_id')) and case.get('name') not in {'react','electron'}):parser.error('Original case has no recoverable plan')
         for value in (original['data'],case['folder']):
             if not Path(value).resolve().is_relative_to(ROOT/'validation-reports'):parser.error('Resume outside controlled validation directory')
         args.output.mkdir(parents=True,exist_ok=False)
         manifest={**original,'output':str(args.output.resolve()),'report':str((args.output/'report.json').resolve()),
-                  'resume_case':case,'resume_source':str(args.resume_report.resolve()),'max_calls':25,'max_tokens':500000}
+                  'resume_case':case,'resume_source':str(args.resume_report.resolve()),'verify_completed':args.verify_completed,'max_calls':25,'max_tokens':500000}
         path=args.output/'manifest.json';path.write_text(json.dumps(manifest),encoding='utf-8')
-        code=run_controller(['node',str(ROOT/'scripts/validation/unified_live.cjs'),str(path.resolve())],{**os.environ,'PYTHONUTF8':'1'},timeout=1000,report_path=args.output/'report.json')
+        if args.headless_runtime:
+            from agent.desktop.resources import require_resources,MIB
+            threshold=128 if args.verify_completed else 512
+            require_resources(minimum_available=threshold*MIB,minimum_commit=threshold*MIB)
+            if args.verify_completed:
+                command=['uv','run','--locked','python',str(ROOT/'scripts/validation/runtime_live.py'),str(path.resolve())]
+            else:
+                executable=subprocess.check_output(['node','-p',"require('./desktop/node_modules/electron')"],cwd=ROOT,text=True).strip()
+                command=[executable,str(ROOT/'scripts/validation/runtime_live_bridge.cjs'),str(path.resolve())]
+        else:command=['node',str(ROOT/'scripts/validation/unified_live.cjs'),str(path.resolve())]
+        env={**os.environ,'PYTHONUTF8':'1'};env.pop('ELECTRON_RUN_AS_NODE',None)
+        code=run_controller(command,env,timeout=1000,report_path=args.output/'report.json')
         code=controller_result(code,args.output/'report.json')
         print(json.dumps({'exit_code':code,'report':manifest['report']},ensure_ascii=False));return code
     policy=ROOT/'validation-reports/unified-model-policy.json'
@@ -119,13 +135,17 @@ def main():
     if args.only_model:
         profiles=[p for p in profiles if p['model_id'] in args.only_model]
         if set(args.only_model)-{p['model_id'] for p in profiles}:parser.error('Requested model missing or excluded')
+    if args.allowed_model:
+        if set(args.candidate_model+args.only_model)-set(args.allowed_model):parser.error('本轮候选模型不在正向白名单中')
+        profiles=[p for p in profiles if p['model_id'] in args.allowed_model]
     profiles=[{**p,'supports_vision':True} if p['model_id'] in args.vision_candidate_model else p for p in profiles]
     inventory=[{k:p.get(k) for k in ('model_profile_id','model_id','context_window','max_output_tokens','tool_mode')} for p in profiles]
     if not args.live:
         print(json.dumps({'result':'NOT RUN','inventory':inventory,'credentials_read':False},ensure_ascii=False));return
     args.output.mkdir(parents=True,exist_ok=False)
     from agent.desktop.resources import require_resources,MIB,memory_snapshot
-    try:require_resources(minimum_available=1024*MIB,minimum_commit=1024*MIB)
+    threshold=512 if args.headless_runtime else 1024
+    try:require_resources(minimum_available=threshold*MIB,minimum_commit=threshold*MIB)
     except Exception as exc:
         (args.output/'report.json').write_text(json.dumps({'result':'BLOCKED_RESOURCE','error_code':getattr(exc,'code',type(exc).__name__),'memory':memory_snapshot(),'models':[],'cases':[]}),encoding='utf-8')
         print('BLOCKED_RESOURCE: 未启动 Electron 或模型请求。');return 1
@@ -184,7 +204,7 @@ def main():
               'max_calls':args.max_calls,'max_tokens':args.max_tokens,'report':str((args.output/'report.json').resolve()),
               'context_project':str(context.resolve()),'reuse_capabilities':str(args.reuse_capabilities.resolve()) if args.reuse_capabilities else None,
               'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()}
-    manifest.update(excluded_models=excluded,discover_only=args.discover_only,case_names=args.case,request_seconds=args.request_seconds)
+    manifest.update(excluded_models=excluded,allowed_models=args.allowed_model,discover_only=args.discover_only,case_names=args.case,request_seconds=args.request_seconds)
     manifest['capabilities_only']=args.capabilities_only
     manifest['executor_model']=args.executor_model
     if args.prepared_fixture:manifest['prepared_fixture']=str(args.prepared_fixture.resolve())
@@ -197,7 +217,13 @@ def main():
     path=args.output/'manifest.json';path.write_text(json.dumps(manifest),encoding='utf-8')
     (args.output/'report.json').write_text(json.dumps({'result':'RUNNING','inventory':inventory}),encoding='utf-8')
     env={**os.environ,'PYTHONUTF8':'1'}
-    code=run_controller(['node',str(ROOT/'scripts/validation/unified_live.cjs'),str(path.resolve())],env,timeout=3900,report_path=args.output/'report.json')
+    if args.headless_runtime:
+        if not args.allowed_model or args.discover_only or args.capabilities_only or any(n not in {'workflow-python','workflow-react','repair','interruption','websocket','environment'} for n in args.case):parser.error('无窗口 Runtime 仅支持已知能力模型的白名单工程用例')
+        executable=subprocess.check_output(['node','-p',"require('./desktop/node_modules/electron')"],cwd=ROOT,text=True).strip()
+        env.pop('ELECTRON_RUN_AS_NODE',None)
+        command=[executable,str(ROOT/'scripts/validation/runtime_live_bridge.cjs'),str(path.resolve())]
+    else:command=['node',str(ROOT/'scripts/validation/unified_live.cjs'),str(path.resolve())]
+    code=run_controller(command,env,timeout=3900,report_path=args.output/'report.json',startup_timeout=700 if args.headless_runtime else 360)
     code=controller_result(code,args.output/'report.json')
     print(json.dumps({'exit_code':code,'report':str(args.output/'report.json')},ensure_ascii=False))
     return code

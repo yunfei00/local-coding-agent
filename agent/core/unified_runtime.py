@@ -11,13 +11,25 @@ from pathlib import Path
 
 from agent.core.verification import discover_commands
 from agent.llm.planning import PLAN_SCHEMA, validate_plan
+import copy
+
+WORKFLOW_PLAN_SCHEMA = copy.deepcopy(PLAN_SCHEMA)
+WORKFLOW_PLAN_SCHEMA['properties']['steps']['items']['properties'].update({
+    'task_id': {'type':'string', 'maxLength':80, 'description':'Unique local DAG ID, referenced by dependencies'},
+    'title': {'type':'string', 'maxLength':200},
+    'dependencies': {'type':'array', 'maxItems':30, 'items':{'type':'string'}},
+    'assigned_role': {'type':'string', 'enum':['planner','developer','reviewer','tester']},
+    'required_capabilities': {'type':'array', 'maxItems':30, 'items':{'type':'string'}},
+    'acceptance_criteria': {'type':'array', 'minItems':1, 'maxItems':30, 'items':{'type':'string'}},
+})
 
 PLAN_TOOL = {"type": "function", "function": {
     "name": "agent_plan", "description": "Persist a cohesive plan for complex, multi-module development. Do not use for questions or small edits. Does not execute files or grant permissions.",
-    "parameters": PLAN_SCHEMA}}
+    "parameters": WORKFLOW_PLAN_SCHEMA}}
 INSTRUCTIONS = """Unified Agent: infer intent from the user's goal, repository context and actual tools, not keywords.
 Answer ordinary questions directly, with no tools or plan. Analyze using relevant read-only tools; do not edit without a change request.
 For a small change use normal tools directly. For complex multi-file development call agent_plan with 1-4 cohesive executable steps before editing.
+For complex development prefer workflow_template bugfix/feature, or provide a bounded DAG in agent_plan with task_id, dependencies, assigned_role and acceptance_criteria. Use planner for actual inspection, developer for edits, reviewer for independent read-only review and tester for real commands. The reviewer must call workflow_review; prose approval is insufficient. Small tasks remain direct, with no mandatory workflow.
 Keep each tool batch small: create a short file skeleton then apply small focused patches (about 80 lines per edit). Do not emit an entire multi-file project in one tool response; each response must finish within the configured request timeout.
 Each step must have real tool evidence; avoid prose-only steps. Use an empty verification for edit/inspection steps, a concrete command for test steps.
 Do not ask the user to choose chat/development modes. You may upgrade a small task using agent_plan, preserving all existing changes and evidence.
@@ -32,7 +44,11 @@ Windows app activation can reuse a process/window: use a unique task-owned file/
 
 
 def plan_steps(value):
-    return validate_plan(value)
+    steps = validate_plan(value)
+    if any('assigned_role' in s or 'dependencies' in s or 'task_id' in s for s in steps):
+        from agent.core.workflow import normalize_nodes
+        normalize_nodes(steps)
+    return steps
 
 
 def plan_view(plan):
@@ -72,7 +88,7 @@ def requested_intent(prompt):
     return {'kind':kind,'read_only':kind!='interaction' and (readonly or kind=='analysis' or (question and not direct)),'pure_question':kind=='question' and question and not project_question and not paths and not memory_write,'memory_write':memory_write,'environment_write':environment_write,'referenced_files':len(paths),'listed_steps':listed}
 
 
-COMPUTER_TOOLS={'start_process','read_process','stop_process','list_directory','file_exists','agent_plan',*('desktop_'+n for n in ('list_windows','inspect','screenshot','focus_window','click','type_text','keypress','scroll','wait'))}
+COMPUTER_TOOLS={'start_process','read_process','stop_process','list_directory','file_exists','agent_plan','workflow_template','workflow_adjust',*('desktop_'+n for n in ('list_windows','inspect','screenshot','focus_window','click','type_text','keypress','scroll','wait'))}
 
 def computer_only(goal):
     """明确的仅界面授权边界，不改变普通代码/分析任务的工具范围。"""
@@ -140,9 +156,17 @@ class RuntimeEvents:
         self.ws,self.execution,self.runtime=ws,execution,runtime
 
     async def send_json(self,event):
-        if event['type'] in {'turn.failed','turn.cancelled'}:
+        if event['type']=='approval.requested' and self.runtime.get('phase') not in {'completed','failed','cancelled','paused'}:
+            from agent.server.protocol import envelope
             payload=event.get('payload',{})
-            disconnected=payload.get('reason')=='connection_interrupted' or payload.get('code')=='CONNECTION_INTERRUPTED'
+            self.runtime.update(id=self.execution.key,workflow_state='WAITING_APPROVAL',pending_approval={k:payload.get(k) for k in ('approval_id','tool','risk')},revision=self.runtime.get('revision',0)+1)
+            if self.execution.ledger:self.execution.ledger.transition(self.execution,self.runtime['phase'],event.get('turn_id'))
+            else:self.execution.save()
+            await self.ws.send_json(envelope('agent.runtime.updated',{'runtime':dict(self.runtime)},thread_id=event.get('thread_id'),turn_id=event.get('turn_id')))
+        if event['type'] in {'turn.failed','turn.cancelled'}:
+            self.runtime.pop('pending_approval',None)
+            payload=event.get('payload',{})
+            disconnected=payload.get('reason')=='connection_interrupted' or payload.get('code') in {'CONNECTION_INTERRUPTED','TASK_PAUSED'}
             values=dict(phase='paused' if disconnected else 'cancelled' if event['type']=='turn.cancelled' else 'failed',
                 outcome='awaiting_user' if disconnected else 'cancelled' if event['type']=='turn.cancelled' else 'awaiting_user' if payload.get('code') in {'PLAN_RESUME_CONFIRMATION_REQUIRED','APPROVAL_DENIED','PERMISSION_DENIED'} else 'partially_completed' if self.runtime.get('changed_paths') else 'failed',
                 reason=str(self.runtime.get('reason') if disconnected else payload.get('message') or payload.get('reason') or payload.get('code') or '执行停止')[:2000],

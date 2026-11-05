@@ -1,0 +1,125 @@
+{
+  "recorded_at": "2026-11-05T18:15:23.207460+00:00",
+  "source_commit": "a4d19502339cdf81b899d1b7c01d96b10a46a44c",
+  "overall": "PASS",
+  "reason": [],
+  "local_full_tests": {
+    "total": 664,
+    "pass": 648,
+    "skip": 16,
+    "fail": 0
+  },
+  "latest_targeted_tests": {
+    "pass": 33,
+    "fail": 0,
+    "overlaps_full_suite": true
+  },
+  "frontend": {
+    "pass": 67,
+    "fail": 0
+  },
+  "evidence": [
+    {
+      "path": "validation-reports/20261106-014335-670546.json",
+      "sha256": "425480f7f8cf76c589685e12b218ec3958a42cd1270ba0af7ff3766caeb8456f"
+    },
+    {
+      "path": "validation-reports/v09-final-targeted.log",
+      "sha256": "7fa7d77b525d09d97905b5ccbce878575326ce67c15ac11144d5eb130f488a82"
+    },
+    {
+      "path": "validation-reports/v09-model-summary.json",
+      "sha256": "5b410e6ed3e5f96b29507b3cd7616cf0999abb19b5fc9839bd9b2f5268e8dd72"
+    },
+    {
+      "path": "validation-reports/v09-gui-final-preflight.json",
+      "sha256": "301adb34286f73d778f10e59275e1362a162129e703620ce660a93eea98ff477"
+    },
+    {
+      "path": "validation-reports/v09-white-capabilities/report.json",
+      "sha256": "34447bc4d65a35caa6924a0b79b1aeb1a7bff184adfbadd3ad401d1b6340f077"
+    },
+    {
+      "path": "validation-reports/v09-kimi-capabilities/report.json",
+      "sha256": "36cdc23b0d5e6cf20b82da97529a1b237078f68334937f11348e13fd7fb07f8f"
+    },
+    {
+      "path": "validation-reports/v09-workflow-python-independent/report.json",
+      "sha256": "92530259db5934eeaeee08331d3ae8c53025c78ba176b98b46db5c98645fee32"
+    },
+    {
+      "path": "validation-reports/v09-runtime-react-resume-fixed/report.json",
+      "sha256": "5dc4584be7f70bdc9698a114d4b8778ab5fd792c8eb7e7182c01279595a376e0"
+    },
+    {
+      "path": "validation-reports/v09-runtime-continuity/report.json",
+      "sha256": "cce880f6a613af220c9ca08d924aea7f6262990fc1a9fe2419157b11a400000f"
+    },
+    {
+      "path": "validation-reports/v09-runtime-websocket-offline/report.json",
+      "sha256": "4c1e71769cb909271f23cd02b8cfed5989e58de04dddb6e81007eee7ac0cf1af"
+    },
+    {
+      "path": "validation-reports/v09-runtime-repair-environment/report.json",
+      "sha256": "5f773f8d33869b25ee2d2c25b4cb8613a9d4e6c33c4ce1c979ca756754f3556f"
+    },
+    {
+      "path": "validation-reports/v09-runtime-repair-protected/report.json",
+      "sha256": "8b2d4a5f4ed9c7d398b172ee42a3c1fccfcad179e8b7cecd0a6d44cc81440177"
+    },
+    {
+      "path": "validation-reports/v09-gui-unlocked/report.json",
+      "sha256": "0ab2ea373423e6d1eb65afa7069de886fd0b827aa8d3a0bd358d4781cfd65915"
+    },
+    {
+      "path": "validation-reports/v09-gui-unlocked/cleanup-check.json",
+      "sha256": "e558f1d548b0e43d79b525d57c23eeb0421acea6c42e9c05dabd8a333a154082"
+    },
+    {
+      "path": "validation-reports/v09-gui-fixture/frontend/.runtime/saved.json",
+      "sha256": "c9a884832d70eb70c14abfbbcc0e7d87fbd2eedb19eb06d959113910a4629321"
+    },
+    {
+      "path": "validation-reports/v09-review-regression-fixed.log",
+      "sha256": "a274482651fe63d23cc91cdabc9de460cc2f19e34ee52bb1441b37c32faeb3fe"
+    },
+    {
+      "path": "validation-reports/v09-background-repair-review/report.json",
+      "sha256": "2fdfed0fc5f7fdf0eb7bad2ff63f3877c034c6bb473fb3f9ed8e181b47f369d2"
+    }
+  ],
+  "model_requests": 119,
+  "known_actual_tokens": 1368228,
+  "cost": "UNKNOWN",
+  "gui_followup": {
+    "source_commit": "92b83c2a3a6031602a26c1b617fc42cbf712bf77",
+    "result": "PASS",
+    "model": "qwen3.8-2.4t-a95b",
+    "calls": 17,
+    "input_tokens": 214191,
+    "output_tokens": 4141,
+    "cached_tokens": 53248,
+    "saved_value": "GUI-554fdf9f",
+    "runtime_outcome": "completed_unverified",
+    "level": "manual",
+    "changed_paths": [],
+    "owned_pids_remaining": []
+  },
+  "review_fixes": {
+    "source_commit": "36603f834545fdee08ddcf2b9a1cca828ebb2839",
+    "targeted_tests": 14,
+    "pass": 14,
+    "fail": 0,
+    "new_tests": 3,
+    "current_collected_tests": 670,
+    "live_background_repair": {
+      "result": "PASS",
+      "model": "qwen3.8-2.4t-a95b",
+      "calls": 5,
+      "actual_tokens": 38884,
+      "repairs": 0,
+      "independent_exit_code": 0,
+      "frozen_original_tests": true
+    }
+  }
+}

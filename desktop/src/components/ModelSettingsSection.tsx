@@ -2,6 +2,7 @@ import {useEffect, useState} from "react";
 import {Connection, ModelCatalog, ModelProfile, TaskConfig, modelLabel, longTaskBudget, defaultModelOutput, codingOutputProfile} from "../lib/modelCatalog";
 import {ModelDiagnosticResult} from "./ModelDiagnosticResult";
 import {ModelCapabilitySummary} from './ModelCapabilitySummary';
+import {WorkflowSettings} from './WorkflowSettings';
 
 export function ModelSettingsSection({threadId = "", running}: {threadId?: string; running: boolean}) {
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
@@ -99,6 +100,7 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
         <button onClick={() => {if (bound(profileId)) {setError("Rebind all roles using this model before deletion."); return;} setCatalog({...catalog, profiles:catalog.profiles.filter(p => p.model_profile_id !== profileId)}); setProfileId("");}}>Delete model profile</button>
       </div> : null}
       <h3>Role Routing</h3>
+      <WorkflowSettings threadId={threadId} catalog={catalog}/>
       <p>Chat 与 Task 独立选择模型；Single Agent 只需要配置 Executor。</p>
       <div className="model-settings-grid"><label className="settings-field">Default Task Vision Observer<select aria-label="Default Task Vision Observer" value={config.vision_profile_id || ""} onChange={e=>setConfig({...config,vision_profile_id:e.target.value || null})}><option value="">Executor vision / UIA</option>{catalog.profiles.filter(p=>p.supports_vision).map(p=><option key={p.model_profile_id} value={p.model_profile_id}>{modelLabel(catalog,p)}</option>)}</select></label>
       <label className="settings-field">Default Chat Model<select aria-label="Default Chat profile" value={chatDefault} onChange={e=>setChatDefault(e.target.value)}><option value="">Migrated legacy default</option>{catalog.profiles.map(p=><option key={p.model_profile_id} value={p.model_profile_id}>{modelLabel(catalog,p)}</option>)}</select></label>

@@ -12,6 +12,7 @@ from agent.core.diagnostics import redact_text
 
 
 TRACE_FIELDS = frozenset({
+    'step_id','from_step_id','sequence',
     'phase','previous_phase','generation','request_id','provider','model','role','route',
     'http_status','request_sent','network_attempted','error_code','category','recoverable',
     'retry','duration_ms','input_tokens','output_tokens','cached_tokens','estimated',
@@ -22,7 +23,7 @@ TRACE_FIELDS = frozenset({
     'attempt','recovery_limit','recovery_count','next_state','tool','exit_code','log_path',
     'status','settlement','reserved_cost','actual_cost',
 })
-ACTIVE_PHASES = {'planning','executing','running','verifying','repairing','escalating','recovering'}
+ACTIVE_PHASES = {'queued','planning','executing','running','verifying','repairing','escalating','recovering'}
 TERMINAL_PHASES = {'completed','failed','paused','cancelled'}
 TRACE_LABELS={'request.prepared':'请求已准备','request.dispatched':'正在尝试连接/发送',
     'request.reserved':'请求预算已预留','request.settled':'请求预算已结算',
@@ -201,6 +202,7 @@ class RuntimeLedger:
         for row in self.db.execute('SELECT id,thread_id,data_json FROM agent_execution_runs').fetchall():
             data=json.loads(row[2]);runtime=data.get('unified')
             if not runtime or runtime.get('phase') not in ACTIVE_PHASES:continue
+            if runtime.pop('pending_approval',None):runtime['approval_reconfirmation_required']=True
             runtime.update(phase='paused',outcome='awaiting_user',error_code='BACKEND_INTERRUPTED',reason=failure_info('BACKEND_INTERRUPTED')['reason'],revision=runtime.get('revision',0)+1,updated_at=time.time())
             data.update(status='paused',last_error='BACKEND_INTERRUPTED')
             for request in data.get('unified_api_requests',[]):

@@ -48,3 +48,8 @@
 ## v0.8 扩展
 
 继续使用同一个 AgentServer 工具循环、RuntimeLedger、ExecutionBudget 和 Checkpoint。新增能力路由解析实际 Provider，项目知识在同一个 SQLite 中按工程隔离；检索、记忆与环境检查进入原 ToolRegistry。模型切换不重置累计预算或重放副作用。高级 Task 的旧入口不额外注入知识工具开销，统一入口默认可用。详见 [v0.8 架构](v0.8/architecture.md)及[验收](v0.8/acceptance-report.md)。
+
+
+## v0.9 增量
+
+依赖计划、逻辑角色和后台队列均复用本文的 run_tool_turn、工具与账本。后台队列只是调度与传输适配，不是第二套 Agent Loop；旧计划没有 DAG 元数据时继续顺序执行。详细实现与未完成验收见 [v0.9 架构](v0.9/architecture.md)及[验收](v0.9/acceptance-report.md)。

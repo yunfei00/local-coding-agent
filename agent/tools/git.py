@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
 import re
 import shutil
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from agent.persistence.store import default_data_dir
 
@@ -20,8 +22,9 @@ async def _git(
     workspace: Workspace,
     *args: str,
     timeout: int = 30,
+    private_output: bool = False,
 ) -> tuple[int, str, str]:
-    manager = ProcessManager(workspace)
+    manager = ProcessManager(workspace,persist_output=False) if private_output else ProcessManager(workspace)
     try:
         # Direct argv preserves Git paths/quoting while sharing process ownership,
         # timeout and cancellation cleanup with shell commands (including hooks).
@@ -37,6 +40,49 @@ async def _git(
         raise
     finally:
         await manager.close()
+
+
+class GitCIStatusTool(BaseTool):
+    name='git_ci_status'
+    description='只读检查当前 GitHub origin 仓库、指定 Commit 的 CI 状态；不触发工作流、推送或合并。需要已授权的 gh CLI。'
+    parameters={'type':'object','properties':{'commit':{'type':'string','pattern':'^[a-fA-F0-9]{40}$'}},'required':[]}
+
+    def __init__(self, workspace):
+        self.workspace=workspace
+
+    async def execute(self, arguments, *, on_output=None):
+        code,remote,_=await _git(self.workspace,'remote','get-url','origin',private_output=True)
+        if code:return ToolResult(ok=False,summary='当前工程没有可读取的 origin',exit_code=code)
+        remote=remote.strip()
+        if remote.startswith('git@github.com:'):
+            repo=remote.split(':',1)[1]
+        else:
+            parsed=urlsplit(remote)
+            repo=parsed.path.lstrip('/') if parsed.hostname=='github.com' else ''
+        repo=repo.removesuffix('.git')
+        if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+',repo):
+            raise ToolError('CI_ORIGIN_UNSUPPORTED','仅支持当前 origin 指向的 GitHub 仓库；没有发送请求')
+        commit=arguments.get('commit')
+        if commit is None:
+            code,commit,_=await _git(self.workspace,'rev-parse','HEAD')
+            if code:return ToolResult(ok=False,summary='无法读取当前 Commit',exit_code=code)
+            commit=commit.strip()
+        if not isinstance(commit,str) or not re.fullmatch(r'[a-fA-F0-9]{40}',commit):
+            raise ToolError('CI_COMMIT_INVALID','Commit 必须为完整 SHA')
+        manager=ProcessManager(self.workspace,persist_output=False)
+        try:
+            result=await manager.run({'command':'gh','timeout_seconds':30},argv=['gh','run','list','--repo',repo,'--commit',commit,'--limit','10','--json','databaseId,headSha,status,conclusion,url,workflowName'])
+            if not result.ok or result.data.get('output_truncated'):
+                return ToolResult(ok=False,summary='CI 状态读取失败；检查 gh 授权、网络或日志，未修改远程仓库',exit_code=result.exit_code)
+            runs=json.loads(result.stdout)
+            if not isinstance(runs,list):raise ValueError('CI 返回格式无效')
+            return ToolResult(ok=True,summary='已读取实际 CI 状态；未运行或未完成不能视为通过',exit_code=0,
+                data={'repository':repo,'commit':commit,'runs':runs,
+                      'all_returned_runs_passed':bool(runs) and all(r.get('headSha')==commit and r.get('status')=='completed' and r.get('conclusion')=='success' for r in runs)})
+        except (ToolError,ValueError) as exc:
+            raise ToolError('CI_STATUS_UNAVAILABLE','无法读取 CI；需要已安装并授权的 gh CLI，原工程未修改') from exc
+        finally:
+            await manager.close()
 
 
 class GitStatusTool(BaseTool):

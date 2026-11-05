@@ -1,0 +1,36 @@
+[
+  {"id":"bugfix","name":"Bug 修复","applies_to":"需要定位、修复并验证的缺陷","permissions":["workspace_read","workspace_write","test_command"],"failure_policy":"环境问题停止；审查修复最多三轮；保留 Checkpoint", "steps":[
+    {"task_id":"inspect","description":"读取相关工程与失败证据，确定根因和验收标准","assigned_role":"planner","dependencies":[],"acceptance_criteria":["实际文件与错误证据支持根因"]},
+    {"task_id":"develop","description":"实现最小修复并保留现有行为","assigned_role":"developer","dependencies":["inspect"],"acceptance_criteria":["真实文件已修改"]},
+    {"task_id":"review","description":"独立读取 Diff 和相关文件，检查正确性与兼容性，提交 workflow_review","assigned_role":"reviewer","dependencies":["develop"],"acceptance_criteria":["独立审查通过"]},
+    {"task_id":"test","description":"运行工程相关测试和 Diff 检查，依据退出码生成中文交付结果","assigned_role":"tester","dependencies":["review"],"acceptance_criteria":["真实测试成功退出"]}
+  ]},
+  {"id":"feature","name":"新功能开发","applies_to":"多文件功能开发","permissions":["workspace_read","workspace_write","test_command"],"failure_policy":"审查退回与修复有界；禁止跳过测试", "steps":[
+    {"task_id":"inspect","description":"读取工程入口、测试配置和约束，确定实现范围","assigned_role":"planner","dependencies":[]},
+    {"task_id":"develop","description":"实现需求并添加测试，真实修改文件","assigned_role":"developer","dependencies":["inspect"]},
+    {"task_id":"review","description":"独立审查需求覆盖、兼容性与安全，提交 workflow_review","assigned_role":"reviewer","dependencies":["develop"]},
+    {"task_id":"test","description":"执行相关测试与构建，检查 Diff 并报告真实结果","assigned_role":"tester","dependencies":["review"]}
+  ]},
+  {"id":"review","name":"代码审查","applies_to":"只读审查现有变更","permissions":["workspace_read"],"failure_policy":"发现缺陷如实退回，不擅自修改", "steps":[
+    {"task_id":"review","description":"读取实际文件与 Diff，检查风险、兼容性和需求覆盖，提交 workflow_review","assigned_role":"reviewer","dependencies":[]}
+  ]},
+  {"id":"tests","name":"自动测试","applies_to":"执行项目既有测试","permissions":["test_command"],"failure_policy":"环境错误不循环；报告命令、退出码和日志", "steps":[
+    {"task_id":"inspect","description":"读取项目配置，确认真实测试命令","assigned_role":"planner","dependencies":[]},
+    {"task_id":"test","description":"执行允许的真实测试并报告退出码","assigned_role":"tester","dependencies":["inspect"]}
+  ]},
+  {"id":"environment","name":"环境诊断","applies_to":"开发环境错误定位和审批修复","permissions":["workspace_read","repair_approval"],"failure_policy":"全局修改遵守审批；重检失败保留证据", "steps":[
+    {"task_id":"diagnose","description":"执行只读环境诊断，读取相关配置定位根因","assigned_role":"planner","dependencies":[]},
+    {"task_id":"repair","description":"在既有权限及审批范围内修复并重新诊断，无法修复则报告阻断","assigned_role":"developer","dependencies":["diagnose"]}
+  ]},
+  {"id":"windows","name":"Windows 软件操作","applies_to":"获授权的 Windows GUI 任务","permissions":["desktop_consent","gui_mutex"],"failure_policy":"资源不足停止启动；不结束用户应用", "steps":[
+    {"task_id":"operate","description":"发现并授权目标窗口，先 UIA 后视觉回退，操作后读取实际结果，释放本任务资源","assigned_role":"developer","dependencies":[],"required_capabilities":["tool_calling","vision"],"acceptance_criteria":["实际应用状态验证成功"]}
+  ]},
+  {"id":"docs","name":"文档生成","applies_to":"依据工程事实编写文档","permissions":["workspace_read","workspace_write"],"failure_policy":"不把推测写成已实现事实", "steps":[
+    {"task_id":"write","description":"读取真实工程证据并编写中文文档","assigned_role":"developer","dependencies":[]},
+    {"task_id":"review","description":"独立读取文档和对应源码，核对事实并提交 workflow_review","assigned_role":"reviewer","dependencies":["write"]}
+  ]},
+  {"id":"package","name":"安装包构建","applies_to":"使用项目实际配置构建产物","permissions":["workspace_read","build_command","approval"],"failure_policy":"网络和资源错误不无限重试；不自动发布", "steps":[
+    {"task_id":"inspect","description":"读取构建脚本与环境要求，确认实际产物路径","assigned_role":"planner","dependencies":[]},
+    {"task_id":"build","description":"按既有审批执行项目实际构建并检查产物，不发布或创建 Tag","assigned_role":"developer","dependencies":["inspect"]}
+  ]}
+]

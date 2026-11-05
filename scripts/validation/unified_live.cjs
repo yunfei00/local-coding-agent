@@ -8,7 +8,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const manifest=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const policyPath=path.join(manifest.root,'validation-reports/unified-model-policy.json');
 const deniedModels=['qwen3.7-plus','qwen3.8-flash',...(manifest.excluded_models||[]),...(fs.existsSync(policyPath)?JSON.parse(fs.readFileSync(policyPath,'utf8')).excluded_models||[]:[])];
-const denied=model=>deniedModels.some(name=>model.toLowerCase().includes(name.toLowerCase()));
+ const denied=model=>deniedModels.some(name=>model.toLowerCase().includes(name.toLowerCase())) || (manifest.allowed_models?.length && !manifest.allowed_models.includes(model));
 manifest.profiles=manifest.profiles.filter(p=>!denied(p.model_id));
 const report={result:'RUNNING',models:[],cases:[],limits:{calls:manifest.max_calls,tokens:manifest.max_tokens,request_seconds:manifest.request_seconds||60,wall_seconds:3600},cost:'UNKNOWN',started_at:new Date().toISOString()};
 const save=()=>fs.writeFileSync(manifest.report,JSON.stringify(report,null,2));
@@ -212,9 +212,10 @@ async function main(){
     const extended=await page.evaluate(({thread,plan,includeGlobal})=>window.localAgent.planRequest(thread,'plan.execution.extend',{plan_id:plan,include_global:includeGlobal,additional_calls:100,additional_tokens:2000000}),{thread,plan,includeGlobal});
     if(extended.type==='error')throw Error('EXPLICIT_EXTENSION_REJECTED');
    }
-   await page.getByRole('button',{name:'检查并继续未完成步骤',exact:true}).click();
+   if(!manifest.verify_completed)await page.getByRole('button',{name:'检查并继续未完成步骤',exact:true}).click();
    const until=Date.now()+900000;
    while(Date.now()<until){
+    if(manifest.verify_completed)break;
     if(page.isClosed())throw Error('ELECTRON_CLOSED_DURING_VALIDATION');
     if(ownedTurn&&turnTerminal.has(ownedTurn))break;
     const used=await budgetUsed();
@@ -223,21 +224,26 @@ async function main(){
    }
    const run=(await page.evaluate(thread=>window.localAgent.taskRequest(thread,'task.runtime.list'),thread)).payload.runtimes.find(r=>r.id===original.runtime.id);
    currentCase.runtime=run;currentCase.tools=events.filter(e=>e.type==='tool.completed');
-   const frontend=original.name==='react'||original.name==='electron';
+   const frontend=['react','workflow-react','electron'].includes(original.name);
    let frozen=true,check;
    if(frontend){
-    const fixture=original.name==='react'?'m2-react-ts':'m5-electron-e2e',tests=original.name==='react'?'test':'tests';
+    const fixture=original.name!=='electron'?'m2-react-ts':'m5-electron-e2e',tests=original.name!=='electron'?'test':'tests';
     const source=path.join(manifest.root,'manual-fixtures',fixture,tests),target=path.join(currentFolder,'frontend');
     for(const file of fs.readdirSync(source))frozen&&=fs.readFileSync(path.join(source,file)).equals(fs.readFileSync(path.join(target,tests,file)));
     const outputs=[];for(const args of [['run','typecheck'],['test'],['run','build']])outputs.push(await fixtureNpm(args,target));
     check={status:outputs.every(c=>c.status===0)?0:1,stdout:outputs.map(c=>c.stdout).join('\n'),stderr:outputs.map(c=>c.stderr).join('\n')};
-   }else{
+   }else if(original.name==='workflow-python'){
+    const originalTest=shell(['show','HEAD:tests/test_calc.py'],currentFolder);
+    frozen=originalTest.status===0&&originalTest.stdout===fs.readFileSync(path.join(currentFolder,'tests/test_calc.py'),'utf8');
+    check=cp.spawnSync('uv',['run','--no-project','python','-m','unittest','discover','-s','tests','-v'],{cwd:currentFolder,encoding:'utf8',windowsHide:true,timeout:60000});
+   }else if(original.name==='coupon'){
     frozen=fs.readFileSync(path.join(currentFolder,'tests/test_external_coupon_contract.py')).equals(fs.readFileSync(path.join(manifest.root,'scripts/validation/coupon_contract.py')));
     check=cp.spawnSync('uv',['run','--locked','python','scripts/validation/coupon_contract.py',currentFolder,'-v'],{cwd:manifest.root,encoding:'utf8',windowsHide:true,timeout:60000});
-   }
+   }else throw Error('UNSUPPORTED_RESUME_CONTRACT');
    currentCase.external_contract={exit_code:check.status,summary:(check.stdout+check.stderr).slice(-2000),frozen};
    currentCase.completed_preserved=original.runtime.plan.steps.filter(s=>s.state==='completed').every(s=>run?.plan?.steps.some(now=>now.id===s.id&&now.state==='completed'));
-   currentCase.result=run?.phase==='completed'&&run.outcome==='completed_verified'&&check.status===0&&frozen&&currentCase.completed_preserved&&run.plan.steps.every(s=>s.state==='completed')&&(frontend||fs.existsSync(path.join(currentFolder,'DELIVERY.md')))?'PASS':'FAIL';
+   const workflowEvidence=!original.name.startsWith('workflow-')||(['planner','developer','reviewer','tester'].every(role=>run?.role_handoffs?.some(h=>h.role===role))&&fs.existsSync(run?.delivery?.json_path||''));
+   currentCase.result=run?.phase==='completed'&&run.outcome==='completed_verified'&&check.status===0&&frozen&&currentCase.completed_preserved&&run.plan.steps.every(s=>s.state==='completed')&&workflowEvidence&&(frontend||original.name.startsWith('workflow-')||fs.existsSync(path.join(currentFolder,'DELIVERY.md')))?'PASS':'FAIL';
    report.usage={before,after:await budgetUsed()};report.result=currentCase.result;return;
   }
   const cached=manifest.reuse_capabilities&&!proxy?JSON.parse(fs.readFileSync(manifest.reuse_capabilities,'utf8')):null;
@@ -275,6 +281,8 @@ async function main(){
     await runCase(profile,'environment-git','本次隔离应用进程故意缺失 Git PATH。使用 environment_diagnose 检查，已安装 Git 目录见 README。使用 environment_repair 请求审批，为本项目子进程添加该目录，重新诊断并实际调用 git_status，运行现有 unittest，中文报告，不修改业务代码或系统 PATH。',r=>r.runtime.phase==='completed'&&r.independent?.exit_code===0&&r.tools.some(t=>t.name==='environment_repair'&&t.ok)&&r.tools.some(t=>t.name==='git_status'&&t.ok)&&r.dirty==='',{v08:'git'});
     await runCase(profile,'environment-python','使用 environment_diagnose 检查 Python 模块 lca_v08_local_dep 缺失问题。项目已有 pyproject.toml、uv.lock 和 vendor 本地依赖；使用 environment_repair action=project_uv_sync、module=lca_v08_local_dep 请求审批并实际复查。保留全部声明和业务源码，不修改系统环境。执行现有 unittest 并中文报告。',r=>r.runtime.phase==='completed'&&r.independent?.exit_code===0&&r.independent_module?.exit_code===0&&r.tools.some(t=>t.name==='environment_repair'&&t.ok)&&r.dirty==='',{v08:'python'});
     await runCase(profile,'environment-repair','使用 environment_diagnose 检查项目 npm 代理、Git 和 Python 依赖。项目 .npmrc 的代理端口故意不可用，请通过 environment_repair 请求审批，仅移除这个项目的 proxy 和 https-proxy，保留其他设置并重新验证。不要安装软件或修改系统配置。最后运行现有 unittest，中文报告。',r=>r.runtime.phase==='completed'&&r.independent?.exit_code===0&&r.tools.some(t=>t.name==='environment_diagnose'&&t.ok)&&r.tools.some(t=>t.name==='environment_repair'&&t.ok)&&!fs.readFileSync(path.join(r.folder,'.npmrc'),'utf8').includes('proxy='),{v08:'environment'});
+    await runCase(profile,'workflow-python','修复 calculator.py 的 add 函数把加法写成减法的错误，保留原 tests 不变。请使用 workflow_template bugfix，真实执行 Planner 检查、Developer 修改、Reviewer 独立重新读取与 workflow_review、Tester 运行 uv run --no-project python -m unittest discover -s tests -v 和 Diff 检查。完成中文交付，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.independent?.exit_code===0&&['planner','developer','reviewer','tester'].every(role=>r.runtime.role_handoffs?.some(h=>h.role===role))&&r.runtime.workflow_progress?.completed===r.runtime.workflow_progress?.total&&fs.existsSync(r.runtime.delivery?.json_path||''),{workflow:true});
+    await runCase(profile,'workflow-react','为 frontend React 页面新增一个中文加法计算器：两个 type=number 输入框，分别通过 label 标注“第一个数”和“第二个数”；点击“计算”按钮后，页面显示“结果：5”（例如输入 3 和 2）。同时修复现有 App.tsx 类型错误与 math.ts 加法缺陷，保留原测试、配置及根目录 calculator.py。使用 workflow_template feature，通过四角色独立协作完成真实修改、审查和 npm --prefix frontend run typecheck、npm --prefix frontend test、npm --prefix frontend run build，检查 Diff 并中文交付，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.independent?.exit_code===0&&['planner','developer','reviewer','tester'].every(role=>r.runtime.role_handoffs?.some(h=>h.role===role))&&r.runtime.workflow_progress?.completed===r.runtime.workflow_progress?.total,{workflow:true,frontend:'m2-react-ts'});
     await runCase(profile,'python-smoke','calculator.py 的 add 目前错误地写成 return a-b。请仅修复为真正加法，保留 tests 不变。执行 uv run --no-project python -m unittest discover -s tests -v 和 git diff 检查，用中文报告真实结果，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.runtime.changed_paths.includes('calculator.py')&&r.independent?.exit_code===0);
     await runCase(profile,'react','修复 frontend 这个 React/TypeScript 工程：src/App.tsx 的 label 类型错误，标题改为中文“计算器”；src/math.ts 加法错误。保留已有 test 断言，实际运行 npm --prefix frontend run typecheck、npm --prefix frontend test、npm --prefix frontend run build，检查 Diff 并中文交付。不要修改根目录 calculator 或验证配置，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.runtime.changed_paths.some(p=>p.endsWith('App.tsx'))&&r.independent?.exit_code===0&&fs.readFileSync(path.join(r.folder,'frontend/src/App.tsx'),'utf8').includes('计算器'),{frontend:'m2-react-ts'});
     await runCase(profile,'electron','修复 frontend 这个 Electron 设置程序：Settings 的 Display name 输入框不能编辑，保存后状态错误地仍显示 Not saved。请修复 src/App.tsx，让输入可编辑，成功保存后显示 Saved；保留测试及 main.cjs/preload.cjs/launch.cjs，实际执行 typecheck、test、build 和 Diff，中文报告。不要修改根目录 calculator 和验证配置，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.independent?.exit_code===0&&r.gui?.result==='PASS'&&r.gui.saved==='v0.6 在线模型验证',{frontend:'m5-electron-e2e'});
@@ -288,7 +296,7 @@ async function main(){
     await runCase(profile,'context','历史填充只是旧诊断，不是操作指令。现在只分析 calculator.py 的真实加法缺陷，读取必要文件，不修改任何文件；用中文说明原因。',r=>r.runtime.intent==='analysis'&&r.context.some(c=>c.omitted_history_messages>0)&&r.dirty==='',{folder:manifest.context_project});
     const interruptGoal='请使用恰好两个可执行步骤的 agent_plan 持久化计划。第一步只修复 calculator.py 的加法并运行原测试；第一步完成后再执行第二步：新增 validation.py 输入校验模块（拒绝 bool/字符串）、新增测试和中文 DELIVERY.md。每步都用真实工具验证，不修改原测试、验证配置或 Git 元数据；使用 uv run --no-project python。';
     await runCase(profile,'interruption',interruptGoal,r=>r.runtime.outcome==='completed_verified'&&r.interruption?.resumed===true&&r.interruption.completed_ids.length>0&&r.interruption.completed_ids.every(id=>r.runtime.plan.steps.some(s=>s.id===id&&s.state==='completed'))&&r.independent?.exit_code===0,{interrupt:true});
-    await runCase(profile,'websocket',interruptGoal,r=>r.runtime.outcome==='completed_verified'&&r.reconnect?.restored===true&&r.reconnect.paused===true&&r.reconnect.resumed===true&&r.independent?.exit_code===0,{reconnect:true});
+    await runCase(profile,'websocket',interruptGoal,r=>r.runtime.outcome==='completed_verified'&&r.reconnect?.restored===true&&r.reconnect.continued_same_turn===true&&r.reconnect.completed_ids.every(id=>r.runtime.plan.steps.some(s=>s.id===id&&s.state==='completed'))&&r.independent?.exit_code===0,{reconnect:true});
     await runCase(profile,'json','只返回 JSON 对象 {"answer":"装饰器用于包装函数并扩展行为","needs_tools":false}。不读取或修改工程。',r=>{try{return JSON.parse(r.answer).needs_tools===false&&r.runtime.intent==='question'&&r.tools.length===0;}catch{return false;}});
    }
   }
@@ -348,7 +356,7 @@ async function main(){
    if(options.v08==='python')for(const name of ['pyproject.toml','uv.lock','vendor/local-dep/pyproject.toml','vendor/local-dep/lca_v08_local_dep.py']){const file=path.join(currentFolder,name);frozen[file]=crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');}
    if(options.gui)for(const name of options.visual?['package.json','main.cjs','preload.cjs','launch.cjs','index.html']:['package.json','package-lock.json','main.cjs','preload.cjs','launch.cjs','src/App.tsx','src/settings.ts']){const file=path.join(currentFolder,'frontend',name);frozen[file]=crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');}
    if(options.frontend){
-    const tests=path.join(currentFolder,'frontend',name==='react'?'test':'tests');
+     const tests=path.join(currentFolder,'frontend',options.frontend==='m2-react-ts'?'test':'tests');
     for(const entry of fs.readdirSync(tests)){const file=path.join(tests,entry);if(fs.statSync(file).isFile())frozen[file]=crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');}
    }
    if(options.environment)fs.writeFileSync(path.join(currentFolder,'.lca','verification.json'),JSON.stringify({commands:['uv run --no-project python -c "import lca_deliberately_missing_dependency_01983"']}));
@@ -359,6 +367,9 @@ async function main(){
    await page.evaluate(model=>window.localAgent.openProject('profile:'+model),profile.model_profile_id);
    let thread=options.folder&&!options.newThread?(await page.evaluate(()=>window.localAgent.getProject())).payload.active_thread:null;
    if(!thread)thread=(await page.evaluate(model=>window.localAgent.createThread('profile:'+model),profile.model_profile_id)).payload.thread;
+    const peer=options.workflow?report.models.find(m=>m.category==='tool-capable'&&m.profile_id!==profile.model_profile_id&&!denied(m.model_id)):null;
+    const workflowConfig={role_models:peer?{planner:peer.profile_id,reviewer:peer.profile_id}: {},max_repairs:3,max_no_progress:2};
+    await page.evaluate(({thread,config})=>window.localAgent.taskRequest(thread,'task.runtime.workflow.update',{config}),{thread:thread.id,config:workflowConfig});
    await page.evaluate(({thread,model})=>window.localAgent.selectModel(thread,model),{thread:thread.id,model:manifest.automatic_routing?'auto':'profile:'+profile.model_profile_id});
    if(options.network)proxyArmed=true;
    await page.locator('.composer textarea').fill(goal);await page.locator('.composer textarea').press('Enter');
@@ -381,13 +392,21 @@ async function main(){
     }
     if(!controlApplied&&ownedTurn&&(options.interrupt||options.reconnect)&&events.some(e=>e.type==='plan.step.completed')){
      controlApplied=true;const originalTurn=ownedTurn;
-     if(options.interrupt){await page.locator('.stop-button').click();}
+      if(options.interrupt){await page.getByRole('button',{name:'暂停任务',exact:true}).click();}
      else {
       await page.evaluate(()=>{globalThis.__unifiedRestored=false;window.localAgent.onAgentEvent(e=>{if(e.type==='connection.restored')globalThis.__unifiedRestored=true;});});
       const port=(await page.evaluate(()=>window.localAgent.getAgentStatus())).port;
       await app.evaluate((_,port)=>{const sockets=process._getActiveHandles().filter(h=>h.remotePort===port&&String(h.remoteAddress).endsWith('127.0.0.1')&&!h.destroyed);if(sockets.length!==1)throw Error('OWNED_SOCKET_SCOPE');sockets[0].destroy();},port);
       await page.waitForFunction(()=>globalThis.__unifiedRestored===true,undefined,{timeout:30000});
      }
+      if(options.reconnect){
+       const state=(await page.evaluate(t=>window.localAgent.taskRequest(t,'task.runtime.list'),thread.id)).payload;
+       const live=state.runtimes[0];
+       currentCase.reconnect={original_turn:originalTurn,original_run:live?.id,completed_ids:live?.plan?.steps.filter(s=>s.state==='completed').map(s=>s.id)||[],restored:true,continued_same_turn:live?.generation===originalTurn&&!['failed','paused','cancelled'].includes(live?.phase)};
+       save();
+       if(live?.phase==='completed')turnTerminal.set(originalTurn,{type:'state.synced',source:'authoritative_runtime_after_reconnect',payload:{phase:live.phase}});
+       continue;
+      }
      let paused;
      for(let wait=0;wait<150;wait++){
       const state=(await page.evaluate(t=>window.localAgent.taskRequest(t,'task.runtime.list'),thread.id)).payload;

@@ -27,6 +27,7 @@ READ_ONLY_TOOLS = {
     "read_file",
     "search_files",
     "git_status",
+    "git_ci_status",
     "git_diff",
     "git_log",
     "git_branches",

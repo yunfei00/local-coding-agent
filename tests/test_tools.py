@@ -43,6 +43,7 @@ class WorkspaceTests(unittest.TestCase):
                     "desktop_wait",
                     "file_exists",
                     "git_branches",
+                    "git_ci_status",
                     "git_commit",
                     "git_commit_prepare",
                     "git_diff",
