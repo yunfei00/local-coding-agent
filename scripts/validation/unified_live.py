@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -42,9 +43,10 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--live',action='store_true')
     parser.add_argument('--suite',action='store_true')
+    parser.add_argument('--isolate-git-path',action='store_true',help='仅本轮 Electron/Agent 子进程移除 Git PATH，保留父进程及用户配置')
     parser.add_argument('--automatic-routing',action='store_true',help='真实聊天选择自动模型，候选来自本轮实际能力探针')
     parser.add_argument('--reopen-memory-report',type=Path,help='仅重启本仓库隔离目录内的记忆验收，不读写用户数据')
-    parser.add_argument('--case',action='append',choices=['question','analysis','change','python-smoke','react','electron','gui','visual','approval','network','followup','coupon','environment','repair','context','interruption','websocket','json','project-memory','memory-reopen','knowledge-fix','environment-repair','routing'],default=[])
+    parser.add_argument('--case',action='append',choices=['question','analysis','change','python-smoke','react','electron','gui','visual','approval','network','followup','coupon','environment','repair','context','interruption','websocket','json','project-memory','memory-reopen','knowledge-fix','environment-repair','environment-git','environment-python','routing'],default=[])
     parser.add_argument('--request-seconds',type=int,default=60)
     parser.add_argument('--output-tokens',type=int,default=8192)
     parser.add_argument('--validation-task-calls',type=int,help='用户授权的隔离验收任务请求上限，不修改原 Settings')
@@ -189,6 +191,8 @@ def main():
     if args.reuse_project:manifest['reuse_project']=str(args.reuse_project.resolve())
     manifest['gui_only']=args.gui_only
     manifest['automatic_routing']=args.automatic_routing
+    manifest['isolate_git_path']=args.isolate_git_path
+    manifest['git_fixture_directory']=str(Path(shutil.which('git')).parent) if shutil.which('git') else None
     if reopen:manifest['memory_project']=reopen['folder']
     path=args.output/'manifest.json';path.write_text(json.dumps(manifest),encoding='utf-8')
     (args.output/'report.json').write_text(json.dumps({'result':'RUNNING','inventory':inventory}),encoding='utf-8')

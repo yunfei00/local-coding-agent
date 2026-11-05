@@ -55,9 +55,13 @@ def requested_intent(prompt):
     analysis_only=bool(re.search(r'只分析|仅分析|只读|本轮只分析|analysis only|only analy[sz]e',text,re.I))
     interaction=not analysis_only and not question and not code_request and bool(re.search(r'(?:桌面|窗口|界面|Settings|Display name).*(?:输入|点击|键入|填写)|(?:click|type|enter).*(?:button|window|settings|field)',positive,re.I|re.S))
     if interaction:kind='interaction'
+    environment_write=not question and not analysis_only and bool(re.search(r'environment_repair|(?:修复|恢复|重置).{0,16}(?:环境|PATH|代理|依赖)|(?:环境|PATH|代理|依赖).{0,16}(?:修复|恢复|重置)',positive,re.I))
+    code_edit=bool(re.search(r'(?:修复|修改|开发|实现|重构).{0,16}(?:代码|源码|函数|组件)',positive)) or (change and any(not p.lower().endswith(('.md','.json','.toml','.yaml','.yml')) for p in paths))
+    environment_write=environment_write and not code_edit and not interaction
+    if environment_write:kind='analysis';readonly=True
     project_question=bool(re.search(r'(?:本|当前|这个|该|this)\s*(?:项目|工程|仓库|程序|project|repo)|(?:分析|解释|检查).{0,8}(?:项目|工程|仓库|程序)',text,re.I))
     memory_write=bool(re.search(r'记住|保存.{0,20}(?:知识|记忆|约定)|(?:知识|记忆).{0,12}保存|remember|save.{0,20}memor',prompt,re.I))
-    return {'kind':kind,'read_only':kind!='interaction' and (readonly or kind=='analysis' or (question and not direct)),'pure_question':kind=='question' and question and not project_question and not paths and not memory_write,'memory_write':memory_write,'referenced_files':len(paths),'listed_steps':listed}
+    return {'kind':kind,'read_only':kind!='interaction' and (readonly or kind=='analysis' or (question and not direct)),'pure_question':kind=='question' and question and not project_question and not paths and not memory_write,'memory_write':memory_write,'environment_write':environment_write,'referenced_files':len(paths),'listed_steps':listed}
 
 
 COMPUTER_TOOLS={'start_process','read_process','stop_process','list_directory','file_exists','agent_plan',*('desktop_'+n for n in ('list_windows','inspect','screenshot','focus_window','click','type_text','keypress','scroll','wait'))}

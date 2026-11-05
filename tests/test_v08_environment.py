@@ -28,11 +28,19 @@ class EnvironmentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(os.environ.get('PATH'),before)
     async def test_git_project_path_repair_real_recheck_and_persistence(self):
         git=shutil.which('git');self.assertIsNotNone(git)
+        import subprocess
+        subprocess.run([git,'init','-q'],cwd=self.root,check=True,capture_output=True)
         with patch.dict(os.environ,{'PATH':''}):
             result=await self.call('environment_repair',action='project_git_path',directory=str(Path(git).parent))
             self.assertTrue(result.ok,result.data);self.assertEqual(os.environ['PATH'],'')
             self.assertEqual(result.data['checks'][0]['exit_code'],0)
+            status=await self.call('git_status')
+            self.assertTrue(status.ok,status.stderr)
         self.assertIn(str(Path(git).parent),json.loads(self.store.get_setting('project.path:'+self.project.id)))
+        reopened=ProjectRegistry(self.store).get(self.project.id)
+        with patch.dict(os.environ,{'PATH':''}):
+            status=await reopened.tools.execute('git_status',{},owner_id='diagnostic')
+            self.assertTrue(status.ok,status.stderr)
         self.assertTrue(self.k.list('环境修复'))
     async def test_project_npm_proxy_real_socket_failure_repair_preserves_other_lines(self):
         file=self.root/'.npmrc';file.write_text('proxy=http://127.0.0.1:1\nhttps-proxy=http://127.0.0.1:1\nstrict-ssl=true\n')

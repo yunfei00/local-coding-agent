@@ -118,6 +118,7 @@ class EnvironmentDiagnostics:
             binary=path/('git.exe' if os.name=='nt' else 'git')
             if not path.is_dir() or not binary.is_file():raise ToolError('GIT_PATH_INVALID','指定目录没有 Git；未修改 PATH')
             self.manager.project_path_prefix=[str(path)]
+            self.workspace.project_path_prefix=[str(path)]
             verified=await self.check('git',owner=owner,on_output=on_output);changed=[]
             if self.knowledge and verified['ok']:self.knowledge.store.set_setting('project.path:'+self.knowledge.project_id,json.dumps([str(path)]))
         elif action=='project_uv_sync':

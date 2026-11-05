@@ -149,7 +149,7 @@ class ProcessSession:
 
 class ProcessManager:
     def __init__(self, workspace, log_root=None):
-        self.project_path_prefix=[]
+        self.project_path_prefix=list(getattr(workspace,'project_path_prefix',[]))
         self.workspace = workspace
         base = Path(os.getenv("LCA_DATA_DIR") or Path.home() / ".local-coding-agent")
         self.log_root = Path(log_root) if log_root else base / "command-logs"
@@ -215,6 +215,11 @@ class ProcessManager:
             raise ToolError("PROCESS_LIMIT", "Stop existing processes before starting more")
         env = {**os.environ, "PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1"}
         if self.project_path_prefix:env['PATH']=os.pathsep.join([*self.project_path_prefix,env.get('PATH','')])
+        if self.project_path_prefix and argv:
+            # Windows resolves argv[0] before applying the child's environment.
+            # Resolve only against the approved project PATH, without changing os.environ.
+            resolved=shutil.which(argv[0],path=env['PATH'])
+            if resolved:argv=[resolved,*argv[1:]]
         if environment:
             if set(environment) - {"PYTHONPYCACHEPREFIX", "PYTHONDONTWRITEBYTECODE"}:
                 raise ToolError("INVALID_COMMAND_ENVIRONMENT", "Only internal Python cache controls are supported")

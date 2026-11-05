@@ -53,6 +53,15 @@ class ProjectSession:
     repository_map: RepositoryMap | None = None
     _knowledge: Any = None
 
+    def __post_init__(self):
+        import json
+        try:
+            prefix=json.loads(self.store.get_setting('project.path:'+self.id) or '[]') if self.store else []
+            if not isinstance(prefix,list) or len(prefix)>8 or any(not isinstance(p,str) or len(p)>2000 or not Path(p).is_absolute() for p in prefix):raise ValueError('项目 PATH 设置损坏')
+        except ValueError:prefix=[]
+        self.tools.processes.project_path_prefix=list(prefix)
+        self.workspace.project_path_prefix=list(prefix)
+
     def knowledge(self):
         if self._knowledge is None and self.store:
             from agent.core.project_knowledge import ProjectKnowledge
@@ -62,12 +71,6 @@ class ProjectSession:
                 self.tools.register(tool,replace=True)
             from agent.core.environment_diagnostics import EnvironmentDiagnostics
             from agent.tools.environment import EnvironmentDiagnoseTool,EnvironmentRepairTool
-            import json
-            try:
-                prefix=json.loads(self.store.get_setting('project.path:'+self.id) or '[]')
-                if not isinstance(prefix,list) or len(prefix)>8 or any(not isinstance(p,str) or len(p)>2000 or not Path(p).is_absolute() for p in prefix):raise ValueError('项目 PATH 设置损坏')
-                self.tools.processes.project_path_prefix=prefix
-            except ValueError:self.tools.processes.project_path_prefix=[]
             diagnostic=EnvironmentDiagnostics(self.workspace,self.tools.processes,self._knowledge)
             for tool in (EnvironmentDiagnoseTool(diagnostic),EnvironmentRepairTool(diagnostic)):self.tools.register(tool,replace=True)
         return self._knowledge

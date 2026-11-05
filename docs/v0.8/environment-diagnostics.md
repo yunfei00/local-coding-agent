@@ -7,3 +7,5 @@ Provider 检查仅访问已配置连接的模型列表，不能据此证明额�
 environment_repair 沿用现有审批，允许的修复范围：移除项目 .npmrc 的 proxy/https-proxy；为项目子进程追加已安装 Git 的目录；存在 pyproject.toml 和 uv.lock 时执行 uv sync --locked --no-python-downloads 后重新检测模块。不会修改系统 PATH、全局 npm 配置或代理，不自动安装软件、删除全局缓存或提权。
 
 仅实际复查通过后，将问题、修复范围及验证事实写入项目历史知识。权限拒绝、依赖/网络/超时分别保留错误，不让模型无止境尝试。隔离故障测试使用临时目录和局部配置，不改变开发电脑正常环境。
+
+明确环境修复请求仅开放 environment_repair 这一受审批例外；不会因此开放业务文件修改。没有业务代码变更的项目 PATH/依赖修复可正常完成，不要求制造源码 Diff。已批准的项目 PATH 在工程打开与 Worktree 会话建立时恢复，并传递给新建 Git 工具进程；不写入全局 os.environ。

@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import os
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -815,8 +816,9 @@ class GitWorktreeRemoveTool(BaseTool):
             )
 
         try:
+            project_path=os.pathsep.join([*getattr(self.workspace,'project_path_prefix',[]),os.environ.get('PATH','')])
             process = await asyncio.create_subprocess_exec(
-                "git",
+                shutil.which('git',path=project_path) or 'git',
                 "-C",
                 str(target),
                 "status",
@@ -824,6 +826,7 @@ class GitWorktreeRemoveTool(BaseTool):
                 "--untracked-files=all",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env={**os.environ,'PATH':project_path},
             )
             dirty_out, dirty_err = await asyncio.wait_for(
                 process.communicate(),

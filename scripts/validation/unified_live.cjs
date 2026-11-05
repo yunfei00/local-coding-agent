@@ -64,6 +64,7 @@ async function main(){
  };
  try{
   const env={...process.env,NODE_OPTIONS:'--max-old-space-size=256',GOMAXPROCS:'2',LCA_DESKTOP_DATA_DIR:desktopData,LCA_DATA_DIR:manifest.data,LCA_HEADLESS_SMOKE:'1',LCA_PROVIDER:'openai_compatible',LCA_OPENAI_API_KEY:'',LCA_OPENAI_MODEL:'',LCA_OPENAI_BASE_URL:'http://127.0.0.1:1/v1',PYTHONUTF8:'1',LCA_EXECUTION_MODEL_CALLS:'80',LCA_EXECUTION_SECONDS:'600',LCA_EXECUTION_TOKENS:'10000000'};
+  if(manifest.isolate_git_path){env.PATH=(env.PATH||env.Path||'').split(path.delimiter).filter(folder=>!fs.existsSync(path.join(folder,'git.exe'))&&!fs.existsSync(path.join(folder,'git'))).join(path.delimiter);env.Path=env.PATH;}
   delete env.ELECTRON_RUN_AS_NODE;
   app=await _electron.launch({executablePath:require('../../desktop/node_modules/electron'),args:[path.join(manifest.root,'desktop'),'--disable-gpu'],cwd:manifest.root,env,timeout:60000});
   desktopChild=app.process();report.lifecycle.pid=desktopChild.pid;
@@ -146,7 +147,7 @@ async function main(){
     const args=p.arguments||{},tool=String(p.tool||'');
     const inside=value=>typeof value==='string' && !path.relative(currentFolder,path.resolve(currentFolder,value)).startsWith('..') && !path.isAbsolute(path.relative(currentFolder,path.resolve(currentFolder,value)));
     let allowed=['read_file','list_directory','search_files','file_exists','inspect_workspace','git_status','git_diff'].includes(tool)&&(!args.path||inside(args.path));
-    if(tool==='environment_repair')allowed=currentCase?.name==='environment-repair'&&args.action==='project_npm_proxy_reset'&&!args.directory;
+    if(tool==='environment_repair')allowed=(currentCase?.name==='environment-repair'&&args.action==='project_npm_proxy_reset'&&!args.directory)||(currentCase?.name==='environment-git'&&args.action==='project_git_path'&&path.resolve(args.directory||'')===path.resolve(manifest.git_fixture_directory))||(currentCase?.name==='environment-python'&&args.action==='project_uv_sync'&&args.module==='lca_v08_local_dep'&&!args.directory);
     if(tool==='review_interrupted_operation'&&args.tool==='run_command'&&reviewAllowed.has(args.call_id))allowed=true;
     if(['write_file','apply_patch'].includes(tool))allowed=inside(args.path);
     if(guiCase){
@@ -269,8 +270,10 @@ async function main(){
     const profile=manifest.profiles.find(p=>p.model_profile_id===best.profile_id);
     await runCase(profile,'routing','用 knowledge_search 找到加法调用关系，仅修复 mathcore.py 的减法错误，保留原测试，运行 unittest 并检查 Diff。不要重复已成功的修改；若模型服务额度错误，使用运行时允许的替代模型继续原目标，中文报告，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.independent?.exit_code===0&&r.routing_fault?.injected===true&&r.runtime.routing?.switches.some(s=>s.code==='MODEL_QUOTA_EXHAUSTED'),{v08:'broken'});
     await runCase(profile,'project-memory','先使用 knowledge_search 检索项目入口、跨文件调用及测试方式，阅读 README 和必要源码，解释技术栈、入口和关键模块，不修改代码。请用 project_memory 保存有来源的项目知识。记住：本工程必须使用 unittest，交付摘要使用中文。',r=>r.runtime.phase==='completed'&&r.knowledge?.memories.some(m=>m.content.includes('unittest'))&&r.tools.some(t=>t.name==='knowledge_search'&&t.ok)&&r.tools.some(t=>t.name==='project_memory'&&t.ok)&&r.dirty==='',{v08:'healthy'});
-    await runCase(profile,'memory-reopen','请读取这个项目之前保存的开发约定，说明测试框架与交付语言，并检查入口文件；只分析，不修改代码。',r=>r.runtime.phase==='completed'&&r.runtime.knowledge?.memory_hits>0&&r.answer.includes('unittest')&&r.answer.includes('中文')&&r.dirty==='',{folder:manifest.memory_project,newThread:true});
+    await runCase(profile,'memory-reopen','请读取这个项目之前保存的开发约定，说明测试框架与交付摘要的自然语言，并检查入口文件；只分析，不修改代码。',r=>r.runtime.phase==='completed'&&r.runtime.knowledge?.memory_hits>0&&r.answer.includes('unittest')&&r.answer.includes('中文')&&r.dirty==='',{folder:manifest.memory_project,newThread:true});
     await runCase(profile,'knowledge-fix','先使用 knowledge_search 检索 add/combine 的跨文件调用和测试，定位并修复真实加法缺陷。保留原测试及验证配置，运行 uv run --no-project python -m unittest discover -s tests -v，检查 Diff，中文交付，并保存有来源的项目知识。不提交。',r=>r.runtime.outcome==='completed_verified'&&r.independent?.exit_code===0&&r.tools.some(t=>t.name==='knowledge_search'&&t.ok)&&r.runtime.changed_paths.includes('mathcore.py'),{v08:'broken'});
+    await runCase(profile,'environment-git','本次隔离应用进程故意缺失 Git PATH。使用 environment_diagnose 检查，已安装 Git 目录见 README。使用 environment_repair 请求审批，为本项目子进程添加该目录，重新诊断并实际调用 git_status，运行现有 unittest，中文报告，不修改业务代码或系统 PATH。',r=>r.runtime.phase==='completed'&&r.independent?.exit_code===0&&r.tools.some(t=>t.name==='environment_repair'&&t.ok)&&r.tools.some(t=>t.name==='git_status'&&t.ok)&&r.dirty==='',{v08:'git'});
+    await runCase(profile,'environment-python','使用 environment_diagnose 检查 Python 模块 lca_v08_local_dep 缺失问题。项目已有 pyproject.toml、uv.lock 和 vendor 本地依赖；使用 environment_repair action=project_uv_sync、module=lca_v08_local_dep 请求审批并实际复查。保留全部声明和业务源码，不修改系统环境。执行现有 unittest 并中文报告。',r=>r.runtime.phase==='completed'&&r.independent?.exit_code===0&&r.independent_module?.exit_code===0&&r.tools.some(t=>t.name==='environment_repair'&&t.ok)&&r.dirty==='',{v08:'python'});
     await runCase(profile,'environment-repair','使用 environment_diagnose 检查项目 npm 代理、Git 和 Python 依赖。项目 .npmrc 的代理端口故意不可用，请通过 environment_repair 请求审批，仅移除这个项目的 proxy 和 https-proxy，保留其他设置并重新验证。不要安装软件或修改系统配置。最后运行现有 unittest，中文报告。',r=>r.runtime.phase==='completed'&&r.independent?.exit_code===0&&r.tools.some(t=>t.name==='environment_diagnose'&&t.ok)&&r.tools.some(t=>t.name==='environment_repair'&&t.ok)&&!fs.readFileSync(path.join(r.folder,'.npmrc'),'utf8').includes('proxy='),{v08:'environment'});
     await runCase(profile,'python-smoke','calculator.py 的 add 目前错误地写成 return a-b。请仅修复为真正加法，保留 tests 不变。执行 uv run --no-project python -m unittest discover -s tests -v 和 git diff 检查，用中文报告真实结果，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.runtime.changed_paths.includes('calculator.py')&&r.independent?.exit_code===0);
     await runCase(profile,'react','修复 frontend 这个 React/TypeScript 工程：src/App.tsx 的 label 类型错误，标题改为中文“计算器”；src/math.ts 加法错误。保留已有 test 断言，实际运行 npm --prefix frontend run typecheck、npm --prefix frontend test、npm --prefix frontend run build，检查 Diff 并中文交付。不要修改根目录 calculator 或验证配置，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.runtime.changed_paths.some(p=>p.endsWith('App.tsx'))&&r.independent?.exit_code===0&&fs.readFileSync(path.join(r.folder,'frontend/src/App.tsx'),'utf8').includes('计算器'),{frontend:'m2-react-ts'});
@@ -309,6 +312,16 @@ async function main(){
     fs.writeFileSync(path.join(currentFolder,'calculator.py'),'from mathcore import combine\ndef add(a,b):\n    return combine(a,b)\n');
     fs.writeFileSync(path.join(currentFolder,'mathcore.py'),options.v08==='broken'?'def combine(a,b):\n    return a-b\n':'def combine(a,b):\n    return a+b\n');
     fs.writeFileSync(path.join(currentFolder,'README.md'),'# 隔离计算工程\nPython 项目，入口 calculator.py，mathcore.py 执行运算。\n测试：uv run --no-project python -m unittest discover -s tests -v\n');
+    if(options.v08==='git')fs.appendFileSync(path.join(currentFolder,'README.md'),'\n已安装 Git 目录：'+manifest.git_fixture_directory+'\n测试仅移除了当前隔离 Agent 的进程 PATH，系统配置未变。\n');
+    if(options.v08==='python'){
+     const vendor=path.join(currentFolder,'vendor/local-dep');fs.mkdirSync(vendor,{recursive:true});
+     fs.writeFileSync(path.join(vendor,'pyproject.toml'),'[project]\nname="lca-v08-local-dep"\nversion="0.1.0"\n[build-system]\nrequires=["setuptools>=68"]\nbuild-backend="setuptools.build_meta"\n[tool.setuptools]\npy-modules=["lca_v08_local_dep"]\n');
+     fs.writeFileSync(path.join(vendor,'lca_v08_local_dep.py'),'READY = True\n');
+     fs.writeFileSync(path.join(currentFolder,'pyproject.toml'),'[project]\nname="lca-v08-env-fixture"\nversion="0.1.0"\nrequires-python=">=3.12"\ndependencies=["lca-v08-local-dep"]\n[tool.uv.sources]\nlca-v08-local-dep={path="vendor/local-dep",editable=true}\n');
+     const prepared=cp.spawnSync('uv',['lock','--offline','--no-python-downloads'],{cwd:currentFolder,encoding:'utf8',windowsHide:true,timeout:60000});
+     currentCase.setup={exit_code:prepared.status,summary:(prepared.stdout+prepared.stderr).slice(-1500)};
+     if(prepared.status!==0){currentCase.result='BLOCKED';currentCase.reason='ISOLATED_DEPENDENCY_LOCK';save();return;}
+    }
     if(options.v08==='environment')fs.writeFileSync(path.join(currentFolder,'.npmrc'),'proxy=http://127.0.0.1:1\nhttps-proxy=http://127.0.0.1:1\nregistry=https://registry.npmjs.org\n');
     for(const args of [['add','.'],['commit','-qm','Prepare isolated v08 acceptance input']])if(shell(args,currentFolder).status!==0)throw Error('V08_FIXTURE_PREPARATION_FAILED');
    }
@@ -331,6 +344,7 @@ async function main(){
    const baselineFolder=path.join(manifest.output,'acceptance-inputs');fs.mkdirSync(baselineFolder,{recursive:true});
    const baselineTest=path.join(baselineFolder,String(report.cases.length)+'-original-test.py');fs.copyFileSync(path.join(currentFolder,'tests/test_calc.py'),baselineTest);
    const frozen=Object.fromEntries([path.join(currentFolder,'.lca/verification.json'),...(name==='coupon'?[path.join(currentFolder,'tests/test_external_coupon_contract.py')]:[])].filter(f=>fs.existsSync(f)).map(f=>[f,crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex')]));
+   if(options.v08==='python')for(const name of ['pyproject.toml','uv.lock','vendor/local-dep/pyproject.toml','vendor/local-dep/lca_v08_local_dep.py']){const file=path.join(currentFolder,name);frozen[file]=crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');}
    if(options.gui)for(const name of options.visual?['package.json','main.cjs','preload.cjs','launch.cjs','index.html']:['package.json','package-lock.json','main.cjs','preload.cjs','launch.cjs','src/App.tsx','src/settings.ts']){const file=path.join(currentFolder,'frontend',name);frozen[file]=crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');}
    if(options.frontend){
     const tests=path.join(currentFolder,'frontend',name==='react'?'test':'tests');
@@ -427,6 +441,11 @@ async function main(){
    }else if(!['question','analysis','context','json','project-memory','memory-reopen'].includes(name)&&!options.gui&&!options.approval){
     const check=cp.spawnSync('uv',['run','--no-project','python','-m','unittest','discover','-s','tests','-v'],{cwd:currentFolder,encoding:'utf8',windowsHide:true,timeout:60000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
     currentCase.independent={exit_code:check.status,summary:(check.stdout+check.stderr).slice(-2500)};
+   }
+   if(options.v08==='python'){
+    const exists=fs.existsSync(path.join(currentFolder,'.venv',process.platform==='win32'?'Scripts/python.exe':'bin/python'));
+    const check=exists?cp.spawnSync('uv',['run','--no-sync','--locked','--no-python-downloads','python','-c','import lca_v08_local_dep; assert lca_v08_local_dep.READY'],{cwd:currentFolder,encoding:'utf8',windowsHide:true,timeout:30000}):{status:1,stdout:'',stderr:'Agent did not create the project environment'};
+    currentCase.independent_module={exit_code:check.status,summary:(check.stdout+check.stderr).slice(-1500),no_sync:true};
    }
    if(name==='routing')currentCase.routing_fault={injected:routingInjected,kind:'controlled quota response; other forwarded calls are real Ali HTTP',proxy_requests:proxyCalls};
    if(options.v08||name==='memory-reopen')currentCase.knowledge=(await page.evaluate(t=>window.localAgent.taskRequest(t,'knowledge.get'),thread.id)).payload;

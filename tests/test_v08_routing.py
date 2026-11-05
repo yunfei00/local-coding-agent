@@ -64,6 +64,12 @@ class RoutingTests(unittest.IsolatedAsyncioTestCase):
         goal='使用桌面工具操作窗口，点击按钮并读取结果。禁止读取 HTML/JS 源码，不得修改任何文件。'
         self.assertEqual(requested_intent(goal)['kind'],'interaction');self.assertFalse(requested_intent(goal)['read_only']);self.assertTrue(computer_only(goal))
         self.assertEqual(requested_intent('只分析窗口中的按钮如何点击，不要操作桌面')['kind'],'analysis')
+    def test_explicit_environment_maintenance_does_not_require_business_file_changes(self):
+        from agent.core.unified_runtime import requested_intent
+        intent=requested_intent('使用 environment_diagnose 检查 Git PATH，使用 environment_repair 申请项目级修复，然后运行 unittest。')
+        self.assertEqual(intent['kind'],'analysis');self.assertTrue(intent['read_only']);self.assertTrue(intent['environment_write'])
+        self.assertFalse(requested_intent('只分析环境，禁止修复代理')['environment_write'])
+        self.assertEqual(requested_intent('修复 calculator.py 加法并修复依赖环境')['kind'],'change')
     def test_quota_failure_disables_future_candidate_until_success(self):
         chosen,route=self.registry.prepare('auto','修复代码并执行工具')
         self.registry.record(chosen['profile_id'],error='MODEL_QUOTA_EXHAUSTED')

@@ -28,6 +28,7 @@ class RuntimeRoutingTests(unittest.IsolatedAsyncioTestCase):
         async def handler(request):
             body=await request.json();model=body['model'];self.requests.append(model)
             history=body['messages'];results=[m for m in history if m.get('role')=='tool']
+            if self.mode=='memory_rule_only':return self.answer('已处理项目约定。')
             if self.mode=='memory_analysis':
                 if not results:return self.tool('knowledge_search',{'query':'add','mode':'symbol'})
                 if not any(m.get('name')=='project_memory' for m in results):return self.tool('project_memory',{'action':'save','title':'测试约定','content':'本工程使用 unittest。'})
@@ -77,6 +78,15 @@ class RuntimeRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(last['phase'],'completed',last.get('reason'));self.assertEqual(last['intent'],'analysis')
         self.assertFalse(last['changed_paths']);self.assertEqual(self.requests,['a-model']*3)
         self.assertTrue(self.project.knowledge().list('unittest'))
+    async def test_literal_user_rule_survives_new_session_even_with_auto_memory_disabled(self):
+        from agent.server.projects import ProjectRegistry
+        self.project.knowledge().set_auto(False);self.mode='memory_rule_only'
+        rule='本工程必须使用 unittest，交付摘要使用中文。'
+        await self.start(prompt='只分析项目，不修改代码。记住：'+rule)
+        reopened=ProjectRegistry(self.server.store).get(self.project.id)
+        records=reopened.knowledge().list()
+        self.assertEqual(len(records),1);self.assertEqual(records[0]['content'],rule);self.assertEqual(records[0]['trust'],'user')
+        self.assertEqual(len(self.requests),1)
     async def test_long_goal_is_preserved_while_automatic_retrieval_query_is_bounded(self):
         await self.start(prompt='修复 calculator.py 的加法，运行 unittest。补充背景：'+('这是长任务背景。'*100))
         last=[e['payload']['runtime'] for e in self.ws.messages if e['type']=='agent.runtime.updated'][-1]

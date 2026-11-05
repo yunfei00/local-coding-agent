@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import platform
@@ -2255,7 +2256,12 @@ class AgentServer:
             if not hasattr(knowledge,'explicit_save_owners'):knowledge.explicit_save_owners=set()
             if memory_intent(authorization_prompt or prompt)['memory_write']:knowledge.explicit_save_owners.add(turn_id)
             if not hasattr(knowledge,'explicit_rules'):knowledge.explicit_rules={}
-            knowledge.explicit_rules[turn_id]=re.findall(r'(?m)^\s*(?:请)?记住[:：]\s*([^\r\n]{1,1500})$',authorization_prompt or prompt)
+            knowledge.explicit_rules[turn_id]=re.findall(r'(?:^|[。；;\n])\s*(?:请)?记住[:：]\s*([^\r\n]{1,1500})',authorization_prompt or prompt)[:12]
+            for rule in knowledge.explicit_rules[turn_id]:
+                try:
+                    knowledge.save('用户明确约定：'+hashlib.sha256(rule.encode()).hexdigest()[:16],rule,'convention',trust='user')
+                except (ValueError,sqlite3.Error):
+                    await ws.send_json(envelope('turn.status',{'phase':'knowledge_warning','code':'MEMORY_RULE_REJECTED','message':'明确约定未保存：内容疑似敏感、与可信记录冲突或存储不可用。原记忆未清空。'},thread_id=thread_id,turn_id=turn_id))
         if 'environment_diagnose' in tools.names:
             async def provider_probe():
                 from agent.core.model_routing import prohibited
@@ -2655,7 +2661,7 @@ class AgentServer:
                         if unified and computer_only(authorization_prompt if authorization_prompt is not None else prompt):
                             schemas=[s for s in schemas if s['function']['name'] in COMPUTER_TOOLS]
                         if unified and requested['read_only']:
-                            schemas=[s for s in schemas if s['function']['name'] in READ_ONLY_TOOLS or s['function']['name']=='run_command' or (s['function']['name']=='project_memory' and requested.get('memory_write')) or ((tools.permission_metadata(s['function']['name']) or {}).get('trusted') and (tools.permission_metadata(s['function']['name']) or {}).get('read_only'))]
+                            schemas=[s for s in schemas if s['function']['name'] in READ_ONLY_TOOLS or s['function']['name']=='run_command' or (s['function']['name']=='project_memory' and requested.get('memory_write')) or (s['function']['name']=='environment_repair' and requested.get('environment_write')) or ((tools.permission_metadata(s['function']['name']) or {}).get('trusted') and (tools.permission_metadata(s['function']['name']) or {}).get('read_only'))]
                         if unified and requested.get('pure_question'):
                             schemas=None
                         elif unified and getattr(provider,'agent_tools_enabled',True):
@@ -3108,7 +3114,7 @@ class AgentServer:
                         raise ProviderError('COMPUTER_TOOL_SCOPE','用户仅授权界面操作；没有执行源码、终端或其他越界工具。')
                     if unified and requested['read_only'] and call.name!='agent_plan':
                         metadata=tools.permission_metadata(call.name) or {}
-                        if call.name not in READ_ONLY_TOOLS and not (call.name=='project_memory' and requested.get('memory_write')) and not repeatable_check(call.name,call.arguments) and not (metadata.get('trusted') and metadata.get('read_only')):
+                        if call.name not in READ_ONLY_TOOLS and not (call.name=='project_memory' and requested.get('memory_write')) and not (call.name=='environment_repair' and requested.get('environment_write')) and not repeatable_check(call.name,call.arguments) and not (metadata.get('trusted') and metadata.get('read_only')):
                             raise ProviderError('UNIFIED_READ_ONLY_INTENT','当前用户明确只要求分析，不允许修改；没有执行该工具。')
                     if unified and call.name == 'agent_plan' and deferred_plan_ids:
                         raise ProviderError('PLAN_RESUME_CONFIRMATION_REQUIRED','原计划需要恢复，不能创建平行计划绕过未确认副作用。')
