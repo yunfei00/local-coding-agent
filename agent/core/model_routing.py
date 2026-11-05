@@ -117,7 +117,9 @@ class CapabilityRegistry:
             if not window or window-(p.get('max_output_tokens') or 1024)<need['context_minimum']:continue
             total=s['successes']+s['failures'];score=100+(10*s['successes']/total if total else 0)-min((s['latency_ms'] or 0)/10000,10)
             reason=['能力匹配：'+','.join(CAP_NAMES[c] for c in need['capabilities']),f'配置上下文 {window}，输出预留 {p.get("max_output_tokens") or 1024}',f'真实成功/失败 {s["successes"]}/{s["failures"]}']
-            rows.append({'profile_id':p['model_profile_id'],'score':score,'reason':reason,'snapshot':{'profile':self.catalog.profile(p['model_profile_id']),'capabilities':self.catalog.test_result(p['model_profile_id']),'request_seconds':120,'fingerprint':self.catalog.fingerprint(p['model_profile_id'])}})
+            resolved=self.catalog.profile(p['model_profile_id'])
+            resolved['supports_vision']=s['capabilities']['vision']['state']==SUPPORTED
+            rows.append({'profile_id':p['model_profile_id'],'score':score,'reason':reason,'snapshot':{'profile':resolved,'capabilities':self.catalog.test_result(p['model_profile_id']),'request_seconds':120,'fingerprint':self.catalog.fingerprint(p['model_profile_id'])}})
         selected=[];seen=set()
         for row in sorted(rows,key=lambda x:(-x['score'],x['profile_id'])):
             p=row['snapshot']['profile'];identity=(p['_connection']['connection_id'],p['model'])
@@ -139,7 +141,10 @@ class CapabilityRegistry:
             if state['availability']=='UNAVAILABLE' or unsupported:
                 if not allow_fallback or not rows:raise ProviderError('MODEL_UNAVAILABLE','手动模型当前不可用；未发送请求或静默切换。')
                 chosen=rows[0]
-            else:chosen={'profile_id':pid,'reason':['用户手动指定；未知能力不作为已确认支持'],'snapshot':{'profile':self.catalog.profile(pid),'capabilities':self.catalog.test_result(pid),'request_seconds':120,'fingerprint':self.catalog.fingerprint(pid)}}
+            else:
+                resolved=self.catalog.profile(pid)
+                resolved['supports_vision']=state['capabilities']['vision']['state']==SUPPORTED
+                chosen={'profile_id':pid,'reason':['用户手动指定；未知能力不作为已确认支持'],'snapshot':{'profile':resolved,'capabilities':self.catalog.test_result(pid),'request_seconds':120,'fingerprint':self.catalog.fingerprint(pid)}}
         chosen['snapshot']['request_seconds']=timeout
         resolved=chosen['snapshot']['profile']
         route={'mode':mode,'selection':selection,'allow_fallback':mode=='auto' or allow_fallback,'requirements':need,'current':chosen['profile_id'],'reason':chosen['reason'],'candidates':rows,'tried':[chosen['profile_id']],'tried_models':[[resolved['_connection']['connection_id'],resolved['model']]],'switches':[]}

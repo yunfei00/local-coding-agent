@@ -8,7 +8,7 @@
 
 - 基础 main：`00954ecd921c28823764e02e3a2d91b3c2720454`，开发前已 fetch，交付前再次确认没有更早或更新基线被覆盖。
 - 分支：`feature/v0.8-intelligent-context`。PR：[#31](https://github.com/yunfei00/local-coding-agent/pull/31)。分支最终 SHA 由 PR HEAD 提供，本文件不预写自身提交的自引用 SHA。
-- 已验证实现提交：`d2153f37b0e959d959cac3847be553dd6aa52309`；随后补充工程问答的只读路由兜底及 SQL 故障回归，均有本机验证。
+- 已验证实现提交：`d2153f37b0e959d959cac3847be553dd6aa52309`；随后补充工程问答只读路由、SQL 故障、能力证据到 Provider 的传递及快照摘要回归，均有本机验证。
 - 已完成双平台 CI：[41999594128](https://github.com/yunfei00/local-coding-agent/actions/runs/41999594128)，Windows/Ubuntu 均成功。最终报告所在提交仍以 [PR Checks](https://github.com/yunfei00/local-coding-agent/pull/31/checks) 实际结果为门禁。
 - 合并 SHA、最终主线 CI 以 PR 的合并事件和最终交付消息为准；报告入库时不能预填尚未生成的合并 SHA。没有直接开发 main、reset、clean、强推或删除历史数据。
 
@@ -38,9 +38,9 @@ Windows 11、16 GB 内存、CPU 环境；Agent 使用 uv 管理的 Python 3.12�
 | 检查 | 实际结果 | 日志/说明 |
 | --- | --- | --- |
 | 本机最终完整 Python | **625 项：623 PASS、2 SKIP、0 FAIL/ERROR** | `validation-reports/20261105-194856-027847.log`，833.399 秒 |
-| 额外 SQL 存储故障测试 | **1 PASS** | `v08-sql-fault-final.log`，完整回归启动后新增，未重复计入 625 |
-| 当前唯一 Python 用例合计 | **626 项：624 PASS、2 SKIP** | 最终提交 CI 应执行整个目录，以实际 Checks 为准 |
-| 新增核心测试 | 59 项，含知识/路由/环境/原 Runtime HTTP Mock | 57 项批次通过，工程问答包含在最终完整回归，新增 SQL 单项另行通过 |
+| 完整回归后新增的独立检查 | **5 PASS** | SQL 存储故障 1 项、能力快照/客户端 2 项、内容签名/旧快照兼容 2 项；完整 63 项批次再次通过，未重复计入 625 |
+| 当前唯一 Python 用例合计 | **630 项：628 PASS、2 SKIP** | 最终提交 CI 应执行整个目录，以实际 Checks 为准 |
+| 新增核心测试 | **63 PASS**，含知识/路由/环境/原 Runtime HTTP Mock | `v08-final-review-fixes.log`；另有原 Runtime/恢复/上下文等 **82 PASS**（`v08-snapshot-compatibility-final.log`） |
 | 前端 | **65 PASS，0 FAIL** | 19 文件；完整 check.py 运行结果 |
 | TypeScript / Electron 构建 | **PASS** | check.py 四阶段退出码均为 0，Errors: 0 |
 | Electron Smoke | **55 检查 PASS，0 SKIP** | `v08-desktop-smoke-unlocked.log` / `desktop-smoke.json`；含真实桌面、HTTP Mock 决策和实际测试执行，不能算作付费在线模型结果 |
@@ -80,6 +80,7 @@ C 的额度错误是**一次受控 HTTP 403 注入**，前后 A/B 模型均真�
 5. Git 修复仅覆盖旧 ProcessManager，新增 Git 进程未继承项目 PATH；修复 Workspace/新进程/重启恢复，清空 PATH 的实际 Git 测试与在线用例通过。
 6. 依赖安装生成 `.egg-info` 被误算成业务变更。自动源码快照和索引排除标准依赖元数据；验证 fixture 正常忽略生成目录，仍冻结 pyproject、uv.lock、vendor 源文件与原测试。在线复测通过，未降低断言。
 7. 27b 的一次中断恢复请求超过 60 秒，在候选池已被前一个受控额度测试停用 A 的情况下停止。文件和完成步骤保留，未伪造成功；独立测试使用另一已验证模型及 120 秒请求上限后通过。原失败仍列为 FAIL，WebSocket 用例继续由 27b 真实通过。
+8. 最终审查复现真实视觉证据未传到 Provider（旧声明为 false），补齐自动/手动派生快照，不改变 Catalog 或截图授权。两项失败复现保留在 `v08-capability-factory-before.log`。同时复测发现 Windows 等长同时间戳写入可漏判，新增有界文本摘要和内容进度指纹；旧两字段 Checkpoint 保持兼容。同内容重写不算进展，源码不会因为追加摘要而被伪判修改。63 项新增与 82 项原 Runtime 回归通过。
 
 共 18 条真实场景执行记录：13 PASS、5 历史 FAIL。最终 12 类场景均有 PASS，不把历史 FAIL 改写为 PASS。完整本地原件及哈希见 [脱敏证据索引](evidence-summary.json)。
 
@@ -106,6 +107,7 @@ v0.8 十份中文文档、README、统一架构、能力矩阵和使用/测试�
 
 - 不提供语义向量搜索、通用语义矛盾证明或完整 DLP；使用可解释关键词/符号索引、标题/来源冲突、用户确认和保守敏感内容过滤。当前代码事实优先，模型候选不能覆盖可信记录。
 - 物理 SQLite 损坏不会自动删除重建用户数据；派生索引损坏可重建，主数据故障需保留原件后恢复备份。
+- 源码摘要遵守项目读取边界，覆盖有界可读文本（每文件 256 KiB、总计 8 MiB）；保护文件、大文件及旧快照仍有元数据边界，不把摘要缺失当作精确内容证明。
 - 请求超时、真实额度耗尽或全部候选不可用仍会保存状态并停止，不能承诺模型一定完成任意任务。未核实的价格、最大窗口与能力保持未知。
 - GUI 需要解锁桌面与可用资源；本轮没有刻意压至 1 GiB 以下运行，高压门禁用无服务测试验证。未测试公司真实网络、代理与网关，不能将家庭环境结果冒称公司 PASS。
 - 本轮仅源码交付，不生成安装版/Portable/Release/Tag；Ollama 保留但未真实测试。

@@ -90,8 +90,10 @@ def infer_intent(previous, tool, *, changed_paths=(), read_only=False, operation
 
 
 def workspace_snapshot(root):
-    """Bounded metadata only, detects shell/MCP writes and deletes without reading file content."""
-    result = {}
+    """Bounded metadata plus safe-source digests; never persist file contents."""
+    from agent.core.project_files import ProjectFiles,EXTENSIONS,MAX_BYTES
+    root=Path(root).resolve()
+    policy=ProjectFiles(root);result={};hashed_bytes=0
     excluded = {'.git','.runtime','node_modules','.venv','venv','__pycache__','.pytest_cache','.mypy_cache','.ruff_cache','dist','build','release','coverage','validation-reports'}
     for directory, dirs, files in os.walk(root,followlinks=False):
         dirs[:] = [d for d in dirs if d not in excluded and not d.lower().endswith(('.egg-info','.dist-info')) and not (Path(directory)/d).is_symlink()]
@@ -101,13 +103,35 @@ def workspace_snapshot(root):
                 continue
             try:
                 stat = path.stat()
-                result[path.relative_to(root).as_posix()] = [stat.st_size,stat.st_mtime_ns]
+                signature=[stat.st_size,stat.st_mtime_ns]
+                if path.suffix.lower() in EXTENSIONS and stat.st_size<=MAX_BYTES and policy.allowed(path):
+                    if hashed_bytes+stat.st_size<=8*1024*1024:
+                        hashed_bytes+=stat.st_size
+                        content=policy.read(path)
+                        if content is not None:signature.append(hashlib.sha256(content.encode()).hexdigest())
+                    else:result['.lca-snapshot-incomplete']=[-1,-1]
+                result[path.relative_to(root).as_posix()]=signature
             except OSError:
                 continue
             if len(result) >= 20000:
                 result['.lca-snapshot-incomplete']=[-1,-1]
                 return result
     return result
+
+def changed_since_snapshot(before,after):
+    """Preserve legacy two-field checkpoints; compare new source hashes over timestamps."""
+    changed=set()
+    for path in set(before)|set(after):
+        if any(part.lower().endswith(('.egg-info','.dist-info')) for part in Path(path).parts):continue
+        old,new=before.get(path),after.get(path)
+        if old is None or new is None:changed.add(path)
+        elif len(old)>2:
+            if len(new)<3 or old[0]!=new[0] or old[2]!=new[2]:changed.add(path)
+        elif old[:2]!=new[:2]:changed.add(path)
+    return changed
+
+def snapshot_fingerprint(snapshot):
+    return json.dumps({p:[v[0],v[2]] if len(v)>2 else v for p,v in snapshot.items()},sort_keys=True)
 
 
 class RuntimeEvents:

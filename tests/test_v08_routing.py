@@ -50,6 +50,12 @@ class RoutingTests(unittest.IsolatedAsyncioTestCase):
             chosen,route=self.registry.prepare('auto',goal)
             self.assertEqual(chosen['profile_id'],'b');self.assertIn('tools',route['requirements']['capabilities'])
             self.assertTrue(requested_intent(goal)['read_only'])
+    def test_verified_vision_is_frozen_into_client_profile_without_changing_catalog(self):
+        original=json.dumps(self.catalog.load(),sort_keys=True)
+        for selection in ['auto','profile:c']:
+            chosen,_=self.registry.prepare(selection,'读取窗口截图并点击按钮')
+            self.assertTrue(chosen['snapshot']['profile']['supports_vision'])
+        self.assertEqual(json.dumps(self.catalog.load(),sort_keys=True),original)
     def test_unknown_not_supported_and_stale_fingerprint_or_age_ignored(self):
         self.store.set_setting('model.test.b','{}');state=self.registry.state(self.raw['profiles'][1]);self.assertEqual(state['capabilities']['tools']['state'],UNKNOWN)
         self.seed('b',when=(datetime.now(timezone.utc)-timedelta(days=31)).isoformat());self.assertEqual(self.registry.state(self.raw['profiles'][1])['capabilities']['chat']['state'],UNKNOWN)

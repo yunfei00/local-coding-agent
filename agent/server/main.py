@@ -2438,7 +2438,7 @@ class AgentServer:
         from agent.core.execution import ExecutionBudget
         execution = ExecutionBudget(self.store.connection, execution_id or (active_plan['id'] if active_plan else turn_id), thread_id, self.continuation_policy,ledger=self.runtime_ledger)
         self.active_executions[turn_id]=execution
-        from agent.core.unified_runtime import INSTRUCTIONS as UNIFIED_INSTRUCTIONS, PLAN_TOOL as UNIFIED_PLAN_TOOL, infer_intent, plan_steps, plan_view, verification_policy, result_view, workspace_snapshot, RuntimeEvents, requested_intent, computer_only, COMPUTER_TOOLS
+        from agent.core.unified_runtime import INSTRUCTIONS as UNIFIED_INSTRUCTIONS, PLAN_TOOL as UNIFIED_PLAN_TOOL, infer_intent, plan_steps, plan_view, verification_policy, result_view, workspace_snapshot,changed_since_snapshot,snapshot_fingerprint, RuntimeEvents, requested_intent, computer_only, COMPUTER_TOOLS
         unified = unified or bool(execution.data.get('unified'))
         requested=execution.data.setdefault('unified_request',requested_intent(prompt)) if unified else None
         runtime = execution.data.setdefault('unified', {'intent':'question', 'phase':'executing', 'outcome':None, 'changed_paths':[], 'verification':[], 'level':'none', 'repairs':0}) if unified else None
@@ -2859,7 +2859,7 @@ class AgentServer:
                     if unified:
                         current_snapshot = workspace_snapshot(workspace.root) if unified_baseline is not None else {}
                         baseline=unified_baseline or {}
-                        actual_changes = sorted(set(guard.changed_paths) | {p for p,v in current_snapshot.items() if baseline.get(p) != v} | (set(baseline) - set(current_snapshot)))
+                        actual_changes = sorted(set(guard.changed_paths) | changed_since_snapshot(baseline,current_snapshot))
                         remaining_steps=[s for s in self.store.task_plans.get(active_plan['id'])['steps'] if s['state'] not in {'completed','skipped'}] if active_plan else []
                         intermediate=bool(active_plan and runtime['intent']=='complex' and len(remaining_steps)>1)
                         change_version = json.dumps({p:current_snapshot.get(p) for p in actual_changes},sort_keys=True)+('intermediate' if intermediate else 'final')
@@ -2908,7 +2908,7 @@ class AgentServer:
                             environment_block = any(r['category'] in {'environment','configuration','permission','network','timeout','cancelled'} for r in failed)
                             if failed and not environment_block and runtime['repairs'] < verification_options.get('budget',{}).get('local_repairs',3):
                                 from agent.core.verification import failure_fingerprint
-                                fingerprint = failure_fingerprint(results, json.dumps(workspace_snapshot(workspace.root),sort_keys=True))
+                                fingerprint = failure_fingerprint(results, snapshot_fingerprint(workspace_snapshot(workspace.root)))
                                 if runtime.get('failure_fingerprint') != fingerprint:
                                     runtime['repairs'] += 1
                                     runtime['failure_fingerprint'] = fingerprint

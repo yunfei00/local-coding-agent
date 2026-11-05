@@ -71,6 +71,11 @@ class RuntimeRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.mode='quota';await self.start('profile:a');self.assertEqual(self.requests,['a-model'])
         self.assertTrue(any(e['type']=='turn.failed' for e in self.ws.messages))
         self.assertEqual((self.root/'calculator.py').read_text(),'def add(a,b):\n    return a-b\n')
+    async def test_confirmed_capability_reaches_actual_provider_factory(self):
+        chosen,route=CapabilityRegistry(self.server.tasks.catalog()).prepare('auto','读取窗口截图并点击按钮')
+        provider,_=self.server.chat_provider('auto',{**chosen['snapshot'],'routing':route})
+        self.assertTrue(provider.supports_vision)
+        self.assertEqual(self.requests,[])
     async def test_project_analysis_and_memory_save_need_no_code_change(self):
         self.mode='memory_analysis'
         await self.start(prompt='检索项目入口，解释关键模块，不修改代码。保存项目记忆。')

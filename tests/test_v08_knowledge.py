@@ -85,6 +85,23 @@ class KnowledgeTests(unittest.TestCase):
         self.assertEqual(self.k.search('dependency')['results'],[])
         self.write('math.py','def add(a,b): return a-b')
         self.assertNotEqual(workspace_snapshot(self.root),baseline)
+    def test_same_size_same_timestamp_source_write_is_detected(self):
+        from agent.core.unified_runtime import workspace_snapshot,changed_since_snapshot
+        file=self.write('math.py','def add(a,b): return a+b');stamp=file.stat().st_mtime_ns
+        before=workspace_snapshot(self.root)
+        self.write('math.py','def add(a,b): return a-b');os.utime(file,ns=(stamp,stamp))
+        after=workspace_snapshot(self.root)
+        self.assertEqual(before['math.py'][:2],after['math.py'][:2])
+        self.assertEqual(changed_since_snapshot(before,after),{'math.py'})
+    def test_noop_write_is_not_progress_and_legacy_checkpoint_stays_compatible(self):
+        from agent.core.unified_runtime import workspace_snapshot,changed_since_snapshot,snapshot_fingerprint
+        file=self.write('math.py','def add(a,b): return a+b');before=workspace_snapshot(self.root)
+        legacy={p:value[:2] for p,value in before.items()}
+        self.assertEqual(changed_since_snapshot(legacy,before),set())
+        self.write('math.py','def add(a,b): return a+b');os.utime(file,ns=(file.stat().st_atime_ns,file.stat().st_mtime_ns+1000000000))
+        after=workspace_snapshot(self.root)
+        self.assertEqual(changed_since_snapshot(before,after),set())
+        self.assertEqual(snapshot_fingerprint(before),snapshot_fingerprint(after))
     def test_corrupted_index_rebuilt_without_touching_memory(self):
         self.write('a.py','def found(): pass');self.k.save('保持','项目记忆');self.k.index()
         with self.store.connection:self.store.connection.execute("UPDATE project_knowledge_files SET symbols='broken' WHERE project_id=?",(self.project.id,))
