@@ -88,7 +88,7 @@ def requested_intent(prompt):
     return {'kind':kind,'read_only':kind!='interaction' and (readonly or kind=='analysis' or (question and not direct)),'pure_question':kind=='question' and question and not project_question and not paths and not memory_write,'memory_write':memory_write,'environment_write':environment_write,'referenced_files':len(paths),'listed_steps':listed}
 
 
-COMPUTER_TOOLS={'start_process','read_process','stop_process','list_directory','file_exists','agent_plan','workflow_template',*('desktop_'+n for n in ('list_windows','inspect','screenshot','focus_window','click','type_text','keypress','scroll','wait'))}
+COMPUTER_TOOLS={'start_process','read_process','stop_process','list_directory','file_exists','agent_plan','workflow_template','workflow_adjust',*('desktop_'+n for n in ('list_windows','inspect','screenshot','focus_window','click','type_text','keypress','scroll','wait'))}
 
 def computer_only(goal):
     """明确的仅界面授权边界，不改变普通代码/分析任务的工具范围。"""

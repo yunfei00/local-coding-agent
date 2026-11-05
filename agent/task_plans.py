@@ -438,15 +438,20 @@ class TaskPlanStore:
         if not changes or set(changes)-known.keys():
             raise ValueError('调整引用不存在的子任务')
         for ident, delta in changes.items():
-            if (known[ident]['state']!='pending' and not known[ident].get('dependency_blocked')) or not isinstance(delta,dict) or set(delta)-{'dependencies','acceptance_criteria','required_capabilities','title'}:
+            if (known[ident]['state']!='pending' and not known[ident].get('dependency_blocked')) or not isinstance(delta,dict) or set(delta)-{'description','verification','dependencies','acceptance_criteria','required_capabilities','title'}:
                 raise ValueError('只能调整尚未执行步骤的允许字段')
+            for field,maximum in [('description',4000),('verification',2000)]:
+                if field in delta and (not isinstance(delta[field],str) or len(delta[field])>maximum or field=='description' and not delta[field].strip()):raise ValueError('步骤描述或验证命令无效')
         nodes = [{**s['workflow'], 'description':s['description'], **changes.get(s['workflow']['task_id'],{})} for s in plan['steps']]
         validated = normalize_nodes(nodes)
         with self.db:
             for step, node in zip(plan['steps'],validated):
+                if step['workflow']['task_id'] not in changes:continue
                 node['retry_count']=step['workflow'].get('retry_count',0)
                 node['adjustment_reason']=reason
-                self.db.execute('UPDATE task_plan_steps SET workflow_json=? WHERE id=? AND plan_id=?',(json.dumps(node),step['id'],plan_id))
+                delta=changes[step['workflow']['task_id']]
+                self.db.execute('UPDATE task_plan_steps SET workflow_json=?,description=?,verification=? WHERE id=? AND plan_id=?',
+                    (json.dumps(node),delta.get('description',step['description']),delta.get('verification',step['verification']),step['id'],plan_id))
             self.checkpoint(plan_id,'workflow_adjusted')
 
     def review_workflow(self, plan_id, step_id, decision, summary, *, max_repairs=3, allow_repair=True):

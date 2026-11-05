@@ -2868,9 +2868,10 @@ class AgentServer:
                         elif unified:
                             schemas=None
                         if unified and active_plan and schemas:
-                            from agent.core.workflow import role_allows, REVIEW_TOOL
+                            from agent.core.workflow import role_allows, REVIEW_TOOL, ADJUST_TOOL
                             role=workflow_role()
                             if role=='reviewer':schemas=[*schemas,REVIEW_TOOL]
+                            if role in {'planner','developer'} and any(s.get('workflow') for s in active_plan['steps']):schemas=[*schemas,ADJUST_TOOL]
                             if role!='developer':
                                 schemas=[s for s in schemas if role_allows(role,s['function']['name'],
                                     {'command':'uv run python -m unittest'} if s['function']['name']=='run_command' and role=='tester' else {'command':'git diff'},
@@ -3215,6 +3216,9 @@ class AgentServer:
                                 active_plan["steps"][-1]["id"] != active_step_id))
                         advanced=self.store.task_plans.advance_verified(
                             active_plan["id"], active_step_id, evidence, verified)
+                        if advanced and unified and execution.data.get('role_handoffs') and execution.data['role_handoffs'][-1]['step_id']==active_step_id:
+                            execution.data['role_handoffs'][-1]['output']={'evidence_ids':[e.get('tool_call_id') for e in evidence],
+                                'changed_paths':sorted({p for e in evidence for p in e.get('changed_paths',[])}),'step_verified':True,'completed_at':__import__('time').time()}
                         if unified and not advanced and current_step and current_step['state']!='blocked':
                             corrections=execution.data.setdefault('step_evidence_corrections',{})
                             if corrections.get(active_step_id,0)>=1:
@@ -3363,6 +3367,18 @@ class AgentServer:
                             raise ProviderError('WORKFLOW_ROLE_PERMISSION','当前角色 '+workflow_role()+' 不允许执行 '+call.name+'；既有权限和审批未被扩大。')
                     if unified and computer_only(authorization_prompt if authorization_prompt is not None else prompt) and call.name not in COMPUTER_TOOLS:
                         raise ProviderError('COMPUTER_TOOL_SCOPE','用户仅授权界面操作；没有执行源码、终端或其他越界工具。')
+                    if unified and active_plan and call.name=='workflow_adjust':
+                        if len(tool_calls)!=1:raise ProviderError('WORKFLOW_ADJUST_BATCH','调整计划须单独调用，不执行同批其他操作')
+                        if execution.data.get('workflow_adjustments',0)>=3:raise ProviderError('WORKFLOW_ADJUST_LIMIT','计划调整达到有界上限，保留原计划与证据')
+                        changes=call.arguments.get('changes')
+                        if not isinstance(changes,list) or not 1<=len(changes)<=30 or any(not isinstance(c,dict) or not isinstance(c.get('task_id'),str) for c in changes):raise ProviderError('WORKFLOW_ADJUST_INVALID','计划调整格式无效')
+                        if len({c['task_id'] for c in changes})!=len(changes):raise ProviderError('WORKFLOW_ADJUST_INVALID','重复的任务调整 ID')
+                        try:self.store.task_plans.revise_workflow(active_plan['id'],{c['task_id']:{k:v for k,v in c.items() if k!='task_id'} for c in changes},call.arguments.get('reason'))
+                        except ValueError as exc:raise ProviderError('WORKFLOW_ADJUST_INVALID',str(exc)) from exc
+                        execution.data['workflow_adjustments']=execution.data.get('workflow_adjustments',0)+1
+                        messages.append({'role':'tool','tool_call_id':call.id,'name':call.name,'content':json.dumps({'ok':True,'plan_id':active_plan['id'],'updated_ids':[c['task_id'] for c in changes],'completed_steps_preserved':True},ensure_ascii=False)})
+                        await publish_runtime('executing',reason='规划根据真实工程证据细化未执行步骤')
+                        continue
                     if unified and active_plan and call.name=='workflow_review':
                         if len(tool_calls)!=1:
                             raise ProviderError('WORKFLOW_REVIEW_BATCH','审查提交必须单独调用；没有执行同批其他操作。')

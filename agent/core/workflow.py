@@ -34,10 +34,14 @@ def workflow_state(runtime):
 
 ROLES = ('planner', 'developer', 'reviewer', 'tester')
 MAX_NODES = 30
+ADJUST_TOOL={'type':'function','function':{'name':'workflow_adjust','description':'Planner/Developer: refine pending DAG steps after actual inspection. Never changes started/completed steps or their roles. At most 3 successful adjustments per run.',
+    'parameters':{'type':'object','required':['reason','changes'],'properties':{'reason':{'type':'string','minLength':1,'maxLength':2000},'changes':{'type':'array','minItems':1,'maxItems':30,'items':{'type':'object','required':['task_id'],'properties':{
+        'task_id':{'type':'string'},'description':{'type':'string','maxLength':4000},'verification':{'type':'string','maxLength':2000},'title':{'type':'string','maxLength':200},
+        'dependencies':{'type':'array','items':{'type':'string'}},'acceptance_criteria':{'type':'array','items':{'type':'string'}},'required_capabilities':{'type':'array','items':{'type':'string'}}}}}}}}}
 REVIEW_TOOL = {'type':'function','function':{'name':'workflow_review','description':'Reviewer only: submit an independent evidence-backed review. Request changes adds a bounded Developer repair before re-review.',
     'parameters':{'type':'object','required':['decision','summary'],'properties':{'decision':{'type':'string','enum':['approved','request_changes']},'summary':{'type':'string','minLength':1,'maxLength':2000}}}}}
 ROLE_INSTRUCTIONS = {
-    'planner': '你是 Planner。使用 read_file、list_directory、search_files、knowledge_search、git_status/git_diff 读取工程、检查约束和依赖；不修改代码。不要运行故障基线测试，也不要运行任意终端脚本；测试属于 Tester。每步包含可验证验收标准。',
+    'planner': '你是 Planner。使用 read_file、list_directory、search_files、knowledge_search、git_status/git_diff 读取工程、检查约束和依赖；必要时用 workflow_adjust 细化尚未执行步骤的描述、依赖和验收要求。不修改代码。不要运行故障基线测试，也不要运行任意终端脚本；测试属于 Tester。每步包含可验证验收标准。',
     'developer': '你是 Developer。只完成当前步骤的实现或修复，复用已完成操作和真实证据。禁止宣布其他角色已通过。',
     'reviewer': '你是独立 Reviewer。重新读取实际变更并检查需求、兼容性与风险；只读。检查后必须调用 workflow_review 提交 approved 或 request_changes。发现问题必须明确列出，不能仅重复 Developer 的结论。',
     'tester': '你是 Tester。运行当前项目真实测试，检查退出码和日志。不得修改源码、测试或配置以制造通过。环境问题与代码缺陷分开报告。',
@@ -120,6 +124,7 @@ def role_allows(role, tool, arguments, *, read_only=False, allowed_test_hashes=(
     """Extra restriction, never a grant: normal permissions still apply afterward."""
     if role == 'developer':
         return True
+    if tool=='workflow_adjust':return role=='planner'
     if tool == 'workflow_review':
         return role == 'reviewer'
     if tool in {'agent_plan', 'project_memory', 'environment_repair'}:

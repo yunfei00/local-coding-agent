@@ -212,7 +212,8 @@ class TaskService:
                 if isinstance(result.get("error"), dict):
                     result["error"]["message"] = redact_text(str(result["error"].get("message", "")), exact_secrets=self.server._exact_secrets(), max_chars=2000)
             else:
-                if not project or not project.state.get_thread(thread_id):
+                global_workflow=kind in {'task.runtime.workflow.get','task.runtime.workflow.update','task.runtime.templates'}
+                if not global_workflow and (not project or not project.state.get_thread(thread_id)):
                     raise ValueError("Open a valid project and thread")
                 if kind == 'task.runtime.pause':
                     requested_id=str(payload.get('run_id') or '')
