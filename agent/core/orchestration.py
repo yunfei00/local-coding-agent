@@ -214,7 +214,33 @@ class TaskService:
             else:
                 if not project or not project.state.get_thread(thread_id):
                     raise ValueError("Open a valid project and thread")
-                if kind == 'task.runtime.templates':
+                if kind == 'task.runtime.pause':
+                    requested_id=str(payload.get('run_id') or '')
+                    turn_id=next((tid for tid,execution in self.server.active_executions.items() if execution.key==requested_id and self.server.active_turn_threads.get(tid)==thread_id),None)
+                    queued=None
+                    if turn_id is None and requested_id in self.server.background_turns and self.server.active_turn_threads.get(requested_id)==thread_id:
+                        turn_id=requested_id;queued=self.server.queued_execution(turn_id)
+                    running=self.server.active_turns.get(turn_id)
+                    if not running or running.done():raise ValueError('当前运行不存在或已经结束')
+                    self.server.paused_turns.add(turn_id)
+                    if queued:
+                        self.server.runtime_ledger.transition(queued,'paused',turn_id,outcome='awaiting_user',reason='用户暂停排队任务；没有执行模型或工具')
+                        await ws.send_json(envelope('turn.cancelled',{'code':'TASK_PAUSED','reason':'用户暂停排队任务'},turn_id=turn_id,thread_id=thread_id))
+                    self.server.approvals.cancel_turn(turn_id)
+                    running.cancel()
+                    await asyncio.wait_for(asyncio.shield(asyncio.gather(running,return_exceptions=True)),45)
+                    result={'paused':True,'run_id':requested_id}
+                elif kind in {'task.runtime.workflow.get','task.runtime.workflow.update'}:
+                    from agent.core.workflow import load_workflow_config,workflow_config
+                    if kind.endswith('.update'):
+                        config=workflow_config(payload.get('config'))
+                        for profile_id in config['role_models'].values():
+                            if profile_id:
+                                from agent.core.model_routing import require_allowed
+                                require_allowed(self.catalog().profile(profile_id)['model'])
+                        self.server.store.set_setting('workflow.config',json.dumps(config))
+                    result={'workflow':load_workflow_config(self.server.store)}
+                elif kind == 'task.runtime.templates':
                     from agent.core.workflow_templates import load_templates
                     result={'templates':load_templates()}
                 elif kind == 'task.runtime.events':
@@ -376,7 +402,7 @@ class TaskService:
                         raise ValueError("Unsupported task operation")
                     result = {"task": self.public(self.runtime.get(plan_id))}
             await ws.send_json(envelope("task.loaded", result, request_id=request_id, thread_id=thread_id or None))
-        except (ValueError, TypeError, KeyError, OSError, ProviderError) as exc:
+        except (ValueError, TypeError, KeyError, OSError, TimeoutError, ProviderError) as exc:
             await self.server.send_error(ws, "TASK_INVALID", redact_text(str(exc), exact_secrets=self.server._exact_secrets()), request_id=request_id, thread_id=thread_id or None)
 
     def make_provider(self, snapshot, route, profile):

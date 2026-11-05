@@ -147,7 +147,7 @@ Write-Host "[3/11] Build packaged Python Agent..."
 Remove-BuildArtifact "build\agent-dist"
 Remove-BuildArtifact "build\pyinstaller"
 New-Item -ItemType Directory -Path "build\pyinstaller" -Force | Out-Null
-Invoke-Checked uv run --no-sync pyinstaller --noconfirm --clean --name lca-agent --distpath build\agent-dist --workpath build\pyinstaller\work --specpath build\pyinstaller agent\launcher.py
+Invoke-Checked uv run --no-sync pyinstaller --noconfirm --clean --collect-data agent.core --name lca-agent --distpath build\agent-dist --workpath build\pyinstaller\work --specpath build\pyinstaller agent\launcher.py
 
 $AgentExe = Join-Path $RepoRoot "build\agent-dist\lca-agent\lca-agent.exe"
 if (-not (Test-Path $AgentExe)) { throw "Packaged Agent executable was not created: $AgentExe" }

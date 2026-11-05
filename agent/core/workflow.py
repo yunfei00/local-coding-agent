@@ -6,13 +6,38 @@ from __future__ import annotations
 
 import copy
 import re
+import json
+import hashlib
+from enum import StrEnum
+
+
+class WorkflowState(StrEnum):
+    CREATED='CREATED'
+    READY='READY'
+    RUNNING='RUNNING'
+    WAITING_APPROVAL='WAITING_APPROVAL'
+    BLOCKED='BLOCKED'
+    FAILED='FAILED'
+    COMPLETED='COMPLETED'
+    CANCELLED='CANCELLED'
+
+
+def workflow_state(runtime):
+    phase=runtime.get('phase')
+    if phase=='cancelled':return WorkflowState.CANCELLED
+    if phase=='failed':return WorkflowState.FAILED
+    if phase in {'paused','blocked'} or runtime.get('outcome') in {'awaiting_user','partially_completed','completed_unverified'}:return WorkflowState.BLOCKED
+    if phase=='completed':return WorkflowState.COMPLETED
+    if phase=='queued':return WorkflowState.READY
+    if phase in {'executing','planning','verifying','repairing'}:return WorkflowState.RUNNING
+    return WorkflowState.CREATED
 
 ROLES = ('planner', 'developer', 'reviewer', 'tester')
 MAX_NODES = 30
 REVIEW_TOOL = {'type':'function','function':{'name':'workflow_review','description':'Reviewer only: submit an independent evidence-backed review. Request changes adds a bounded Developer repair before re-review.',
     'parameters':{'type':'object','required':['decision','summary'],'properties':{'decision':{'type':'string','enum':['approved','request_changes']},'summary':{'type':'string','minLength':1,'maxLength':2000}}}}}
 ROLE_INSTRUCTIONS = {
-    'planner': '你是 Planner。读取工程、检查约束和依赖；不修改代码。每步包含可验证验收标准。',
+    'planner': '你是 Planner。使用 read_file、list_directory、search_files、knowledge_search、git_status/git_diff 读取工程、检查约束和依赖；不修改代码。不要运行故障基线测试，也不要运行任意终端脚本；测试属于 Tester。每步包含可验证验收标准。',
     'developer': '你是 Developer。只完成当前步骤的实现或修复，复用已完成操作和真实证据。禁止宣布其他角色已通过。',
     'reviewer': '你是独立 Reviewer。重新读取实际变更并检查需求、兼容性与风险；只读。检查后必须调用 workflow_review 提交 approved 或 request_changes。发现问题必须明确列出，不能仅重复 Developer 的结论。',
     'tester': '你是 Tester。运行当前项目真实测试，检查退出码和日志。不得修改源码、测试或配置以制造通过。环境问题与代码缺陷分开报告。',
@@ -62,8 +87,26 @@ def normalize_nodes(steps):
 
 def ready_steps(steps):
     done = {s['workflow']['task_id'] for s in steps if s['state'] == 'completed'}
-    return [s for s in steps if s['state'] in {'pending','in_progress'}
-            and set(s['workflow']['dependencies']) <= done]
+    return sorted([s for s in steps if s['state'] in {'pending','in_progress'}
+            and set(s['workflow']['dependencies']) <= done],key=lambda s:s['state']!='in_progress')
+
+
+def dependency_view(steps):
+    """Derived blocking persists through its source states and immutable edges.
+
+    Pending children are never rewritten in SQLite, so repairing a dependency
+    automatically makes them ready without replaying or resetting any work.
+    """
+    blocked={s['workflow']['task_id'] for s in steps if s['state'] in {'blocked','skipped'}}
+    while True:
+        expanded=blocked|{s['workflow']['task_id'] for s in steps if s['state']=='pending' and set(s['workflow']['dependencies']) & blocked}
+        if expanded==blocked:break
+        blocked=expanded
+    for step in steps:
+        reasons=sorted(set(step['workflow']['dependencies']) & blocked)
+        if step['state']=='pending' and reasons:
+            step.update(state='blocked',dependency_blocked=True,blocked_dependencies=reasons)
+    return steps
 
 
 def progress(steps):
@@ -73,7 +116,7 @@ def progress(steps):
             'blocked':[s['id'] for s in steps if s['state']=='blocked']}
 
 
-def role_allows(role, tool, arguments, *, read_only=False):
+def role_allows(role, tool, arguments, *, read_only=False, allowed_test_hashes=()):
     """Extra restriction, never a grant: normal permissions still apply afterward."""
     if role == 'developer':
         return True
@@ -85,7 +128,7 @@ def role_allows(role, tool, arguments, *, read_only=False):
         from agent.task_plans import repeatable_check
         command = str(arguments.get('command','')).strip()
         if role == 'tester':
-            return repeatable_check(tool, arguments)
+            return repeatable_check(tool, arguments) or hashlib.sha256(command.encode()).hexdigest() in allowed_test_hashes
         return bool(re.fullmatch(r'git\s+(?:diff(?:\s+--check)?|status(?:\s+-sb)?)',command,re.I))
     # Desktop focus/input and arbitrary processes are effects even if their
     # provider metadata advertises them as inspection helpers.
@@ -107,3 +150,24 @@ def scheduling_conflict(left, right):
     if set(left.get('resources',[])) & set(right.get('resources',[])):
         return 'SHARED_TOOL_RESOURCE'
     return None
+
+
+def workflow_config(value=None):
+    value={} if value is None else value
+    if not isinstance(value,dict) or set(value)-{'role_models','max_repairs','max_no_progress','max_parallel'}:
+        raise ValueError('工作流配置包含未知字段')
+    roles=value.get('role_models',{})
+    if not isinstance(roles,dict) or set(roles)-set(ROLES) or any(v is not None and (not isinstance(v,str) or not 1<=len(v)<=200) for v in roles.values()):
+        raise ValueError('角色模型配置无效')
+    result={'role_models':{r:roles.get(r) for r in ROLES},'max_repairs':value.get('max_repairs',3),'max_no_progress':value.get('max_no_progress',2),'max_parallel':value.get('max_parallel',1)}
+    if type(result['max_parallel']) is not int or result['max_parallel'] not in (1,2):
+        raise ValueError('最大并行任务数只能为 1 或 2')
+    for key in ('max_repairs','max_no_progress'):
+        if type(result[key]) is not int or not (0 if key=='max_repairs' else 1)<=result[key]<=10:
+            raise ValueError(key+' 必须是有界整数')
+    return result
+
+
+def load_workflow_config(store):
+    raw=store.get_setting('workflow.config')
+    return workflow_config(json.loads(raw) if raw is not None else None)

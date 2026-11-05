@@ -1,8 +1,12 @@
 # Local Coding Agent
 
-v0.8.0 增加基于真实能力证据的自动模型路由、项目长期记忆、轻量工程检索、上下文连续性与受审批的环境诊断修复。继续使用同一个聊天入口，保留既有模型、线程、任务、Git Worktree、MCP 和 Windows Computer Agent。
+v0.9.0 开发分支在原 Unified Runtime 上增加依赖工作流、逻辑四角色、独立审查、有限修复、后台任务和交付证据。继续使用同一个聊天入口，保留模型、项目、线程、Git、MCP、记忆、检索和 Windows Computer Agent。
 
-详见 [v0.8 架构](docs/v0.8/architecture.md)、[使用与测试](docs/v0.8/implementation.md)、[真实验收报告](docs/v0.8/acceptance-report.md)。本次仅交付源码，不创建 Release、Tag 或安装包；模型配置和安全存储保持兼容。
+详见 [架构](docs/v0.9/architecture.md)、[角色配置](docs/v0.9/multi-agent.md)、[模板](docs/v0.9/workflow-templates.md)、[实际验收](docs/v0.9/acceptance-report.md)。进行中项目不代表已经通过；本次不创建 Release、Tag 或安装包。
+
+更新源码：`uv sync --locked`、`npm --prefix desktop ci`、`npm run desktop:build`，再运行 `npm run dev`。完整退出旧桌面与后端后再启动。设置中的“自主工作流 · 角色与模板”支持角色模型、有限修复和并行上限；缺省沿用聊天模型，新设置用于新工作流，旧任务保留快照。
+
+回归命令：`uv run --locked python -m unittest discover -s tests -v`、`npm run desktop:typecheck`、`npm run desktop:test`、`npm run desktop:build`、`node scripts/validation/desktop-smoke.cjs`。真实验证须显式执行 `scripts/validation/unified_live.py --live`，可能消耗额度；Mock Smoke 不代表在线模型通过。
 
 ## 历史阶段记录
 

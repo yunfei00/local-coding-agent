@@ -143,6 +143,10 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
         plan=self.server.store.task_plans.get(r['plan_id'])
         self.assertTrue(all(s['state']=='completed' and s['executions'] for s in plan['steps']))
         self.assertIn('a+b',(self.repo/'calculator.py').read_text())
+        delivery=json.loads(Path(r['delivery']['json_path']).read_text(encoding='utf-8'))
+        self.assertEqual(delivery['status'],'已完成且验证通过')
+        self.assertEqual(len(delivery['steps']),3)
+        self.assertEqual(delivery['reviews'][-1]['decision'],'approved')
 
     async def test_reviewer_cannot_write_even_if_provider_forges_hidden_tool(self):
         _,r=await self.run_steps([
@@ -151,6 +155,29 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
         ])
         self.assertEqual(r['error_code'],'WORKFLOW_ROLE_PERMISSION')
         self.assertIn('a-b',(self.repo/'calculator.py').read_text())
+
+    async def test_four_roles_use_independent_models_and_frozen_bindings(self):
+        developer=ScriptedProvider([
+            tool_step('workflow_template',{'template_id':'bugfix'}),
+            tool_step('write_file',{'path':'calculator.py','content':'def add(a,b): return a+b\n'}),final_step('开发完成')])
+        planner=ScriptedProvider([tool_step('read_file',{'path':'calculator.py'}),final_step('根因是减法')])
+        reviewer=ScriptedProvider([tool_step('read_file',{'path':'calculator.py'}),tool_step('workflow_review',{'decision':'approved','summary':'重新读取后通过'}),final_step('审查完成')])
+        tester=ScriptedProvider([tool_step('run_command',{'command':'uv run --no-project python -m unittest discover -s tests -v'}),final_step('真实测试通过')])
+        clients={'planner':planner,'reviewer':reviewer,'tester':tester}
+        for pid,client in clients.items():
+            client.agent_tools_enabled=True
+            client.profile_snapshot={'profile':{'model_profile_id':pid},'request_seconds':60}
+        self.server.store.set_setting('workflow.config',json.dumps({'role_models':{r:r for r in clients}}))
+        def resolve(selection,snapshot=None):
+            pid=selection.removeprefix('profile:')
+            return clients[pid],pid+'-model'
+        with patch.object(self.server,'chat_provider',side_effect=resolve):
+            await self.server.run_tool_turn(self.ws,thread_id=self.thread.id,turn_id='four-roles',prompt='请修复 calculator.py 并审查和测试',model='developer-model',provider=developer,unified=True)
+        r=[e['payload']['runtime'] for e in self.ws.messages if e['type']=='agent.runtime.updated'][-1]
+        self.assertEqual(r['outcome'],'completed_verified')
+        self.assertEqual([h['role'] for h in r['role_handoffs']],['planner','developer','reviewer','tester'])
+        self.assertEqual([h['model'] for h in r['role_handoffs']],['planner-model','developer-model','reviewer-model','tester-model'])
+        self.assertTrue(all(c.calls for c in clients.values()))
 
     async def test_question_has_no_plan_or_tools(self):
         p,r=await self.run_steps([final_step('装饰器包装函数以增加行为')])

@@ -88,7 +88,7 @@ def requested_intent(prompt):
     return {'kind':kind,'read_only':kind!='interaction' and (readonly or kind=='analysis' or (question and not direct)),'pure_question':kind=='question' and question and not project_question and not paths and not memory_write,'memory_write':memory_write,'environment_write':environment_write,'referenced_files':len(paths),'listed_steps':listed}
 
 
-COMPUTER_TOOLS={'start_process','read_process','stop_process','list_directory','file_exists','agent_plan',*('desktop_'+n for n in ('list_windows','inspect','screenshot','focus_window','click','type_text','keypress','scroll','wait'))}
+COMPUTER_TOOLS={'start_process','read_process','stop_process','list_directory','file_exists','agent_plan','workflow_template',*('desktop_'+n for n in ('list_windows','inspect','screenshot','focus_window','click','type_text','keypress','scroll','wait'))}
 
 def computer_only(goal):
     """明确的仅界面授权边界，不改变普通代码/分析任务的工具范围。"""
@@ -156,9 +156,17 @@ class RuntimeEvents:
         self.ws,self.execution,self.runtime=ws,execution,runtime
 
     async def send_json(self,event):
-        if event['type'] in {'turn.failed','turn.cancelled'}:
+        if event['type']=='approval.requested' and self.runtime.get('phase') not in {'completed','failed','cancelled','paused'}:
+            from agent.server.protocol import envelope
             payload=event.get('payload',{})
-            disconnected=payload.get('reason')=='connection_interrupted' or payload.get('code')=='CONNECTION_INTERRUPTED'
+            self.runtime.update(id=self.execution.key,workflow_state='WAITING_APPROVAL',pending_approval={k:payload.get(k) for k in ('approval_id','tool','risk')},revision=self.runtime.get('revision',0)+1)
+            if self.execution.ledger:self.execution.ledger.transition(self.execution,self.runtime['phase'],event.get('turn_id'))
+            else:self.execution.save()
+            await self.ws.send_json(envelope('agent.runtime.updated',{'runtime':dict(self.runtime)},thread_id=event.get('thread_id'),turn_id=event.get('turn_id')))
+        if event['type'] in {'turn.failed','turn.cancelled'}:
+            self.runtime.pop('pending_approval',None)
+            payload=event.get('payload',{})
+            disconnected=payload.get('reason')=='connection_interrupted' or payload.get('code') in {'CONNECTION_INTERRUPTED','TASK_PAUSED'}
             values=dict(phase='paused' if disconnected else 'cancelled' if event['type']=='turn.cancelled' else 'failed',
                 outcome='awaiting_user' if disconnected else 'cancelled' if event['type']=='turn.cancelled' else 'awaiting_user' if payload.get('code') in {'PLAN_RESUME_CONFIRMATION_REQUIRED','APPROVAL_DENIED','PERMISSION_DENIED'} else 'partially_completed' if self.runtime.get('changed_paths') else 'failed',
                 reason=str(self.runtime.get('reason') if disconnected else payload.get('message') or payload.get('reason') or payload.get('code') or '执行停止')[:2000],

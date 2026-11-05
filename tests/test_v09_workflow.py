@@ -1,5 +1,6 @@
 import sqlite3
 import unittest
+import hashlib
 
 from agent.core.workflow import normalize_nodes, ready_steps, progress, role_allows, scheduling_conflict
 from agent.task_plans import TaskPlanStore
@@ -30,6 +31,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(self.store.advance_verified(pid,first['id'],evidence,True))
         self.assertEqual(self.store.active_step(pid)['workflow']['task_id'],'review')
         self.store.update_step(pid,first['id'],'blocked')
+        self.assertEqual(self.store.active_step(pid)['workflow']['task_id'],'review')
         self.assertEqual(progress(self.store.get(pid)['steps'])['completed'],1)
 
     def test_invalid_graph_never_writes_partial_plan(self):
@@ -53,14 +55,31 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.revise_workflow(pid,{'fix':{'dependencies':['tests']}},'循环')
         self.assertEqual(before,self.store.get(pid)['steps'])
+        with self.assertRaises(ValueError):
+            self.store.revise_workflow(pid,{'review':{'assigned_role':'developer'}},'不能降低独立审查边界')
+
+    def test_followup_extends_same_graph_and_keeps_review_test_boundaries(self):
+        pid=self.create();before=self.store.get(pid)['steps']
+        self.store.append_steps(pid,[{'description':'追加输入校验'}])
+        after=self.store.get(pid)['steps']
+        self.assertEqual([s['id'] for s in after[:3]],[s['id'] for s in before])
+        self.assertEqual([s['workflow']['assigned_role'] for s in after[3:]],['developer','reviewer','tester'])
+        self.assertEqual(after[3]['workflow']['dependencies'],['tests'])
 
     def test_blocked_dependency_does_not_run_dependent(self):
         pid=self.create()
         first=self.store.active_step(pid)
         self.store.update_step(pid,first['id'],'blocked')
+        self.assertEqual(self.store.active_step(pid)['id'],first['id'])
         self.assertEqual(ready_steps(self.store.get(pid)['steps']),[])
         second=self.store.get(pid)['steps'][0]
         self.assertFalse(self.store.advance_verified(pid,second['id'],[{'ok':True}],True))
+        self.assertTrue(self.store.get(pid)['steps'][0]['dependency_blocked'])
+        self.store.update_step(pid,first['id'],'in_progress')
+        self.store.record_execution(pid,first['id'],'fixed','turn','write_file',{'ok':True})
+        self.store.update_step(pid,first['id'],'completed',self.store.execution_evidence(pid,first['id'],['fixed']))
+        self.assertEqual(self.store.active_step(pid)['workflow']['task_id'],'review')
+        self.assertEqual(self.store.get(pid)['steps'][0]['state'],'pending')
 
     def test_roles_restrict_effects_without_granting_permissions(self):
         for role in ('planner','reviewer','tester'):
@@ -71,6 +90,16 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(role_allows('tester','run_command',{'command':'uv run python -m unittest'}))
         self.assertFalse(role_allows('reviewer','run_command',{'command':'uv run python -m unittest'}))
         self.assertFalse(role_allows('tester','run_command',{'command':'npm test; del a.py'}))
+        self.assertTrue(role_allows('tester','run_command',{'command':'npm --prefix frontend run typecheck'}))
+        self.assertTrue(role_allows('tester','run_command',{'command':'npm --prefix frontend run typecheck && npm --prefix frontend test && npm --prefix frontend run build'}))
+        self.assertFalse(role_allows('tester','run_command',{'command':'npm test && git push'}))
+        self.assertFalse(role_allows('tester','run_command',{'command':'npm test && npm install'}))
+        self.assertFalse(role_allows('tester','run_command',{'command':'npm --prefix ../../other test'}))
+        self.assertFalse(role_allows('tester','run_command',{'command':'npm --prefix frontend install'}))
+        command='uv run python -c "import missing_dependency"'
+        self.assertFalse(role_allows('tester','run_command',{'command':command}))
+        self.assertTrue(role_allows('tester','run_command',{'command':command},allowed_test_hashes=[hashlib.sha256(command.encode()).hexdigest()]))
+        self.assertFalse(role_allows('tester','run_command',{'command':command+'; evil'},allowed_test_hashes=[hashlib.sha256(command.encode()).hexdigest()]))
 
     def test_resource_claims_serialize_conflicts(self):
         self.assertEqual(scheduling_conflict({'gui':True},{'gui':True}),'GUI_FOCUS_CONFLICT')

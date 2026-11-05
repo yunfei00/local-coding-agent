@@ -1470,7 +1470,7 @@ ipcMain.handle("agent:task-request", async (_event, threadId: string, operation:
   allowed.add("task.runtime.diagnostics");
   allowed.add('task.append'); allowed.add('task.runtime.events');
   allowed.add("task.model.diagnostic"); allowed.add("task.model.diagnostic.cancel");
-  for(const operation of ['knowledge.get','knowledge.search','knowledge.save','knowledge.delete','knowledge.settings','model.capabilities','task.runtime.templates'])allowed.add(operation);
+  for(const operation of ['knowledge.get','knowledge.search','knowledge.save','knowledge.delete','knowledge.settings','model.capabilities','task.runtime.templates','task.runtime.workflow.get','task.runtime.workflow.update','task.runtime.pause'])allowed.add(operation);
   if (!allowed.has(operation)) throw new Error("Unsupported task operation");
   return sendRequest(operation, operation.startsWith('knowledge.')?'knowledge.loaded':operation==='model.capabilities'?'model.capabilities.loaded':"task.loaded", payload, {threadId}, operation === "task.model.diagnostic" ? 300000 : operation === "task.connection.test" ? 30000 : 15000);
 });

@@ -128,6 +128,7 @@ class ProcessSession:
     stopping: bool = False
     on_output: object = None
     on_raw_output: object = None
+    persist_output: bool = True
 
     def result(self, *, cursor=0):
         events = [c for c in self.chunks if c["cursor"] > cursor]
@@ -139,7 +140,7 @@ class ProcessSession:
                   "shell": self.shell, "cwd": self.cwd, "command": self.command,
                   "next_cursor": self.cursor, "chunks": events,
                   "output_omitted": bool(self.chunks and cursor < self.chunks[0]["cursor"] - 1),
-                  "log_path": str(self.directory / "output.jsonl"), "log_truncated": self.log_truncated,
+                  "log_path": str(self.directory / "output.jsonl") if self.persist_output else None, "log_truncated": self.log_truncated,
                   "output_truncated": self.output_truncated,
                   "output_drain_timed_out": self.error == "OUTPUT_DRAIN_TIMEOUT",
                   "job_cleanup":self.job.last_cleanup,
@@ -148,7 +149,8 @@ class ProcessSession:
 
 
 class ProcessManager:
-    def __init__(self, workspace, log_root=None):
+    def __init__(self, workspace, log_root=None, *, persist_output=True):
+        self.persist_output=persist_output
         self.project_path_prefix=list(getattr(workspace,'project_path_prefix',[]))
         self.workspace = workspace
         base = Path(os.getenv("LCA_DATA_DIR") or Path.home() / ".local-coding-agent")
@@ -174,7 +176,9 @@ class ProcessManager:
                     session.chunks.pop(0)
                 line = json.dumps(item, ensure_ascii=False) + "\n"
                 size = len(line.encode("utf-8"))
-                if session.log_bytes + size <= MAX_LOG_BYTES:
+                if not session.persist_output:
+                    pass
+                elif session.log_bytes + size <= MAX_LOG_BYTES:
                     with (session.directory / "output.jsonl").open("a", encoding="utf-8") as log:
                         log.write(line)
                     session.log_bytes += size
@@ -257,7 +261,7 @@ class ProcessManager:
             process._transport.close()
             raise ToolError("PROCESS_ISOLATION_FAILED", "Could not own the process tree before execution") from exc
         session = ProcessSession(ident, owner, process, job, Path(executable).stem, command, self.workspace.display(cwd), timeout, directory,
-                                 on_output=on_output, on_raw_output=on_raw_output)
+                                 on_output=on_output, on_raw_output=on_raw_output,persist_output=self.persist_output)
         self.sessions[ident] = session
         # Monitor is created before any cancellable callback or stream consumption.
         session.task = asyncio.create_task(self._monitor(session), name=ident)
