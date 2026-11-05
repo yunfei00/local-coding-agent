@@ -23,7 +23,7 @@
 | 检查 | 实际结果 | 本机日志 |
 | --- | --- | --- |
 | 修改前 Python 基线 | 520 项：518 PASS、2 SKIP | 基线审计 |
-| 完整 Python | 549 项：547 PASS、2 SKIP、0 FAIL | `validation-reports/20261104-191955-799454.log` |
+| 完整 Python | 最后运行时修复后 CI：Windows 551 项，549 PASS、2 SKIP；Ubuntu 534 PASS、17 平台/条件 SKIP，均 0 FAIL | `validation-reports/v06-ci-final-head.log`（4e0a8ec） |
 | 新增事件/HTTP/集成定向 | 最后修复后 31 PASS（新增超时隔离与总任务取消两项） | `validation-reports/v06-timeout-after.log` |
 | 原统一运行时 | 41 PASS | `validation-reports/v06-unified-final.log` |
 | 恢复回归 | 19 PASS | `validation-reports/v06-recovery-final.log` |
@@ -31,8 +31,9 @@
 | 前端 | 18 文件、62 PASS | `validation-reports/v06-frontend-serial.log` |
 | 类型检查、前端/Electron 构建 | PASS | `validation-reports/v06-complete-validation.log` |
 | 实际 Electron desktop-smoke | 53 PASS、0 SKIP；最终构建复测同样通过 | `validation-reports/v06-desktop-smoke-final.log` |
+| GUI 验收驱动回归 | 新增 3 PASS，0 FAIL；最新 CI 继续执行 | `node --test scripts/validation/live_gui_guard.test.cjs` |
 
-定向套件包含在完整 Python 中，不能相加；原有两项条件跳过未改成通过。549 项全量摘要 Errors=0；最后工具超时修复新增两项（修复前一项实际失败，修复后 31 项全部通过），最终 HEAD 的 551 项完整回归由 CI 继续验证，不预先计为通过。
+定向套件包含在完整 Python 中，不能相加；原有两项条件跳过未改成通过。工具超时修复新增两项（修复前一项实际失败，修复后 31 项全部通过），4e0a8ec 的 551 项完整 CI 已确认通过。本次最后收尾只修改验收驱动、回归和文档，不重复执行先前已通过的 18 项真实模型用例，也不在本机再次运行全套回归；仓库 CI 仍按原流程对最新 HEAD 完整检查。
 
 ```powershell
 uv sync --locked
@@ -93,13 +94,23 @@ Usage 属于相应数据库累计快照，包含失败/恢复时不能直接相�
 
 ## CI 与最终门禁
 
+### 2026-11-05 最后补测结果
+
+此前两个 BLOCKED 保留为历史失败，不追改成 PASS。系统 Event 2004 在旧退出前约 2 秒确认虚拟内存耗尽；准确历史退出码/堆栈当时未采集，无法恢复。当前可用内存约 7 GB，启动前无本轮孤儿测试进程。资源恢复后能稳定进入真实 HTTP 请求，说明没有持续的模型连接或任务状态启动阻断。
+
+首轮 qwen3-coder-flash 补测进行了 11 次真实调用，但在窗口未就绪时申请了错误 PID，审批拒绝；同时发现验收驱动引用关闭后的 Electron process 可能掩盖原始失败。修复的是**验收驱动**：记录生命周期/堆栈/内存/子进程，归档 stale PID，仅批准本次实际就绪 PID，保留 child 引用、有界关闭和清理。未修改 Provider、任务状态机或权限以制造成功。
+
+随后单独的真实纯 GUI 补测 **PASS**：qwen3.7-flash，14 调用全部 HTTP 200，193899 Token（准确 Usage），68 秒；实际点击/输入/审批保存/检查/Screenshot/Stop，随机保存值 `GUI-ddb07d47`。源码冻结、无代码变更，外部检查通过；产品保持 `completed_unverified/manual`，没有伪造代码验证通过。Electron 清理退出码 0，无运行中异常，未发现遗留测试进程。报告 `validation-reports/v06-gui-ready-final-20261105/report.json`，公开元数据与全请求阶段见 [gui-final-20261105.json](evidence/gui-final-20261105.json)，截图见 [Windows GUI 验收](windows-gui-acceptance.md)。
+
+本轮累计为历史 18 项通过加本次 1 项真实 GUI 通过；首轮补测失败不计入通过，不把 Mock 或启动前退出算作 GUI PASS。3 项新增驱动回归通过。用户不需要重填 Key、追加日常预算或人工截图。
+
 源码与驱动提交 `8329cc158f13703584c08da4953e1c1817c45789` 的 push 和 PR 两次 CI 均为 Windows/Ubuntu 全通过：[push 41826050081](https://github.com/yunfei00/local-coding-agent/actions/runs/41826050081)、[PR 41826117426](https://github.com/yunfei00/local-coding-agent/actions/runs/41826117426)。包含 Python、类型检查、前端测试、构建、实际 Windows Electron GUI 与 desktop-smoke。PR 为 [#29](https://github.com/yunfei00/local-coding-agent/pull/29)，无合并冲突。
 
 此前 `865990a` 的 Windows smoke 曾在 More → Diagnostics 菜单等待超时，Ubuntu 通过。该失败记录保留为 `validation-reports/v06-ci-8659-failed.log`，没有删断言；同一产品代码在本机最终 smoke 及上述两个独立 CI 均通过。仍属一次发生过的时序失败，不能声称从未失败。本文后续仅补充验收证据，最新 HEAD 的 CI 以 PR Checks 为准。
 
-最终结论：**BLOCKED**。18 项已成功在线用例、完整回归、最终 desktop-smoke 和已确认 CI 有效，但纯 GUI 补充验收未完成，不宣称全部功能已验收。2026-11-05 继续时主机可用内存仅 147 MB、系统提交量 44872859648 / 45414780928 字节，未继续重复启动在线 GUI 任务。保留 PR，本轮不绕过门槛合并 main。没有创建正式 Release、Tag 或安装包。
+真实功能验收结论：**PASS（本次 v0.6 必需范围）**。此前阻断的纯 GUI 已通过，合并仍需等待最新 HEAD 全部 CI 成功、无冲突且仓库规则允许。PR #29 Checks 和合并记录提供最终提交与 CI 结果；不使用历史归档的例外许可绕过门禁。没有创建正式 Release、Tag 或安装包。
 
-下一步是主机资源恢复后，只执行 `gui --gui-only` 补充用例，检查真实桌面动作、无源码变更以及 `completed_unverified/manual` 结果；已有 Python/React/Electron 等 18 项不需要重新消耗模型额度。无需重新配置 Key 或增加日常预算。
+本轮没有重新开发 v0.6，也没有重跑已通过的全部在线用例。真实视觉推理 NOT RUN、未附 GUI 合约的产品结果待独立验收、事件历史无自动轮转仍属于已知边界，不宣称任意模型/任意工程均能自动完成。
 
 ## 公司更新
 

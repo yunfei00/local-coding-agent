@@ -915,10 +915,29 @@
       "frozen_unchanged": true,
       "completed_preserved": null,
       "head_unchanged": true
+    },
+    {
+      "case": "gui-only-final-20261105",
+      "model": "qwen3.7-flash",
+      "result": "PASS",
+      "report_ref": "docs/v0.6/evidence/gui-final-20261105.json",
+      "report_sha256": "a53a51e81ba4f5d8b306f6c0afeffe54c12ddd52541d4b68a22fa57d02090503",
+      "phase": "completed",
+      "outcome": "completed_unverified",
+      "run_id": "b955db61-1e69-4ebf-adfc-8a98a155fd74",
+      "model_calls": 14,
+      "usage_snapshot": {
+        "calls": 14,
+        "tokens": 193899,
+        "estimated": false
+      },
+      "verification_level": "manual",
+      "frozen_unchanged": true,
+      "changed_paths": []
     }
   ],
   "case_totals": {
-    "PASS": 18
+    "PASS": 19
   },
   "excluded_models": [
     "qwen3.7-plus",
@@ -926,10 +945,13 @@
   ],
   "automated": {
     "python": {
-      "total": 549,
-      "passed": 547,
+      "total": 551,
+      "passed": 549,
       "skipped": 2,
-      "failed": 0
+      "failed": 0,
+      "platform": "Windows",
+      "log": "validation-reports/v06-ci-final-head.log",
+      "verified_code_commit": "4e0a8ec0fbeb73c3da67b2e25aaf0ecb1116b954"
     },
     "frontend": {
       "files": 18,
@@ -949,6 +971,18 @@
     "unified_after_timeout_fix": {
       "passed": 41,
       "log": "validation-reports/v06-unified-timeout-final.log"
+    },
+    "python_ubuntu": {
+      "total": 551,
+      "passed": 534,
+      "skipped": 17,
+      "failed": 0,
+      "log": "validation-reports/v06-ci-final-head.log"
+    },
+    "gui_driver_regression": {
+      "passed": 3,
+      "failed": 0,
+      "command": "node --test scripts/validation/live_gui_guard.test.cjs"
     }
   },
   "supplemental_checks": [
@@ -1003,7 +1037,7 @@
     }
   },
   "merge_gate": {
-    "result": "BLOCKED",
-    "reason": "纯 GUI 最终结果语义补充验收未通过；保留 PR，不合并 main。"
+    "functional_result": "PASS",
+    "reason": "本次真实纯 GUI 已完成；必须再检查 PR #29 最终 HEAD 全部 CI 及冲突后才可合并。历史失败保留，不使用归档例外。"
   }
 }

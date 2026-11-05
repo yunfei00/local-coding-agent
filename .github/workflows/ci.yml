@@ -106,6 +106,9 @@ jobs:
         working-directory: desktop
         run: npm run typecheck
 
+      - name: Live GUI acceptance driver regression
+        run: node --test scripts/validation/live_gui_guard.test.cjs
+
       - name: Desktop tests
         working-directory: desktop
         run: npm run test

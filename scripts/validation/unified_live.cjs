@@ -3,6 +3,7 @@ const fs=require('node:fs'), path=require('node:path'), cp=require('node:child_p
 const crypto=require('node:crypto');
 const http=require('node:http'),https=require('node:https');
 const {_electron}=require('../../desktop/node_modules/playwright-core');
+const {readyProcessId,matchesReadyProcess,closeOwnedApplication}=require('./live_gui_guard.cjs');
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const manifest=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const policyPath=path.join(manifest.root,'validation-reports/unified-model-policy.json');
@@ -11,6 +12,16 @@ const denied=model=>deniedModels.some(name=>model.toLowerCase().includes(name.to
 manifest.profiles=manifest.profiles.filter(p=>!denied(p.model_id));
 const report={result:'RUNNING',models:[],cases:[],limits:{calls:manifest.max_calls,tokens:manifest.max_tokens,request_seconds:manifest.request_seconds||60,wall_seconds:3600},cost:'UNKNOWN',started_at:new Date().toISOString()};
 const save=()=>fs.writeFileSync(manifest.report,JSON.stringify(report,null,2));
+function hostEvidence(pid){
+ const evidence={at:new Date().toISOString(),free_bytes:os.freemem(),total_bytes:os.totalmem()};
+ if(process.platform==='win32'){
+  const script=`$m=Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory;$p=@(Get-CimInstance Win32_Process);$ids=@(${Number(pid)||-1});for($i=0;$i -lt 8;$i++){$next=@($p|Where-Object {$_.ParentProcessId -in $ids -and $_.ProcessId -notin $ids}|ForEach-Object {$_.ProcessId});if(!$next.Count){break};$ids+=$next};@{memory=@{available_mb=$m.AvailableMBytes;committed_bytes=$m.CommittedBytes;commit_limit_bytes=$m.CommitLimit;nonpaged_pool_bytes=$m.PoolNonpagedBytes};children=@($p|Where-Object {$_.ProcessId -in $ids}|Select-Object ProcessId,ParentProcessId,Name,CreationDate)}|ConvertTo-Json -Compress -Depth 5`;
+  const r=cp.spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{encoding:'utf8',windowsHide:true,timeout:12000});
+  try{Object.assign(evidence,JSON.parse(r.stdout));}catch{evidence.snapshot_error=r.error?.code||r.status;}
+ }
+ return evidence;
+}
+function safeStack(error){return String(error.stack||error.message||error).split('\n').filter((line,i)=>i===0||/^\s+at /.test(line)).slice(0,14).map(line=>line.replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,})\b/g,'[REDACTED]').slice(0,350));}
 const shell=(args,cwd)=>cp.spawnSync('git',args,{cwd,encoding:'utf8',windowsHide:true});
 async function fixtureNpm(args,cwd,timeout=120000){
  const cli=path.join(path.dirname(process.execPath),'node_modules/npm/bin/npm-cli.js');
@@ -34,10 +45,10 @@ function project(name){
  return folder;
 }
 async function main(){
- let app,page,currentFolder,currentCase,events=[],turnTerminal=new Map(),ownedTurn;
+ let app,page,desktopChild,currentFolder,currentCase,events=[],turnTerminal=new Map(),ownedTurn;
  const reviewAllowed=new Set();
  const guiWindows=new Set();
- const guiControls=new Map();let guiInspectTarget;
+ const guiControls=new Map();let guiInspectTarget,guiReadyPid;
  const guiValue='GUI-'+crypto.randomBytes(4).toString('hex');
  let proxy,proxyArmed=false,proxyDropped=false,proxyCalls=0;const upstreamRequests=new Set();
  const desktopData=fs.mkdtempSync(path.join(os.tmpdir(),'lca-live-desktop-'));
@@ -46,6 +57,7 @@ async function main(){
  const protectedFiles=['model-secrets.json','provider-secrets.json','Local State'];
  for(const name of protectedFiles){const source=path.join(manifest.credential_data,name);if(fs.existsSync(source))fs.copyFileSync(source,path.join(desktopData,name));}
  const started=Date.now();let diagnosticCalls=0,diagnosticTokens=0,diagnosticEstimated=false;
+ report.lifecycle={phase:'before_launch',before:hostEvidence(),events:[]};save();
  const budgetUsed=async()=>{
   const value=(await page.evaluate(()=>window.localAgent.taskRequest('','task.settings.get'))).payload.global_usage;
   return {calls:value.api_calls+diagnosticCalls,tokens:value.reserved_tokens+diagnosticTokens,estimated:value.estimated||diagnosticEstimated};
@@ -54,13 +66,21 @@ async function main(){
   const env={...process.env,NODE_OPTIONS:'--max-old-space-size=256',GOMAXPROCS:'2',LCA_DESKTOP_DATA_DIR:desktopData,LCA_DATA_DIR:manifest.data,LCA_HEADLESS_SMOKE:'1',LCA_PROVIDER:'openai_compatible',LCA_OPENAI_API_KEY:'',LCA_OPENAI_MODEL:'',LCA_OPENAI_BASE_URL:'http://127.0.0.1:1/v1',PYTHONUTF8:'1',LCA_EXECUTION_MODEL_CALLS:'80',LCA_EXECUTION_SECONDS:'600',LCA_EXECUTION_TOKENS:'10000000'};
   delete env.ELECTRON_RUN_AS_NODE;
   app=await _electron.launch({executablePath:require('../../desktop/node_modules/electron'),args:[path.join(manifest.root,'desktop'),'--disable-gpu'],cwd:manifest.root,env,timeout:60000});
+  desktopChild=app.process();report.lifecycle.pid=desktopChild.pid;
+  const life=(kind,details={})=>{report.lifecycle.events.push({at:new Date().toISOString(),kind,cleanup:!!report.lifecycle.cleanup_started,...details});save();};
+  app.process().on('exit',(code,signal)=>life('process_exit',{code,signal}));
+  app.process().on('error',error=>life('process_error',{code:error.code||null,stack:safeStack(error)}));
+  app.process().stderr?.on('data',data=>{const text=String(data);for(const pattern of [/VirtualAlloc[^\n]*?(\b\d+\b)/i,/out of memory/i,/allocation failed/i,/STATUS_NO_MEMORY/i])if(pattern.test(text))life('memory_error',{signature:pattern.source});});
+  report.lifecycle.phase='window_starting';save();
   page=await app.firstWindow();
+  page.on('crash',()=>life('renderer_crash'));
   // 主机资源耗尽时 Renderer/IPC 可能不返回；驱动也必须停止，不能持续占用额度。
   const evaluate=page.evaluate.bind(page);
   page.evaluate=async(...args)=>{let timer;try{return await Promise.race([evaluate(...args),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('CONTROLLER_IPC_TIMEOUT')),90000);})]);}finally{clearTimeout(timer);}};
   await page.waitForFunction(()=>!!window.localAgent);
   page.on('close',()=>{report.controller_stage='electron_closed';save();});
   for(let i=0;i<150;i++){const s=await page.evaluate(()=>window.localAgent.getAgentStatus());if(s.state==='ready')break;if(s.state==='error')throw Error('AGENT_START_FAILED');await delay(200);}
+  report.lifecycle.phase='credential_check';save();
   const credential=(await page.evaluate(()=>window.localAgent.taskRequest('','task.credential.status'))).payload;
   if(credential.mode!=='os_protected'||!manifest.connections.every(c=>credential.configured.includes('connection-'+c.connection_id))){report.result='BLOCKED';report.reason='PROTECTED_CREDENTIAL_UNAVAILABLE';return;}
   if(manifest.case_names?.includes('network')){
@@ -97,6 +117,7 @@ async function main(){
   }
   await page.exposeFunction('unifiedValidationEvent',async e=>{
    const p=e.payload||{};
+   if(['turn.started','tool.started','tool.completed','turn.completed','turn.failed','turn.cancelled'].includes(e.type)){report.lifecycle.phase=e.type;save();}
    if(e.type==='turn.started')ownedTurn=e.turn_id;
    if(['turn.completed','turn.failed','turn.cancelled'].includes(e.type))turnTerminal.set(e.turn_id,{type:e.type,code:p.code,message:p.message,verification:p.verification});
    if(e.type==='agent.runtime.updated')events.push({type:e.type,turn_id:e.turn_id,runtime:p.runtime});
@@ -106,6 +127,10 @@ async function main(){
     events.push({type:e.type,turn_id:e.turn_id,name:p.name,ok:p.result?.ok,exit_code:p.result?.exit_code,changed_paths:p.result?.changed_paths,error_code:p.result?.error?.code});
     if(currentCase){currentCase.tools=events.filter(e=>e.type==='tool.completed');save();}
     if(currentCase?.name==='gui'&&p.name==='desktop_list_windows')for(const w of p.result?.data?.windows||[])if(w.title==='M5 Electron acceptance')guiWindows.add(w.window_id);
+    if(currentCase?.name==='gui'&&p.name==='read_process'){
+     const ready=readyProcessId(p.result?.stdout);
+     if(ready){guiReadyPid=ready;currentCase.ready_pid=guiReadyPid;}
+    }
     if(currentCase?.name==='gui'&&p.name==='desktop_inspect'&&guiInspectTarget)guiControls.set(guiInspectTarget,p.result?.data?.controls||[]);
     if(currentCase?.name==='gui'&&p.name==='desktop_screenshot')currentCase.capture={exists:!!p.result?.data?.path&&fs.existsSync(p.result.data.path),local_only:p.result?.data?.local_only===true};
    }
@@ -120,7 +145,7 @@ async function main(){
      if(tool==='start_process')allowed=args.command==='npm --prefix frontend start'&&(!args.cwd||inside(args.cwd));
      if(tool==='desktop_list_windows'){
       const file=path.join(currentFolder,'frontend/.runtime/process.json');
-      allowed=fs.existsSync(file)&&JSON.parse(fs.readFileSync(file,'utf8')).pid===args.pid;
+      allowed=matchesReadyProcess(args.pid,guiReadyPid,file);
      }
      const selector=args.selector||{};
      const matches=(guiControls.get(args.window_id)||[]).filter(c=>Object.keys(selector).length>0&&Object.entries(selector).every(([k,v])=>JSON.stringify(c[k])===JSON.stringify(v)));
@@ -137,7 +162,7 @@ async function main(){
      if(basic && (!args.cwd||inside(args.cwd)))allowed=inside(Buffer.from(basic[3],'base64').toString('utf8'));
      if(currentCase?.name==='gui')allowed=/^git (?:diff|status)(?: --check)?$/.test(args.command||'');
     }
-    if(currentCase){currentCase.approvals||=[];currentCase.approvals.push({tool,risk:p.risk,decision:allowed?'allow_once':'deny'});}
+    if(currentCase){currentCase.approvals||=[];currentCase.approvals.push({tool,risk:p.risk,decision:allowed?'allow_once':'deny',...(tool==='desktop_list_windows'?{requested_pid:args.pid,expected_pid:fs.existsSync(path.join(currentFolder,'frontend/.runtime/process.json'))?JSON.parse(fs.readFileSync(path.join(currentFolder,'frontend/.runtime/process.json'),'utf8')).pid:null}:{})});}
     await page.evaluate(({id,decision,turn})=>window.localAgent.respondApproval(id,decision,turn),{id:p.approval_id,decision:allowed?'allow_once':'deny',turn:e.turn_id});
    }
   });
@@ -252,13 +277,14 @@ async function main(){
     options={...options,folder:report.cases.find(c=>c.name==='electron'&&c.result==='PASS')?.folder};
     if(!options.folder){report.cases.push({model:profile.model_id,name,result:'BLOCKED',reason:'GUI_REQUIRES_REPAIRED_ELECTRON_PROJECT'});save();return;}
    }
-   if(options.gui&&manifest.gui_only)goal+='禁止执行代码验证命令。本次只操作界面，报告实际结果以及没有独立 GUI 合约的限制。';
+   if(options.gui&&manifest.gui_only)goal+='禁止执行代码验证命令。本次只操作界面，报告实际结果以及没有独立 GUI 合约的限制。read_process 的 wait_seconds 只允许 0..10，建议每次 2 秒；必须等到本次 stdout 中出现 M5_ELECTRON_READY JSON 后才使用其中的 pid。冷启动允许等待 90 秒，不得用 start_process 的包装进程 PID 或历史文件中的 PID 猜测窗口。';
    const used=await budgetUsed();
    // 这里只判断是否还可开始；每次真实请求仍由产品预算账本保守预留。
    // 固定预扣 250000 会让已有较小预算即使足够一次请求也永远不能开始。
    if(used.calls+1>manifest.max_calls||used.tokens+20000>manifest.max_tokens||Date.now()-started>3300000){report.cases.push({model:profile.model_id,name,result:'BLOCKED',reason:'CUMULATIVE_LIVE_CAP'});save();return;}
    if(options.frontend&&manifest.prepared_fixture)options={...options,folder:manifest.prepared_fixture};
    currentFolder=options.folder||project(name+'-'+report.cases.length);currentCase={model:profile.model_id,name,folder:currentFolder,result:'RUNNING'};report.cases.push(currentCase);events=[];ownedTurn=null;
+   if(options.gui){guiReadyPid=null;const stale=path.resolve(currentFolder,'frontend/.runtime/process.json');const allowedRoot=path.resolve(manifest.root,'validation-reports')+path.sep;if(!stale.startsWith(allowedRoot))throw Error('GUI_RUNTIME_CLEANUP_SCOPE');if(fs.existsSync(stale)){fs.copyFileSync(stale,path.join(manifest.output,'prior-fixture-process.json'));fs.unlinkSync(stale);currentCase.stale_runtime_archived=true;}}
    const initialHead=shell(['rev-parse','HEAD'],currentFolder).stdout.trim();
    if(options.approval){fs.appendFileSync(path.join(currentFolder,'README.md'),'Synthetic pending change for permission validation\n');shell(['add','README.md'],currentFolder);}
    if(options.frontend){
@@ -385,7 +411,7 @@ async function main(){
    }
    save();
   }
- }catch(error){report.result='BLOCKED';report.reason=String(error.message||error).slice(0,500);}
- finally{report.elapsed_seconds=Math.round((Date.now()-started)/1000);save();if(app){await Promise.race([app.close().catch(()=>{}),delay(10000)]);const child=app.process();if(child?.exitCode===null&&child.pid){if(process.platform==='win32')cp.spawnSync('taskkill',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});else child.kill('SIGKILL');}}for(const request of upstreamRequests)request.destroy();if(proxy){proxy.closeAllConnections();await new Promise(resolve=>proxy.close(resolve));}for(const name of protectedFiles){const file=path.join(desktopData,name);if(fs.existsSync(file))fs.unlinkSync(file);}}
+ }catch(error){report.result='BLOCKED';report.reason=String(error.message||error).slice(0,500);report.exception=safeStack(error);}
+ finally{report.elapsed_seconds=Math.round((Date.now()-started)/1000);report.lifecycle.after=hostEvidence(desktopChild?.pid);report.lifecycle.cleanup_started=true;for(const name of ['renderer.log','desktop.log']){const file=path.join(desktopData,'logs',name);if(fs.existsSync(file))report.lifecycle[name]=fs.readFileSync(file,'utf8').split('\n').filter(line=>/render-process-gone|renderer unresponsive|Agent exited code=|Application ready version=/.test(line)).slice(-12);}save();if(app)Object.assign(report.lifecycle,await closeOwnedApplication(app,desktopChild));for(const request of upstreamRequests)request.destroy();if(proxy){proxy.closeAllConnections();await new Promise(resolve=>proxy.close(resolve));}for(const name of protectedFiles){const file=path.join(desktopData,name);if(fs.existsSync(file))fs.unlinkSync(file);}save();}
 }
-main().catch(()=>{report.result='FAIL';report.reason='CONTROLLER_UNHANDLED';save();process.exitCode=1;});
+main().catch(error=>{report.result='FAIL';report.reason='CONTROLLER_UNHANDLED';report.exception=safeStack(error);save();process.exitCode=1;});
