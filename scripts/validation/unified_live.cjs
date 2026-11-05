@@ -314,6 +314,7 @@ async function main(){
     fs.writeFileSync(path.join(currentFolder,'README.md'),'# 隔离计算工程\nPython 项目，入口 calculator.py，mathcore.py 执行运算。\n测试：uv run --no-project python -m unittest discover -s tests -v\n');
     if(options.v08==='git')fs.appendFileSync(path.join(currentFolder,'README.md'),'\n已安装 Git 目录：'+manifest.git_fixture_directory+'\n测试仅移除了当前隔离 Agent 的进程 PATH，系统配置未变。\n');
     if(options.v08==='python'){
+     fs.appendFileSync(path.join(currentFolder,'.gitignore'),'*.egg-info/\n*.dist-info/\n');
      const vendor=path.join(currentFolder,'vendor/local-dep');fs.mkdirSync(vendor,{recursive:true});
      fs.writeFileSync(path.join(vendor,'pyproject.toml'),'[project]\nname="lca-v08-local-dep"\nversion="0.1.0"\n[build-system]\nrequires=["setuptools>=68"]\nbuild-backend="setuptools.build_meta"\n[tool.setuptools]\npy-modules=["lca_v08_local_dep"]\n');
      fs.writeFileSync(path.join(vendor,'lca_v08_local_dep.py'),'READY = True\n');

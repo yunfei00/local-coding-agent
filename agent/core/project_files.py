@@ -16,7 +16,7 @@ CREDENTIAL_BARE=re.compile(r'(?i)(?<![\w])'+KEY_PATTERN+r'["\x27]?\s*[:=]\s*([A-
 def sensitive(text,*,source_code=False):
     text=str(text)
     bare=any(not source_code or not m.group(1).isidentifier() or len(m.group(1))>24 for m in CREDENTIAL_BARE.finditer(text))
-    return bool(SECRET.search(text) or CREDENTIAL_LITERAL.search(text) or bare or re.search(r'(?im)^(?:cookie|set-cookie|authorization)\s*:\s*\S.+$|https?://[^/\s]+:[^@\s]+@',text))
+    return bool(SECRET.search(text) or CREDENTIAL_LITERAL.search(text) or bare or re.search(r'(?im)^(?:cookie|set-cookie|authorization)\s*:\s*\S.+$|https?://[^/\s]+:[^@\s]+@|(?:密码|口令|密钥|(?:访问|刷新)?令牌)\s*(?:[:：=]|是)\s*\S{3,}',text))
 
 def private_name(path):
     name=Path(path).name.lower()
@@ -36,7 +36,7 @@ class ProjectFiles:
             relative=path.relative_to(self.root)
             path.resolve().relative_to(self.root)
         except (ValueError,OSError):return False
-        if any(p in EXCLUDED for p in relative.parts) or private_name(path):return False
+        if any(p in EXCLUDED or p.lower().endswith(('.egg-info','.dist-info')) for p in relative.parts) or private_name(path):return False
         if any((self.root/Path(*relative.parts[:i])).is_symlink() or getattr(self.root/Path(*relative.parts[:i]),'is_junction',lambda:False)() for i in range(1,len(relative.parts)+1)):return False
         key=relative.as_posix()+('/' if directory else '')
         if any(s in key for s in self.exact_secrets):return False

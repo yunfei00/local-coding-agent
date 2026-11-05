@@ -39,7 +39,7 @@ class KnowledgeTests(unittest.TestCase):
         self.k.set_auto(False);self.k.context('hello');self.assertEqual(self.k.list(),[])
         self.k.save('用户要求','记住这条');self.assertEqual(len(self.k.list()),1)
     def test_credentials_rejected_without_partial_write(self):
-        for content in ['api_key=example-secret-value','password="password123"','Cookie: abcdef=xyz','-----BEGIN '+'OPENSSH '+'PRIVATE KEY-----','sk-example-token-987654']:
+        for content in ['api_key=example-secret-value','password="password123"','Cookie: abcdef=xyz','数据库密码：synthetic-value','访问令牌是example-token','-----BEGIN '+'OPENSSH '+'PRIVATE KEY-----','sk-example-token-987654']:
             with self.assertRaises(ValueError):self.k.save('不允许',content)
         self.assertEqual(self.k.list(),[])
     def test_credential_annotations_remain_searchable_but_real_values_and_known_keys_do_not(self):
@@ -75,6 +75,16 @@ class KnowledgeTests(unittest.TestCase):
     def test_repository_map_obeys_same_boundaries(self):
         self.write('.gitignore','hidden.py\n');self.write('hidden.py','def hidden(): pass');self.write('visible.py','def visible(): pass')
         repo=RepositoryMap(self.root);repo.build();self.assertNotIn('hidden.py',repo.files);self.assertIn('visible.py',repo.files)
+    def test_dependency_build_metadata_is_not_source_change_or_retrieval_content(self):
+        from agent.core.unified_runtime import workspace_snapshot
+        self.write('math.py','def add(a,b): return a+b')
+        baseline=workspace_snapshot(self.root)
+        self.write('vendor/pkg/demo.egg-info/PKG-INFO','generated dependency metadata')
+        self.write('demo.dist-info/METADATA.txt','generated dependency metadata')
+        self.assertEqual(workspace_snapshot(self.root),baseline)
+        self.assertEqual(self.k.search('dependency')['results'],[])
+        self.write('math.py','def add(a,b): return a-b')
+        self.assertNotEqual(workspace_snapshot(self.root),baseline)
     def test_corrupted_index_rebuilt_without_touching_memory(self):
         self.write('a.py','def found(): pass');self.k.save('保持','项目记忆');self.k.index()
         with self.store.connection:self.store.connection.execute("UPDATE project_knowledge_files SET symbols='broken' WHERE project_id=?",(self.project.id,))

@@ -93,7 +93,7 @@ def workspace_snapshot(root):
     result = {}
     excluded = {'.git','.runtime','node_modules','.venv','venv','__pycache__','.pytest_cache','.mypy_cache','.ruff_cache','dist','build','release','coverage','validation-reports'}
     for directory, dirs, files in os.walk(root,followlinks=False):
-        dirs[:] = [d for d in dirs if d not in excluded and not (Path(directory)/d).is_symlink()]
+        dirs[:] = [d for d in dirs if d not in excluded and not d.lower().endswith(('.egg-info','.dist-info')) and not (Path(directory)/d).is_symlink()]
         for name in files:
             path = Path(directory)/name
             if path.is_symlink():
