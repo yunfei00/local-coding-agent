@@ -51,7 +51,7 @@ class RoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.registry.state(self.raw['profiles'][1])['capabilities']['tools']['state'],UNKNOWN)
     def test_new_failed_probe_is_not_hidden_by_older_successful_tool_call(self):
         self.registry.record('b',success=True,tools=True)
-        self.seed('b',tools='FAIL')
+        self.seed('b',tools='FAIL',when=self.catalog.test_result('b')['tested_at'])
         self.assertEqual(self.registry.state(self.raw['profiles'][1])['capabilities']['tools']['state'],'UNSUPPORTED')
     def test_project_knowledge_request_with_no_code_edit_is_analysis(self):
         from agent.core.unified_runtime import requested_intent

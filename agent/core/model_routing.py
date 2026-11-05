@@ -32,6 +32,11 @@ def requirements(prompt):
 class CapabilityRegistry:
     def __init__(self,catalog):self.catalog=catalog;self.store=catalog.store
     def key(self,pid):return 'model.capability.v1:'+pid
+    @staticmethod
+    def probe_id(tested):
+        # Windows clocks can give consecutive probes the same timestamp.
+        # Bind later response evidence to the entire probe revision, not wall time alone.
+        return hashlib.sha256(json.dumps(tested,sort_keys=True).encode()).hexdigest() if tested else None
     def history(self,pid,fingerprint):
         try:data=json.loads(self.store.get_setting(self.key(pid)) or '{}')
         except (ValueError,TypeError):return {}
@@ -67,7 +72,7 @@ class CapabilityRegistry:
             if tested.get('tools')=='PASS':result['structured']={'state':SUPPORTED,'source':'已校验 JSON 工具参数'}
         if 0<=time.time()-history.get('detected_at',0)<=30*86400:
             for cap,evidence in history.get('capabilities',{}).items():
-                if cap in CAPS and isinstance(evidence,dict) and 0<=time.time()-evidence.get('detected_at',0)<=30*86400 and (result[cap].get('source') not in {'真实能力探针','已校验 JSON 工具参数'} or evidence.get('probe_id')==tested.get('tested_at')):result[cap]=evidence
+                if cap in CAPS and isinstance(evidence,dict) and 0<=time.time()-evidence.get('detected_at',0)<=30*86400 and (result[cap].get('source') not in {'真实能力探针','已校验 JSON 工具参数'} or evidence.get('probe_id')==self.probe_id(tested)):result[cap]=evidence
         actual_unavailable=self.store.get_setting(self.availability_key(profile))=='quota_exhausted'
         blocked=history.get('unavailable_until',0)>time.time() or actual_unavailable
         return {'model_profile_id':pid,'model_id':profile['model_id'],'connection_id':profile['connection_id'],'display_name':profile['display_name'],
@@ -83,7 +88,7 @@ class CapabilityRegistry:
         if expected_fingerprint is not None and expected_fingerprint!=fingerprint:return
         data=self.history(pid,fingerprint)
         now=time.time();data.update(fingerprint=fingerprint,detected_at=now)
-        probe_id=self.catalog.test_result(pid).get('tested_at')
+        probe_id=self.probe_id(self.catalog.test_result(pid))
         if success:
             self.store.set_setting(self.availability_key(profile),'')
             data['successes']=data.get('successes',0)+1;data['last_success']=now;data['quota_exhausted']=False;data['unavailable_until']=0
@@ -146,7 +151,7 @@ def fallback(route,code,*,http_status=None,permit=True):
     if code=='OPENAI_COMPATIBLE_REQUEST_FAILED' and (http_status is None or http_status<500):return None
     if not route or not route.get('allow_fallback') or code not in allowed:return None
     rows=[r for r in route['candidates'] if r['profile_id'] not in route['tried'] and [r['snapshot']['profile']['_connection']['connection_id'],r['snapshot']['profile']['model']] not in route.get('tried_models',[])]
-    if not rows:raise ProviderError('MODEL_CANDIDATES_EXHAUSTED','所有能力匹配候选均不可用；已保留任务、预算与执行证据，停止请求。')
+    if not rows:raise ProviderError('MODEL_CANDIDATES_EXHAUSTED','所有能力匹配候选均不可用（最近错误：'+code+'）；已保留任务、预算与执行证据，停止请求。')
     if not permit or len(route.get('switches',[]))>=3:raise ProviderError('MODEL_SWITCH_LIMIT','已达到本轮模型切换/重试上限（'+code+'）；任务和执行证据保留，未发送新请求。')
     chosen=rows[0];route['switches'].append({'from':route['current'],'to':chosen['profile_id'],'code':code,'at':time.time()});route['current']=chosen['profile_id'];route['tried'].append(chosen['profile_id']);route.setdefault('tried_models',[]).append([chosen['snapshot']['profile']['_connection']['connection_id'],chosen['snapshot']['profile']['model']]);route['reason']=['因 '+code+' 切换；保留原目标、工具证据、权限与预算',*chosen['reason']]
     return chosen
