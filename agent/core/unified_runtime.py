@@ -66,7 +66,8 @@ def requested_intent(prompt):
     code_edit=bool(re.search(r'(?:修复|修改|开发|实现|重构).{0,16}(?:代码|源码|函数|组件)',positive)) or (change and any(not p.lower().endswith(('.md','.json','.toml','.yaml','.yml')) for p in paths))
     environment_write=environment_write and not code_edit and not interaction
     if environment_write:kind='analysis';readonly=True
-    project_question=bool(re.search(r'(?:本|当前|这个|该|this)\s*(?:项目|工程|仓库|程序|project|repo)|(?:分析|解释|检查).{0,8}(?:项目|工程|仓库|程序)',text,re.I))
+    project_question=bool(re.search(r'(?:本|当前|这个|该|this)\s*(?:项目|工程|仓库|程序|模块|文件|project|repo)|(?:分析|解释|检查).{0,8}(?:项目|工程|仓库|程序)',text,re.I))
+    if kind=='question' and (project_question or paths):kind='analysis'
     memory_write=bool(re.search(r'记住|保存.{0,20}(?:知识|记忆|约定)|(?:知识|记忆).{0,12}保存|remember|save.{0,20}memor',memory_authorization_text(prompt),re.I))
     return {'kind':kind,'read_only':kind!='interaction' and (readonly or kind=='analysis' or (question and not direct)),'pure_question':kind=='question' and question and not project_question and not paths and not memory_write,'memory_write':memory_write,'environment_write':environment_write,'referenced_files':len(paths),'listed_steps':listed}
 

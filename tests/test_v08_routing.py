@@ -44,6 +44,12 @@ class RoutingTests(unittest.IsolatedAsyncioTestCase):
         chat,route=self.registry.prepare('auto','Python 的装饰器是什么？');self.assertEqual(chat['profile_id'],'a');self.assertTrue(chat['reason'])
         code,_=self.registry.prepare('auto','修改 Python 文件并运行测试');self.assertEqual(code['profile_id'],'b')
         vision,_=self.registry.prepare('auto','读取窗口截图并点击按钮');self.assertEqual(vision['profile_id'],'c')
+    def test_workspace_question_requires_tools_without_an_edit_keyword(self):
+        from agent.core.unified_runtime import requested_intent
+        for goal in ['解释 calculator.py 的职责','这个模块有什么问题？']:
+            chosen,route=self.registry.prepare('auto',goal)
+            self.assertEqual(chosen['profile_id'],'b');self.assertIn('tools',route['requirements']['capabilities'])
+            self.assertTrue(requested_intent(goal)['read_only'])
     def test_unknown_not_supported_and_stale_fingerprint_or_age_ignored(self):
         self.store.set_setting('model.test.b','{}');state=self.registry.state(self.raw['profiles'][1]);self.assertEqual(state['capabilities']['tools']['state'],UNKNOWN)
         self.seed('b',when=(datetime.now(timezone.utc)-timedelta(days=31)).isoformat());self.assertEqual(self.registry.state(self.raw['profiles'][1])['capabilities']['chat']['state'],UNKNOWN)

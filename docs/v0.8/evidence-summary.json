@@ -1,0 +1,1556 @@
+{
+  "scope": "v0.8 实际在线验收，历史失败原样保留；不是所有历史用例均通过",
+  "requests": {
+    "runtime_http_attempts": 114,
+    "probe_requests": 11,
+    "controlled_fault_responses_without_ali_upstream": 1,
+    "note": "取消后发送状态不明的尝试仍计入上界；不含 /models GET。按唯一运行 ID 去重，不把跨重启累计总数重复相加。实际已发送数量不能仅由预算预留推断。",
+    "generation_attempt_upper_bound": 124
+  },
+  "known_provider_tokens": {
+    "input": 1067313,
+    "output": 59545,
+    "cached_input_subset": 273664,
+    "runs_with_estimated_or_unknown_usage": 4,
+    "probe_stages_with_missing_usage": 0,
+    "cost": "UNKNOWN；不以预留冒充真实计费，缓存 Token 已包含在输入统计中。"
+  },
+  "runs": [
+    {
+      "artifact": "validation-reports/v08-real-git-environment/report.json",
+      "sha256": "cd1f95b7a149bb76aa097a00c31e3e75cb4e7fca3369a10c086994bc4ab8ff09",
+      "source_commit": "d657a232b615d5d3425010072892a19c77090baa",
+      "started_at": "2026-11-05T09:00:25.183Z",
+      "result": "PASS",
+      "models": [
+        {
+          "model": "qwen3.8-27b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": true,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "name": "environment-git",
+          "result": "PASS",
+          "actual_model": "qwen3.8-27b",
+          "runtime_id": "66503a85-a41c-4b53-8830-9b6f65ab8667",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "api_usage": {
+            "api_calls": 4,
+            "local_calls": 0,
+            "reserved_tokens": 22301,
+            "reserved_cost": 0,
+            "input_tokens": 21097,
+            "output_tokens": 1204,
+            "cached_tokens": 0,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": false,
+            "released_tokens": 0,
+            "in_flight_tokens": 0,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [],
+          "context_state": {
+            "compressed": false,
+            "recovered": false,
+            "memory_hits": 1,
+            "retrieval_hits": 2,
+            "index_version": 1
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-c66e5d70f0c3de228c081c55",
+            "reason": [
+              "能力匹配：对话,工具调用",
+              "配置上下文 65536，输出预留 4096",
+              "真实成功/失败 0/0"
+            ],
+            "switches": []
+          },
+          "plan_steps": [
+            {
+              "id": "f9ea3db7-a7c0-40de-85b2-817bebe81af7",
+              "state": "completed"
+            }
+          ],
+          "interruption": null,
+          "websocket": null,
+          "independent_exit_code": 0,
+          "module_exit_code": null,
+          "source_contract": true,
+          "tool_success": 6,
+          "tool_failure_codes": [],
+          "successful_mutations": 0,
+          "visual_verified": null,
+          "diagnostics": {
+            "line_count": 22,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "validation-reports/v08-real-interruption-isolated/report.json",
+      "sha256": "1db52b4f28b91da171f181d6843aea9401d36c3ac8a891d0af793374a2f98789",
+      "source_commit": "e5eb31c13b4e3fe33f5c92d819212f2e1d396448",
+      "started_at": "2026-11-05T08:56:08.459Z",
+      "result": "PASS",
+      "models": [
+        {
+          "model": "qwen3.8-2.4t-a95b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": true,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "name": "interruption",
+          "result": "PASS",
+          "actual_model": "qwen3.8-2.4t-a95b",
+          "runtime_id": "d61a2491-f202-47dd-9e5b-ea0f8ad6461a",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "api_usage": {
+            "api_calls": 17,
+            "local_calls": 0,
+            "reserved_tokens": 205020,
+            "reserved_cost": 0,
+            "input_tokens": 193912,
+            "output_tokens": 11108,
+            "cached_tokens": 89728,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": true,
+            "released_tokens": 0,
+            "in_flight_tokens": 42869,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [
+            "DELIVERY.md",
+            "calculator.py",
+            "tests/test_validation.py",
+            "validation.py"
+          ],
+          "context_state": {
+            "compressed": false,
+            "recovered": true,
+            "memory_hits": 2,
+            "retrieval_hits": 1,
+            "index_version": 2
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-b880e63f7e00d573cf231b4a",
+            "reason": [
+              "能力匹配：对话,工具调用",
+              "配置上下文 65536，输出预留 4096",
+              "真实成功/失败 0/0"
+            ],
+            "switches": []
+          },
+          "plan_steps": [
+            {
+              "id": "b5145b37-4b37-40df-b215-76407594ee3e",
+              "state": "completed"
+            },
+            {
+              "id": "9a941635-0e01-40c7-98e7-d660c8b67b9c",
+              "state": "completed"
+            },
+            {
+              "id": "8c4f7935-3d9e-461b-94e3-aa798e151fe1",
+              "state": "completed"
+            },
+            {
+              "id": "215528ac-311f-4056-9336-576d383e6c2e",
+              "state": "completed"
+            }
+          ],
+          "interruption": {
+            "original_turn": "turn_896098233b744defbc10b13574208d29",
+            "original_run": "d61a2491-f202-47dd-9e5b-ea0f8ad6461a",
+            "completed_ids": [
+              "b5145b37-4b37-40df-b215-76407594ee3e"
+            ],
+            "restored": false,
+            "paused": false,
+            "resumed": true
+          },
+          "websocket": null,
+          "independent_exit_code": 0,
+          "module_exit_code": null,
+          "source_contract": true,
+          "tool_success": 29,
+          "tool_failure_codes": [],
+          "successful_mutations": 4,
+          "visual_verified": null,
+          "diagnostics": {
+            "line_count": 38,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "validation-reports/v08-real-memory-literal/report.json",
+      "sha256": "a6667c52730831001794be5524ca31b0f85568891fdbfc79576b5341563f00cc",
+      "source_commit": "3b64833ee934269f1210b6e0feadaacf4f4a6b3c",
+      "started_at": "2026-11-05T08:39:03.681Z",
+      "result": "PASS",
+      "models": [
+        {
+          "model": "qwen3.8-2.4t-a95b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": true,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        },
+        {
+          "model": "qwen3.8-27b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": true,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "name": "project-memory",
+          "result": "PASS",
+          "actual_model": "qwen3.8-2.4t-a95b",
+          "runtime_id": "6c37f188-3e3c-42e6-be1f-68cf7f114fed",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "api_usage": {
+            "api_calls": 4,
+            "local_calls": 0,
+            "reserved_tokens": 26075,
+            "reserved_cost": 0,
+            "input_tokens": 24887,
+            "output_tokens": 1188,
+            "cached_tokens": 11264,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": false,
+            "released_tokens": 0,
+            "in_flight_tokens": 0,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [],
+          "context_state": {
+            "compressed": false,
+            "recovered": false,
+            "memory_hits": 2,
+            "retrieval_hits": 1,
+            "index_version": 1
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-b880e63f7e00d573cf231b4a",
+            "reason": [
+              "能力匹配：对话,工具调用",
+              "配置上下文 65536，输出预留 4096",
+              "真实成功/失败 0/0"
+            ],
+            "switches": []
+          },
+          "plan_steps": [
+            {
+              "id": "3cc77130-69cf-43b6-b829-f9cc3899b836",
+              "state": "completed"
+            }
+          ],
+          "interruption": null,
+          "websocket": null,
+          "independent_exit_code": null,
+          "module_exit_code": null,
+          "source_contract": true,
+          "tool_success": 9,
+          "tool_failure_codes": [],
+          "successful_mutations": 0,
+          "visual_verified": null,
+          "diagnostics": {
+            "line_count": 22,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "validation-reports/v08-real-memory-reopen/report.json",
+      "sha256": "b6472ef6aa34f6404ab24f91dfd9ecf18bef9c96b95b913cc8a4e22047e0bfbf",
+      "source_commit": "87d3285656a53d1d72eb55239079ef766d2509af",
+      "started_at": "2026-11-05T08:33:26.329Z",
+      "result": "PARTIAL",
+      "models": [
+        {
+          "model": "qwen3.8-2.4t-a95b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": true,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        },
+        {
+          "model": "qwen3.8-27b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": true,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "name": "memory-reopen",
+          "result": "FAIL",
+          "actual_model": "qwen3.8-2.4t-a95b",
+          "runtime_id": "turn_05d51f43042847eda5a7cce1a4582780",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "api_usage": {
+            "api_calls": 3,
+            "local_calls": 0,
+            "reserved_tokens": 17185,
+            "reserved_cost": 0,
+            "input_tokens": 15448,
+            "output_tokens": 1737,
+            "cached_tokens": 9216,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": false,
+            "released_tokens": 0,
+            "in_flight_tokens": 0,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [],
+          "context_state": {
+            "compressed": false,
+            "recovered": false,
+            "memory_hits": 2,
+            "retrieval_hits": 0,
+            "index_version": 1
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-b880e63f7e00d573cf231b4a",
+            "reason": [
+              "能力匹配：对话,工具调用",
+              "配置上下文 65536，输出预留 4096",
+              "真实成功/失败 6/0"
+            ],
+            "switches": []
+          },
+          "plan_steps": [],
+          "interruption": null,
+          "websocket": null,
+          "independent_exit_code": null,
+          "module_exit_code": null,
+          "source_contract": true,
+          "tool_success": 6,
+          "tool_failure_codes": [],
+          "successful_mutations": 0,
+          "visual_verified": null,
+          "diagnostics": {
+            "line_count": 21,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "validation-reports/v08-real-memory-reopen-literal/report.json",
+      "sha256": "29a1adc43e8019d7b8d971046c4851503c4f5e03bd0d48f2fcc4e4df232ee33b",
+      "source_commit": "3b64833ee934269f1210b6e0feadaacf4f4a6b3c",
+      "started_at": "2026-11-05T08:40:07.840Z",
+      "result": "PASS",
+      "models": [
+        {
+          "model": "qwen3.8-2.4t-a95b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": true,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        },
+        {
+          "model": "qwen3.8-27b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": true,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "name": "memory-reopen",
+          "result": "PASS",
+          "actual_model": "qwen3.8-2.4t-a95b",
+          "runtime_id": "turn_5d5bdfafb3c740f0938e39dbe902f21b",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "api_usage": {
+            "api_calls": 3,
+            "local_calls": 0,
+            "reserved_tokens": 17270,
+            "reserved_cost": 0,
+            "input_tokens": 15811,
+            "output_tokens": 1459,
+            "cached_tokens": 9216,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": false,
+            "released_tokens": 0,
+            "in_flight_tokens": 0,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [],
+          "context_state": {
+            "compressed": false,
+            "recovered": false,
+            "memory_hits": 3,
+            "retrieval_hits": 0,
+            "index_version": 1
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-b880e63f7e00d573cf231b4a",
+            "reason": [
+              "能力匹配：对话,工具调用",
+              "配置上下文 65536，输出预留 4096",
+              "真实成功/失败 4/0"
+            ],
+            "switches": []
+          },
+          "plan_steps": [],
+          "interruption": null,
+          "websocket": null,
+          "independent_exit_code": null,
+          "module_exit_code": null,
+          "source_contract": true,
+          "tool_success": 6,
+          "tool_failure_codes": [],
+          "successful_mutations": 0,
+          "visual_verified": null,
+          "diagnostics": {
+            "line_count": 21,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "validation-reports/v08-real-memory-repair/report.json",
+      "sha256": "ac3b011b47cc8dd458a1286cfec2d18d10cdf62b0d3f38302132e95c62092573",
+      "source_commit": "87d3285656a53d1d72eb55239079ef766d2509af",
+      "started_at": "2026-11-05T08:29:46.163Z",
+      "result": "PASS",
+      "models": [
+        {
+          "model": "qwen3.8-2.4t-a95b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": true,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        },
+        {
+          "model": "qwen3.8-27b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": true,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "name": "project-memory",
+          "result": "PASS",
+          "actual_model": "qwen3.8-2.4t-a95b",
+          "runtime_id": "d91a9ddc-6e03-48f2-8142-90744d6fd85a",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "api_usage": {
+            "api_calls": 4,
+            "local_calls": 0,
+            "reserved_tokens": 25183,
+            "reserved_cost": 0,
+            "input_tokens": 23960,
+            "output_tokens": 1223,
+            "cached_tokens": 9216,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": false,
+            "released_tokens": 0,
+            "in_flight_tokens": 0,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [],
+          "context_state": {
+            "compressed": false,
+            "recovered": false,
+            "memory_hits": 1,
+            "retrieval_hits": 1,
+            "index_version": 1
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-b880e63f7e00d573cf231b4a",
+            "reason": [
+              "能力匹配：对话,工具调用",
+              "配置上下文 65536，输出预留 4096",
+              "真实成功/失败 0/0"
+            ],
+            "switches": []
+          },
+          "plan_steps": [
+            {
+              "id": "160bd78d-6efd-451c-ae6f-e0191fef9990",
+              "state": "completed"
+            }
+          ],
+          "interruption": null,
+          "websocket": null,
+          "independent_exit_code": null,
+          "module_exit_code": null,
+          "source_contract": true,
+          "tool_success": 9,
+          "tool_failure_codes": [],
+          "successful_mutations": 0,
+          "visual_verified": null,
+          "diagnostics": {
+            "line_count": 22,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "name": "context",
+          "result": "PASS",
+          "actual_model": "qwen3.8-2.4t-a95b",
+          "runtime_id": "turn_b9426bbaa7f14afcb0c1fbb51c072037",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "api_usage": {
+            "api_calls": 2,
+            "local_calls": 0,
+            "reserved_tokens": 34547,
+            "reserved_cost": 0,
+            "input_tokens": 34083,
+            "output_tokens": 464,
+            "cached_tokens": 3072,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": false,
+            "released_tokens": 0,
+            "in_flight_tokens": 0,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [],
+          "context_state": {
+            "compressed": true,
+            "recovered": false,
+            "memory_hits": 1,
+            "retrieval_hits": 1,
+            "index_version": 1
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-b880e63f7e00d573cf231b4a",
+            "reason": [
+              "能力匹配：对话,工具调用",
+              "配置上下文 65536，输出预留 4096",
+              "真实成功/失败 4/0"
+            ],
+            "switches": []
+          },
+          "plan_steps": [],
+          "interruption": null,
+          "websocket": null,
+          "independent_exit_code": null,
+          "module_exit_code": null,
+          "source_contract": true,
+          "tool_success": 2,
+          "tool_failure_codes": [],
+          "successful_mutations": 0,
+          "visual_verified": null,
+          "diagnostics": {
+            "line_count": 21,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "validation-reports/v08-real-projects/report.json",
+      "sha256": "42cea4670ccd11ae2f606cc36549ed13f8a93f6deee2ba918d0b4c88a381d2eb",
+      "source_commit": "7cc4711339a1c97a3adef76e55bdbbb231426c42",
+      "started_at": "2026-11-05T08:12:28.648Z",
+      "result": "PARTIAL",
+      "models": [
+        {
+          "model": "qwen3.8-2.4t-a95b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": false,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        },
+        {
+          "model": "qwen3.8-27b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": false,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "name": "project-memory",
+          "result": "FAIL",
+          "actual_model": "qwen3.8-2.4t-a95b",
+          "runtime_id": "3f6233bf-9c95-4e78-9ba7-cb51658958f7",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "AGENT_NO_CHANGE_EVIDENCE",
+          "api_usage": {
+            "api_calls": 7,
+            "local_calls": 0,
+            "reserved_tokens": 66030,
+            "reserved_cost": 0,
+            "input_tokens": 63077,
+            "output_tokens": 2953,
+            "cached_tokens": 35200,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": false,
+            "released_tokens": 0,
+            "in_flight_tokens": 0,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [],
+          "context_state": {
+            "compressed": false,
+            "recovered": false,
+            "memory_hits": 1,
+            "retrieval_hits": 1,
+            "index_version": 1
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-b880e63f7e00d573cf231b4a",
+            "reason": [
+              "能力匹配：对话,工具调用",
+              "配置上下文 65536，输出预留 4096",
+              "真实成功/失败 1/0"
+            ],
+            "switches": []
+          },
+          "plan_steps": [
+            {
+              "id": "7d5a0ca0-bb52-4475-9eed-07d8bbd28b16",
+              "state": "blocked"
+            }
+          ],
+          "interruption": null,
+          "websocket": null,
+          "independent_exit_code": null,
+          "module_exit_code": null,
+          "source_contract": true,
+          "tool_success": 12,
+          "tool_failure_codes": [
+            "PROJECT_MEMORY_REJECTED",
+            "PROJECT_MEMORY_REJECTED"
+          ],
+          "successful_mutations": 0,
+          "visual_verified": null,
+          "diagnostics": {
+            "line_count": 23,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "name": "knowledge-fix",
+          "result": "PASS",
+          "actual_model": "qwen3.8-27b",
+          "runtime_id": "3c50495e-e1ac-4b7c-926a-8b0530c2c89e",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "api_usage": {
+            "api_calls": 6,
+            "local_calls": 0,
+            "reserved_tokens": 49333,
+            "reserved_cost": 0,
+            "input_tokens": 47781,
+            "output_tokens": 1552,
+            "cached_tokens": 0,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": false,
+            "released_tokens": 0,
+            "in_flight_tokens": 0,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [
+            "mathcore.py"
+          ],
+          "context_state": {
+            "compressed": false,
+            "recovered": false,
+            "memory_hits": 1,
+            "retrieval_hits": 3,
+            "index_version": 1
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-c66e5d70f0c3de228c081c55",
+            "reason": [
+              "能力匹配：对话,工具调用",
+              "配置上下文 65536，输出预留 4096",
+              "真实成功/失败 1/0"
+            ],
+            "switches": []
+          },
+          "plan_steps": [
+            {
+              "id": "3e468ac8-3c31-4006-82ac-6bc5afc5ff43",
+              "state": "completed"
+            }
+          ],
+          "interruption": null,
+          "websocket": null,
+          "independent_exit_code": 0,
+          "module_exit_code": null,
+          "source_contract": true,
+          "tool_success": 13,
+          "tool_failure_codes": [],
+          "successful_mutations": 1,
+          "visual_verified": null,
+          "diagnostics": {
+            "line_count": 35,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "name": "environment-repair",
+          "result": "PASS",
+          "actual_model": "qwen3.8-27b",
+          "runtime_id": "8779fc5b-df88-449b-a1bd-61f181a2e081",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "api_usage": {
+            "api_calls": 5,
+            "local_calls": 0,
+            "reserved_tokens": 38482,
+            "reserved_cost": 0,
+            "input_tokens": 37047,
+            "output_tokens": 1435,
+            "cached_tokens": 16384,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": false,
+            "released_tokens": 0,
+            "in_flight_tokens": 0,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [
+            ".npmrc"
+          ],
+          "context_state": {
+            "compressed": false,
+            "recovered": false,
+            "memory_hits": 1,
+            "retrieval_hits": 2,
+            "index_version": 1
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-c66e5d70f0c3de228c081c55",
+            "reason": [
+              "能力匹配：对话,工具调用",
+              "配置上下文 65536，输出预留 4096",
+              "真实成功/失败 7/0"
+            ],
+            "switches": []
+          },
+          "plan_steps": [
+            {
+              "id": "d1aa836f-044c-47e5-be88-bbc36a51eca3",
+              "state": "completed"
+            }
+          ],
+          "interruption": null,
+          "websocket": null,
+          "independent_exit_code": 0,
+          "module_exit_code": null,
+          "source_contract": true,
+          "tool_success": 13,
+          "tool_failure_codes": [],
+          "successful_mutations": 0,
+          "visual_verified": null,
+          "diagnostics": {
+            "line_count": 35,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "validation-reports/v08-real-python-environment/report.json",
+      "sha256": "a379cbe759a5b7a03e14ff100a5eece47aa6eb5c91074a0af3766d0b6caf9f8e",
+      "source_commit": "d657a232b615d5d3425010072892a19c77090baa",
+      "started_at": "2026-11-05T09:01:30.231Z",
+      "result": "PARTIAL",
+      "models": [
+        {
+          "model": "qwen3.8-27b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": true,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "name": "environment-python",
+          "result": "FAIL",
+          "actual_model": "qwen3.8-27b",
+          "runtime_id": "5710f83a-ef9c-41bb-8f44-64afafda5437",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "api_usage": {
+            "api_calls": 6,
+            "local_calls": 0,
+            "reserved_tokens": 37833,
+            "reserved_cost": 0,
+            "input_tokens": 36506,
+            "output_tokens": 1327,
+            "cached_tokens": 0,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": false,
+            "released_tokens": 0,
+            "in_flight_tokens": 0,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [
+            "vendor/local-dep/lca_v08_local_dep.egg-info/PKG-INFO",
+            "vendor/local-dep/lca_v08_local_dep.egg-info/SOURCES.txt",
+            "vendor/local-dep/lca_v08_local_dep.egg-info/dependency_links.txt",
+            "vendor/local-dep/lca_v08_local_dep.egg-info/top_level.txt"
+          ],
+          "context_state": {
+            "compressed": false,
+            "recovered": false,
+            "memory_hits": 1,
+            "retrieval_hits": 3,
+            "index_version": 1
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-c66e5d70f0c3de228c081c55",
+            "reason": [
+              "能力匹配：对话,工具调用",
+              "配置上下文 65536，输出预留 4096",
+              "真实成功/失败 0/0"
+            ],
+            "switches": []
+          },
+          "plan_steps": [
+            {
+              "id": "7f2c4d6d-6f39-4fff-ab31-d15ab790ff37",
+              "state": "completed"
+            }
+          ],
+          "interruption": null,
+          "websocket": null,
+          "independent_exit_code": 0,
+          "module_exit_code": 0,
+          "source_contract": true,
+          "tool_success": 10,
+          "tool_failure_codes": [],
+          "successful_mutations": 0,
+          "visual_verified": null,
+          "diagnostics": {
+            "line_count": 35,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "validation-reports/v08-real-python-environment-repair/report.json",
+      "sha256": "7a23c52c7259e1a7750eb11af3cb2e18b5cd8febb0f8b0912e71ff865628d750",
+      "source_commit": "d2153f37b0e959d959cac3847be553dd6aa52309",
+      "started_at": "2026-11-05T11:45:36.396Z",
+      "result": "PASS",
+      "models": [
+        {
+          "model": "qwen3.8-27b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": true,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "name": "environment-python",
+          "result": "PASS",
+          "actual_model": "qwen3.8-27b",
+          "runtime_id": "ffb2d44b-3077-4294-9d2e-44ad0b660fe7",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "api_usage": {
+            "api_calls": 5,
+            "local_calls": 0,
+            "reserved_tokens": 30013,
+            "reserved_cost": 0,
+            "input_tokens": 28927,
+            "output_tokens": 1086,
+            "cached_tokens": 0,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": false,
+            "released_tokens": 0,
+            "in_flight_tokens": 0,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [],
+          "context_state": {
+            "compressed": false,
+            "recovered": false,
+            "memory_hits": 1,
+            "retrieval_hits": 3,
+            "index_version": 1
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-c66e5d70f0c3de228c081c55",
+            "reason": [
+              "能力匹配：对话,工具调用",
+              "配置上下文 65536，输出预留 4096",
+              "真实成功/失败 0/0"
+            ],
+            "switches": []
+          },
+          "plan_steps": [
+            {
+              "id": "19f78a48-bac0-4177-89b3-a8b54f8bfbec",
+              "state": "completed"
+            }
+          ],
+          "interruption": null,
+          "websocket": null,
+          "independent_exit_code": 0,
+          "module_exit_code": 0,
+          "source_contract": true,
+          "tool_success": 5,
+          "tool_failure_codes": [],
+          "successful_mutations": 0,
+          "visual_verified": null,
+          "diagnostics": {
+            "line_count": 22,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "validation-reports/v08-real-routing-recovery/report.json",
+      "sha256": "6de85a13abde825195741c072828c9ac4c384401a3351c81e1cabc7e2a888beb",
+      "source_commit": "3b64833ee934269f1210b6e0feadaacf4f4a6b3c",
+      "started_at": "2026-11-05T08:49:31.028Z",
+      "result": "PARTIAL",
+      "models": [
+        {
+          "model": "qwen3.8-2.4t-a95b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": false,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        },
+        {
+          "model": "qwen3.8-27b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": false,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "name": "routing",
+          "result": "PASS",
+          "actual_model": "qwen3.8-27b",
+          "runtime_id": "d584f73c-94da-4446-9732-37a067d7cd94",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "api_usage": {
+            "api_calls": 6,
+            "local_calls": 0,
+            "reserved_tokens": 76694,
+            "reserved_cost": 0,
+            "input_tokens": 71673,
+            "output_tokens": 5021,
+            "cached_tokens": 15360,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": true,
+            "released_tokens": 0,
+            "in_flight_tokens": 0,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [
+            "mathcore.py"
+          ],
+          "context_state": {
+            "compressed": false,
+            "recovered": false,
+            "memory_hits": 1,
+            "retrieval_hits": 3,
+            "index_version": 1
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-c66e5d70f0c3de228c081c55",
+            "reason": [
+              "因 MODEL_QUOTA_EXHAUSTED 切换；保留原目标、工具证据、权限与预算",
+              "能力匹配：对话,工具调用",
+              "配置上下文 65536，输出预留 4096",
+              "真实成功/失败 1/0"
+            ],
+            "switches": [
+              {
+                "from": "validation-b880e63f7e00d573cf231b4a",
+                "to": "validation-c66e5d70f0c3de228c081c55",
+                "code": "MODEL_QUOTA_EXHAUSTED",
+                "at": 1793868604.7964675
+              }
+            ]
+          },
+          "plan_steps": [
+            {
+              "id": "83fcdad2-a137-410f-9f39-664d034f4db2",
+              "state": "completed"
+            }
+          ],
+          "interruption": null,
+          "websocket": null,
+          "independent_exit_code": 0,
+          "module_exit_code": null,
+          "source_contract": true,
+          "tool_success": 11,
+          "tool_failure_codes": [],
+          "successful_mutations": 1,
+          "visual_verified": null,
+          "diagnostics": {
+            "line_count": 35,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "name": "interruption",
+          "result": "FAIL",
+          "actual_model": "qwen3.8-27b",
+          "runtime_id": "36e725e7-ed00-4afd-a893-ae4f3fb73f01",
+          "phase": "failed",
+          "outcome": "failed",
+          "error_code": "MODEL_CANDIDATES_EXHAUSTED",
+          "api_usage": {
+            "api_calls": 10,
+            "local_calls": 0,
+            "reserved_tokens": 149509,
+            "reserved_cost": 0,
+            "input_tokens": 138648,
+            "output_tokens": 10861,
+            "cached_tokens": 0,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": true,
+            "released_tokens": 0,
+            "in_flight_tokens": 41771,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [],
+          "context_state": {
+            "compressed": false,
+            "recovered": true,
+            "memory_hits": 2,
+            "retrieval_hits": 1,
+            "index_version": 2
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-c66e5d70f0c3de228c081c55",
+            "reason": [
+              "能力匹配：对话,工具调用",
+              "配置上下文 65536，输出预留 4096",
+              "真实成功/失败 2/0"
+            ],
+            "switches": []
+          },
+          "plan_steps": [
+            {
+              "id": "1ec6ce8c-237a-4bcf-8977-d7b1d68d8ef1",
+              "state": "completed"
+            },
+            {
+              "id": "891df642-7404-4a07-828c-98a28d5fdfd5",
+              "state": "blocked"
+            }
+          ],
+          "interruption": {
+            "original_turn": "turn_13978d2e3b2f4d79a30a04f2f505bd31",
+            "original_run": "36e725e7-ed00-4afd-a893-ae4f3fb73f01",
+            "completed_ids": [
+              "1ec6ce8c-237a-4bcf-8977-d7b1d68d8ef1"
+            ],
+            "restored": false,
+            "paused": false,
+            "resumed": true
+          },
+          "websocket": null,
+          "independent_exit_code": 0,
+          "module_exit_code": null,
+          "source_contract": true,
+          "tool_success": 15,
+          "tool_failure_codes": [],
+          "successful_mutations": 1,
+          "visual_verified": null,
+          "diagnostics": {
+            "line_count": 23,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        },
+        {
+          "name": "websocket",
+          "result": "PASS",
+          "actual_model": "qwen3.8-27b",
+          "runtime_id": "7085d11f-4c96-4fa1-80c1-559d103cf2c4",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "api_usage": {
+            "api_calls": 10,
+            "local_calls": 0,
+            "reserved_tokens": 116989,
+            "reserved_cost": 0,
+            "input_tokens": 109956,
+            "output_tokens": 7033,
+            "cached_tokens": 16384,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": true,
+            "released_tokens": 0,
+            "in_flight_tokens": 40123,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [
+            "DELIVERY.md",
+            "calculator.py",
+            "tests/test_validation.py",
+            "validation.py"
+          ],
+          "context_state": {
+            "compressed": false,
+            "recovered": true,
+            "memory_hits": 2,
+            "retrieval_hits": 1,
+            "index_version": 2
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-c66e5d70f0c3de228c081c55",
+            "reason": [
+              "能力匹配：对话,工具调用",
+              "配置上下文 65536，输出预留 4096",
+              "真实成功/失败 10/1"
+            ],
+            "switches": []
+          },
+          "plan_steps": [
+            {
+              "id": "56c87d3a-bce0-4a83-86bb-a01133d5a87f",
+              "state": "completed"
+            },
+            {
+              "id": "7b7c8c16-09e7-4978-ba7a-a9efd6bd1bd5",
+              "state": "completed"
+            }
+          ],
+          "interruption": null,
+          "websocket": {
+            "original_turn": "turn_cee0409658f74ff481ba5a08aa345cf5",
+            "original_run": "7085d11f-4c96-4fa1-80c1-559d103cf2c4",
+            "completed_ids": [
+              "56c87d3a-bce0-4a83-86bb-a01133d5a87f"
+            ],
+            "restored": true,
+            "paused": true,
+            "resumed": true
+          },
+          "independent_exit_code": 0,
+          "module_exit_code": null,
+          "source_contract": true,
+          "tool_success": 20,
+          "tool_failure_codes": [],
+          "successful_mutations": 4,
+          "visual_verified": null,
+          "diagnostics": {
+            "line_count": 39,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "validation-reports/v08-real-visual/report.json",
+      "sha256": "cbcbf7b9ee11e8eff1ab3cfd9f2a79764c6263ec20d358e57b0f3f4bff810d8e",
+      "source_commit": "7cc4711339a1c97a3adef76e55bdbbb231426c42",
+      "started_at": "2026-11-05T08:20:11.793Z",
+      "result": "PARTIAL",
+      "models": [
+        {
+          "model": "qwen3.8-max-0902",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "PASS",
+          "requests": 3,
+          "reused_probe": false,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "name": "visual",
+          "result": "FAIL",
+          "actual_model": "qwen3.8-max-0902",
+          "runtime_id": "turn_72ead7e265594e03a7e44fb80531a415",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "error_code": null,
+          "api_usage": {
+            "api_calls": 3,
+            "local_calls": 0,
+            "reserved_tokens": 18886,
+            "reserved_cost": 0,
+            "input_tokens": 15580,
+            "output_tokens": 3306,
+            "cached_tokens": 6272,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": false,
+            "released_tokens": 0,
+            "in_flight_tokens": 0,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [],
+          "context_state": {
+            "compressed": false,
+            "recovered": false,
+            "memory_hits": 1,
+            "retrieval_hits": 3,
+            "index_version": 1
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-6147ef89714111b4dec2a9f8",
+            "reason": [
+              "能力匹配：对话,工具调用,视觉理解",
+              "配置上下文 65536，输出预留 8192",
+              "真实成功/失败 1/0"
+            ],
+            "switches": []
+          },
+          "plan_steps": [],
+          "interruption": null,
+          "websocket": null,
+          "independent_exit_code": null,
+          "module_exit_code": null,
+          "source_contract": true,
+          "tool_success": 6,
+          "tool_failure_codes": [],
+          "successful_mutations": 0,
+          "visual_verified": false,
+          "diagnostics": {
+            "line_count": 21,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "validation-reports/v08-real-visual-repair/report.json",
+      "sha256": "9c2208f9ec22046f4e56cd2c5bc93a4cdb5c48d7e5e3139895a0e09e8dd14005",
+      "source_commit": "87d3285656a53d1d72eb55239079ef766d2509af",
+      "started_at": "2026-11-05T08:24:15.196Z",
+      "result": "PASS",
+      "models": [
+        {
+          "model": "qwen3.8-max-0902",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "PASS",
+          "requests": 3,
+          "reused_probe": true,
+          "configured_context_window": 65536,
+          "provider_maximum_context": "UNKNOWN",
+          "errors": []
+        }
+      ],
+      "cases": [
+        {
+          "name": "visual",
+          "result": "PASS",
+          "actual_model": "qwen3.8-max-0902",
+          "runtime_id": "e0e9109e-589f-464d-9055-e6b3ccad90b1",
+          "phase": "completed",
+          "outcome": "completed_unverified",
+          "error_code": null,
+          "api_usage": {
+            "api_calls": 16,
+            "local_calls": 0,
+            "reserved_tokens": 177343,
+            "reserved_cost": 0,
+            "input_tokens": 172625,
+            "output_tokens": 4718,
+            "cached_tokens": 47488,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": false,
+            "released_tokens": 0,
+            "in_flight_tokens": 0,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "changed_paths": [],
+          "context_state": {
+            "compressed": false,
+            "recovered": false,
+            "memory_hits": 1,
+            "retrieval_hits": 0,
+            "index_version": null
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-6147ef89714111b4dec2a9f8",
+            "reason": [
+              "能力匹配：对话,工具调用,视觉理解",
+              "配置上下文 65536，输出预留 8192",
+              "真实成功/失败 0/0"
+            ],
+            "switches": []
+          },
+          "plan_steps": [
+            {
+              "id": "80e8cd64-2d85-42a5-9c05-e6a110425f25",
+              "state": "completed"
+            }
+          ],
+          "interruption": null,
+          "websocket": null,
+          "independent_exit_code": null,
+          "module_exit_code": null,
+          "source_contract": true,
+          "tool_success": 13,
+          "tool_failure_codes": [
+            "PATH_OUTSIDE_WORKSPACE",
+            "DESKTOP_CONTROL_NOT_FOUND",
+            "DESKTOP_WAIT_TIMEOUT"
+          ],
+          "successful_mutations": 0,
+          "visual_verified": true,
+          "diagnostics": {
+            "line_count": 22,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "validation-reports/v08-real-workspace-question/report.json",
+      "sha256": "c65fc510f1f65d5eaadc436984d35c9788b1b39305f7f2a6e6d97e51b9d60707",
+      "source_commit": "d2153f37b0e959d959cac3847be553dd6aa52309",
+      "started_at": "2026-11-05T12:04:06.703Z",
+      "result": "PASS",
+      "models": [
+        {
+          "model": "qwen3.8-27b",
+          "category": "tool-capable",
+          "text": "PASS",
+          "tools": "PASS",
+          "vision": "NOT RUN",
+          "requests": 2,
+          "reused_probe": true
+        }
+      ],
+      "cases": [
+        {
+          "name": "analysis",
+          "result": "PASS",
+          "actual_model": "qwen3.8-27b",
+          "runtime_id": "turn_7298412e9b7a4123a188d0208814230e",
+          "phase": "completed",
+          "outcome": "completed_verified",
+          "api_usage": {
+            "api_calls": 3,
+            "local_calls": 0,
+            "reserved_tokens": 15033,
+            "reserved_cost": 0,
+            "input_tokens": 14019,
+            "output_tokens": 1014,
+            "cached_tokens": 4864,
+            "actual_cost": 0,
+            "actual_cost_known": false,
+            "estimated": false,
+            "released_tokens": 0,
+            "in_flight_tokens": 0,
+            "precision": "Pre-request conservative reservation; complete provider Usage releases unused Tokens. Unknown/interrupted requests retain full reservation."
+          },
+          "context_state": {
+            "compressed": false,
+            "recovered": false,
+            "memory_hits": 1,
+            "retrieval_hits": 3,
+            "index_version": 1
+          },
+          "routing": {
+            "mode": "auto",
+            "current": "validation-c66e5d70f0c3de228c081c55",
+            "reason": [
+              "能力匹配：对话,工具调用",
+              "配置上下文 65536，输出预留 4096",
+              "真实成功/失败 0/0"
+            ],
+            "switches": []
+          },
+          "changed_paths": [],
+          "tool_success": 2,
+          "tool_failure_codes": [
+            null
+          ],
+          "successful_mutations": 0,
+          "diagnostics": {
+            "line_count": 24,
+            "json_exists": true,
+            "markdown_exists": true
+          }
+        }
+      ]
+    }
+  ]
+}

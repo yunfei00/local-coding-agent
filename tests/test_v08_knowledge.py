@@ -121,3 +121,12 @@ class KnowledgeTests(unittest.TestCase):
         p=ProjectRegistry(self.store).get(self.project.id);self.assertIsNotNone(p);k=p.knowledge();k.save('保留','旧内容')
         with self.assertRaises(ValueError):k.save('保留','bad password=secret123')
         self.assertEqual(k.list()[0]['content'],'旧内容')
+    def test_sql_write_failure_preserves_memory_and_next_write_recovers(self):
+        import sqlite3
+        self.k.save('原记录','必须保留',trust='user')
+        self.store.connection.execute("CREATE TRIGGER reject_memory_update BEFORE UPDATE ON project_memories BEGIN SELECT RAISE(ABORT, 'controlled storage fault'); END")
+        with self.assertRaises(sqlite3.IntegrityError):self.k.save('原记录','新的内容',trust='user')
+        self.assertEqual(self.k.list()[0]['content'],'必须保留');self.assertEqual(self.k.list()[0]['revision'],1)
+        self.store.connection.execute('DROP TRIGGER reject_memory_update')
+        updated=self.k.save('原记录','恢复后内容',trust='user')
+        self.assertEqual(updated['revision'],2)

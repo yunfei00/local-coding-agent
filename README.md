@@ -1,5 +1,13 @@
 # Local Coding Agent
 
+v0.8.0 增加基于真实能力证据的自动模型路由、项目长期记忆、轻量工程检索、上下文连续性与受审批的环境诊断修复。继续使用同一个聊天入口，保留既有模型、线程、任务、Git Worktree、MCP 和 Windows Computer Agent。
+
+详见 [v0.8 架构](docs/v0.8/architecture.md)、[使用与测试](docs/v0.8/implementation.md)、[真实验收报告](docs/v0.8/acceptance-report.md)。本次仅交付源码，不创建 Release、Tag 或安装包；模型配置和安全存储保持兼容。
+
+## 历史阶段记录
+
+以下段落保留各历史阶段当时的验收范围与限制，不能作为当前版本的新测试结果。
+
 v0.7.0 Windows Computer Agent 增加授权截图坐标映射、视觉坐标网格、现代 RichEdit 记事本输入、有界深层 UIA 和低内存门禁。真实系统应用/本地浏览器工具集成、qwen3.8-max-0902 视觉操作及失败恢复已通过本轮验收；其他模型失败与测试边界见 [v0.7 验收](docs/v0.7/acceptance-report.md)。最终合并以 PR CI 为门禁，本轮不创建 Release/Tag，不进入 v0.8/v0.9。
 
 v0.6.0 扩展统一运行可靠性：运行中持久追加需求、取消/终态保护、无 Plan 中断恢复和脱敏请求事件。Python、React、Electron 已通过真实在线模型开发验证；各项结果与限制见 [v0.6 实现](docs/v0.6/implementation.md)及[验收报告](docs/v0.6/acceptance-report.md)。本轮不创建正式 Release 或 Tag。
@@ -16,9 +24,11 @@ M5 增加真实 Electron + React + TypeScript 双缺陷验收工程、Task Timel
 
 M4 全面修复统一了 Chat/Task 的连接和模型目录，支持独立 Vision Observer、真实窗口截图与冻结任务配置。见 [修复与用法](docs/m4/complete-fixes.md)、[验收分类](docs/m4/complete-validation.md)、[阶段能力矩阵](docs/capability-matrix.md)。真实在线推理与 HTTP Mock/真实 GUI 分开记录，本轮不发布安装包。
 
+## 项目与使用
+
 Local Coding Agent 是一个面向 Windows 本地开发环境的桌面 Coding Agent。目标是提供类似 Codex Desktop 的核心开发体验，同时让模型、Agent、工具链、数据和权限边界保持在用户自己的环境中。
 
-> 当前开发代码版本：**v0.7.0**（验收状态见上文）
+> 当前开发代码版本：**v0.8.0**（验收状态见上文）
 >
 > 最近正式发布：[**Latest Release / Windows 下载**](https://github.com/yunfei00/local-coding-agent/releases/latest)
 
@@ -305,7 +315,3 @@ M4 收尾：[长任务续跑、阻塞恢复与能力矩阵](docs/m4/continuation
 真实在线模型验收：[有界 Qwen / GLM + Qwen 自主 Electron 修复入口、凭据安全与实测记录](docs/validation/real-online-agent-acceptance.md)。默认离线检查，只有显式 `--live` 才允许付费请求；Mock 与在线结果分别报告。
 
 暂未确定。
-
-## v0.8 智能模型与项目上下文（开发分支）
-
-能力路由、项目记忆、工程检索、上下文和环境诊断沿用统一 Agent 入口。详见 [架构](docs/v0.8/architecture.md)、[使用及测试](docs/v0.8/implementation.md) 和 [实际验收状态](docs/v0.8/acceptance-report.md)。尚未验收的场景不算通过。
