@@ -236,6 +236,9 @@ class RepositoryMap:
         return set(DEFAULT_IGNORED_DIRS) | EXTRA_IGNORED_DIRS
 
     def _ignored(self, path: Path) -> bool:
+        from agent.core.project_files import ProjectFiles
+        if not getattr(self,'_file_policy',None):self._file_policy=ProjectFiles(self.root)
+        if not self._file_policy.allowed(path):return True
         try:
             relative = path.relative_to(self.root)
         except ValueError:
@@ -261,7 +264,9 @@ class RepositoryMap:
         if stat.st_size > MAX_FILE_BYTES or _probably_binary(path):
             return None
         try:
-            text = path.read_text(encoding="utf-8", errors="replace")
+            from agent.core.project_files import ProjectFiles
+            text = ProjectFiles(self.root).read(path,max_bytes=MAX_FILE_BYTES)
+            if text is None:return None
         except OSError:
             return None
         relative = path.relative_to(self.root).as_posix()
@@ -281,6 +286,8 @@ class RepositoryMap:
         )
 
     def build(self) -> None:
+        from agent.core.project_files import ProjectFiles
+        self._file_policy=ProjectFiles(self.root)
         self.files = {}
         self.scanned_files = 0
         self.skipped_files = 0
@@ -293,7 +300,7 @@ class RepositoryMap:
                 [
                     name
                     for name in dirs
-                    if name not in ignored
+                    if name not in ignored and self._file_policy.allowed(Path(current_root)/name,directory=True)
                 ],
                 key=str.lower,
             )
@@ -318,6 +325,8 @@ class RepositoryMap:
         self.revision += 1
 
     def refresh_paths(self, paths: list[str] | tuple[str, ...]) -> None:
+        from agent.core.project_files import ProjectFiles
+        self._file_policy=ProjectFiles(self.root)
         changed = False
         for raw in paths:
             try:

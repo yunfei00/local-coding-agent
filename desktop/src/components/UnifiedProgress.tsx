@@ -4,7 +4,11 @@ export type UnifiedRun = {
   id:string;revision?:number;plan_id?:string;recovery_plan_id?:string;intent:string;phase:string;outcome?:string;reason?:string;error_code?:string;
   level:string;changed_paths:string[];verification:TaskVerification[];model?:string;provider?:string;
   diagnostic_checks?:Array<{command:string;exit_code:number;summary:string}>;
+  knowledge_warning?:string;
   usage?:{api_calls:number;reserved_tokens:number;input_tokens:number;output_tokens:number;estimated:boolean};
+  routing?:{mode?:string;current?:string;reason?:string[];switches?:Array<{from:string;to:string;code:string}>};
+  context_state?:{compressed:boolean;recovered:boolean;memory_hits:number;retrieval_hits:number;index_version?:number};
+  execution_limits?:{tool_calls:number;max_tool_calls:number;stage_reserved_tokens:Record<string,number>;max_stage_tokens:number;elapsed_seconds:number};
   plan?:{steps:Array<{id:string;description:string;state:string}>};
 };
 const labels:Record<string,string>={question:'问答',analysis:'分析项目',interaction:'操作桌面',change:'修改代码',complex:'执行开发计划',executing:'执行中',verifying:'独立验证中',repairing:'修复验证失败',completed_verified:'已完成 · 验证通过',completed_unverified:'开发完成 · 尚未验证',partially_completed:'部分完成',awaiting_user:'等待处理 · 验证受阻',cancelled:'已取消',failed:'执行失败',paused:'已暂停'};
@@ -29,10 +33,14 @@ export function useUnifiedProgress(thread:string,ready:boolean) {
 export function UnifiedProgress({run,onResume,onDiagnostics,onExport,onPlan}:{run:UnifiedRun;onResume:()=>void;onDiagnostics:()=>void;onExport?:()=>Promise<Record<string,unknown>>;onPlan?:()=>void}){
   const [diagnostic,setDiagnostic]=useState<Record<string,unknown>>();
   useEffect(()=>setDiagnostic(undefined),[run.id]);
-  if(run.intent==='question' && !run.changed_paths.length && run.phase==='completed')return null;
+  if(run.intent==='question' && !run.changed_paths.length && run.phase==='completed' && !run.routing?.switches?.length)return null;
   return <section className="context-section conversation-task" aria-label="Agent 执行结果">
     <strong>{run.phase==='completed' && run.intent==='interaction' && run.outcome==='completed_unverified' ? '桌面操作已结束 · 待独立验收' : run.phase==='completed' && !run.changed_paths.length ? '已完成 · 未修改文件，无需代码验证' : run.outcome ? labels[run.outcome] || run.outcome : `${labels[run.intent] || run.intent} · ${labels[run.phase] || run.phase}`}</strong>
     {run.reason?<p>{run.reason}</p>:null}
+    {run.knowledge_warning?<p>{run.knowledge_warning}</p>:null}
+    {run.routing?.mode?<details><summary>{run.routing.mode==='auto'?'自动选择模型':'手动选择模型'} · 当前 {run.model}</summary><p>{run.routing.reason?.join('；')}</p>{run.routing.switches?.map((s,i)=><p key={i}>{s.from} → {s.to}：{s.code}</p>)}</details>:null}
+    {run.context_state?<p>项目记忆命中 {run.context_state.memory_hits} · 工程检索 {run.context_state.retrieval_hits} · {run.context_state.compressed?'上下文已压缩':'上下文未压缩'} · {run.context_state.recovered?'已恢复原执行状态':'新运行'}</p>:null}
+    {run.execution_limits?<details><summary>预算与连续执行</summary><p>工具 {run.execution_limits.tool_calls} / {run.execution_limits.max_tool_calls} · 累计 {run.execution_limits.elapsed_seconds} 秒</p><p>阶段 Token 保守预留（不是实际计费）：{Object.entries(run.execution_limits.stage_reserved_tokens).map(([phase,tokens])=>`${phase} ${tokens}`).join('；')} · 每阶段上限 {run.execution_limits.max_stage_tokens}</p></details>:null}
     {run.usage?<p>{run.provider} / {run.model} · API {run.usage.api_calls} · Token 用量/保守预留 {run.usage.reserved_tokens}{run.usage.estimated?'（含估算）':''}</p>:null}
     {run.changed_paths.length?<details><summary>修改了 {run.changed_paths.length} 个文件 · 验证级别 {run.level}</summary><ul>{run.changed_paths.map(p=><li key={p}>{p}</li>)}</ul></details>:null}
     {run.diagnostic_checks?.map((r,i)=><details key={`diagnostic-${i}`}><summary>只读诊断 · {r.command} · exit {r.exit_code}</summary><p>该失败用于分析原因，不代表测试通过。</p><pre style={{whiteSpace:'pre-wrap'}}>{r.summary}</pre></details>)}

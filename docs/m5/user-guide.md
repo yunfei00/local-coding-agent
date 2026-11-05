@@ -21,3 +21,6 @@ npm --prefix desktop run dev
 7. 运行时用 Cancel active task / Pause active task；恢复前检查 Worktree 与 Checkpoint，明确确认 Resume。旧窗口不会复用。改 Settings 后新 Task 使用新值，暂停旧 Task 需 Apply configuration 才更新快照。
 
 完整可运行实验工程与自动入口见 manual-fixtures/m5-electron-e2e/README.md。本机 HTTP Mock 不使用真实密钥。真实模型测试须授权费用与图片传输。最新 Omni 单模型闭环、GLM + Omni 的真实后台验收以及控制器终态报告修复/复核见[解锁后报告](../validation/unlocked-real-online-acceptance-2026-10-26.md)。旧 Flash/Max 失败和环境诊断保留为历史，不冒充通过。更新源码前核对 PR #22 是否合并；未合并时使用功能分支，合并后上述 main 命令有效。旧 API Profile 可点 Use coding output limit 并保存，旧任务继续保留配置快照。
+
+
+v0.8 扩展：见 [智能模型与项目上下文架构](../v0.8/architecture.md)。当前验收状态以 v0.8/acceptance-report.md 为准；原功能保留。

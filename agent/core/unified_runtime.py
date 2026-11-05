@@ -22,6 +22,7 @@ Keep each tool batch small: create a short file skeleton then apply small focuse
 Each step must have real tool evidence; avoid prose-only steps. Use an empty verification for edit/inspection steps, a concrete command for test steps.
 Do not ask the user to choose chat/development modes. You may upgrade a small task using agent_plan, preserving all existing changes and evidence.
 After code changes the runtime independently runs verification. Never claim tests passed without actual exit-code evidence.
+For project questions use knowledge_search to retrieve actual paths/lines and read the relevant files. project_memory may search or save concise candidate knowledge, never raw chat or secrets. Candidate memory is unverified; current code and real test evidence take priority. Do not overwrite user rules. environment_diagnose performs read-only checks; environment_repair always requires the existing approval and a real re-check. Never modify global settings to hide environment errors.
 Keep the final report in Chinese, including changed files, actual verification and unresolved issues. Environment failures must not cause endless retries.
 For Windows computer tasks discover and authorize the exact window, focus it, then inspect live UIA controls. Verify actual state after actions; do not confuse a request being sent with its effect being verified.
 Only when UIA cannot locate/invoke the target, request an authorized screenshot for a vision-capable model. Use desktop_click method=coordinate, coordinate_space=model_image, artifact_id from that capture and its image-pixel x/y, with fresh confirm_risk approval. Do not guess coordinates, read source code to bypass the interface, or fallback after a privacy/approval/session denial. Re-capture after movement, resizing or stale capture errors.
@@ -54,7 +55,8 @@ def requested_intent(prompt):
     interaction=not readonly and not question and not code_request and bool(re.search(r'(?:桌面|窗口|界面|Settings|Display name).*(?:输入|点击|键入|填写)|(?:click|type|enter).*(?:button|window|settings|field)',positive,re.I|re.S))
     if interaction:kind='interaction'
     project_question=bool(re.search(r'(?:本|当前|这个|该|this)\s*(?:项目|工程|仓库|程序|project|repo)|(?:分析|解释|检查).{0,8}(?:项目|工程|仓库|程序)',text,re.I))
-    return {'kind':kind,'read_only':readonly or kind=='analysis' or (question and not direct),'pure_question':kind=='question' and question and not project_question and not paths,'referenced_files':len(paths),'listed_steps':listed}
+    memory_write=bool(re.search(r'记住|保存.{0,20}(?:知识|记忆|约定)|(?:知识|记忆).{0,12}保存|remember|save.{0,20}memor',prompt,re.I))
+    return {'kind':kind,'read_only':readonly or kind=='analysis' or (question and not direct),'pure_question':kind=='question' and question and not project_question and not paths and not memory_write,'memory_write':memory_write,'referenced_files':len(paths),'listed_steps':listed}
 
 
 COMPUTER_TOOLS={'start_process','read_process','stop_process','list_directory','file_exists','agent_plan',*('desktop_'+n for n in ('list_windows','inspect','screenshot','focus_window','click','type_text','keypress','scroll','wait'))}

@@ -9,7 +9,7 @@ from agent.task_plans import TaskPlanStore
 from agent.core.task_runtime import TaskRuntimeStore
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def default_data_dir() -> Path:
@@ -38,6 +38,8 @@ class SQLiteStore:
         self.task_runtime = TaskRuntimeStore(self.task_plans)
 
     def _migrate(self) -> None:
+        if self.connection.execute('PRAGMA user_version').fetchone()[0]>SCHEMA_VERSION:
+            raise ValueError('数据库来自较新版本，未修改；请使用匹配的软件版本。')
         self.connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS projects (
@@ -143,6 +145,8 @@ class SQLiteStore:
             ON pinned_context(thread_id, created_at);
             """
         )
+        from agent.core.project_knowledge import SCHEMA as KNOWLEDGE_SCHEMA
+        self.connection.executescript(KNOWLEDGE_SCHEMA)
         columns = {row[1] for row in self.connection.execute("PRAGMA table_info(threads)")}
         if "deleted_at" not in columns:
             self.connection.execute("ALTER TABLE threads ADD COLUMN deleted_at TEXT")

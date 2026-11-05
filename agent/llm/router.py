@@ -123,6 +123,8 @@ class ModelRouter:
         model = profile["model"] or provider.preferred_model
         if not model:
             raise ProviderError("MODEL_NOT_CONFIGURED", f"Configure the {route} model for {role}")
+        from agent.core.model_routing import require_allowed
+        require_allowed(model)
         return RoutedProvider(provider, model, role, route, profile, self)
 
     async def text(self, role: str, messages: list[dict]) -> str:

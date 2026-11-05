@@ -50,7 +50,7 @@ async function main(){
  const guiWindows=new Set();
  const guiControls=new Map();let guiInspectTarget,guiReadyPid;
  const guiValue='GUI-'+crypto.randomBytes(4).toString('hex');
- let proxy,proxyArmed=false,proxyDropped=false,proxyCalls=0;const upstreamRequests=new Set();
+ let proxy,proxyArmed=false,proxyDropped=false,proxyCalls=0,routingInjected=false;const upstreamRequests=new Set();
  const desktopData=fs.mkdtempSync(path.join(os.tmpdir(),'lca-live-desktop-'));
  // Chromium 的 OS 加密主密钥也保存在 Local State；只复制加密原件，
  // 由同一 Electron/OS 安全存储解密，不读取明文或共享浏览器用户目录。
@@ -83,11 +83,14 @@ async function main(){
   report.lifecycle.phase='credential_check';save();
   const credential=(await page.evaluate(()=>window.localAgent.taskRequest('','task.credential.status'))).payload;
   if(credential.mode!=='os_protected'||!manifest.connections.every(c=>credential.configured.includes('connection-'+c.connection_id))){report.result='BLOCKED';report.reason='PROTECTED_CREDENTIAL_UNAVAILABLE';return;}
-  if(manifest.case_names?.includes('network')){
+  if(manifest.case_names?.some(name=>['network','routing'].includes(name))){
    const connection=manifest.connections.find(c=>c.connection_id===manifest.profiles[0].connection_id),base=connection.base_url.replace(/\/$/,'');
    proxy=http.createServer((req,res)=>{
     const url=new URL(base+req.url),transport=url.protocol==='https:'?https:http;
     if(req.method==='POST'&&req.url.endsWith('/chat/completions'))proxyCalls++;
+    if(currentCase?.name==='routing'&&!routingInjected&&req.method==='POST'&&events.some(e=>e.type==='tool.completed'&&e.ok&&['write_file','apply_patch'].includes(e.name))){
+     routingInjected=true;req.resume();res.writeHead(403,{'Content-Type':'application/json'});res.end(JSON.stringify({error:{code:'AllocationQuota.FreeTierOnly',message:'controlled validation fault'}}));return;
+    }
     // 凭据仅按原目标转发在内存中，不读取、保存或输出请求头/正文。
     const upstream=transport.request(url,{method:req.method,headers:{...req.headers,host:url.host,'accept-encoding':'identity'}},response=>{
      res.writeHead(response.statusCode,{'Content-Type':response.headers['content-type']||'application/json'});
@@ -143,6 +146,7 @@ async function main(){
     const args=p.arguments||{},tool=String(p.tool||'');
     const inside=value=>typeof value==='string' && !path.relative(currentFolder,path.resolve(currentFolder,value)).startsWith('..') && !path.isAbsolute(path.relative(currentFolder,path.resolve(currentFolder,value)));
     let allowed=['read_file','list_directory','search_files','file_exists','inspect_workspace','git_status','git_diff'].includes(tool)&&(!args.path||inside(args.path));
+    if(tool==='environment_repair')allowed=currentCase?.name==='environment-repair'&&args.action==='project_npm_proxy_reset'&&!args.directory;
     if(tool==='review_interrupted_operation'&&args.tool==='run_command'&&reviewAllowed.has(args.call_id))allowed=true;
     if(['write_file','apply_patch'].includes(tool))allowed=inside(args.path);
     if(guiCase){
@@ -248,7 +252,7 @@ async function main(){
    item.category=result.tools==='PASS'?'tool-capable':result.text==='PASS'?'question-only':'unavailable';save();
   }
   const usable=report.models.filter(m=>m.category!=='unavailable');
-  if(manifest.capabilities_only){report.usage=await budgetUsed();report.result=report.models.some(m=>m.capability?.vision==='PASS')?'PASS':'BLOCKED';return;}
+  if(manifest.capabilities_only){report.usage=await budgetUsed();report.result=report.models.some(m=>m.capability?.text==='PASS')?'PASS':'BLOCKED';return;}
   for(const item of usable){
    if(manifest.executor_model&&item.model_id!==manifest.executor_model)continue;
    const profile=manifest.profiles.find(p=>p.model_profile_id===item.profile_id);
@@ -263,6 +267,11 @@ async function main(){
    const best=report.models.find(m=>m.category==='tool-capable'&&!denied(m.model_id)&&report.cases.some(c=>c.model===m.model_id&&c.name==='change'&&c.result==='PASS'))||report.models.find(m=>m.category==='tool-capable'&&!denied(m.model_id));
    if(best){
     const profile=manifest.profiles.find(p=>p.model_profile_id===best.profile_id);
+    await runCase(profile,'routing','用 knowledge_search 找到加法调用关系，仅修复 mathcore.py 的减法错误，保留原测试，运行 unittest 并检查 Diff。不要重复已成功的修改；若模型服务额度错误，使用运行时允许的替代模型继续原目标，中文报告，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.independent?.exit_code===0&&r.routing_fault?.injected===true&&r.runtime.routing?.switches.some(s=>s.code==='MODEL_QUOTA_EXHAUSTED'),{v08:'broken'});
+    await runCase(profile,'project-memory','先使用 knowledge_search 检索项目入口、跨文件调用及测试方式，阅读 README 和必要源码，解释技术栈、入口和关键模块，不修改代码。请用 project_memory 保存有来源的项目知识。记住：本工程必须使用 unittest，交付摘要使用中文。',r=>r.runtime.phase==='completed'&&r.knowledge?.memories.some(m=>m.content.includes('unittest'))&&r.tools.some(t=>t.name==='knowledge_search'&&t.ok)&&r.tools.some(t=>t.name==='project_memory'&&t.ok)&&r.dirty==='',{v08:'healthy'});
+    await runCase(profile,'memory-reopen','请读取这个项目之前保存的开发约定，说明测试框架与交付语言，并检查入口文件；只分析，不修改代码。',r=>r.runtime.phase==='completed'&&r.runtime.knowledge?.memory_hits>0&&r.answer.includes('unittest')&&r.answer.includes('中文')&&r.dirty==='',{folder:manifest.memory_project,newThread:true});
+    await runCase(profile,'knowledge-fix','先使用 knowledge_search 检索 add/combine 的跨文件调用和测试，定位并修复真实加法缺陷。保留原测试及验证配置，运行 uv run --no-project python -m unittest discover -s tests -v，检查 Diff，中文交付，并保存有来源的项目知识。不提交。',r=>r.runtime.outcome==='completed_verified'&&r.independent?.exit_code===0&&r.tools.some(t=>t.name==='knowledge_search'&&t.ok)&&r.runtime.changed_paths.includes('mathcore.py'),{v08:'broken'});
+    await runCase(profile,'environment-repair','使用 environment_diagnose 检查项目 npm 代理、Git 和 Python 依赖。项目 .npmrc 的代理端口故意不可用，请通过 environment_repair 请求审批，仅移除这个项目的 proxy 和 https-proxy，保留其他设置并重新验证。不要安装软件或修改系统配置。最后运行现有 unittest，中文报告。',r=>r.runtime.phase==='completed'&&r.independent?.exit_code===0&&r.tools.some(t=>t.name==='environment_diagnose'&&t.ok)&&r.tools.some(t=>t.name==='environment_repair'&&t.ok)&&!fs.readFileSync(path.join(r.folder,'.npmrc'),'utf8').includes('proxy='),{v08:'environment'});
     await runCase(profile,'python-smoke','calculator.py 的 add 目前错误地写成 return a-b。请仅修复为真正加法，保留 tests 不变。执行 uv run --no-project python -m unittest discover -s tests -v 和 git diff 检查，用中文报告真实结果，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.runtime.changed_paths.includes('calculator.py')&&r.independent?.exit_code===0);
     await runCase(profile,'react','修复 frontend 这个 React/TypeScript 工程：src/App.tsx 的 label 类型错误，标题改为中文“计算器”；src/math.ts 加法错误。保留已有 test 断言，实际运行 npm --prefix frontend run typecheck、npm --prefix frontend test、npm --prefix frontend run build，检查 Diff 并中文交付。不要修改根目录 calculator 或验证配置，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.runtime.changed_paths.some(p=>p.endsWith('App.tsx'))&&r.independent?.exit_code===0&&fs.readFileSync(path.join(r.folder,'frontend/src/App.tsx'),'utf8').includes('计算器'),{frontend:'m2-react-ts'});
     await runCase(profile,'electron','修复 frontend 这个 Electron 设置程序：Settings 的 Display name 输入框不能编辑，保存后状态错误地仍显示 Not saved。请修复 src/App.tsx，让输入可编辑，成功保存后显示 Saved；保留测试及 main.cjs/preload.cjs/launch.cjs，实际执行 typecheck、test、build 和 Diff，中文报告。不要修改根目录 calculator 和验证配置，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.independent?.exit_code===0&&r.gui?.result==='PASS'&&r.gui.saved==='v0.6 在线模型验证',{frontend:'m5-electron-e2e'});
@@ -296,6 +305,13 @@ async function main(){
    if(used.calls+1>manifest.max_calls||used.tokens+20000>manifest.max_tokens||Date.now()-started>3300000){report.cases.push({model:profile.model_id,name,result:'BLOCKED',reason:'CUMULATIVE_LIVE_CAP'});save();return;}
    if(options.frontend&&manifest.prepared_fixture)options={...options,folder:manifest.prepared_fixture};
    currentFolder=options.folder||project(name+'-'+report.cases.length);currentCase={model:profile.model_id,name,folder:currentFolder,result:'RUNNING'};report.cases.push(currentCase);events=[];ownedTurn=null;
+   if(options.v08){
+    fs.writeFileSync(path.join(currentFolder,'calculator.py'),'from mathcore import combine\ndef add(a,b):\n    return combine(a,b)\n');
+    fs.writeFileSync(path.join(currentFolder,'mathcore.py'),options.v08==='broken'?'def combine(a,b):\n    return a-b\n':'def combine(a,b):\n    return a+b\n');
+    fs.writeFileSync(path.join(currentFolder,'README.md'),'# 隔离计算工程\nPython 项目，入口 calculator.py，mathcore.py 执行运算。\n测试：uv run --no-project python -m unittest discover -s tests -v\n');
+    if(options.v08==='environment')fs.writeFileSync(path.join(currentFolder,'.npmrc'),'proxy=http://127.0.0.1:1\nhttps-proxy=http://127.0.0.1:1\nregistry=https://registry.npmjs.org\n');
+    for(const args of [['add','.'],['commit','-qm','Prepare isolated v08 acceptance input']])if(shell(args,currentFolder).status!==0)throw Error('V08_FIXTURE_PREPARATION_FAILED');
+   }
    if(options.gui){guiReadyPid=null;const stale=path.resolve(currentFolder,'frontend/.runtime/process.json');const allowedRoot=path.resolve(manifest.root,'validation-reports')+path.sep;if(!stale.startsWith(allowedRoot))throw Error('GUI_RUNTIME_CLEANUP_SCOPE');if(fs.existsSync(stale)){fs.copyFileSync(stale,path.join(manifest.output,'prior-fixture-process.json'));fs.unlinkSync(stale);currentCase.stale_runtime_archived=true;}}
    const initialHead=shell(['rev-parse','HEAD'],currentFolder).stdout.trim();
    if(options.approval){fs.appendFileSync(path.join(currentFolder,'README.md'),'Synthetic pending change for permission validation\n');shell(['add','README.md'],currentFolder);}
@@ -326,9 +342,9 @@ async function main(){
    await page.evaluate(config=>window.localAgent.taskRequest('','task.settings.update',{config}),currentConfig);
    await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});},currentFolder);
    await page.evaluate(model=>window.localAgent.openProject('profile:'+model),profile.model_profile_id);
-   let thread=options.folder?(await page.evaluate(()=>window.localAgent.getProject())).payload.active_thread:null;
+   let thread=options.folder&&!options.newThread?(await page.evaluate(()=>window.localAgent.getProject())).payload.active_thread:null;
    if(!thread)thread=(await page.evaluate(model=>window.localAgent.createThread('profile:'+model),profile.model_profile_id)).payload.thread;
-   await page.evaluate(({thread,model})=>window.localAgent.selectModel(thread,'profile:'+model),{thread:thread.id,model:profile.model_profile_id});
+   await page.evaluate(({thread,model})=>window.localAgent.selectModel(thread,model),{thread:thread.id,model:manifest.automatic_routing?'auto':'profile:'+profile.model_profile_id});
    if(options.network)proxyArmed=true;
    await page.locator('.composer textarea').fill(goal);await page.locator('.composer textarea').press('Enter');
    const until=Date.now()+660000;
@@ -389,7 +405,7 @@ async function main(){
    currentCase.head_unchanged=shell(['rev-parse','HEAD'],currentFolder).stdout.trim()===initialHead;
    if(options.gui){const file=path.join(currentFolder,'frontend/.runtime/saved.json');currentCase.gui={saved:fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')).value:null};}
    if(options.visual){const file=path.join(currentFolder,'frontend/.runtime/result.json');currentCase.visual_verified=fs.existsSync(file)&&JSON.parse(fs.readFileSync(file,'utf8')).verified===true;}
-   const contractArgs=['run','--locked','python','scripts/validation/unified_contract.py','--original',baselineTest,'--project',currentFolder,...(['change','followup'].includes(name)?['--input-validation']:[]),...(['question','analysis','context','json'].includes(name)||options.frontend||options.gui||options.approval?['--structure-only']:[])];
+   const contractArgs=['run','--locked','python','scripts/validation/unified_contract.py','--original',baselineTest,'--project',currentFolder,...(['change','followup'].includes(name)?['--input-validation']:[]),...(['question','analysis','context','json','project-memory','memory-reopen'].includes(name)||options.frontend||options.gui||options.approval?['--structure-only']:[])];
    const originalCheck=cp.spawnSync('uv',contractArgs,{cwd:manifest.root,encoding:'utf8',windowsHide:true,timeout:60000});
    currentCase.original_test_contract={exit_code:originalCheck.status,...JSON.parse(originalCheck.stdout||'{}')};
    if(options.frontend){
@@ -408,10 +424,12 @@ async function main(){
      }catch(error){currentCase.gui={result:'FAIL',reason:String(error.message).slice(0,300)};}
      finally{if(fixture)await fixture.close().catch(()=>{});}
     }
-   }else if(!['question','analysis','context','json'].includes(name)&&!options.gui&&!options.approval){
+   }else if(!['question','analysis','context','json','project-memory','memory-reopen'].includes(name)&&!options.gui&&!options.approval){
     const check=cp.spawnSync('uv',['run','--no-project','python','-m','unittest','discover','-s','tests','-v'],{cwd:currentFolder,encoding:'utf8',windowsHide:true,timeout:60000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
     currentCase.independent={exit_code:check.status,summary:(check.stdout+check.stderr).slice(-2500)};
    }
+   if(name==='routing')currentCase.routing_fault={injected:routingInjected,kind:'controlled quota response; other forwarded calls are real Ali HTTP',proxy_requests:proxyCalls};
+   if(options.v08||name==='memory-reopen')currentCase.knowledge=(await page.evaluate(t=>window.localAgent.taskRequest(t,'knowledge.get'),thread.id)).payload;
    currentCase.result=runtime&&assertion(currentCase)&&currentCase.frozen_unchanged&&originalCheck.status===0?'PASS':'FAIL';
    if(options.gui&&(!currentCase.capture?.exists||(!options.visual&&!currentCase.capture.local_only)||currentCase.tools.some(t=>t.ok&&['write_file','apply_patch','run_command'].includes(t.name))))currentCase.result='FAIL';
    if(options.gui&&manifest.gui_only){currentCase.gui_only=true;if(runtime?.outcome!=='completed_unverified'||runtime.level!=='manual'||runtime.changed_paths.length)currentCase.result='FAIL';}

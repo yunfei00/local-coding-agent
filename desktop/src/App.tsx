@@ -257,6 +257,7 @@ function App() {
   const [projectThreadCache, setProjectThreadCache] = useState<Record<string, ThreadRecord[]>>({});
   const [workspace, setWorkspace] = useState<ProjectInfo | null>(null);
   const [selectedModel, setSelectedModel] = useState("");
+  const [allowModelFallback,setAllowModelFallback]=useState(false);
   const [modelSearch,setModelSearch] = useState("");
   const [modelIdentity,setModelIdentity] = useState("");
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
@@ -1061,8 +1062,8 @@ function App() {
   }, [provider, contextUsage]);
 
   const selectedProfile = provider?.models.find(model => model.name === selectedModel);
-  const selectedLabel = selectedProfile ? `${selectedProfile.connection_name || ""} / ${selectedProfile.display_name || selectedProfile.model_id || selectedProfile.name}` : selectedModel;
-  const modelAvailable = Boolean(selectedModel && selectedProfile && selectedProfile.enabled !== false);
+  const selectedLabel = selectedModel==='auto' ? `自动选择 · ${unifiedRun?.model || '按任务能力匹配'}` : selectedProfile ? `${selectedProfile.connection_name || ""} / ${selectedProfile.display_name || selectedProfile.model_id || selectedProfile.name}` : selectedModel;
+  const modelAvailable = selectedModel==='auto' ? Boolean(provider?.models.some(m=>m.enabled!==false)) : Boolean(selectedModel && selectedProfile && selectedProfile.enabled !== false);
   const providerReady = Boolean(provider?.online && modelAvailable);
   useEffect(() => {
     if (!selectedModel || selectedModel.startsWith("profile:")) return;
@@ -1400,7 +1401,7 @@ function App() {
         followupRetryRef.current=undefined;
         setFollowupNotice('追加需求已排队，将在完整工具批次结束后的下一次模型请求前生效。');
       }else{
-        const started = await window.localAgent.startTurn(boundThread.id,prompt,selectedModel,true);
+        const started = await window.localAgent.startTurn(boundThread.id,prompt,selectedModel,true,undefined,{allow_fallback:allowModelFallback});
         if (started.turn_id) setRunningTurnId(started.turn_id);
       }
       setInput(current => current.trim() === prompt ? "" : current);
@@ -1811,6 +1812,7 @@ function App() {
                 }
                 onChange={(event) => void changeModel(event.target.value)}
               >
+                <option value="auto">自动选择（按已确认能力）</option>
                 {selectedModel && !modelAvailable ? <option value={selectedModel} disabled>{selectedModel} (unavailable — choose a model)</option> : null}
                 {provider?.models.length ? (
                   [...new Set(provider.models.map(m=>m.connection_name || "Migrated provider"))].map(group=><optgroup key={group} label={group}>{provider.models.filter(m=>(m.connection_name || "Migrated provider")===group && (m.name===selectedModel || `${m.display_name} ${m.model_id} ${group}`.toLowerCase().includes(modelSearch.toLowerCase()))).map(m=><option key={m.name} value={m.name} disabled={m.enabled===false}>{m.display_name || m.model_id || m.name}{m.supports_vision ? " · Vision" : ""}</option>)}</optgroup>)
@@ -1818,6 +1820,7 @@ function App() {
                   <option value="">No models</option>
                 )}
               </select>
+              {selectedModel!=='auto'?<label><input type="checkbox" checked={allowModelFallback} disabled={runningTurnId!==null} onChange={e=>setAllowModelFallback(e.target.checked)}/>允许模型自动回退</label>:null}
               <span className="composer-hints">
                 {modelIdentity ? <span title={modelIdentity}>{modelIdentity}</span> : null}
                 {contextLabel ? (

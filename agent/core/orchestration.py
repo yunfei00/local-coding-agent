@@ -181,11 +181,17 @@ class TaskService:
                 if not isinstance(payload.get('live', False), bool) or not isinstance(payload.get('vision', True), bool):
                     raise ValueError('Live Test and vision flags must be explicit booleans')
                 provider = self.make_provider(asdict(self.server.settings), 'api', {'_connection': connection, 'model': profile['model_id'], 'context_window': profile['context_window'], 'temperature': profile['temperature']})
+                diagnostic_fingerprint=self.catalog().fingerprint(profile['model_profile_id'])
                 result = await self.model_diagnostics.run(provider, connection, profile, live=payload.get('live') is True, vision=payload.get('vision', True))
                 result['executor_bound'] = self.settings()['roles']['executor'].get('model_profile_id') == profile['model_profile_id']
                 result['model_profile_id'] = profile['model_profile_id']
-                result['config_fingerprint'] = self.catalog().fingerprint(profile['model_profile_id'])
+                result['config_fingerprint'] = diagnostic_fingerprint
                 self.server.store.set_setting('model.test.'+profile['model_profile_id'], json.dumps(result))
+                if result.get('live'):
+                    from agent.core.model_routing import CapabilityRegistry
+                    quota=any(e.get('code')=='MODEL_QUOTA_EXHAUSTED' for e in result.get('errors',[]))
+                    if quota or result.get('text')=='PASS':
+                        CapabilityRegistry(self.catalog()).record(profile['model_profile_id'],success=not quota,tools=result.get('tools')=='PASS',error='MODEL_QUOTA_EXHAUSTED' if quota else None,expected_fingerprint=diagnostic_fingerprint)
             elif kind == "task.connection.test":
                 cid = payload.get("connection_id")
                 if cid:
@@ -396,7 +402,7 @@ class TaskService:
         if not root.is_dir() or root.resolve() == Path(task["source"]).resolve():
             raise ValueError("Task worktree missing or points to source workspace")
         workspace = Workspace(str(root))
-        return replace(source, workspace=workspace, tools=ToolRegistry(workspace), repository_map=None)
+        return replace(source, workspace=workspace, tools=ToolRegistry(workspace), repository_map=None, _knowledge=None)
 
     def launch(self, ws, task, project, owned_turns):
         if self.runtime.get(task['id'])['status']=='cancelled':

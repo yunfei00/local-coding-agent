@@ -149,6 +149,7 @@ class ProcessSession:
 
 class ProcessManager:
     def __init__(self, workspace, log_root=None):
+        self.project_path_prefix=[]
         self.workspace = workspace
         base = Path(os.getenv("LCA_DATA_DIR") or Path.home() / ".local-coding-agent")
         self.log_root = Path(log_root) if log_root else base / "command-logs"
@@ -213,6 +214,7 @@ class ProcessManager:
         if sum(s.owner == owner and s.state == "running" for s in self.sessions.values()) >= 8 or len(self.sessions) >= 64:
             raise ToolError("PROCESS_LIMIT", "Stop existing processes before starting more")
         env = {**os.environ, "PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1"}
+        if self.project_path_prefix:env['PATH']=os.pathsep.join([*self.project_path_prefix,env.get('PATH','')])
         if environment:
             if set(environment) - {"PYTHONPYCACHEPREFIX", "PYTHONDONTWRITEBYTECODE"}:
                 raise ToolError("INVALID_COMMAND_ENVIRONMENT", "Only internal Python cache controls are supported")

@@ -19,6 +19,9 @@ class PermissionMode(StrEnum):
 
 
 READ_ONLY_TOOLS = {
+    "knowledge_search",
+    "project_memory_search",
+    "environment_diagnose",
     "file_exists",
     "list_directory",
     "read_file",
@@ -32,6 +35,8 @@ READ_ONLY_TOOLS = {
 }
 
 WORKSPACE_TOOLS = READ_ONLY_TOOLS | set(DESKTOP_TOOLS) | {
+    "project_memory",
+    "environment_repair",
     "write_file",
     "apply_patch",
     "run_command",
@@ -300,6 +305,8 @@ class PermissionPolicy:
             return PermissionVerdict(True, True, reason, key, 'desktop_fresh' if risk else 'desktop')
         if metadata.get("source") != "mcp" and self.mode == PermissionMode.READ_ONLY and tool_name not in READ_ONLY_TOOLS:
             return PermissionVerdict(allowed=False, reason=f"{tool_name} is disabled in Read Only mode.", risk="read_only")
+        if tool_name=='environment_repair':
+            return PermissionVerdict(True,True,'环境修复需要本次审批；只允许项目级变更和受控依赖同步，不修改系统全局配置。','environment:'+json.dumps(arguments,sort_keys=True),'environment_repair')
         if metadata.get("source") == "mcp":
             trusted = bool(metadata.get("trusted"))
             read_only = bool(metadata.get("read_only"))

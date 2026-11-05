@@ -235,6 +235,8 @@ class OllamaProvider:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[ProviderChunk]:
+        from agent.core.model_routing import require_allowed
+        require_allowed(model)
         timeout = aiohttp.ClientTimeout(
             total=None,
             connect=5,

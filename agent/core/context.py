@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, replace
 import json
+import os
 from typing import Any
 
 from agent.llm.base import ProviderError
@@ -12,6 +13,12 @@ DEFAULT_CHARS_PER_TOKEN = 4
 MESSAGE_OVERHEAD_TOKENS = 12
 MIN_INPUT_BUDGET_TOKENS = 512
 TRUNCATION_MARKER = "[Context truncated]"
+
+def runtime_compression_threshold():
+    try:value=float(os.getenv('LCA_CONTEXT_COMPRESSION_THRESHOLD','.85'))
+    except ValueError:raise ProviderError('CONTEXT_CONFIG_INVALID','上下文压缩阈值必须为 0.5–1') from None
+    if not .5<=value<=1:raise ProviderError('CONTEXT_CONFIG_INVALID','上下文压缩阈值必须为 0.5–1')
+    return value
 
 
 def estimate_text_tokens(
@@ -83,6 +90,7 @@ class ContextBudgetManager:
         context_window_tokens: int,
         reserved_output_tokens: int = DEFAULT_RESERVED_OUTPUT_TOKENS,
         chars_per_token: int = DEFAULT_CHARS_PER_TOKEN,
+        compression_threshold: float = 1.0,
     ) -> None:
         self.context_window_tokens = max(int(context_window_tokens), 1_024)
         requested_reserve = max(int(reserved_output_tokens), 256)
@@ -94,6 +102,8 @@ class ContextBudgetManager:
         )
         self.chars_per_token = max(int(chars_per_token), 1)
         self._byte_conservative = False
+        if not .5<=compression_threshold<=1:raise ValueError('上下文压缩阈值必须为 0.5–1')
+        self.compression_threshold=compression_threshold
 
     def fit_request(self, messages, *, tools, output_limit, history_messages_total):
         """Fit API messages and schemas to the guard's context estimate.
@@ -163,6 +173,8 @@ class ContextBudgetManager:
             if header_tokens >= remaining_context:
                 break
             content_budget = remaining_context - header_tokens
+            fraction={'project_memory':.15,'knowledge_retrieval':.2,'repo_map':.3}.get(source)
+            if fraction:content_budget=min(content_budget,max(64,int(self.input_budget_tokens*fraction)))
             content_tokens = estimate_text_tokens(
                 content,
                 chars_per_token=self.chars_per_token,
@@ -224,6 +236,17 @@ class ContextBudgetManager:
         )
 
     def fit_runtime(
+        self, messages, *, history_messages_total, context_sources=None,
+    ) -> ContextSelection:
+        original=self.input_budget_tokens
+        if self.compression_threshold<1 and self._messages_tokens(messages)>original*self.compression_threshold:
+            latest=self._latest_user_index(messages)
+            anchors=self._message_tokens(messages[0])+self._message_tokens(messages[latest]) if messages else 0
+            self.input_budget_tokens=min(original,max(anchors+128,int(original*self.compression_threshold)))
+        try:return self._fit_runtime(messages,history_messages_total=history_messages_total,context_sources=context_sources)
+        finally:self.input_budget_tokens=original
+
+    def _fit_runtime(
         self,
         messages: list[dict[str, Any]],
         *,

@@ -42,7 +42,9 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--live',action='store_true')
     parser.add_argument('--suite',action='store_true')
-    parser.add_argument('--case',action='append',choices=['question','analysis','change','python-smoke','react','electron','gui','visual','approval','network','followup','coupon','environment','repair','context','interruption','websocket','json'],default=[])
+    parser.add_argument('--automatic-routing',action='store_true',help='真实聊天选择自动模型，候选来自本轮实际能力探针')
+    parser.add_argument('--reopen-memory-report',type=Path,help='仅重启本仓库隔离目录内的记忆验收，不读写用户数据')
+    parser.add_argument('--case',action='append',choices=['question','analysis','change','python-smoke','react','electron','gui','visual','approval','network','followup','coupon','environment','repair','context','interruption','websocket','json','project-memory','memory-reopen','knowledge-fix','environment-repair','routing'],default=[])
     parser.add_argument('--request-seconds',type=int,default=60)
     parser.add_argument('--output-tokens',type=int,default=8192)
     parser.add_argument('--validation-task-calls',type=int,help='用户授权的隔离验收任务请求上限，不修改原 Settings')
@@ -125,7 +127,18 @@ def main():
     except Exception as exc:
         (args.output/'report.json').write_text(json.dumps({'result':'BLOCKED_RESOURCE','error_code':getattr(exc,'code',type(exc).__name__),'memory':memory_snapshot(),'models':[],'cases':[]}),encoding='utf-8')
         print('BLOCKED_RESOURCE: 未启动 Electron 或模型请求。');return 1
-    data=args.output/'agent';data.mkdir()
+    reopen=None
+    if args.reopen_memory_report:
+        source=args.reopen_memory_report.resolve()
+        if not source.is_relative_to((ROOT/'validation-reports').resolve()):parser.error('Memory source must be an isolated validation report')
+        previous=json.loads(source.read_text(encoding='utf-8'))
+        reopen=next((c for c in previous.get('cases',[]) if c['name']=='project-memory' and c['result']=='PASS'),None)
+        if not reopen:parser.error('No passed project memory case to reopen')
+        original=json.loads((source.parent/'manifest.json').read_text(encoding='utf-8'))
+        data=Path(original['data']).resolve()
+        if not data.is_relative_to((ROOT/'validation-reports').resolve()) or not Path(reopen['folder']).resolve().is_relative_to(source.parent):parser.error('Memory data/workspace boundary rejected')
+    else:
+        data=args.output/'agent';data.mkdir()
     # Isolated profile output/context limits, original catalog and keys stay unchanged.
     profiles=[{**p,'max_output_tokens':min(args.output_tokens,p.get('max_output_tokens') or args.output_tokens),'context_window':p.get('context_window') or 65536} for p in profiles]
     # 只读当前 Settings；验收不扩大用户已有任务/全局预算，也不改原配置。
@@ -175,6 +188,8 @@ def main():
     if args.prepared_fixture:manifest['prepared_fixture']=str(args.prepared_fixture.resolve())
     if args.reuse_project:manifest['reuse_project']=str(args.reuse_project.resolve())
     manifest['gui_only']=args.gui_only
+    manifest['automatic_routing']=args.automatic_routing
+    if reopen:manifest['memory_project']=reopen['folder']
     path=args.output/'manifest.json';path.write_text(json.dumps(manifest),encoding='utf-8')
     (args.output/'report.json').write_text(json.dumps({'result':'RUNNING','inventory':inventory}),encoding='utf-8')
     env={**os.environ,'PYTHONUTF8':'1'}

@@ -305,3 +305,7 @@ M4 收尾：[长任务续跑、阻塞恢复与能力矩阵](docs/m4/continuation
 真实在线模型验收：[有界 Qwen / GLM + Qwen 自主 Electron 修复入口、凭据安全与实测记录](docs/validation/real-online-agent-acceptance.md)。默认离线检查，只有显式 `--live` 才允许付费请求；Mock 与在线结果分别报告。
 
 暂未确定。
+
+## v0.8 智能模型与项目上下文（开发分支）
+
+能力路由、项目记忆、工程检索、上下文和环境诊断沿用统一 Agent 入口。详见 [架构](docs/v0.8/architecture.md)、[使用及测试](docs/v0.8/implementation.md) 和 [实际验收状态](docs/v0.8/acceptance-report.md)。尚未验收的场景不算通过。

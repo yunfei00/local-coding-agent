@@ -1,6 +1,7 @@
 import {useEffect, useState} from "react";
 import {Connection, ModelCatalog, ModelProfile, TaskConfig, modelLabel, longTaskBudget, defaultModelOutput, codingOutputProfile} from "../lib/modelCatalog";
 import {ModelDiagnosticResult} from "./ModelDiagnosticResult";
+import {ModelCapabilitySummary} from './ModelCapabilitySummary';
 
 export function ModelSettingsSection({threadId = "", running}: {threadId?: string; running: boolean}) {
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
@@ -132,6 +133,7 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
         })().catch(cause => setError(String(cause))).finally(() => setDiagnosing(false));
       }}>{vision ? "Test Vision" : "Test Connection"}</button>)}
       {diagnosing ? <><span role="status">Diagnosing…</span><button onClick={() => void request("task.model.diagnostic.cancel", {connection_id:selected})}>Stop diagnostics</button></> : null}
+      <ModelCapabilitySummary/>
       {diagnostic ? <ModelDiagnosticResult report={diagnostic} /> : null}
     </section>
   </div>;
