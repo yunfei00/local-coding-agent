@@ -9,7 +9,10 @@ export type UnifiedRun = {
   routing?:{mode?:string;current?:string;reason?:string[];switches?:Array<{from:string;to:string;code:string}>};
   context_state?:{compressed:boolean;recovered:boolean;memory_hits:number;retrieval_hits:number;index_version?:number};
   execution_limits?:{tool_calls:number;max_tool_calls:number;stage_reserved_tokens:Record<string,number>;max_stage_tokens:number;elapsed_seconds:number};
-  plan?:{steps:Array<{id:string;description:string;state:string}>};
+  current_role?:string;
+  workflow_progress?:{completed:number;total:number;percent:number;blocked:string[]};
+  role_handoffs?:Array<{step_id:string;role:string;model:string;provider:string;sequence:number}>;
+  plan?:{steps:Array<{id:string;description:string;state:string;workflow?:{assigned_role?:string;dependencies?:string[];acceptance_criteria?:string[]}} >};
 };
 const labels:Record<string,string>={question:'问答',analysis:'分析项目',interaction:'操作桌面',change:'修改代码',complex:'执行开发计划',executing:'执行中',verifying:'独立验证中',repairing:'修复验证失败',completed_verified:'已完成 · 验证通过',completed_unverified:'开发完成 · 尚未验证',partially_completed:'部分完成',awaiting_user:'等待处理 · 验证受阻',cancelled:'已取消',failed:'执行失败',paused:'已暂停'};
 export function useUnifiedProgress(thread:string,ready:boolean) {
@@ -45,7 +48,7 @@ export function UnifiedProgress({run,onResume,onDiagnostics,onExport,onPlan}:{ru
     {run.changed_paths.length?<details><summary>修改了 {run.changed_paths.length} 个文件 · 验证级别 {run.level}</summary><ul>{run.changed_paths.map(p=><li key={p}>{p}</li>)}</ul></details>:null}
     {run.diagnostic_checks?.map((r,i)=><details key={`diagnostic-${i}`}><summary>只读诊断 · {r.command} · exit {r.exit_code}</summary><p>该失败用于分析原因，不代表测试通过。</p><pre style={{whiteSpace:'pre-wrap'}}>{r.summary}</pre></details>)}
     {run.verification.map((r,i)=><details key={i}><summary>{r.ok?'通过':'未通过'} · {r.command} · exit {r.exit_code ?? '未执行'}</summary><p>{r.category} · {r.duration_ms} ms</p><pre style={{whiteSpace:'pre-wrap'}}>{r.summary}</pre><p>日志：{r.log_path}</p></details>)}
-    {run.intent==='complex' && run.plan?<details open><summary>持久化计划</summary><ol>{run.plan.steps.map(s=><li key={s.id}>{s.description} — {s.state}</li>)}</ol></details>:null}
+    {run.intent==='complex' && run.plan?<details open><summary>持久化计划{run.workflow_progress?` · ${run.workflow_progress.completed}/${run.workflow_progress.total} (${run.workflow_progress.percent}%)`:''}{run.current_role?` · ${run.current_role}`:''}</summary><ol>{run.plan.steps.map(s=><li key={s.id}>{s.description} — {s.state}{s.workflow?.assigned_role?` · ${s.workflow.assigned_role}`:''}{s.workflow?.dependencies?.length?<small> · 依赖 {s.workflow.dependencies.join('、')}</small>:null}{s.workflow?.acceptance_criteria?.length?<details><summary>验收要求</summary>{s.workflow.acceptance_criteria.join('；')}</details>:null}</li>)}</ol>{run.role_handoffs?.length?<details><summary>角色交接记录</summary><ol>{run.role_handoffs.map(h=><li key={h.sequence}>{h.role} · {h.provider} / {h.model}</li>)}</ol></details>:null}</details>:null}
     {['failed','paused','cancelled'].includes(run.phase)?<button type="button" onClick={onResume}>{run.recovery_plan_id || run.plan_id ? '检查并继续未完成步骤':'检查并恢复原运行'}</button>:null}
     {run.error_code==='PLAN_UNCERTAIN_EFFECTS'&&onPlan?<button type="button" onClick={onPlan}>核对中断操作</button>:null}
     <button type="button" onClick={()=>onExport ? void onExport().then(setDiagnostic).catch(error=>setDiagnostic({markdown:String(error)})) : onDiagnostics()}>查看当前诊断</button>

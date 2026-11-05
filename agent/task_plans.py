@@ -110,7 +110,10 @@ class TaskPlanStore:
             self.db.execute("ALTER TABLE task_plan_executions ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'")
         if 'recovery_json' not in {row[1] for row in self.db.execute('PRAGMA table_info(task_plan_steps)')}:
             self.db.execute("ALTER TABLE task_plan_steps ADD COLUMN recovery_json TEXT NOT NULL DEFAULT '{}'")
+        if 'workflow_json' not in {row[1] for row in self.db.execute('PRAGMA table_info(task_plan_steps)')}:
+            self.db.execute("ALTER TABLE task_plan_steps ADD COLUMN workflow_json TEXT NOT NULL DEFAULT '{}'")
         self.db.execute("UPDATE task_plan_executions SET status='interrupted' WHERE status='running'")
+        self.db.execute('CREATE TABLE IF NOT EXISTS task_plan_reviews (id INTEGER PRIMARY KEY, plan_id TEXT NOT NULL REFERENCES task_plans(id) ON DELETE CASCADE, step_id TEXT NOT NULL REFERENCES task_plan_steps(id) ON DELETE CASCADE, data_json TEXT NOT NULL)')
         self.db.commit()
 
     def record_execution(self, plan_id: str, step_id: str, call_id: str, turn_id: str,
@@ -171,6 +174,8 @@ class TaskPlanStore:
                or not s["description"].strip() or len(s["description"]) > 4000
                or not isinstance(s.get("verification", ""), str) for s in steps):
             raise ValueError("Each step requires a nonempty description of at most 4000 characters")
+        from agent.core.workflow import normalize_nodes
+        graph = normalize_nodes(steps) if any('assigned_role' in s or 'dependencies' in s or 'task_id' in s for s in steps) else None
         plan_id, now = str(uuid.uuid4()), _now()
         with self.db:
             self.db.execute(
@@ -179,8 +184,8 @@ class TaskPlanStore:
             )
             for i, step in enumerate(steps):
                 self.db.execute(
-                    "INSERT INTO task_plan_steps(id,plan_id,position,description,verification) VALUES(?,?,?,?,?)",
-                    (str(uuid.uuid4()), plan_id, i, step["description"], step.get("verification", "")),
+                    "INSERT INTO task_plan_steps(id,plan_id,position,description,verification,workflow_json) VALUES(?,?,?,?,?,?)",
+                    (str(uuid.uuid4()), plan_id, i, step["description"], step.get("verification", ""), json.dumps(graph[i] if graph else {})),
                 )
         return plan_id
 
@@ -191,6 +196,8 @@ class TaskPlanStore:
         plan = self.get(plan_id)
         if len(plan['steps']) + len(steps) > MAX_STEPS:
             raise ValueError('Plan step limit reached')
+        if any(s['workflow'] for s in plan['steps']) or any('task_id' in s or 'assigned_role' in s or 'dependencies' in s for s in steps):
+            raise ValueError('依赖计划不能通过旧顺序追加接口扩展；请使用可验证的计划调整')
         with self.db if commit else nullcontext():
             for index, step in enumerate(steps,len(plan['steps'])):
                 self.db.execute('INSERT INTO task_plan_steps(id,plan_id,position,description,verification) VALUES(?,?,?,?,?)',
@@ -214,7 +221,7 @@ class TaskPlanStore:
             **dict(plan),
             'execution':json.loads(run[0]) if run else None,
             "steps": [
-                {**dict(s), 'recovery':json.loads(s['recovery_json']), "evidence": json.loads(s["evidence_json"]),
+                {**dict(s), 'workflow':json.loads(s['workflow_json']), 'recovery':json.loads(s['recovery_json']), "evidence": json.loads(s["evidence_json"]),
                  "executions": [item for item in executions if item["step_id"] == s["id"]]}
                 for s in steps
             ],
@@ -251,6 +258,20 @@ class TaskPlanStore:
             raise ValueError("invalid step state")
         if state == "completed" and not evidence:
             raise ValueError("completion requires runtime evidence")
+        row = self.db.execute('SELECT workflow_json,state FROM task_plan_steps WHERE id=? AND plan_id=?',(step_id,plan_id)).fetchone()
+        if row and json.loads(row['workflow_json']) and state in {'completed','in_progress'} and row['state']!='completed':
+            from agent.core.workflow import ready_steps
+            if step_id not in {s['id'] for s in ready_steps(self.get(plan_id)['steps'])}:
+                raise ValueError('子任务依赖尚未完成')
+            if state=='completed':
+                actual=self.execution_evidence(plan_id,step_id,[e.get('tool_call_id') for e in evidence])
+                role=json.loads(row['workflow_json'])['assigned_role']
+                if role=='reviewer':
+                    verdict=self.db.execute('SELECT data_json FROM task_plan_reviews WHERE plan_id=? AND step_id=? ORDER BY id DESC LIMIT 1',(plan_id,step_id)).fetchone()
+                    if not verdict or json.loads(verdict[0])['decision']!='approved':
+                        raise ValueError('Reviewer 必须提交基于真实读取证据的独立审查结论')
+                if role=='tester' and not any(e['tool']=='run_command' and e['exit_code']==0 for e in actual):
+                    raise ValueError('Tester 完成必须有真实命令的成功退出码')
         with self.db:
             previous = self.db.execute(
                 "SELECT state FROM task_plan_steps WHERE id=? AND plan_id=?",
@@ -358,9 +379,75 @@ class TaskPlanStore:
                 "reason": row[2], "snapshot": json.loads(row[3])}
 
     def active_step(self, plan_id: str) -> dict[str, Any] | None:
-        """Return first unfinished step in plan order."""
-        return next((step for step in self.get(plan_id)["steps"]
+        """Legacy plans remain sequential; DAG plans choose dependency-ready work."""
+        steps = self.get(plan_id)['steps']
+        if steps and all(s['workflow'] for s in steps):
+            from agent.core.workflow import ready_steps
+            ready = ready_steps(steps)
+            if ready:
+                return ready[0]
+            # A blocked/skipped dependency is not a completed workflow.
+            return next((s for s in steps if s['state']=='blocked'), None) or next((s for s in steps if s['state']!='completed'), None)
+        return next((step for step in steps
                      if step["state"] not in ("completed", "skipped")), None)
+
+    def revise_workflow(self, plan_id: str, changes: dict[str, dict], reason: str) -> None:
+        """Atomically revise pending nodes only; preserve IDs and actual evidence."""
+        from agent.core.workflow import normalize_nodes
+        plan = self.get(plan_id)
+        if not isinstance(reason, str) or not reason.strip() or len(reason)>2000:
+            raise ValueError('调整计划必须提供有界原因')
+        if not all(s['workflow'] for s in plan['steps']):
+            raise ValueError('旧顺序计划不能隐式转换依赖图')
+        known = {s['workflow']['task_id']:s for s in plan['steps']}
+        if not changes or set(changes)-known.keys():
+            raise ValueError('调整引用不存在的子任务')
+        for ident, delta in changes.items():
+            if known[ident]['state']!='pending' or not isinstance(delta,dict) or set(delta)-{'dependencies','assigned_role','acceptance_criteria','required_capabilities','title'}:
+                raise ValueError('只能调整尚未执行步骤的允许字段')
+        nodes = [{**s['workflow'], 'description':s['description'], **changes.get(s['workflow']['task_id'],{})} for s in plan['steps']]
+        validated = normalize_nodes(nodes)
+        with self.db:
+            for step, node in zip(plan['steps'],validated):
+                node['retry_count']=step['workflow'].get('retry_count',0)
+                node['adjustment_reason']=reason
+                self.db.execute('UPDATE task_plan_steps SET workflow_json=? WHERE id=? AND plan_id=?',(json.dumps(node),step['id'],plan_id))
+            self.checkpoint(plan_id,'workflow_adjusted')
+
+    def review_workflow(self, plan_id, step_id, decision, summary, *, max_repairs=3):
+        """Independent review may insert repairs, never undo completed nodes."""
+        if decision not in {'approved','request_changes'} or not isinstance(summary,str) or not 1<=len(summary.strip())<=2000:
+            raise ValueError('审查结论无效')
+        plan=self.get(plan_id)
+        step=self.active_step(plan_id)
+        if not step or step['id']!=step_id or step.get('workflow',{}).get('assigned_role')!='reviewer':
+            raise ValueError('只有当前 Reviewer 可以提交审查')
+        meta=step['workflow']
+        prior=self.db.execute('SELECT data_json FROM task_plan_reviews WHERE plan_id=? AND step_id=? ORDER BY id DESC LIMIT 1',(plan_id,step_id)).fetchone()
+        used=set(json.loads(prior[0]).get('evidence_ids',[])) if prior else set()
+        actual=[dict(r) for r in self.db.execute("SELECT * FROM task_plan_executions WHERE plan_id=? AND step_id=? AND status='succeeded' AND (exit_code IS NULL OR exit_code=0)",(plan_id,step_id)) if r['call_id'] not in used]
+        if not actual:
+            raise ValueError('必须重新执行独立读取或 Diff 检查，不能仅引用先前文字')
+        verdict={'decision':decision,'summary':summary,'evidence_ids':sorted(used|{r['call_id'] for r in actual})}
+        with self.db:
+            if decision=='request_changes':
+                retries=meta.get('retry_count',0)
+                if retries>=max_repairs or len(plan['steps'])>=30:
+                    self.update_step(plan_id,step_id,'blocked')
+                    self.checkpoint(plan_id,'review_repair_limit')
+                    return {'decision':'blocked','reason':'独立审查修复达到上限，原证据保留'}
+                repair_id=str(uuid.uuid4())
+                local_id='repair-'+repair_id[:12]
+                repair={'task_id':local_id,'title':'修复独立审查问题','dependencies':meta['dependencies'],
+                    'assigned_role':'developer','required_capabilities':['tool_calling'],
+                    'acceptance_criteria':[summary],'retry_count':retries+1}
+                self.db.execute('INSERT INTO task_plan_steps(id,plan_id,position,description,verification,workflow_json) VALUES(?,?,?,?,?,?)',
+                    (repair_id,plan_id,len(plan['steps']),'修复审查指出的问题：'+summary,'',json.dumps(repair)))
+                meta={**meta,'dependencies':[local_id],'retry_count':retries+1}
+                self.db.execute("UPDATE task_plan_steps SET state='pending',workflow_json=? WHERE id=? AND plan_id=?",(json.dumps(meta),step_id,plan_id))
+            self.db.execute('INSERT INTO task_plan_reviews(plan_id,step_id,data_json) VALUES(?,?,?)',(plan_id,step_id,json.dumps(verdict)))
+            self.checkpoint(plan_id,'independent_review')
+        return verdict
 
     def advance_verified(self, plan_id: str, step_id: str,
                          evidence: list[dict[str, Any]],
@@ -369,11 +456,18 @@ class TaskPlanStore:
         current = self.active_step(plan_id)
         if not current or current["id"] != step_id or current["state"] == "blocked":
             return False
+        if current.get('workflow'):
+            from agent.core.workflow import ready_steps
+            if step_id not in {s['id'] for s in ready_steps(self.get(plan_id)['steps'])}:
+                return False
         if not verification_passed or not evidence:
             return False
         if not all(item.get("ok") is True for item in evidence):
             return False
-        self.update_step(plan_id, step_id, "completed", evidence)
+        try:
+            self.update_step(plan_id, step_id, "completed", evidence)
+        except ValueError:
+            return False
         return True
 
     def prepare_resume(self, plan_id: str) -> dict[str, Any]:
@@ -384,10 +478,7 @@ class TaskPlanStore:
         """
         plan = self.get(plan_id)
         checkpoint = self.latest_checkpoint(plan_id)
-        next_step = next(
-            (step for step in plan["steps"] if step["state"] not in ("completed", "skipped")),
-            None,
-        )
+        next_step = self.active_step(plan_id)
         return {
             "plan": plan,
             "checkpoint": checkpoint,

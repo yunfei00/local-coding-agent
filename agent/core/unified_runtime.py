@@ -11,13 +11,25 @@ from pathlib import Path
 
 from agent.core.verification import discover_commands
 from agent.llm.planning import PLAN_SCHEMA, validate_plan
+import copy
+
+WORKFLOW_PLAN_SCHEMA = copy.deepcopy(PLAN_SCHEMA)
+WORKFLOW_PLAN_SCHEMA['properties']['steps']['items']['properties'].update({
+    'task_id': {'type':'string', 'maxLength':80, 'description':'Unique local DAG ID, referenced by dependencies'},
+    'title': {'type':'string', 'maxLength':200},
+    'dependencies': {'type':'array', 'maxItems':30, 'items':{'type':'string'}},
+    'assigned_role': {'type':'string', 'enum':['planner','developer','reviewer','tester']},
+    'required_capabilities': {'type':'array', 'maxItems':30, 'items':{'type':'string'}},
+    'acceptance_criteria': {'type':'array', 'minItems':1, 'maxItems':30, 'items':{'type':'string'}},
+})
 
 PLAN_TOOL = {"type": "function", "function": {
     "name": "agent_plan", "description": "Persist a cohesive plan for complex, multi-module development. Do not use for questions or small edits. Does not execute files or grant permissions.",
-    "parameters": PLAN_SCHEMA}}
+    "parameters": WORKFLOW_PLAN_SCHEMA}}
 INSTRUCTIONS = """Unified Agent: infer intent from the user's goal, repository context and actual tools, not keywords.
 Answer ordinary questions directly, with no tools or plan. Analyze using relevant read-only tools; do not edit without a change request.
 For a small change use normal tools directly. For complex multi-file development call agent_plan with 1-4 cohesive executable steps before editing.
+For complex development prefer workflow_template bugfix/feature, or provide a bounded DAG in agent_plan with task_id, dependencies, assigned_role and acceptance_criteria. Use planner for actual inspection, developer for edits, reviewer for independent read-only review and tester for real commands. The reviewer must call workflow_review; prose approval is insufficient. Small tasks remain direct, with no mandatory workflow.
 Keep each tool batch small: create a short file skeleton then apply small focused patches (about 80 lines per edit). Do not emit an entire multi-file project in one tool response; each response must finish within the configured request timeout.
 Each step must have real tool evidence; avoid prose-only steps. Use an empty verification for edit/inspection steps, a concrete command for test steps.
 Do not ask the user to choose chat/development modes. You may upgrade a small task using agent_plan, preserving all existing changes and evidence.
@@ -32,7 +44,11 @@ Windows app activation can reuse a process/window: use a unique task-owned file/
 
 
 def plan_steps(value):
-    return validate_plan(value)
+    steps = validate_plan(value)
+    if any('assigned_role' in s or 'dependencies' in s or 'task_id' in s for s in steps):
+        from agent.core.workflow import normalize_nodes
+        normalize_nodes(steps)
+    return steps
 
 
 def plan_view(plan):

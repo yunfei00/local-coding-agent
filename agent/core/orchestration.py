@@ -214,7 +214,10 @@ class TaskService:
             else:
                 if not project or not project.state.get_thread(thread_id):
                     raise ValueError("Open a valid project and thread")
-                if kind == 'task.runtime.events':
+                if kind == 'task.runtime.templates':
+                    from agent.core.workflow_templates import load_templates
+                    result={'templates':load_templates()}
+                elif kind == 'task.runtime.events':
                     result={'events':self.server.runtime_ledger.events(thread_id=thread_id,after=payload.get('after',0),limit=payload.get('limit',100))}
                     if payload.get('export') is True:
                         path=self.server.store.data_dir/'unified-diagnostics'/('thread-'+hashlib.sha256(thread_id.encode()).hexdigest()[:24]+'.json')
@@ -241,7 +244,7 @@ class TaskService:
                                 from agent.core.unified_runtime import plan_view
                                 value['plan']=plan_view(self.runtime.plans.get(value['plan_id']))
                             runtimes.append(value)
-                    result={'runtimes':runtimes,'active_turn_ids':[tid for tid,turn in self.server.active_turns.items() if not turn.done() and self.server.active_turn_threads.get(tid)==thread_id and tid not in self.server.disconnected_turns]}
+                    result={'runtimes':runtimes,'background_jobs':self.server.background.list(thread_id),'active_turn_ids':[tid for tid,turn in self.server.active_turns.items() if not turn.done() and self.server.active_turn_threads.get(tid)==thread_id and tid not in self.server.disconnected_turns]}
                 elif kind == "task.list":
                     result = {"tasks": [self.public(t) for t in self.runtime.list(thread_id)]}
                 elif kind == "task.start":

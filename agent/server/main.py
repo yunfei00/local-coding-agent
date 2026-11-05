@@ -136,6 +136,9 @@ class AgentServer:
         from agent.core.runtime_events import RuntimeLedger
         self.runtime_ledger=RuntimeLedger(self.store.connection,lambda: tuple(filter(None,[getattr(self,'openai_api_key',None),*getattr(getattr(self,'tasks',None),'credentials',{}).values()])))
         self.turn_start_lock=asyncio.Lock()
+        from agent.core.background import BackgroundJobs
+        self.background = BackgroundJobs(self.store.connection)
+        self.background_turns = set()
         self.active_executions={}
         self.cancelling_turns=set()
         self.last_turn_trace: dict[str, Any] | None = None
@@ -214,6 +217,10 @@ class AgentServer:
         )
 
         owned_turns: set[str] = set()
+        self.background.clients.add(ws)
+        for pending in list(self.approvals._pending.values()):
+            await ws.send_json(envelope('approval.requested',{'approval_id':pending.id,'tool':pending.tool_name,
+                'arguments':pending.arguments,'reason':pending.reason,'risk':pending.risk},thread_id=pending.thread_id,turn_id=pending.turn_id))
         diagnostic_requests = set()
         try:
             async for msg in ws:
@@ -257,10 +264,13 @@ class AgentServer:
                 elif msg.type == WSMsgType.ERROR:
                     break
         finally:
+            self.background.clients.discard(ws)
             for diagnostic in list(diagnostic_requests):
                 diagnostic.cancel()
             await asyncio.gather(*diagnostic_requests, return_exceptions=True)
             for turn_id in list(owned_turns):
+                if turn_id in self.background_turns:
+                    continue
                 task = self.active_turns.get(turn_id)
                 if task and not task.done():
                     self.disconnected_turns.add(turn_id)
@@ -297,6 +307,7 @@ class AgentServer:
         }
 
     def forget_turn(self, turn_id: str) -> None:
+        self.background_turns.discard(turn_id)
         self.disconnected_turns.discard(turn_id)
         self.cancelling_turns.discard(turn_id)
         self.active_turns.pop(turn_id, None)
@@ -1575,7 +1586,8 @@ class AgentServer:
             return
 
         if message_type == "turn.start":
-            if any(not task.done() for task in self.active_turns.values()):
+            background = payload.get('unified') is True and payload.get('background') is True
+            if any(not task.done() for task in self.active_turns.values()) and not background:
                 await self.send_error(ws, "TURN_RUNNING", "Stop the active turn before starting another task.", request_id=request_id)
                 return
             thread_id = str(data.get("thread_id") or payload.get("thread_id") or "")
@@ -1735,9 +1747,12 @@ class AgentServer:
                 )
             )
 
-            task = asyncio.create_task(
-                self.run_tool_turn(
-                    ws,
+            if background:
+                self.background.add(turn_id,thread_id,project.id)
+                self.background_turns.add(turn_id)
+            async def execute_turn():
+                await self.run_tool_turn(
+                    self.background if background else ws,
                     thread_id=thread_id,
                     turn_id=turn_id,
                     prompt=resume_data.get('unified_goal',prompt) if explicit_run else prompt,
@@ -1746,7 +1761,10 @@ class AgentServer:
                     unified=payload.get('unified') is True,
                     deferred_plan_ids=deferred_plan_ids,
                     execution_id=resume_key,
-                ),
+                    project_override=project,
+                )
+            task = asyncio.create_task(
+                self.background.run(turn_id,execute_turn) if background else execute_turn(),
                 name=turn_id,
             )
             self.active_turns[turn_id] = task
@@ -1762,6 +1780,8 @@ class AgentServer:
                 await self.send_error(ws, "TURN_NOT_RUNNING", "Turn is not running.", request_id=request_id, turn_id=turn_id or None)
                 return
             self.cancelling_turns.add(turn_id)
+            if turn_id in self.background_turns:
+                self.background.update(turn_id,'cancelled','用户取消；不会自动恢复')
             execution=self.active_executions.get(turn_id)
             if execution and execution.data.get('unified'):
                 self.runtime_ledger.transition(execution,'cancelled',turn_id,outcome='cancelled',reason='用户取消；不会自动恢复本次尝试')
@@ -2483,7 +2503,7 @@ class AgentServer:
             identifier=new_id('request') if unified else None
             raw=getattr(target,'provider',target)
             observe=self.runtime_ledger.request_callback(lambda:execution.key,thread_id,identifier,{
-                'phase':runtime['phase'],'provider':target.provider_name,'model':requested_model or getattr(target,'preferred_model',model),'role':'executor' if target is provider else 'vision-observer','retry':execution.data.get('current_retry',0)}) if unified else None
+                'phase':runtime['phase'],'provider':target.provider_name,'model':requested_model or getattr(target,'preferred_model',model),'role':workflow_role() if target is provider else 'vision-observer','retry':execution.data.get('current_retry',0)}) if unified else None
             if observe:observe('request.prepared',{'request_sent':False,'output_limit':getattr(target,'max_output_tokens',None)})
             try:
                 result=execution.reserve(messages,schemas,getattr(target,'max_output_tokens',None) or self.context_reserved_output_tokens,
@@ -2494,6 +2514,12 @@ class AgentServer:
                 raise
             if observe:raw.request_observer=observe
             return result
+        def workflow_role():
+            if not unified or not active_plan:
+                return 'developer'
+            step = self.store.task_plans.active_step(active_plan['id'])
+            return (step or {}).get('workflow',{}).get('assigned_role','developer')
+
         async def publish_runtime(phase, **values):
             if runtime is None:
                 return
@@ -2507,6 +2533,10 @@ class AgentServer:
                 runtime['recovery_plan_id']=deferred_plan_ids[0]
             if active_plan and runtime['intent'] == 'complex':
                 runtime['plan'] = plan_view(self.store.task_plans.get(active_plan['id']))
+                from agent.core.workflow import progress
+                runtime['workflow_progress'] = progress(runtime['plan']['steps'])
+                runtime['current_role'] = workflow_role()
+                runtime['role_handoffs'] = execution.data.get('role_handoffs', [])[-30:]
             event=self.runtime_ledger.transition(execution,phase,turn_id)
             if event is None:return
             message=envelope('agent.runtime.updated', {'runtime':dict(runtime)}, thread_id=thread_id, turn_id=turn_id)
@@ -2653,6 +2683,21 @@ class AgentServer:
                                     'After obtaining this step\'s real tool evidence, return a concise summary without more tools; '
                                     'the runtime advances the persistent plan. A nonempty verification requires a successful '
                                     'command in this step. Do not replay a completed mutation or undo a correct fix to recreate a baseline failure.')
+                        if unified and active_plan:
+                            role_step = self.store.task_plans.active_step(active_plan['id'])
+                            if role_step and role_step.get('workflow'):
+                                from agent.core.workflow import ROLE_INSTRUCTIONS
+                                role = workflow_role()
+                                runtime_suffix += '\n\n'+ROLE_INSTRUCTIONS[role]+'\n当前子任务：'+json.dumps(role_step['workflow'],ensure_ascii=False)
+                                handoffs=execution.data.setdefault('role_handoffs',[])
+                                if not handoffs or handoffs[-1]['step_id']!=role_step['id']:
+                                    handoff={'step_id':role_step['id'],'role':role,'model':model,'provider':provider.provider_name,
+                                             'from_step_id':handoffs[-1]['step_id'] if handoffs else None,
+                                             'sequence':len(handoffs)+1,'started_at':__import__('time').time()}
+                                    handoffs.append(handoff)
+                                    self.runtime_ledger.record(execution.key,thread_id,'workflow.role',handoff)
+                                    execution.save()
+                                    await publish_runtime('executing')
                         request_messages[0]['content'] += runtime_suffix
                         await ws.send_json(envelope('model.identity', {**getattr(provider,'chat_identity',{}), **(tools.desktop.image_metadata.get(turn_id,{}) if capture else {}), 'executor_profile_id':getattr(provider,'profile',{}).get('model_profile_id') if plan_id else None, 'image_attached':bool(capture), 'vision_profile_id':getattr(observer,'chat_identity',{}).get('chat_profile_id'), 'model_id':model, 'attachment_state':'queued' if capture else 'none'}, thread_id=thread_id,turn_id=turn_id))
                         schemas = tools.schemas(self.permissions.visible_tools(tools.names, tools.permission_metadata_map()), desktop_owner_id=turn_id)
@@ -2665,9 +2710,18 @@ class AgentServer:
                         if unified and requested.get('pure_question'):
                             schemas=None
                         elif unified and getattr(provider,'agent_tools_enabled',True):
-                            schemas = [*schemas, UNIFIED_PLAN_TOOL]
+                            from agent.core.workflow_templates import TEMPLATE_TOOL
+                            schemas = [*schemas, UNIFIED_PLAN_TOOL, TEMPLATE_TOOL]
                         elif unified:
                             schemas=None
+                        if unified and active_plan and schemas:
+                            from agent.core.workflow import role_allows, REVIEW_TOOL
+                            role=workflow_role()
+                            if role=='reviewer':schemas=[*schemas,REVIEW_TOOL]
+                            if role!='developer':
+                                schemas=[s for s in schemas if role_allows(role,s['function']['name'],
+                                    {'command':'uv run python -m unittest'} if s['function']['name']=='run_command' and role=='tester' else {'command':'git diff'},
+                                    read_only=s['function']['name'] in READ_ONLY_TOOLS or bool((tools.permission_metadata(s['function']['name']) or {}).get('trusted') and (tools.permission_metadata(s['function']['name']) or {}).get('read_only')))]
                         if getattr(provider, 'route', None) != 'api' and runtime_suffix:
                             # Local providers need the same protection for the
                             # required instruction and live-memory suffix.
@@ -3110,24 +3164,53 @@ class AgentServer:
                 for call_index, call in enumerate(tool_calls, start=1):
                     execution.reserve_tool()
                     total_tool_calls += 1
+                    if unified and active_plan:
+                        from agent.core.workflow import role_allows
+                        metadata=tools.permission_metadata(call.name) or {}
+                        if not role_allows(workflow_role(),call.name,call.arguments,
+                            read_only=call.name in READ_ONLY_TOOLS or bool(metadata.get('trusted') and metadata.get('read_only'))):
+                            raise ProviderError('WORKFLOW_ROLE_PERMISSION','当前角色 '+workflow_role()+' 不允许执行 '+call.name+'；既有权限和审批未被扩大。')
                     if unified and computer_only(authorization_prompt if authorization_prompt is not None else prompt) and call.name not in COMPUTER_TOOLS:
                         raise ProviderError('COMPUTER_TOOL_SCOPE','用户仅授权界面操作；没有执行源码、终端或其他越界工具。')
-                    if unified and requested['read_only'] and call.name!='agent_plan':
+                    if unified and active_plan and call.name=='workflow_review':
+                        if len(tool_calls)!=1:
+                            raise ProviderError('WORKFLOW_REVIEW_BATCH','审查提交必须单独调用；没有执行同批其他操作。')
+                        try:
+                            result=self.store.task_plans.review_workflow(active_plan['id'],active_step_id,
+                                call.arguments.get('decision'),call.arguments.get('summary'))
+                        except ValueError as exc:
+                            raise ProviderError('WORKFLOW_REVIEW_INVALID',str(exc)) from exc
+                        if result['decision']=='blocked':
+                            raise ProviderError('WORKFLOW_REPAIR_LIMIT',result['reason'])
+                        if result['decision']=='request_changes':
+                            active_step_id=self.store.task_plans.active_step(active_plan['id'])['id']
+                            plan_tool_evidence.clear()
+                            plan_commands_run.clear()
+                        messages.append({'role':'tool','tool_call_id':call.id,'name':call.name,'content':json.dumps(result,ensure_ascii=False)})
+                        await publish_runtime('repairing' if result['decision']=='request_changes' else 'executing')
+                        continue
+                    if unified and requested['read_only'] and call.name not in {'agent_plan','workflow_template'}:
                         metadata=tools.permission_metadata(call.name) or {}
                         if call.name not in READ_ONLY_TOOLS and not (call.name=='project_memory' and requested.get('memory_write')) and not (call.name=='environment_repair' and requested.get('environment_write')) and not repeatable_check(call.name,call.arguments) and not (metadata.get('trusted') and metadata.get('read_only')):
                             raise ProviderError('UNIFIED_READ_ONLY_INTENT','当前用户明确只要求分析，不允许修改；没有执行该工具。')
-                    if unified and call.name == 'agent_plan' and deferred_plan_ids:
+                    if unified and call.name in {'agent_plan','workflow_template'} and deferred_plan_ids:
                         raise ProviderError('PLAN_RESUME_CONFIRMATION_REQUIRED','原计划需要恢复，不能创建平行计划绕过未确认副作用。')
-                    if unified and call.name != 'agent_plan' and call.name not in READ_ONLY_TOOLS:
+                    if unified and call.name not in {'agent_plan','workflow_template'} and call.name not in READ_ONLY_TOOLS:
                         if deferred_plan_ids and not repeatable_check(call.name,call.arguments):
                             raise ProviderError('PLAN_RESUME_CONFIRMATION_REQUIRED','当前有未完成的开发计划；问答和只读分析仍可使用。继续修改前请检查并恢复原计划，避免重复副作用。')
                         if 'unified_baseline' not in execution.data:
                             unified_baseline=workspace_snapshot(workspace.root)
                             execution.data['unified_baseline']=unified_baseline
                             execution.save()
-                    if unified and call.name == 'agent_plan':
+                    if unified and call.name in {'agent_plan','workflow_template'}:
                         try:
-                            steps = plan_steps(call.arguments)
+                            if call.name=='workflow_template':
+                                from agent.core.workflow_templates import expand_template
+                                template=expand_template(call.arguments.get('template_id'),call.arguments.get('parameters'))
+                                steps=plan_steps(template)
+                                runtime['workflow_template']={'id':template['id'],'name':template['name'],'failure_policy':template['failure_policy']}
+                            else:
+                                steps = plan_steps(call.arguments)
                             if runtime.get('plan_submitted'):
                                 raise ProviderError('PLAN_ALREADY_EXISTS','已有持久化计划；继续当前未完成步骤，禁止重置执行历史。')
                             if active_plan:
@@ -3758,6 +3841,9 @@ class AgentServer:
             }
 
     async def close_async(self) -> None:
+        pending=[t for t in self.active_turns.values() if not t.done()]
+        for task in pending:task.cancel()
+        if pending:await asyncio.gather(*pending,return_exceptions=True)
         for project in self.projects._projects.values():
             await project.tools.processes.close()
         await self.mcp_runtime.close()

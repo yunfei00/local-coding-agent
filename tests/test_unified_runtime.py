@@ -125,6 +125,33 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
         updates=[x['payload']['runtime'] for x in self.ws.messages if x['type']=='agent.runtime.updated']
         return provider,updates[-1]
 
+    async def test_workflow_roles_use_same_loop_and_actual_evidence(self):
+        nodes=[
+            {'task_id':'fix','description':'修复计算器','assigned_role':'developer','dependencies':[]},
+            {'task_id':'review','description':'独立重新读取代码审查','assigned_role':'reviewer','dependencies':['fix']},
+            {'task_id':'test','description':'运行单元测试','assigned_role':'tester','dependencies':['review'],'verification':'uv run --no-project python -m unittest discover -s tests -v'},
+        ]
+        _,r=await self.run_steps([
+            tool_step('agent_plan',{'steps':nodes}),
+            tool_step('write_file',{'path':'calculator.py','content':'def add(a,b): return a+b\n'}),final_step('实现完成'),
+            tool_step('read_file',{'path':'calculator.py'}),tool_step('workflow_review',{'decision':'approved','summary':'重新读取后确认加法正确'}),final_step('独立审查通过'),
+            tool_step('run_command',{'command':'uv run --no-project python -m unittest discover -s tests -v'}),final_step('测试通过，中文交付'),
+        ])
+        self.assertEqual(r['outcome'],'completed_verified')
+        self.assertEqual(r['workflow_progress']['completed'],3)
+        self.assertEqual([h['role'] for h in r['role_handoffs']],['developer','reviewer','tester'])
+        plan=self.server.store.task_plans.get(r['plan_id'])
+        self.assertTrue(all(s['state']=='completed' and s['executions'] for s in plan['steps']))
+        self.assertIn('a+b',(self.repo/'calculator.py').read_text())
+
+    async def test_reviewer_cannot_write_even_if_provider_forges_hidden_tool(self):
+        _,r=await self.run_steps([
+            tool_step('agent_plan',{'steps':[{'task_id':'review','description':'审查','assigned_role':'reviewer','dependencies':[]}]}),
+            tool_step('write_file',{'path':'calculator.py','content':'tampered'}),
+        ])
+        self.assertEqual(r['error_code'],'WORKFLOW_ROLE_PERMISSION')
+        self.assertIn('a-b',(self.repo/'calculator.py').read_text())
+
     async def test_question_has_no_plan_or_tools(self):
         p,r=await self.run_steps([final_step('装饰器包装函数以增加行为')])
         self.assertEqual(p.calls,1);self.assertEqual(r['intent'],'question')
@@ -430,3 +457,27 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload['runtimes'][0]['outcome'],'awaiting_user')
         self.assertEqual(self.server.tasks.runtime.usage()['api_calls'],1)
         self.assertEqual(self.project.state.get_messages(self.thread.id)[0]['role'],'user')
+
+    async def test_background_websocket_loss_keeps_execution_and_reconnect_can_cancel(self):
+        from aiohttp import web
+        from aiohttp.test_utils import TestClient,TestServer
+        from test_agent_reliability import BlockingProvider
+        provider=BlockingProvider();self.server.provider=provider
+        self.server.ensure_model_available=AsyncMock(return_value=True)
+        app=web.Application();app.router.add_get('/ws',self.server.websocket)
+        async with TestClient(TestServer(app)) as client:
+            ws=await client.ws_connect('/ws',headers={'Authorization':'Bearer test'});await ws.receive_json()
+            await ws.send_json({'type':'turn.start','thread_id':self.thread.id,'payload':{'model':'mock','prompt':'后台任务断线测试','unified':True,'background':True}})
+            await asyncio.wait_for(provider.started.wait(),10)
+            ident=next(iter(self.server.active_turns))
+            await ws.close();await asyncio.sleep(.05)
+            self.assertFalse(self.server.active_turns[ident].done())
+            self.assertEqual(self.server.background.list()[0]['state'],'running')
+            ws2=await client.ws_connect('/ws',headers={'Authorization':'Bearer test'});await ws2.receive_json()
+            await ws2.send_json({'type':'turn.cancel','turn_id':ident,'payload':{}})
+            for _ in range(100):
+                if ident not in self.server.active_turns:break
+                await asyncio.sleep(.02)
+            self.assertNotIn(ident,self.server.active_turns)
+            self.assertEqual(self.server.background.list()[0]['state'],'cancelled')
+            self.assertEqual(self.server.tasks.runtime.usage()['api_calls'],1)

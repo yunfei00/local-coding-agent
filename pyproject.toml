@@ -19,3 +19,6 @@ packaging = [
 
 [tool.setuptools.packages.find]
 include = ["agent*"]
+
+[tool.setuptools.package-data]
+"agent.core" = ["workflow_templates.json"]
