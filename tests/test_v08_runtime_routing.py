@@ -28,6 +28,10 @@ class RuntimeRoutingTests(unittest.IsolatedAsyncioTestCase):
         async def handler(request):
             body=await request.json();model=body['model'];self.requests.append(model)
             history=body['messages'];results=[m for m in history if m.get('role')=='tool']
+            if self.mode=='memory_analysis':
+                if not results:return self.tool('knowledge_search',{'query':'add','mode':'symbol'})
+                if not any(m.get('name')=='project_memory' for m in results):return self.tool('project_memory',{'action':'save','title':'测试约定','content':'本工程使用 unittest。'})
+                return self.answer('已分析项目并保存 unittest 约定，没有修改代码。')
             if self.mode=='all_quota' or model=='a-model' and (self.mode=='quota' or results):return web.json_response({'error':{'code':'AllocationQuota.FreeTierOnly'}},status=403)
             if self.mode=='auth' and model=='a-model':return web.json_response({'error':{'code':'invalid_api_key'}},status=401)
             if self.mode=='rate' and len(self.requests)==1:return web.json_response({'error':{'code':'rate_limit'}},status=429,headers={'Retry-After':'1'})
@@ -66,6 +70,13 @@ class RuntimeRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.mode='quota';await self.start('profile:a');self.assertEqual(self.requests,['a-model'])
         self.assertTrue(any(e['type']=='turn.failed' for e in self.ws.messages))
         self.assertEqual((self.root/'calculator.py').read_text(),'def add(a,b):\n    return a-b\n')
+    async def test_project_analysis_and_memory_save_need_no_code_change(self):
+        self.mode='memory_analysis'
+        await self.start(prompt='检索项目入口，解释关键模块，不修改代码。保存项目记忆。')
+        last=[e['payload']['runtime'] for e in self.ws.messages if e['type']=='agent.runtime.updated'][-1]
+        self.assertEqual(last['phase'],'completed',last.get('reason'));self.assertEqual(last['intent'],'analysis')
+        self.assertFalse(last['changed_paths']);self.assertEqual(self.requests,['a-model']*3)
+        self.assertTrue(self.project.knowledge().list('unittest'))
     async def test_long_goal_is_preserved_while_automatic_retrieval_query_is_bounded(self):
         await self.start(prompt='修复 calculator.py 的加法，运行 unittest。补充背景：'+('这是长任务背景。'*100))
         last=[e['payload']['runtime'] for e in self.ws.messages if e['type']=='agent.runtime.updated'][-1]

@@ -390,7 +390,7 @@ async function main(){
    }
    if(!ownedTurn||!turnTerminal.has(ownedTurn)){if(ownedTurn)await page.evaluate(id=>window.localAgent.cancelTurn(id),ownedTurn).catch(()=>{});currentCase.result='FAIL';currentCase.reason='TURN_TIMEOUT';save();return;}
    const runs=(await page.evaluate(id=>window.localAgent.taskRequest(id,'task.runtime.list'),thread.id)).payload.runtimes;
-   const runtime=runs[0];currentCase.runtime=runtime;currentCase.turn=turnTerminal.get(ownedTurn);currentCase.tools=events.filter(e=>e.type==='tool.completed');currentCase.context=events.filter(e=>e.type==='context.updated').map(e=>e.context);currentCase.dirty=shell(['status','--porcelain'],currentFolder).stdout.trim();
+   const runtime=runs[0];currentCase.selection=manifest.automatic_routing?'auto':'manual';currentCase.requested_profile=profile.model_id;currentCase.actual_model=runtime?.model;currentCase.runtime=runtime;currentCase.turn=turnTerminal.get(ownedTurn);currentCase.tools=events.filter(e=>e.type==='tool.completed');currentCase.context=events.filter(e=>e.type==='context.updated').map(e=>e.context);currentCase.dirty=shell(['status','--porcelain'],currentFolder).stdout.trim();
    if(options.network){
     const trace=(await page.evaluate(t=>window.localAgent.taskRequest(t,'task.runtime.events',{limit:500}),thread.id)).payload.events;
     currentCase.network={...currentCase.network,dropped:proxyDropped,proxy_requests:proxyCalls,retained_failed_request:trace.some(e=>e.kind==='request.settled'&&['failed','interrupted','timeout'].includes(e.metadata.status)&&e.metadata.reserved_tokens>0)};

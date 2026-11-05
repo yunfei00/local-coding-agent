@@ -67,7 +67,7 @@ class CapabilityRegistry:
             if tested.get('tools')=='PASS':result['structured']={'state':SUPPORTED,'source':'已校验 JSON 工具参数'}
         if 0<=time.time()-history.get('detected_at',0)<=30*86400:
             for cap,evidence in history.get('capabilities',{}).items():
-                if cap in CAPS and isinstance(evidence,dict) and 0<=time.time()-evidence.get('detected_at',0)<=30*86400 and (result[cap].get('source') not in {'真实能力探针','已校验 JSON 工具参数'} or evidence['detected_at']>=probe_time):result[cap]=evidence
+                if cap in CAPS and isinstance(evidence,dict) and 0<=time.time()-evidence.get('detected_at',0)<=30*86400 and (result[cap].get('source') not in {'真实能力探针','已校验 JSON 工具参数'} or evidence.get('probe_id')==tested.get('tested_at')):result[cap]=evidence
         actual_unavailable=self.store.get_setting(self.availability_key(profile))=='quota_exhausted'
         blocked=history.get('unavailable_until',0)>time.time() or actual_unavailable
         return {'model_profile_id':pid,'model_id':profile['model_id'],'connection_id':profile['connection_id'],'display_name':profile['display_name'],
@@ -83,12 +83,13 @@ class CapabilityRegistry:
         if expected_fingerprint is not None and expected_fingerprint!=fingerprint:return
         data=self.history(pid,fingerprint)
         now=time.time();data.update(fingerprint=fingerprint,detected_at=now)
+        probe_id=self.catalog.test_result(pid).get('tested_at')
         if success:
             self.store.set_setting(self.availability_key(profile),'')
             data['successes']=data.get('successes',0)+1;data['last_success']=now;data['quota_exhausted']=False;data['unavailable_until']=0
-            caps=data.setdefault('capabilities',{});caps['chat']={'state':SUPPORTED,'source':'真实模型调用','detected_at':now}
+            caps=data.setdefault('capabilities',{});caps['chat']={'state':SUPPORTED,'source':'真实模型调用','detected_at':now,'probe_id':probe_id}
             for cap,value in [('tools',tools),('structured',tools),('streaming',streaming)]:
-                if value:caps[cap]={'state':SUPPORTED,'source':'真实模型响应','detected_at':now}
+                if value:caps[cap]={'state':SUPPORTED,'source':'真实模型响应','detected_at':now,'probe_id':probe_id}
         else:
             data['failures']=data.get('failures',0)+1;data['last_failure']={'at':now,'code':str(error)}
             if error=='MODEL_QUOTA_EXHAUSTED':
@@ -97,7 +98,7 @@ class CapabilityRegistry:
             if error in {'MODEL_NOT_FOUND','MODEL_TOOLS_UNAVAILABLE','MODEL_VISION_UNAVAILABLE'}:
                 data['unavailable_until']=now+3600
             if error in {'MODEL_TOOLS_UNAVAILABLE','MODEL_VISION_UNAVAILABLE'}:
-                data.setdefault('capabilities',{})['tools' if error=='MODEL_TOOLS_UNAVAILABLE' else 'vision']={'state':UNSUPPORTED,'source':'真实能力错误','detected_at':now}
+                data.setdefault('capabilities',{})['tools' if error=='MODEL_TOOLS_UNAVAILABLE' else 'vision']={'state':UNSUPPORTED,'source':'真实能力错误','detected_at':now,'probe_id':probe_id}
         if latency_ms is not None:data['latency_ms']=max(0,min(600000,latency_ms))
         self.store.set_setting(self.key(pid),json.dumps(data))
 

@@ -53,6 +53,17 @@ class RoutingTests(unittest.IsolatedAsyncioTestCase):
         self.registry.record('b',success=True,tools=True)
         self.seed('b',tools='FAIL')
         self.assertEqual(self.registry.state(self.raw['profiles'][1])['capabilities']['tools']['state'],'UNSUPPORTED')
+    def test_project_knowledge_request_with_no_code_edit_is_analysis(self):
+        from agent.core.unified_runtime import requested_intent
+        for prompt in ['检索项目入口，解释技术栈和关键模块，不修改代码。保存项目记忆。','读取工程源码，禁止改动代码。记住：使用 unittest。']:
+            intent=requested_intent(prompt)
+            self.assertEqual(intent['kind'],'analysis');self.assertTrue(intent['read_only']);self.assertTrue(intent['memory_write'])
+        self.assertEqual(requested_intent('修复 mathcore.py，但不要修改测试')['kind'],'change')
+    def test_no_file_edits_boundary_does_not_disable_explicit_gui_actions(self):
+        from agent.core.unified_runtime import requested_intent,computer_only
+        goal='使用桌面工具操作窗口，点击按钮并读取结果。禁止读取 HTML/JS 源码，不得修改任何文件。'
+        self.assertEqual(requested_intent(goal)['kind'],'interaction');self.assertFalse(requested_intent(goal)['read_only']);self.assertTrue(computer_only(goal))
+        self.assertEqual(requested_intent('只分析窗口中的按钮如何点击，不要操作桌面')['kind'],'analysis')
     def test_quota_failure_disables_future_candidate_until_success(self):
         chosen,route=self.registry.prepare('auto','修复代码并执行工具')
         self.registry.record(chosen['profile_id'],error='MODEL_QUOTA_EXHAUSTED')
@@ -97,9 +108,15 @@ class RoutingTests(unittest.IsolatedAsyncioTestCase):
         provider.response_metadata={'retry_after':120}
         self.assertFalse(provider._http_error(429,{},'限流').transient)
     def test_routing_snapshot_does_not_change_with_settings_or_reset_budget(self):
-        _,route=self.registry.prepare('auto','修复代码');serialized=json.dumps(route)
+        from agent.llm.router import validate_config
+        self.store.set_setting('orchestration.config',json.dumps(validate_config({'budget':{'request_seconds':61}})))
+        chosen,route=self.registry.prepare('auto','修复代码');serialized=json.dumps(route)
+        self.assertEqual(chosen['snapshot']['request_seconds'],61)
+        self.store.set_setting('orchestration.config',json.dumps(validate_config({'budget':{'request_seconds':2}})))
         self.raw['profiles'][2]['model_id']='changed-model';self.store.set_setting(KEY,json.dumps(self.raw))
-        self.assertEqual(json.dumps(route),serialized);self.assertEqual(fallback(route,'MODEL_QUOTA_EXHAUSTED')['snapshot']['profile']['model'],'vision-candidate')
+        self.assertEqual(json.dumps(route),serialized)
+        alternative=fallback(route,'MODEL_QUOTA_EXHAUSTED')
+        self.assertEqual(alternative['snapshot']['profile']['model'],'vision-candidate');self.assertEqual(alternative['snapshot']['request_seconds'],61)
     def test_context_compaction_preserves_goal_and_tool_pairs(self):
         manager=ContextBudgetManager(context_window_tokens=2048,reserved_output_tokens=256,compression_threshold=.7)
         messages=[{'role':'system','content':'必须保留的权限规则'},{'role':'user','content':'原始目标：修复计算器，保留完成步骤'}]
