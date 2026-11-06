@@ -125,6 +125,16 @@ class AuthorizationTests(unittest.IsolatedAsyncioTestCase):
             call_id='unknown',thread_id=self.thread.id,turn_id='unknown',user_prompt='恢复',uncertain=True)
         self.assertFalse(r['ok']);self.assertFalse((self.repo/'unknown.txt').exists())
 
+    async def test_force_and_deletion_refspecs_cannot_bypass_full_access_git_guard(self):
+        self.grant(confirmed=True)
+        self.server.approvals.request=AsyncMock(return_value='deny')
+        for command in ['git push origin :main','git push origin +HEAD:main','git push --mirror']:
+            with self.subTest(command=command):
+                self.server.approvals.request.reset_mock()
+                result=await self.server._authorize_tool(self.ws,project=self.project,call=ToolCall('run_command',{'command':command}),
+                    call_id='refspec',thread_id=self.thread.id,turn_id='refspec',user_prompt='推送普通开发分支')
+                self.assertFalse(result['ok']);self.server.approvals.request.assert_awaited_once()
+
     async def test_role_model_handoffs_share_full_grant_and_real_evidence(self):
         self.grant(confirmed=True);self.server.approvals.request=AsyncMock(side_effect=AssertionError('repeated approval'))
         provider=fixture.ScriptedProvider([

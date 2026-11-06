@@ -64,6 +64,11 @@ RISKY_COMMAND_PATTERNS: list[tuple[str, str, str]] = [
     ),
     (
         "git_destructive",
+        r"(?i)\bgit\b[^\r\n;&|]*\bpush\b[^\r\n;&|]*(?:\s[+:][^\s]+|--mirror\b|--force\b|--force-with-lease\b|--force-if-includes\b|\s-f(?:\s|$)|--delete\b)",
+        "Force, mirror and deletion refspec pushes require separate approval.",
+    ),
+    (
+        "git_destructive",
         r"(?i)\bgit\s+(?:reset\s+--hard|clean\s+-|checkout\s+--|restore\b)",
         "Command may discard or overwrite working-tree changes.",
     ),

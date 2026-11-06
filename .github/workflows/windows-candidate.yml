@@ -3,6 +3,14 @@ name: Windows installer candidate
 on:
   push:
     branches: [feature/v1.0-windows-release]
+    paths:
+      - agent/**
+      - desktop/**
+      - scripts/build/**
+      - pyproject.toml
+      - uv.lock
+      - package.json
+      - .github/workflows/windows-candidate.yml
   workflow_dispatch:
 
 permissions:
