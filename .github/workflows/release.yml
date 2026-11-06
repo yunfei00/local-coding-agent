@@ -96,7 +96,7 @@ jobs:
 
           if ($desktop.version -eq '1.0.0') {
             $gate = Get-Content docs/v1.0/release-gate.json -Raw | ConvertFrom-Json
-            if ($gate.status -ne 'PASS' -or -not $gate.clean_windows -or -not $gate.installed_full_access -or -not $gate.upgrade_uninstall -or -not $gate.updater) { throw 'v1.0 必需真实发布验收尚未全部通过' }
+            if ($gate.status -ne 'PASS' -or -not $gate.installed_full_access_components -or -not $gate.installer_current_windows -or -not $gate.upgrade_uninstall -or -not $gate.updater_plan_a) { throw 'v1.0 最终方案A发布验收尚未全部通过' }
           }
           git fetch origin main
           git merge-base --is-ancestor $env:GITHUB_SHA origin/main

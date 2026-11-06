@@ -15,8 +15,11 @@ contextBridge.exposeInMainWorld("localAgent", {
   environment: () => ipcRenderer.invoke('agent:environment'),
   backupData: () => ipcRenderer.invoke('agent:data-backup'),
   downloadUpdate: () => ipcRenderer.invoke('agent:update-download'),
-  installUpdate: () => ipcRenderer.invoke('agent:update-install'),
-  updateReceipt: () => ipcRenderer.invoke('agent:update-receipt'),
+  getUpdateState: () => ipcRenderer.invoke('agent:update-state'),
+  cancelUpdateDownload: () => ipcRenderer.invoke('agent:update-cancel'),
+  openUpdatePackage: () => ipcRenderer.invoke('agent:update-open-package'),
+  openUpdateFolder: () => ipcRenderer.invoke('agent:update-open-folder'),
+  onUpdateState: (handler:(state:unknown)=>void) => {const listener=(_event:unknown,state:unknown)=>handler(state);ipcRenderer.on('update:state',listener);return ()=>ipcRenderer.removeListener('update:state',listener);},
   openReleasePage: (url: string) =>
     ipcRenderer.invoke("agent:update-open-release", url),
   getDiagnostics: () => ipcRenderer.invoke("agent:diagnostics-get"),

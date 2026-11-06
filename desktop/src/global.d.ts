@@ -44,8 +44,11 @@ declare global {
       environment: () => Promise<AgentEnvelope>;
       backupData: () => Promise<AgentEnvelope>;
       downloadUpdate: () => Promise<{ready:boolean;version:string;sha256:string;notes:string}>;
-      installUpdate: () => Promise<{started:boolean;version:string;verified_installation:boolean}>;
-      updateReceipt: () => Promise<{version?:string;verified:boolean;message:string}|null>;
+      getUpdateState: () => Promise<import('../electron/updateManager').UpdateState>;
+      cancelUpdateDownload: () => Promise<{cancelled:boolean}>;
+      openUpdatePackage: () => Promise<{opened:boolean}>;
+      openUpdateFolder: () => Promise<{opened:boolean}>;
+      onUpdateState: (handler:(state:import('../electron/updateManager').UpdateState)=>void) => ()=>void;
       getDiagnostics: () => Promise<{
         event: AgentEnvelope;
         desktop: {

@@ -301,7 +301,7 @@ async function main() {
     await screenshot("desktop-reference-dark.png");
     checks.push("Reference-derived cool chrome/near-white sidebar, #181818 dark canvas, one File/Edit/View/Help row, native Select All restores editor focus");
     await toggleSettings(page);
-    await page.getByRole("button",{name:"General",exact:true}).click();
+    await page.getByRole("button",{name:"常规",exact:true}).click();
     await screenshot("desktop-settings-reference-dark.png");
     assert.equal(await page.locator(".sidebar").isVisible(), false);
     await appMenus.getByRole("menuitem",{name:"视图",exact:true}).click();
@@ -310,6 +310,9 @@ async function main() {
     await screenshot("desktop-settings-reference-light.png");
     assert.equal(await page.locator(".settings-content").evaluate(e => getComputedStyle(e).color), "rgb(26, 28, 30)");
     assert.equal(await page.locator(".settings-nav").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(248, 252, 253)");
+    await page.getByRole('button',{name:'关于',exact:true}).click();
+    await page.getByRole('button',{name:'下载更新',exact:true}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'打开安装包',exact:true}).isDisabled(),true);
     assert.equal(await page.locator(".settings-update-card").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(255, 255, 255)");
     assert.equal(await page.locator(".settings-footer").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(255, 255, 255)");
     assert.equal(await page.locator(".settings-secondary").first().evaluate(e => getComputedStyle(e).backgroundColor), "rgb(255, 255, 255)");

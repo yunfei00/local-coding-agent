@@ -1,3 +1,4 @@
+import {UpdateSettings} from './UpdateSettings';
 import { MCPSettingsSection } from "./MCPSettingsSection";
 import { ModelSettingsSection } from "./ModelSettingsSection";
 import { useEffect, useMemo, useState } from "react";
@@ -43,20 +44,8 @@ type PromptRulesPayload = {
   thread?: PromptRule | null;
 };
 
-type UpdateCheckResult = {
-  ok: boolean;
-  checked_at: string;
-  current_version: string;
-  latest_version?: string;
-  update_available: boolean;
-  release_url?: string;
-  error?: string;
-  automatic: false;
-  can_auto_download: false;
-  can_auto_install: false;
-};
-
 type Tab =
+  | "about"
   | "general"
   | "provider"
   | "models"
@@ -77,7 +66,8 @@ type Props = {
 };
 
 const tabs: Array<{ id: Tab; label: string }> = [
-  { id: "general", label: "General" },
+  { id: "general", label: "常规" },
+  { id: "about", label: "关于" },
   { id: "provider", label: "Provider" },
   { id: "models", label: "Models & Routing" },
   { id: "agent", label: "Agent" },
@@ -162,10 +152,6 @@ export function SettingsPanel({
   const [permissionTask,setPermissionTask]=useState("");
   const [authorization,setAuthorization]=useState<{global:string;projects:Record<string,string>;tasks:Record<string,string>}|null>(null);
   useEffect(()=>{if(window.localAgent.getPermission)void window.localAgent.getPermission().then(event=>{setAuthorization(event.payload?.authorization as typeof authorization);setPermissionTask(String(event.payload?.task_key||''));}).catch(()=>{});},[projectId,threadId]);
-  const [updateBusy, setUpdateBusy] = useState(false);
-  const [downloadedUpdate,setDownloadedUpdate]=useState<string|null>(null);
-  const [updateResult, setUpdateResult] =
-    useState<UpdateCheckResult | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -236,41 +222,6 @@ export function SettingsPanel({
       current ? { ...current, [key]: value } : current
     );
     setMessage(null);
-  };
-
-  const checkUpdates = async () => {
-    setUpdateBusy(true);
-    setError(null);
-    try {
-      const result = await window.localAgent.checkForUpdates();
-      setUpdateResult(result);
-    } catch (nextError) {
-      setUpdateResult({
-        ok: false,
-        checked_at: new Date().toISOString(),
-        current_version: "unknown",
-        update_available: false,
-        error: String(nextError),
-        automatic: false,
-        can_auto_download: false,
-        can_auto_install: false
-      });
-    } finally {
-      setUpdateBusy(false);
-    }
-  };
-
-  const openRelease = async () => {
-    const url = updateResult?.release_url;
-    if (!url) {
-      return;
-    }
-    setError(null);
-    try {
-      await window.localAgent.openReleasePage(url);
-    } catch (nextError) {
-      setError(String(nextError));
-    }
   };
 
   const save = async () => {
@@ -543,72 +494,6 @@ export function SettingsPanel({
                   <strong>{projectId ? "Open" : "None"}</strong>
                 </div>
               </div>
-              <div className="settings-update-card">
-                <div>
-                  <strong>更新与备份</strong>
-                  <p>
-                    从 GitHub Releases 手动检查和下载 Windows x64 更新。确认后暂停任务并备份，再安装重启；不在后台静默安装。
-                  </p>
-                </div>
-                <div className="settings-update-actions">
-                  <button
-                    type="button"
-                    className="settings-secondary"
-                    disabled={updateBusy}
-                    onClick={() => void checkUpdates()}
-                  >
-                    {updateBusy ? "处理中…" : "检查更新"}
-                  </button>
-                  {updateResult?.update_available &&
-                  updateResult.release_url ? (
-                    <button
-                      type="button"
-                      onClick={() => void openRelease()}
-                    >
-                      Open release page
-                    </button>
-                  ) : null}
-                </div>
-                <div className="settings-update-actions">
-                  <button disabled={updateBusy} onClick={()=>{setUpdateBusy(true);setDownloadedUpdate(null);void window.localAgent.downloadUpdate().then(result=>{setDownloadedUpdate(result.version);setMessage('安装包 SHA256 已校验：'+result.sha256);}).catch(error=>setError(String(error))).finally(()=>setUpdateBusy(false));}}>下载并校验更新</button>
-                  <button disabled={updateBusy||!downloadedUpdate} onClick={()=>{setUpdateBusy(true);void window.localAgent.installUpdate().catch(error=>setError(String(error))).finally(()=>setUpdateBusy(false));}}>备份并安装{downloadedUpdate?' v'+downloadedUpdate:''}</button>
-                  <button disabled={updateBusy} onClick={()=>{setUpdateBusy(true);void window.localAgent.backupData().then(event=>setMessage('备份已保存：'+String(event.payload?.path))).catch(error=>setError(String(error))).finally(()=>setUpdateBusy(false));}}>备份应用数据</button>
-                  <button onClick={()=>void window.localAgent.updateReceipt().then(record=>setMessage(record?.message||'没有待确认的更新记录')).catch(error=>setError(String(error)))}>检查上次更新</button>
-                </div>
-                {updateResult ? (
-                  <div
-                    className={
-                      "settings-update-result " +
-                      (updateResult.ok ? "ok" : "error")
-                    }
-                  >
-                    {updateResult.ok ? (
-                      updateResult.update_available ? (
-                        <>
-                          Update available: v
-                          {updateResult.current_version} → v
-                          {updateResult.latest_version}
-                        </>
-                      ) : (
-                        <>
-                          Up to date · v{updateResult.current_version}
-                          {updateResult.latest_version
-                            ? " · latest v" + updateResult.latest_version
-                            : ""}
-                        </>
-                      )
-                    ) : (
-                      <>
-                        Update check unavailable
-                        {updateResult.error
-                          ? " · " + updateResult.error
-                          : ""}
-                      </>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-
               <div className="settings-bottom-actions">
                 <button
                   type="button"
@@ -621,6 +506,8 @@ export function SettingsPanel({
               </div>
             </div>
           ) : null}
+
+          {tab === "about" ? <div className="settings-section"><h2>关于</h2><UpdateSettings/><button onClick={()=>void window.localAgent.backupData().then(event=>setMessage('备份已保存：'+String(event.payload?.path))).catch(error=>setError(String(error)))}>备份应用数据</button></div> : null}
 
           {tab === "provider" ? <div className="settings-section"><h2>Provider Connections</h2><p>连接与模型统一由 Models &amp; Routing 管理。旧配置和凭据继续保留兼容。</p><button onClick={() => setTab("models")}>Manage model connections</button></div> : null}
 
