@@ -643,7 +643,7 @@ async function main() {
       await page.getByLabel("Default api_calls",{exact:true}).fill(String(calls));
       await page.getByLabel("Default api_tokens",{exact:true}).fill("30000");
       await page.getByRole("button",{name:"Save model configuration",exact:true}).click();
-      await page.getByText("Model configuration saved. Running task snapshots are unchanged.").waitFor();
+      await page.getByText(/^模型配置已保存，(?:API连接验证完成；运行任务快照不变。|运行任务快照不变；未自动探测本地服务。)$/).waitFor();
       await toggleSettings(page);
     };
     await saveOnlineDefaults(0);

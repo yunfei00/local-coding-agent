@@ -7,6 +7,8 @@ on:
       - agent/**
       - desktop/**
       - scripts/build/**
+      - scripts/validation/desktop-smoke.cjs
+      - scripts/validation/packaged_agent_smoke.py
       - pyproject.toml
       - uv.lock
       - package.json
