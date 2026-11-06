@@ -16,3 +16,5 @@ uv run python scripts\validation\check.py
 ## v1.0 安装候选验证
 
 Windows 串行执行 `./scripts/build/package-windows.ps1 -ReuseDependencies`（先执行 `uv sync --locked --extra packaging` 和 `npm --prefix desktop ci`）。包括 Python、前端、打包后端、Electron、NSIS 安装、隐藏开发工具 PATH 后启动、无 Git 工程和卸载数据保留。此隔离 PATH 测试不等于全新无 SDK 操作系统；必需干净系统验收另列。候选 CI 仅上传 Actions Artifacts，不创建 Release。
+
+v1.0候选还实际测试冻结worker的原生窗口发现、UIA输入/点击保存与文件结果，不使用Mock窗口代替。安装版权限IPC专项4项使用Mock原生确认选择，不能计为真人确认验收。在线验收驱动只准备工程，经真实安装版聊天/Runtime入口调用白名单模型；单独标注成功、额度阻断、请求超时与恢复结果。最终完整计数见 `docs/v1.0/acceptance-report.md`，不将历史版本计数相加充作本轮通过数。

@@ -1,6 +1,6 @@
-## v1.0 Windows 正式版开发中
+## v1.0 Windows 候选版验收
 
-统一权限、Windows独立运行、更新与数据保护正在验收；此版本号不代表已正式发布。[验收状态](docs/v1.0/acceptance-report.md)。
+统一权限、独立安装、数据迁移及在线代码/GUI分项已验证；完整组合任务、干净Windows镜像和真实有更新的升级闭环仍阻断正式发布。此版本号不代表已合并或发布。[验收状态](docs/v1.0/acceptance-report.md)。
 
 # Local Coding Agent
 

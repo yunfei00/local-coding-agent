@@ -100,7 +100,9 @@ def main():
         args.output.mkdir(parents=True,exist_ok=False)
         manifest={**original,'output':str(args.output.resolve()),'report':str((args.output/'report.json').resolve()),
                   'resume_case':case,'resume_source':str(args.resume_report.resolve()),'verify_completed':args.verify_completed,
-                  'max_calls':args.max_calls,'max_tokens':args.max_tokens}
+                  'max_calls':args.max_calls,'max_tokens':args.max_tokens,
+                  'original_source_commit':original.get('source_commit'),
+                  'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()}
         path=args.output/'manifest.json';path.write_text(json.dumps(manifest),encoding='utf-8')
         if args.headless_runtime:
             from agent.desktop.resources import require_resources,MIB
