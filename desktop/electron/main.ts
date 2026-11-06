@@ -23,6 +23,9 @@ import WebSocket from "ws";
 
 import { checkProtocolCompatibility } from "./protocol";
 import { checkForUpdates } from "./updateCheck";
+import {readProtectedJSON,writeProtectedCipher} from './vaultFile';
+import {appendBoundedLog} from './runtimeLog';
+import {UpdateManager,updateReceipt} from './updateManager';
 import {desktopArtifact} from "./desktopArtifact";
 
 const APP_ID = "com.yunfei.localcodingagent";
@@ -71,6 +74,7 @@ let rendererReady = false;
 let packagedSmokeWritten = false;
 let sessionOpenAIKey: string | null = null;
 let sessionMcpSecrets: Record<string, Record<string, string>> = {};
+let mcpReadFailed=false;
 let lastAgentReady: {
   host: string;
   port: number;
@@ -79,48 +83,27 @@ let lastAgentReady: {
 } | null = null;
 const pending = new Map<string, PendingRequest>();
 
-function maybeCompletePackagedSmoke(): void {
-  const smokeFile = process.env.LCA_PACKAGED_SMOKE_FILE;
-  if (
-    !smokeFile ||
-    packagedSmokeWritten ||
-    !rendererReady ||
-    !lastAgentReady
-  ) {
-    return;
-  }
-
+async function maybeCompletePackagedSmoke():Promise<void> {
+  const smokeFile=process.env.LCA_PACKAGED_SMOKE_FILE;
+  if(!smokeFile||packagedSmokeWritten||!rendererReady||!lastAgentReady||agentStatus.state!=='ready')return;
+  packagedSmokeWritten=true;
   try {
-    writeFileSync(
-      smokeFile,
-      JSON.stringify(
-        {
-          ok: true,
-          renderer_ready: true,
-          version: lastAgentReady.version,
-          protocol: lastAgentReady.protocol,
-          host: lastAgentReady.host,
-          port: lastAgentReady.port,
-          packaged: app.isPackaged
-        },
-        null,
-        2
-      ),
-      "utf8"
-    );
-    packagedSmokeWritten = true;
-    appendRuntimeLog(
-      "desktop.log",
-      "Packaged smoke marker written after Renderer + Agent readiness: " +
-        smokeFile
-    );
-    setTimeout(() => app.quit(), 250);
-  } catch (error) {
-    appendRuntimeLog(
-      "desktop.log",
-      "Unable to write packaged smoke marker: " + String(error)
-    );
-  }
+    const environment=(await sendRequest('maintenance.environment','maintenance.loaded')).payload;
+    let projectCreated=false;
+    if(process.env.LCA_NO_SDK_ACCEPTANCE==='1'){
+      if(!app.isPackaged||!environment?.bundled_backend||Object.values(environment.tools as Record<string,boolean>).some(Boolean))throw new Error('No-SDK acceptance did not isolate development tools or bundled backend');
+      const parent=path.join(process.env.LCA_DATA_DIR||app.getPath('userData'),'project-fixture');mkdirSync(parent,{recursive:true});
+      const target=path.join(parent,'无 Git 工程 含空格');
+      const project=existsSync(target)?await sendRequest('project.open','project.opened',{path:target}):await sendRequest('project.create','project.opened',{parent_path:parent,name:'无 Git 工程 含空格',initialize_git:true});
+      projectCreated=!!project.payload?.project;
+      if(!projectCreated)throw new Error('No Git project creation was not confirmed');
+    }
+    writeFileSync(smokeFile,JSON.stringify({ok:true,renderer_ready:true,version:lastAgentReady.version,protocol:lastAgentReady.protocol,
+      host:lastAgentReady.host,port:lastAgentReady.port,packaged:app.isPackaged,agent_executable:packagedAgentPath(),
+      environment,no_sdk:process.env.LCA_NO_SDK_ACCEPTANCE==='1',no_git_project_created:projectCreated},null,2),'utf8');
+    appendRuntimeLog('desktop.log','Packaged renderer/backend smoke completed');
+  }catch(error){writeFileSync(smokeFile,JSON.stringify({ok:false,error:String(error)}),'utf8');}
+  setTimeout(()=>app.quit(),250);
 }
 
 function repoRoot(): string {
@@ -166,8 +149,7 @@ function readModelCredentials(): Record<string, string> {
   if (!existsSync(file)) return modelCredentials = {};
   if (!safeStorage.isEncryptionAvailable()) throw new Error("Protected model credentials unavailable; restore OS storage before changing keys.");
   try {
-    const payload = JSON.parse(readFileSync(file, "utf8"));
-    return modelCredentials = JSON.parse(safeStorage.decryptString(Buffer.from(payload.encrypted, "base64")));
+    return modelCredentials = readProtectedJSON<Record<string,string>>(file,value=>safeStorage.decryptString(value),'flat');
   } catch {throw new Error("Cannot decrypt model credentials; existing encrypted file was preserved.");}
 }
 async function syncModelCredentials(): Promise<void> {
@@ -176,7 +158,7 @@ async function syncModelCredentials(): Promise<void> {
 function storeModelCredentials(values: Record<string, string>): void {
   const file = path.join(app.getPath("userData"), "model-secrets.json");
   if (safeStorage.isEncryptionAvailable()) {
-    writeFileSync(file, JSON.stringify({encrypted: safeStorage.encryptString(JSON.stringify(values)).toString("base64")}), {encoding:"utf8", mode:0o600});
+    writeProtectedCipher(file,safeStorage.encryptString(JSON.stringify(values)).toString("base64"));
   }
   modelCredentials = values;
 }
@@ -191,30 +173,19 @@ function readMcpSecrets(): Record<string, Record<string, string>> {
   }
 
   try {
-    const payload = JSON.parse(readFileSync(file, "utf8")) as {
-      encrypted?: string;
-    };
-    if (!payload.encrypted) {
-      return sessionMcpSecrets;
-    }
-    const decrypted = safeStorage.decryptString(
-      Buffer.from(payload.encrypted, "base64")
-    );
-    const parsed = JSON.parse(decrypted) as Record<
-      string,
-      Record<string, string>
-    >;
-    sessionMcpSecrets = parsed;
+    sessionMcpSecrets=readProtectedJSON<Record<string,Record<string,string>>>(file,value=>safeStorage.decryptString(value),'nested');
   } catch (error) {
+    mcpReadFailed=true;
     appendRuntimeLog(
       "desktop.log",
-      "Unable to read protected MCP secrets: " + String(error)
+      "MCP 加密凭据无法读取；原文件保留，不记录内容。"
     );
   }
   return sessionMcpSecrets;
 }
 
 function persistMcpSecrets(): void {
+  if(mcpReadFailed)throw new Error("MCP 凭据库无法解密，未覆盖原文件；请从备份恢复。");
   const file = mcpSecretFilePath();
   if (!safeStorage.isEncryptionAvailable()) {
     return;
@@ -229,11 +200,7 @@ function persistMcpSecrets(): void {
     const encrypted = safeStorage
       .encryptString(JSON.stringify(sessionMcpSecrets))
       .toString("base64");
-    writeFileSync(
-      file,
-      JSON.stringify({ encrypted }),
-      { encoding: "utf8", mode: 0o600 }
-    );
+    writeProtectedCipher(file,encrypted);
   } catch (error) {
     appendRuntimeLog(
       "desktop.log",
@@ -341,7 +308,7 @@ function readStoredOpenAIKey(): string | null {
   } catch (error) {
     appendRuntimeLog(
       "desktop.log",
-      "Unable to read protected provider secret: " + String(error)
+      "旧版 Provider 加密凭据无法读取；原文件保留，不记录内容。"
     );
     return null;
   }
@@ -427,11 +394,7 @@ function saveOpenAIKey(value: string): {
 
   try {
     const encrypted = safeStorage.encryptString(value).toString("base64");
-    writeFileSync(
-      file,
-      JSON.stringify({ openai_api_key: encrypted }),
-      { encoding: "utf8", mode: 0o600 }
-    );
+    writeProtectedCipher(file,encrypted,'openai_api_key');
     return {
       configured: true,
       stored: true,
@@ -472,12 +435,8 @@ async function syncOpenAISecretToAgent(): Promise<void> {
 function appendRuntimeLog(fileName: string, message: string): void {
   try {
     const directory = logDirectory();
-    mkdirSync(directory, { recursive: true });
-    appendFileSync(
-      path.join(directory, fileName),
-      new Date().toISOString() + " " + message + "\n",
-      "utf8"
-    );
+    appendBoundedLog(directory,fileName,message,[sessionOpenAIKey||'',...Object.values(modelCredentials||{}),
+      ...Object.values(sessionMcpSecrets).flatMap(values=>Object.values(values)),process.env.LCA_OPENAI_API_KEY||'']);
   } catch (error) {
     console.error("[desktop] Unable to write runtime log", error);
   }
@@ -678,7 +637,8 @@ function launchAgent(
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
     PYTHONUNBUFFERED: "1",
-    LCA_DATA_DIR: process.env.LCA_DATA_DIR || app.getPath("userData")
+    LCA_DATA_DIR: process.env.LCA_DATA_DIR || app.getPath("userData"),
+    LCA_DESKTOP_DATA_DIR: app.getPath("userData")
   };
   if (virtualEnv) {
     environment.VIRTUAL_ENV = virtualEnv;
@@ -984,6 +944,40 @@ ipcMain.handle("agent:update-check", async () => {
   return checkForUpdates(app.getVersion(), {
     url: process.env.LCA_UPDATE_CHECK_URL
   });
+});
+let updateManager:UpdateManager|undefined;
+function installedUpdater(){
+  if(!app.isPackaged||process.platform!=='win32'||process.arch!=='x64'||process.env.PORTABLE_EXECUTABLE_DIR||
+    !existsSync(path.join(path.dirname(process.execPath),'Uninstall Local Coding Agent.exe')))
+    throw new Error('自动安装更新仅支持 Windows x64 安装版；开发版和 Portable 请下载新安装包。');
+  return updateManager ||=new UpdateManager(app.getPath('userData'),app.getVersion());
+}
+ipcMain.handle('agent:environment',()=>sendRequest('maintenance.environment','maintenance.loaded'));
+ipcMain.handle('agent:data-backup',()=>sendRequest('maintenance.backup','maintenance.loaded'));
+ipcMain.handle('agent:update-receipt',()=>updateReceipt(app.getPath('userData'),app.getVersion()));
+ipcMain.handle('agent:update-download',async()=>{
+  const manager=installedUpdater();const offer=await manager.check();
+  if(!offer)throw new Error('当前没有可用更新');
+  const choice=await dialog.showMessageBox({type:'question',buttons:['取消','下载并校验'],defaultId:0,cancelId:0,
+    title:'下载更新',message:`下载 Windows x64 版本 ${offer.version}？`,detail:offer.notes.slice(0,3000)||'下载后不会自动安装。'});
+  if(choice.response!==1)throw new Error('已取消下载');
+  return manager.downloadUpdate(offer.version);
+});
+ipcMain.handle('agent:update-install',async()=>{
+  const manager=installedUpdater();
+  const choice=await dialog.showMessageBox({type:'warning',buttons:['取消','备份并安装'],defaultId:0,cancelId:0,
+    title:'安装更新',message:`暂停当前任务、备份应用数据并安装 v${manager.readyVersion||'未知'}？`,
+    detail:'保留 Checkpoint、配置和历史。未知副作用不会自动重放；升级失败不保证自动回滚。安装后将重新启动应用。'});
+  if(choice.response!==1)throw new Error('已取消安装');
+  try{
+    return await manager.install(async()=>{
+      const event=await sendRequest('maintenance.prepare_update','maintenance.loaded',{},undefined,60000);
+      return event.payload;
+    },file=>new Promise<void>((resolve,reject)=>{
+      const child=spawn(file,['/S','--updated','--force-run'],{detached:true,stdio:'ignore',windowsHide:true,shell:false});
+      child.once('error',reject);child.once('spawn',()=>{child.unref();resolve();setTimeout(()=>app.quit(),150);});
+    }));
+  }catch(error){await sendRequest('maintenance.cancel_update','maintenance.loaded').catch(()=>{});throw error;}
 });
 ipcMain.handle(
   "agent:update-open-release",
@@ -1328,8 +1322,20 @@ ipcMain.handle(
 ipcMain.handle("agent:permission-get", async () => {
   return sendRequest("permission.get", "permission.loaded");
 });
-ipcMain.handle("agent:permission-set", async (_event, mode: string) => {
-  return sendRequest("permission.set", "permission.changed", { mode });
+ipcMain.handle("agent:permission-set", async (_event, mode: string, options: {scope?:string;target?:string}={}) => {
+  let confirmed=false;
+  if(mode==='full_access') {
+    const current=await sendRequest('permission.get','permission.loaded');
+    const grant=current.payload?.authorization as {full_access_confirmed?:boolean}|undefined;
+    if(!grant?.full_access_confirmed) {
+      const answer=await dialog.showMessageBox({type:'warning',buttons:['取消','启用完全访问'],defaultId:0,cancelId:0,
+        title:'启用完全访问',message:'允许 Agent 在当前 Windows 用户权限下连续操作文件、终端、Git、MCP 和桌面窗口。',
+        detail:'此授权可持久保存并随时撤销；普通操作不再逐项确认。窗口控件与脱敏截图可能发送至本任务配置的模型服务。不会取得管理员权限或绕过 UAC。高风险、凭据外传、系统保护和远程发布仍受限制。'});
+      if(answer.response!==1)throw new Error('未启用完全访问');
+      confirmed=true;
+    }
+  }
+  return sendRequest("permission.set", "permission.changed", { mode,scope:options.scope||'global',target:options.target,confirm_full_access:confirmed });
 });
 ipcMain.handle(
   "agent:approval-respond",

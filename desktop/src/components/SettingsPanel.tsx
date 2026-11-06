@@ -158,7 +158,12 @@ export function SettingsPanel({
     thread: true
   });
   const [busy, setBusy] = useState(false);
+  const [permissionScope,setPermissionScope]=useState("global");
+  const [permissionTask,setPermissionTask]=useState("");
+  const [authorization,setAuthorization]=useState<{global:string;projects:Record<string,string>;tasks:Record<string,string>}|null>(null);
+  useEffect(()=>{if(window.localAgent.getPermission)void window.localAgent.getPermission().then(event=>{setAuthorization(event.payload?.authorization as typeof authorization);setPermissionTask(String(event.payload?.task_key||''));}).catch(()=>{});},[projectId,threadId]);
   const [updateBusy, setUpdateBusy] = useState(false);
+  const [downloadedUpdate,setDownloadedUpdate]=useState<string|null>(null);
   const [updateResult, setUpdateResult] =
     useState<UpdateCheckResult | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -378,14 +383,13 @@ export function SettingsPanel({
     }
   };
 
-  const changePermission = async (mode: PermissionMode) => {
-    if (running) {
-      return;
-    }
+  const changePermission = async (mode: PermissionMode | "inherit") => {
     setBusy(true);
     setError(null);
     try {
-      const event = await window.localAgent.setPermission(mode);
+      const event = await window.localAgent.setPermission(mode,{scope:permissionScope,target:permissionScope==="project"?projectId:permissionScope==="task"?permissionTask:undefined});
+      setAuthorization(event.payload?.authorization as typeof authorization);
+      if(permissionScope==='task'&&event.payload?.canonical_target)setPermissionTask(String(event.payload.canonical_target));
       const next = event.payload?.mode;
       if (
         next === "read_only" ||
@@ -394,7 +398,7 @@ export function SettingsPanel({
       ) {
         onPermissionChanged(next);
       }
-      setMessage("Permission mode updated.");
+      setMessage("权限已更新，新操作立即按有效授权检查。");
     } catch (nextError) {
       setError(String(nextError));
     } finally {
@@ -541,10 +545,9 @@ export function SettingsPanel({
               </div>
               <div className="settings-update-card">
                 <div>
-                  <strong>Updates</strong>
+                  <strong>更新与备份</strong>
                   <p>
-                    Update checks are manual in v0.2. The app never downloads
-                    or installs an update automatically.
+                    从 GitHub Releases 手动检查和下载 Windows x64 更新。确认后暂停任务并备份，再安装重启；不在后台静默安装。
                   </p>
                 </div>
                 <div className="settings-update-actions">
@@ -554,7 +557,7 @@ export function SettingsPanel({
                     disabled={updateBusy}
                     onClick={() => void checkUpdates()}
                   >
-                    {updateBusy ? "Checking…" : "Check for updates"}
+                    {updateBusy ? "处理中…" : "检查更新"}
                   </button>
                   {updateResult?.update_available &&
                   updateResult.release_url ? (
@@ -565,6 +568,12 @@ export function SettingsPanel({
                       Open release page
                     </button>
                   ) : null}
+                </div>
+                <div className="settings-update-actions">
+                  <button disabled={updateBusy} onClick={()=>{setUpdateBusy(true);setDownloadedUpdate(null);void window.localAgent.downloadUpdate().then(result=>{setDownloadedUpdate(result.version);setMessage('安装包 SHA256 已校验：'+result.sha256);}).catch(error=>setError(String(error))).finally(()=>setUpdateBusy(false));}}>下载并校验更新</button>
+                  <button disabled={updateBusy||!downloadedUpdate} onClick={()=>{setUpdateBusy(true);void window.localAgent.installUpdate().catch(error=>setError(String(error))).finally(()=>setUpdateBusy(false));}}>备份并安装{downloadedUpdate?' v'+downloadedUpdate:''}</button>
+                  <button disabled={updateBusy} onClick={()=>{setUpdateBusy(true);void window.localAgent.backupData().then(event=>setMessage('备份已保存：'+String(event.payload?.path))).catch(error=>setError(String(error))).finally(()=>setUpdateBusy(false));}}>备份应用数据</button>
+                  <button onClick={()=>void window.localAgent.updateReceipt().then(record=>setMessage(record?.message||'没有待确认的更新记录')).catch(error=>setError(String(error)))}>检查上次更新</button>
                 </div>
                 {updateResult ? (
                   <div
@@ -770,29 +779,33 @@ export function SettingsPanel({
 
           {tab === "safety" ? (
             <div className="settings-section">
-              <h2>Safety</h2>
+              <h2>权限与安全</h2>
+              <label className="settings-field"><span>授权范围</span><select value={permissionScope} onChange={e=>{const scope=e.target.value;setPermissionScope(scope);if(scope==='task')void window.localAgent.getPermission().then(event=>{setAuthorization(event.payload?.authorization as typeof authorization);setPermissionTask(String(event.payload?.task_key||''));}).catch(error=>setError(String(error)));}}>
+                <option value="global">全局默认（新工程继承）</option><option value="project" disabled={!projectId}>当前项目覆盖</option><option value="task" disabled={!threadId}>当前任务临时覆盖</option>
+              </select></label>
+              {permissionScope==='task'?<label className="settings-field"><span>当前任务</span><code>{permissionTask||"尚无可授权任务，请先创建任务"}</code></label>:null}
+              {permissionScope!=='global'?<button onClick={()=>void changePermission('inherit')}>撤销本范围覆盖，继承上级权限</button>:null}
               <label className="settings-field">
-                <span>Permission mode</span>
+                <span>权限模式</span>
                 <select
-                  value={permissionMode}
-                  disabled={busy || running}
+                  value={permissionScope==='global'?(authorization?.global||permissionMode):permissionScope==='project'?(authorization?.projects[projectId||'']||'inherit'):(authorization?.tasks[permissionTask]||'inherit')}
+                  disabled={busy||(permissionScope==='task'&&!permissionTask)}
                   onChange={(event) =>
                     void changePermission(
-                      event.target.value as PermissionMode
+                      event.target.value as PermissionMode | "inherit"
                     )
                   }
                 >
-                  <option value="read_only">Read Only</option>
-                  <option value="workspace">Workspace</option>
-                  <option value="full_access">Full Access</option>
+                  {permissionScope!=='global'?<option value="inherit">继承上级权限</option>:null}
+                  <option value="read_only">只读</option>
+                  <option value="workspace">工作区</option>
+                  <option value="full_access">完全访问</option>
                 </select>
               </label>
               <div className="settings-safety-note">
-                <strong>Hard boundary</strong>
+                <strong>安全边界</strong>
                 <p>
-                  Prompt Rules cannot bypass permission checks, workspace
-                  boundaries or approval requirements. Risky publishing and
-                  destructive operations remain approval-gated.
+                  完全访问允许普通工具连续执行，首次启用确认一次；不取得管理员权限，不绕过 UAC、锁屏或系统保护。高风险、凭据外传、未知副作用重放和远程发布仍单独限制。可随时撤销，新操作立即生效。
                 </p>
               </div>
             </div>

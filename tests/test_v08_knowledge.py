@@ -134,7 +134,7 @@ class KnowledgeTests(unittest.TestCase):
         self.assertEqual(self.k.search('externalfact')['results'],[])
     def test_old_schema_migration_preserves_chat_and_memory_transaction_rollback(self):
         with self.store.connection:self.store.connection.execute('PRAGMA user_version=5')
-        self.store.close();self.store=SQLiteStore(self.base/'data');self.assertEqual(self.store.connection.execute('PRAGMA user_version').fetchone()[0],6)
+        self.store.close();self.store=SQLiteStore(self.base/'data');self.assertEqual(self.store.connection.execute('PRAGMA user_version').fetchone()[0],7)
         p=ProjectRegistry(self.store).get(self.project.id);self.assertIsNotNone(p);k=p.knowledge();k.save('保留','旧内容')
         with self.assertRaises(ValueError):k.save('保留','bad password=secret123')
         self.assertEqual(k.list()[0]['content'],'旧内容')

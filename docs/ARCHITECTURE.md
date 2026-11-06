@@ -774,3 +774,8 @@ ModelRouter 在每次请求前调用 BudgetGuard 原子预留预算，角色 Pro
 ## M5 补充
 
 M5 继续复用 M1～M4 执行链，固定 Electron/React/TS 工程进行真实多轮 GUI 修复、HTTP JPEG、Stop/Resume/重启和验收反篡改验证。Task Timeline/产物直接读取原持久化快照，截图通过受限本地 IPC 预览，不增加数据库或执行器。参见 [M5 架构](m5/architecture.md) 与 [独立验收](m5/end-to-end-acceptance.md)。
+
+
+## v1.0 开发分支补充
+
+统一授权在每次工具执行前由后端解析任务、项目及全局权限；沿用 Unified Runtime、角色只读约束、审批和操作证据。SQLite 7 迁移前备份，应用锁隔离在线执行与离线恢复。详见 [v1.0 架构](v1.0/architecture.md)。

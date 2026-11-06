@@ -13,11 +13,13 @@ export type UpdateCheckResult = {
   can_auto_install: false;
 };
 
-type ReleaseMetadata = {
+export type ReleaseMetadata = {
   tag_name?: string;
   html_url?: string;
   draft?: boolean;
   prerelease?: boolean;
+  body?: string;
+  assets?: {name:string;browser_download_url:string;size:number}[];
 };
 
 function numericParts(value: string): number[] | null {
@@ -82,7 +84,7 @@ export function releaseResult(
   };
 }
 
-function requestJson(
+export function requestJson(
   url: string,
   timeoutMs: number
 ): Promise<ReleaseMetadata> {

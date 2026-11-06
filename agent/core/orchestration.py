@@ -531,7 +531,7 @@ class TaskService:
                 records = await source.tools.execute("git_worktree_list", {})
                 if not any(Path(r["path"]).resolve() == view.workspace.root.resolve() and r.get("managed") for r in records.data.get("worktrees", [])):
                     raise ValueError("Persisted task path is not a managed worktree of the source repository")
-                view.workspace.set_full_access(self.server.permissions.mode.value == "full_access")
+                view.workspace.set_full_access(self.server._permission_policy(view,turn_id=turn_id).mode.value == "full_access")
                 self.server.mcp_runtime.apply_to_project(view)
                 task = self.runtime.get(plan_id)
                 if "resolved_verification_commands" not in task:

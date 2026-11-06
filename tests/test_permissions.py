@@ -58,14 +58,16 @@ class PermissionPolicyTests(unittest.TestCase):
         self.assertTrue(verdict.allowed)
         self.assertFalse(verdict.requires_approval)
 
-    def test_workspace_denies_parent_escape(self) -> None:
+    def test_workspace_requires_explicit_approval_for_parent_escape(self) -> None:
         policy = PermissionPolicy(PermissionMode.WORKSPACE)
         verdict = policy.evaluate(
             tool_name="read_file",
             arguments={"path": "../outside.txt"},
             workspace=self.workspace,
         )
-        self.assertFalse(verdict.allowed)
+        self.assertTrue(verdict.allowed)
+        self.assertTrue(verdict.requires_approval)
+        self.assertTrue(verdict.approval_key)
         self.assertEqual(verdict.risk, "outside_workspace")
 
     def test_full_access_requires_approval_for_outside_path(self) -> None:

@@ -1,3 +1,4 @@
+import {FirstRunCard} from './components/FirstRunCard';
 import {UnifiedProgress,useUnifiedProgress} from './components/UnifiedProgress';
 import {
   FormEvent,
@@ -1326,7 +1327,7 @@ function App() {
   const changePermission = async (mode: PermissionMode) => {
     setUiError(null);
     try {
-      const event = await window.localAgent.setPermission(mode);
+      const event = await window.localAgent.setPermission(mode,{scope:"current"});
       const next = readPermission(event);
       if (next) {
         setPermissionMode(next);
@@ -1583,6 +1584,7 @@ function App() {
           >
           {items.length === 0 && approvals.length === 0 ? (
             <div className="welcome-card">
+              <FirstRunCard ready={status.state==='ready'} onModels={()=>setSettingsOpen(true)}/>
               <div className="eyebrow">
                 {workspace ? "WORKSPACE READY" : "LOCAL-FIRST CODING"}
               </div>
@@ -1788,17 +1790,16 @@ function App() {
                   "permission-select permission-" + permissionMode
                 }
                 value={permissionMode}
-                disabled={runningTurnId !== null || Boolean(conversationTasks.active)}
                 onChange={(event) =>
                   void changePermission(
                     event.target.value as PermissionMode
                   )
                 }
-                title="Permission mode"
+                title="当前任务或项目权限（可随时撤销）"
               >
-                <option value="read_only">Read Only</option>
-                <option value="workspace">Workspace</option>
-                <option value="full_access">Full Access</option>
+                <option value="read_only">只读</option>
+                <option value="workspace">工作区</option>
+                <option value="full_access">完全访问</option>
               </select>
               <input aria-label="Search chat models" placeholder="Search models / connections" value={modelSearch} onChange={e=>setModelSearch(e.target.value)} style={{maxWidth:180}} />
               <select

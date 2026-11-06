@@ -66,7 +66,7 @@ async function main(){
   const env={...process.env,NODE_OPTIONS:'--max-old-space-size=256',GOMAXPROCS:'2',LCA_DESKTOP_DATA_DIR:desktopData,LCA_DATA_DIR:manifest.data,LCA_HEADLESS_SMOKE:'1',LCA_PROVIDER:'openai_compatible',LCA_OPENAI_API_KEY:'',LCA_OPENAI_MODEL:'',LCA_OPENAI_BASE_URL:'http://127.0.0.1:1/v1',PYTHONUTF8:'1',LCA_EXECUTION_MODEL_CALLS:'80',LCA_EXECUTION_SECONDS:'600',LCA_EXECUTION_TOKENS:'10000000'};
   if(manifest.isolate_git_path){env.PATH=(env.PATH||env.Path||'').split(path.delimiter).filter(folder=>!fs.existsSync(path.join(folder,'git.exe'))&&!fs.existsSync(path.join(folder,'git'))).join(path.delimiter);env.Path=env.PATH;}
   delete env.ELECTRON_RUN_AS_NODE;
-  app=await _electron.launch({executablePath:require('../../desktop/node_modules/electron'),args:[path.join(manifest.root,'desktop'),'--disable-gpu'],cwd:manifest.root,env,timeout:60000});
+  app=await _electron.launch({executablePath:manifest.installed_executable||require('../../desktop/node_modules/electron'),args:manifest.installed_executable?['--disable-gpu']:[path.join(manifest.root,'desktop'),'--disable-gpu'],cwd:manifest.root,env,timeout:60000});
   desktopChild=app.process();report.lifecycle.pid=desktopChild.pid;
   const life=(kind,details={})=>{report.lifecycle.events.push({at:new Date().toISOString(),kind,cleanup:!!report.lifecycle.cleanup_started,...details});save();};
   app.process().on('exit',(code,signal)=>life('process_exit',{code,signal}));
@@ -81,6 +81,9 @@ async function main(){
   await page.waitForFunction(()=>!!window.localAgent);
   page.on('close',()=>{report.controller_stage='electron_closed';save();});
   for(let i=0;i<150;i++){const s=await page.evaluate(()=>window.localAgent.getAgentStatus());if(s.state==='ready')break;if(s.state==='error')throw Error('AGENT_START_FAILED');await delay(200);}
+  report.installed={executable:manifest.installed_executable||null,packaged:await app.evaluate(({app})=>app.isPackaged),version:await app.evaluate(({app})=>app.getVersion())};
+  if(manifest.installed_executable&&(!report.installed.packaged||report.installed.version!=='1.0.0'))throw Error('INSTALLED_VERSION_MISMATCH');
+  if(manifest.full_access){const grant=(await page.evaluate(()=>window.localAgent.getPermission())).payload;report.permission={initial:grant.mode,grant_source:'explicit isolated acceptance authorization',revoked:false};if(grant.mode!=='full_access')throw Error('FULL_ACCESS_NOT_EFFECTIVE');}
   report.lifecycle.phase='credential_check';save();
   const credential=(await page.evaluate(()=>window.localAgent.taskRequest('','task.credential.status'))).payload;
   if(credential.mode!=='os_protected'||!manifest.connections.every(c=>credential.configured.includes('connection-'+c.connection_id))){report.result='BLOCKED';report.reason='PROTECTED_CREDENTIAL_UNAVAILABLE';return;}
@@ -266,6 +269,15 @@ async function main(){
    await runCase(profile,'question','请解释 Python 装饰器的作用。这是概念问答，不涉及项目操作。',r=>r.runtime.intent==='question'&&!r.runtime.plan_id&&r.tools.length===0&&r.dirty==='');
    if(item.category==='tool-capable'){
     await runCase(profile,'visual','使用桌面工具启动 npm --prefix frontend start。通过 read_process（wait_seconds=2，持续使用 next_cursor）等到 M5_ELECTRON_READY 后使用本次 PID，定位 V07 Canvas acceptance 窗口。先 desktop_focus_window 确认目标窗口已激活，再 inspect，实际尝试 UIA desktop_click，selector={"name":"VERIFY","control_type":"Button"}。该 Canvas 不暴露按钮控件；UIA 失败后调用 desktop_screenshot（share_with_model=true、coordinate_grid=true），根据实际图片中的蓝色 VERIFY 按钮与灰色0..1000坐标网格定位；先判断按钮中心所在网格，再精确点击，使用 desktop_click method=coordinate、coordinate_space=normalized_1000、x/y 为0..1000归一化坐标，或明确使用 model_image 的实际图片像素坐标，artifact_id=本次截图，禁止混用坐标空间、confirm_risk=true。然后用 desktop_wait 验证 Visual fallback verified；若失败，必须重新激活、重新截图、修正定位后再试一次（最多两次定位），不得把点击已发出当作成功。验证成功后最终截图并停止本次进程，两次都失败则停止并如实报告，中文报告。禁止读取 HTML/JS 源码、运行脚本或通过 IPC 得到坐标；不得修改任何文件。所有桌面操作 timeout_seconds=60。',r=>r.runtime.phase==='completed'&&r.visual_verified&&r.tools.some(t=>!t.ok&&['DESKTOP_CONTROL_NOT_FOUND','DESKTOP_UIA_PATTERN_UNAVAILABLE'].includes(t.error_code))&&r.tools.some(t=>t.ok&&t.name==='desktop_click'&&t.method==='coordinate')&&(r.attachment?.http_image_accepted===true||(r.attachment?.attachment_transport==='jpeg_multimodal'&&r.attachment?.tools_allowed===false)),{gui:true,visual:true});
+    if(manifest.case_names?.includes('native-gui')){
+     const folder=project('native-gui-'+report.cases.length), executable=path.join(folder,'GuiFixture.exe');
+     const compiler=path.join(process.env.WINDIR,'Microsoft.NET/Framework64/v4.0.30319/csc.exe');
+     const compiled=cp.spawnSync(compiler,['/nologo','/target:exe','/out:'+executable,'/reference:System.Windows.Forms.dll','/reference:System.Drawing.dll',path.join(manifest.root,'manual-fixtures/v10-release-app/Main.cs')],{encoding:'utf8',windowsHide:true,timeout:30000});
+     if(compiled.status!==0)throw Error('NATIVE_GUI_FIXTURE_COMPILE_FAILED');
+     fs.appendFileSync(path.join(folder,'.gitignore'),'GuiFixture.exe\ngui-saved.txt\n');
+     shell(['add','.gitignore'],folder);shell(['commit','-qm','Isolated native GUI fixture boundary'],folder);
+     await runCase(profile,'native-gui',`这是 Windows 界面操作验收，不是开发任务。通过 start_process 启动已编译的 ${executable}，唯一命令行参数为当前工程绝对路径（路径有空格必须正确引用）。通过 read_process 等待 stdout LCA_GUI_READY pid=，只使用本次实际 pid。定位“LCA v1.0 隔离保存验收”窗口、激活并读取 UIA。通过桌面工具在“验收内容”文本框输入 ${guiValue}，点击“保存”，检查“保存状态”控件变为已保存，并读取 gui-saved.txt 验证值。保存后调用 desktop_screenshot（share_with_model=false）留下真实结果图片，再停止本次启动的进程并报告真实证据。不得直接写 gui-saved.txt、不得修改夹具源码、不得运行代码测试。普通已授权 GUI 操作无需反复审批。`,r=>r.runtime.phase==='completed'&&r.native_gui_saved===guiValue&&r.tools.some(t=>t.ok&&t.name==='desktop_type_text')&&r.tools.some(t=>t.ok&&t.name==='desktop_click')&&r.tools.some(t=>t.ok&&t.name==='stop_process')&&r.tools.some(t=>t.ok&&t.name==='desktop_screenshot'),{folder,native:true});
+    }
     await runCase(profile,'analysis','解释 calculator.py 的职责，以及它为何不能通过 tests/test_calc.py。读取必要源码，给出真实文件证据与具体原因。',r=>r.runtime.intent==='analysis'&&r.runtime.phase==='completed'&&r.answer.length>0&&r.tools.some(t=>t.name==='read_file')&&r.dirty==='');
     await runCase(profile,'change','为 calculator.py 的 add 函数增加输入校验，只接受有限的 int/float 数字；任一参数为 bool、字符串、None、NaN、正负 Infinity 时抛 ValueError。修复加法，保留原测试，新增 unittest 覆盖上述全部边界。使用 uv run --no-project python -m unittest discover -s tests -v，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.runtime.changed_paths.includes('calculator.py')&&r.independent?.exit_code===0);
    }
@@ -299,6 +311,13 @@ async function main(){
     await runCase(profile,'websocket',interruptGoal,r=>r.runtime.outcome==='completed_verified'&&r.reconnect?.restored===true&&r.reconnect.continued_same_turn===true&&r.reconnect.completed_ids.every(id=>r.runtime.plan.steps.some(s=>s.id===id&&s.state==='completed'))&&r.independent?.exit_code===0,{reconnect:true});
     await runCase(profile,'json','只返回 JSON 对象 {"answer":"装饰器用于包装函数并扩展行为","needs_tools":false}。不读取或修改工程。',r=>{try{return JSON.parse(r.answer).needs_tools===false&&r.runtime.intent==='question'&&r.tools.length===0;}catch{return false;}});
    }
+  }
+  if(manifest.full_access){
+   const ordinary=report.cases.flatMap(c=>c.approvals||[]).filter(a=>!['git_commit','git_push','high_risk','desktop_fresh','desktop_share'].includes(a.risk));
+   report.permission.ordinary_approvals=ordinary.length;
+   await page.evaluate(()=>window.localAgent.setPermission('read_only',{scope:'global'}));
+   report.permission.revoked=(await page.evaluate(()=>window.localAgent.getPermission())).payload.mode==='read_only';
+   if(ordinary.length||!report.permission.revoked)throw Error('CONTINUOUS_AUTHORIZATION_FAILED');
   }
   report.usage=await budgetUsed();report.result=report.cases.length&&report.cases.every(c=>c.result==='PASS')?'PASS':report.cases.length?'PARTIAL':'BLOCKED';
   async function runCase(profile,name,goal,assertion,options={}){
@@ -437,9 +456,10 @@ async function main(){
    currentCase.answer=history.filter(m=>m.role==='assistant').at(-1)?.content||'';
    currentCase.frozen_unchanged=Object.entries(frozen).every(([file,digest])=>fs.existsSync(file)&&crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')===digest);
    currentCase.head_unchanged=shell(['rev-parse','HEAD'],currentFolder).stdout.trim()===initialHead;
+   if(options.native){const file=path.join(currentFolder,'gui-saved.txt');currentCase.native_gui_saved=fs.existsSync(file)?fs.readFileSync(file,'utf8'):null;}
    if(options.gui){const file=path.join(currentFolder,'frontend/.runtime/saved.json');currentCase.gui={saved:fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')).value:null};}
    if(options.visual){const file=path.join(currentFolder,'frontend/.runtime/result.json');currentCase.visual_verified=fs.existsSync(file)&&JSON.parse(fs.readFileSync(file,'utf8')).verified===true;}
-   const contractArgs=['run','--locked','python','scripts/validation/unified_contract.py','--original',baselineTest,'--project',currentFolder,...(['change','followup'].includes(name)?['--input-validation']:[]),...(['question','analysis','context','json','project-memory','memory-reopen'].includes(name)||options.frontend||options.gui||options.approval?['--structure-only']:[])];
+   const contractArgs=['run','--locked','python','scripts/validation/unified_contract.py','--original',baselineTest,'--project',currentFolder,...(['change','followup'].includes(name)?['--input-validation']:[]),...(['question','analysis','context','json','project-memory','memory-reopen'].includes(name)||options.frontend||options.gui||options.native||options.approval?['--structure-only']:[])];
    const originalCheck=cp.spawnSync('uv',contractArgs,{cwd:manifest.root,encoding:'utf8',windowsHide:true,timeout:60000});
    currentCase.original_test_contract={exit_code:originalCheck.status,...JSON.parse(originalCheck.stdout||'{}')};
    if(options.frontend){
@@ -458,7 +478,7 @@ async function main(){
      }catch(error){currentCase.gui={result:'FAIL',reason:String(error.message).slice(0,300)};}
      finally{if(fixture)await fixture.close().catch(()=>{});}
     }
-   }else if(!['question','analysis','context','json','project-memory','memory-reopen'].includes(name)&&!options.gui&&!options.approval){
+   }else if(!['question','analysis','context','json','project-memory','memory-reopen'].includes(name)&&!options.gui&&!options.native&&!options.approval){
     const check=cp.spawnSync('uv',['run','--no-project','python','-m','unittest','discover','-s','tests','-v'],{cwd:currentFolder,encoding:'utf8',windowsHide:true,timeout:60000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
     currentCase.independent={exit_code:check.status,summary:(check.stdout+check.stderr).slice(-2500)};
    }

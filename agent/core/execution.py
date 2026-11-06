@@ -230,7 +230,7 @@ class ExecutionBudget:
             fact['error_code'] = failure_diagnosis(name, code)['error_code']
         if isinstance(payload.get('exit_code'), int) and not isinstance(payload['exit_code'], bool):
             fact['exit_code'] = payload['exit_code']
-        if name in {'read_file', 'write_file', 'apply_patch', 'file_exists', 'list_directory', 'search_files'}:
+        if name in {'read_file', 'write_file', 'apply_patch', 'delete_file', 'file_exists', 'list_directory', 'search_files'}:
             path = local_path(arguments.get('path', '.'))
             if path:
                 fact['path'] = path

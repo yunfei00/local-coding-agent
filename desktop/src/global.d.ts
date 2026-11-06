@@ -41,6 +41,11 @@ declare global {
         can_auto_install: false;
       }>;
       openReleasePage: (url: string) => Promise<{ ok: boolean }>;
+      environment: () => Promise<AgentEnvelope>;
+      backupData: () => Promise<AgentEnvelope>;
+      downloadUpdate: () => Promise<{ready:boolean;version:string;sha256:string;notes:string}>;
+      installUpdate: () => Promise<{started:boolean;version:string;verified_installation:boolean}>;
+      updateReceipt: () => Promise<{version?:string;verified:boolean;message:string}|null>;
       getDiagnostics: () => Promise<{
         event: AgentEnvelope;
         desktop: {
@@ -176,7 +181,7 @@ declare global {
         threadId?: string
       ) => Promise<AgentEnvelope>;
       getPermission: () => Promise<AgentEnvelope>;
-      setPermission: (mode: string) => Promise<AgentEnvelope>;
+      setPermission: (mode: string, options?: {scope?:string;target?:string}) => Promise<AgentEnvelope>;
       respondApproval: (
         approvalId: string,
         decision: "allow_once" | "allow_turn" | "deny",

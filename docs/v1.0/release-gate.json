@@ -1,0 +1,8 @@
+{
+  "status": "NOT_RUN",
+  "clean_windows": false,
+  "installed_full_access": false,
+  "upgrade_uninstall": false,
+  "updater": false,
+  "note": "必需验收完成后凭实际证据更新；候选构建不得创建正式 Release"
+}

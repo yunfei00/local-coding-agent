@@ -1,3 +1,7 @@
+## v1.0 Windows 正式版开发中
+
+统一权限、Windows独立运行、更新与数据保护正在验收；此版本号不代表已正式发布。[验收状态](docs/v1.0/acceptance-report.md)。
+
 # Local Coding Agent
 
 v0.9.0 开发分支在原 Unified Runtime 上增加依赖工作流、逻辑四角色、独立审查、有限修复、后台任务和交付证据。继续使用同一个聊天入口，保留模型、项目、线程、Git、MCP、记忆、检索和 Windows Computer Agent。

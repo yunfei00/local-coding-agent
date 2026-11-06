@@ -12,6 +12,11 @@ contextBridge.exposeInMainWorld("localAgent", {
   notifyRendererReady: () => ipcRenderer.send("renderer:ready"),
   getAgentStatus: () => ipcRenderer.invoke("agent:get-status"),
   checkForUpdates: () => ipcRenderer.invoke("agent:update-check"),
+  environment: () => ipcRenderer.invoke('agent:environment'),
+  backupData: () => ipcRenderer.invoke('agent:data-backup'),
+  downloadUpdate: () => ipcRenderer.invoke('agent:update-download'),
+  installUpdate: () => ipcRenderer.invoke('agent:update-install'),
+  updateReceipt: () => ipcRenderer.invoke('agent:update-receipt'),
   openReleasePage: (url: string) =>
     ipcRenderer.invoke("agent:update-open-release", url),
   getDiagnostics: () => ipcRenderer.invoke("agent:diagnostics-get"),
@@ -106,8 +111,8 @@ contextBridge.exposeInMainWorld("localAgent", {
   refreshContext: (threadId: string) =>
     ipcRenderer.invoke("agent:context-refresh", threadId),
   getPermission: () => ipcRenderer.invoke("agent:permission-get"),
-  setPermission: (mode: string) =>
-    ipcRenderer.invoke("agent:permission-set", mode),
+  setPermission: (mode: string, options?: {scope?:string;target?:string}) =>
+    ipcRenderer.invoke("agent:permission-set", mode, options),
   respondApproval: (
     approvalId: string,
     decision: "allow_once" | "allow_turn" | "deny",

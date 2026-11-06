@@ -1,0 +1,46 @@
+name: Windows installer candidate
+
+on:
+  push:
+    branches: [feature/v1.0-windows-release]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      LCA_REQUIRE_INTERACTIVE_DESKTOP: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install desktop test dependencies
+        run: npm --prefix desktop ci --no-audit --no-fund
+      - name: Build, install, restart and uninstall candidate
+        shell: pwsh
+        run: ./scripts/build/package-windows.ps1 -ReuseDependencies
+      - name: Retain candidate and isolated acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-candidate-${{ github.sha }}
+          retention-days: 14
+          path: |
+            desktop/release/*-x64-Setup.exe
+            desktop/release/*-x64-Portable.exe
+            desktop/release/SHA256SUMS.txt
+            build/packaged-*-smoke.json
+            validation-reports/desktop-smoke-report.json

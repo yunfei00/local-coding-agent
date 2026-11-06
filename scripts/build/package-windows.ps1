@@ -1,4 +1,4 @@
-param([switch]$ReuseDependencies)
+﻿param([switch]$ReuseDependencies)
 
 $ErrorActionPreference = "Stop"
 
@@ -61,7 +61,9 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
 function Invoke-DesktopSmoke {
     param(
         [Parameter(Mandatory = $true)][string]$Executable,
-        [Parameter(Mandatory = $true)][string]$Name
+        [Parameter(Mandatory = $true)][string]$Name,
+        [switch]$NoSDK,
+        [switch]$ReuseData
     )
 
     if (-not (Test-Path $Executable)) {
@@ -71,7 +73,7 @@ function Invoke-DesktopSmoke {
     $SmokeFile = Join-Path $RepoRoot ("build\packaged-" + $Name + "-smoke.json")
     $SmokeData = Join-Path $RepoRoot ("build\packaged-" + $Name + "-data")
     Remove-Item $SmokeFile -Force -ErrorAction SilentlyContinue
-    Remove-BuildArtifact $SmokeData
+    if (-not $ReuseData) { Remove-BuildArtifact $SmokeData }
     New-Item -ItemType Directory -Path $SmokeData -Force | Out-Null
 
     $BeforeAgentIds = @(Get-Process "lca-agent" -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
@@ -86,6 +88,19 @@ function Invoke-DesktopSmoke {
     $env:LCA_OLLAMA_URL = "http://127.0.0.1:1"
     $env:LCA_DESKTOP_DATA_DIR = Join-Path $SmokeData "desktop"
     $env:LCA_HEADLESS_SMOKE = "1"
+    $OldPath = $env:PATH
+    $OldNoSdk = $env:LCA_NO_SDK_ACCEPTANCE
+    $SavedRuntimeEnvironment = @{}
+    foreach ($Key in @('PYTHONPATH','PYTHONHOME','VIRTUAL_ENV','NODE_PATH','UV_PROJECT_ENVIRONMENT','ELECTRON_RUN_AS_NODE')) {
+        $SavedRuntimeEnvironment[$Key] = [Environment]::GetEnvironmentVariable($Key,'Process')
+        if ($NoSDK) { [Environment]::SetEnvironmentVariable($Key,$null,'Process') }
+    }
+    if ($NoSDK) {
+        $EmptyBin = Join-Path $SmokeData 'empty-path'
+        New-Item -ItemType Directory -Path $EmptyBin -Force | Out-Null
+        $env:PATH = $EmptyBin
+        $env:LCA_NO_SDK_ACCEPTANCE = '1'
+    }
 
     try {
         $DesktopProcess = Start-Process -FilePath $Executable -PassThru -WindowStyle Hidden
@@ -106,6 +121,7 @@ function Invoke-DesktopSmoke {
             throw "$Name smoke result was invalid: $(Get-Content $SmokeFile -Raw)"
         }
 
+        if ($NoSDK -and (-not $Smoke.no_sdk -or -not $Smoke.no_git_project_created -or -not $Smoke.environment.bundled_backend)) { throw 'No SDK / No Git isolation did not pass.' }
         if (-not $DesktopProcess.HasExited) {
             Wait-Process -Id $DesktopProcess.Id -Timeout 10 -ErrorAction SilentlyContinue
             $DesktopProcess.Refresh()
@@ -116,6 +132,9 @@ function Invoke-DesktopSmoke {
         }
     }
     finally {
+        $env:PATH = $OldPath
+        if ($null -eq $OldNoSdk) { Remove-Item Env:LCA_NO_SDK_ACCEPTANCE -ErrorAction SilentlyContinue } else { $env:LCA_NO_SDK_ACCEPTANCE=$OldNoSdk }
+        foreach ($Key in $SavedRuntimeEnvironment.Keys) { [Environment]::SetEnvironmentVariable($Key,$SavedRuntimeEnvironment[$Key],'Process') }
         if ($null -eq $OldSmoke) { Remove-Item Env:LCA_PACKAGED_SMOKE_FILE -ErrorAction SilentlyContinue } else { $env:LCA_PACKAGED_SMOKE_FILE = $OldSmoke }
         if ($null -eq $OldData) { Remove-Item Env:LCA_DATA_DIR -ErrorAction SilentlyContinue } else { $env:LCA_DATA_DIR = $OldData }
         if ($null -eq $OldOllama) { Remove-Item Env:LCA_OLLAMA_URL -ErrorAction SilentlyContinue } else { $env:LCA_OLLAMA_URL = $OldOllama }
@@ -201,19 +220,25 @@ Invoke-DesktopSmoke -Executable $Portable -Name "portable"
 Write-Host "[10/11] Silent-install Setup and smoke test installed executable..."
 $ExistingInstall = @("HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*", "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*") | ForEach-Object { Get-ItemProperty -Path $_ -ErrorAction SilentlyContinue } | Where-Object DisplayName -EQ "Local Coding Agent"
 if ($ExistingInstall) { throw "Setup smoke requires a clean Windows profile; an existing Local Coding Agent installation was preserved. Use the clean Windows CI runner for Setup acceptance." }
-$InstallDir = Join-Path $RepoRoot ("build\setup-smoke-" + [guid]::NewGuid().ToString("N"))
+$InstallDir = Join-Path $RepoRoot ("build\安装验收 含空格 " + [guid]::NewGuid().ToString("N"))
 $InstallProcess = Start-Process -FilePath $Installer -ArgumentList @("/S", "/D=$InstallDir") -PassThru -Wait -WindowStyle Hidden
 if ($InstallProcess.ExitCode -ne 0) { throw "Setup installer exited with code $($InstallProcess.ExitCode)." }
 
 $InstalledExe = Join-Path $InstallDir "LocalCodingAgent.exe"
 if (-not (Test-Path $InstalledExe)) { throw "Setup did not create expected executable: $InstalledExe" }
 Invoke-DesktopSmoke -Executable $InstalledExe -Name "setup"
+Invoke-DesktopSmoke -Executable $InstalledExe -Name "setup-no-sdk" -NoSDK
+Copy-Item (Join-Path $RepoRoot 'build\packaged-setup-no-sdk-smoke.json') (Join-Path $RepoRoot 'build\packaged-setup-no-sdk-first-smoke.json')
+Invoke-DesktopSmoke -Executable $InstalledExe -Name "setup-no-sdk" -NoSDK -ReuseData
+$RetainedData = Join-Path $RepoRoot 'build\packaged-setup-no-sdk-data\local-coding-agent.sqlite3'
+if (-not (Test-Path $RetainedData)) { throw 'Restart did not retain application data.' }
 
 $Uninstaller = Get-ChildItem $InstallDir -Filter "Uninstall*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($Uninstaller) {
     $UninstallProcess = Start-Process -FilePath $Uninstaller.FullName -ArgumentList "/S" -PassThru -Wait -WindowStyle Hidden
     if ($UninstallProcess.ExitCode -ne 0) { throw "Silent uninstall exited with code $($UninstallProcess.ExitCode)." }
 }
+if (-not (Test-Path $RetainedData)) { throw 'Uninstall removed isolated application data.' }
 Remove-BuildArtifact $InstallDir
 
 Write-Host "[11/11] Write and verify SHA256 checksums..."
