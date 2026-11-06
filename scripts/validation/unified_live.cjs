@@ -3,7 +3,7 @@ const fs=require('node:fs'), path=require('node:path'), cp=require('node:child_p
 const crypto=require('node:crypto');
 const http=require('node:http'),https=require('node:https');
 const {_electron}=require('../../desktop/node_modules/playwright-core');
-const {readyProcessId,matchesReadyProcess,closeOwnedApplication,visualWaitEvidence}=require('./live_gui_guard.cjs');
+const {readyProcessId,matchesReadyProcess,closeOwnedApplication,visualWaitEvidence,nativeProcessReleaseEvidence}=require('./live_gui_guard.cjs');
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const manifest=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const policyPath=path.join(manifest.root,'validation-reports/unified-model-policy.json');
@@ -83,7 +83,15 @@ async function main(){
   for(let i=0;i<150;i++){const s=await page.evaluate(()=>window.localAgent.getAgentStatus());if(s.state==='ready')break;if(s.state==='error')throw Error('AGENT_START_FAILED');await delay(200);}
   report.installed={executable:manifest.installed_executable||null,packaged:await app.evaluate(({app})=>app.isPackaged),version:await app.evaluate(({app})=>app.getVersion())};
   if(manifest.installed_executable&&(!report.installed.packaged||report.installed.version!=='1.0.0'))throw Error('INSTALLED_VERSION_MISMATCH');
-  if(manifest.full_access){const grant=(await page.evaluate(()=>window.localAgent.getPermission())).payload;report.permission={initial:grant.mode,grant_source:'explicit isolated acceptance authorization',revoked:false};if(grant.mode!=='full_access')throw Error('FULL_ACCESS_NOT_EFFECTIVE');}
+  if(manifest.full_access){
+   // A previous bounded run deliberately revoked its isolated grant. Restore
+   // the already consented grant through normal installed-app IPC, not by
+   // changing the persisted task state or manufacturing an operation result.
+   if(manifest.resume_case)await page.evaluate(()=>window.localAgent.setPermission('full_access',{scope:'global'}));
+   const grant=(await page.evaluate(()=>window.localAgent.getPermission())).payload;
+   report.permission={initial:grant.mode,grant_source:'explicit isolated acceptance authorization',revoked:false};
+   if(grant.mode!=='full_access')throw Error('FULL_ACCESS_NOT_EFFECTIVE');
+  }
   report.lifecycle.phase='credential_check';save();
   const credential=(await page.evaluate(()=>window.localAgent.taskRequest('','task.credential.status'))).payload;
   if(credential.mode!=='os_protected'||!manifest.connections.every(c=>credential.configured.includes('connection-'+c.connection_id))){report.result='BLOCKED';report.reason='PROTECTED_CREDENTIAL_UNAVAILABLE';return;}
@@ -213,8 +221,7 @@ async function main(){
     }
    }
    if(original.runtime.error_code==='BUDGET_EXHAUSTED'||String(original.runtime.reason||'').includes('budget api_tokens')){
-    const includeGlobal=String(original.runtime.reason||'').includes('global budget');
-    const extended=await page.evaluate(({thread,plan,includeGlobal})=>window.localAgent.planRequest(thread,'plan.execution.extend',{plan_id:plan,include_global:includeGlobal,additional_calls:100,additional_tokens:2000000}),{thread,plan,includeGlobal});
+    const extended=await page.evaluate(({thread,plan,calls,tokens})=>window.localAgent.planRequest(thread,'plan.execution.extend',{plan_id:plan,include_global:true,additional_calls:calls,additional_tokens:tokens}),{thread,plan,calls:manifest.max_calls,tokens:manifest.max_tokens});
     if(extended.type==='error')throw Error('EXPLICIT_EXTENSION_REJECTED');
    }
    if(!manifest.verify_completed)await page.getByRole('button',{name:'检查并继续未完成步骤',exact:true}).click();
@@ -224,7 +231,7 @@ async function main(){
     if(page.isClosed())throw Error('ELECTRON_CLOSED_DURING_VALIDATION');
     if(ownedTurn&&turnTerminal.has(ownedTurn))break;
     const used=await budgetUsed();
-    if(used.calls-before.calls>=25||used.tokens-before.tokens>=500000){if(ownedTurn)await page.evaluate(id=>window.localAgent.cancelTurn(id),ownedTurn);break;}
+    if(used.calls-before.calls>=manifest.max_calls||used.tokens-before.tokens>=manifest.max_tokens){if(ownedTurn)await page.evaluate(id=>window.localAgent.cancelTurn(id),ownedTurn);break;}
     await delay(400);
    }
    const run=(await page.evaluate(thread=>window.localAgent.taskRequest(thread,'task.runtime.list'),thread)).payload.runtimes.find(r=>r.id===original.runtime.id);
@@ -237,7 +244,12 @@ async function main(){
     for(const file of fs.readdirSync(source))frozen&&=fs.readFileSync(path.join(source,file)).equals(fs.readFileSync(path.join(target,tests,file)));
     const outputs=[];for(const args of [['run','typecheck'],['test'],['run','build']])outputs.push(await fixtureNpm(args,target));
     check={status:outputs.every(c=>c.status===0)?0:1,stdout:outputs.map(c=>c.stdout).join('\n'),stderr:outputs.map(c=>c.stderr).join('\n')};
-   }else if(original.name==='workflow-python'){
+   }else if(original.name==='native-gui'&&!manifest.release_task){
+    const originalTest=shell(['show','HEAD:tests/test_calc.py'],currentFolder);
+    frozen=originalTest.status===0&&originalTest.stdout===fs.readFileSync(path.join(currentFolder,'tests/test_calc.py'),'utf8')&&shell(['status','--porcelain'],currentFolder).stdout.trim()==='';
+    check=shell(['diff','--check'],currentFolder);
+    currentCase.code_validation='NOT_APPLICABLE_GUI_ONLY';
+   }else if(original.name==='workflow-python'||original.name==='native-gui'){
     const originalTest=shell(['show','HEAD:tests/test_calc.py'],currentFolder);
     frozen=originalTest.status===0&&originalTest.stdout===fs.readFileSync(path.join(currentFolder,'tests/test_calc.py'),'utf8');
     check=cp.spawnSync('uv',['run','--no-project','python','-m','unittest','discover','-s','tests','-v'],{cwd:currentFolder,encoding:'utf8',windowsHide:true,timeout:60000});
@@ -247,8 +259,37 @@ async function main(){
    }else throw Error('UNSUPPORTED_RESUME_CONTRACT');
    currentCase.external_contract={exit_code:check.status,summary:(check.stdout+check.stderr).slice(-2000),frozen};
    currentCase.completed_preserved=original.runtime.plan.steps.filter(s=>s.state==='completed').every(s=>run?.plan?.steps.some(now=>now.id===s.id&&now.state==='completed'));
-   const workflowEvidence=!original.name.startsWith('workflow-')||(['planner','developer','reviewer','tester'].every(role=>run?.role_handoffs?.some(h=>h.role===role))&&fs.existsSync(run?.delivery?.json_path||''));
-   currentCase.result=run?.phase==='completed'&&run.outcome==='completed_verified'&&check.status===0&&frozen&&currentCase.completed_preserved&&run.plan.steps.every(s=>s.state==='completed')&&workflowEvidence&&(frontend||original.name.startsWith('workflow-')||fs.existsSync(path.join(currentFolder,'DELIVERY.md')))?'PASS':'FAIL';
+   const workflow=original.name.startsWith('workflow-')||(original.name==='native-gui'&&manifest.release_task);
+   const workflowEvidence=!workflow||(['planner','developer','reviewer','tester'].every(role=>run?.role_handoffs?.some(h=>h.role===role))&&fs.existsSync(run?.delivery?.json_path||''));
+   let nativeEvidence=true;
+   if(original.name==='native-gui'){
+    const expected=original.runtime.plan.goal.match(/\bGUI-[0-9a-f]{8}\b/)?.[0];
+    const file=path.join(currentFolder,'gui-saved.txt');
+    currentCase.native_gui_saved=fs.existsSync(file)?fs.readFileSync(file,'utf8'):null;
+    const allTools=[...(original.tools||[]),...currentCase.tools];
+    // Restart legitimately loses the old ProcessManager handle. A missing
+    // handle alone proves nothing: independently inspect the original owned
+    // PID/image before accepting cleanup that already happened on shutdown.
+    currentCase.native_release=nativeProcessReleaseEvidence(original.native_operations,currentFolder,pid=>{
+     const probe=cp.spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',`$ErrorActionPreference='Stop'; Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" | Select-Object @{n='path';e={$_.ExecutablePath}} | ConvertTo-Json -Compress`],{encoding:'utf8',windowsHide:true,timeout:15000});
+     if(probe.status!==0)throw Error('OWNED_PROCESS_IDENTITY_UNAVAILABLE');
+     return JSON.parse(probe.stdout.trim()||'null');
+    });
+    nativeEvidence=!!expected&&currentCase.native_gui_saved===expected&&['desktop_type_text','desktop_click','desktop_screenshot'].every(name=>allTools.some(t=>t.ok&&t.name===name))&&(allTools.some(t=>t.ok&&t.name==='stop_process')||currentCase.native_release.released);
+    const baseline=path.join(manifest.output,'original-test.py');
+    fs.writeFileSync(baseline,shell(['show','HEAD:tests/test_calc.py'],currentFolder).stdout);
+    const contract=cp.spawnSync('uv',['run','--locked','python','scripts/validation/unified_contract.py','--original',baseline,'--project',currentFolder,manifest.release_task?'--input-validation':'--structure-only'],{cwd:manifest.root,encoding:'utf8',windowsHide:true,timeout:60000});
+    currentCase.original_test_contract={exit_code:contract.status,...JSON.parse(contract.stdout||'{}')};
+    nativeEvidence&&=contract.status===0;
+   }
+   const nativeGuiOnly=original.name==='native-gui'&&!manifest.release_task;
+   currentCase.result=run?.phase==='completed'&&(nativeGuiOnly||run.outcome==='completed_verified')&&check.status===0&&frozen&&currentCase.completed_preserved&&run.plan.steps.every(s=>s.state==='completed')&&workflowEvidence&&nativeEvidence&&(nativeGuiOnly||frontend||workflow||fs.existsSync(path.join(currentFolder,'DELIVERY.md')))?'PASS':'FAIL';
+   if(manifest.full_access){
+    report.permission.ordinary_approvals=(currentCase.approvals||[]).filter(a=>!['git_commit','git_push','high_risk','desktop_fresh','desktop_share'].includes(a.risk)).length;
+    await page.evaluate(()=>window.localAgent.setPermission('read_only',{scope:'global'}));
+    report.permission.revoked=(await page.evaluate(()=>window.localAgent.getPermission())).payload.mode==='read_only';
+    if(report.permission.ordinary_approvals||!report.permission.revoked)currentCase.result='FAIL';
+   }
    report.usage={before,after:await budgetUsed()};report.result=currentCase.result;return;
   }
   const cached=manifest.reuse_capabilities&&!proxy?JSON.parse(fs.readFileSync(manifest.reuse_capabilities,'utf8')):null;

@@ -2600,9 +2600,17 @@ class AgentServer:
         from agent.core.execution import ExecutionBudget
         execution = ExecutionBudget(self.store.connection, execution_id or (active_plan['id'] if active_plan else turn_id), thread_id, self.continuation_policy,ledger=self.runtime_ledger)
         self.active_executions[turn_id]=execution
-        from agent.core.unified_runtime import INSTRUCTIONS as UNIFIED_INSTRUCTIONS, PLAN_TOOL as UNIFIED_PLAN_TOOL, infer_intent, plan_steps, plan_view, verification_policy, result_view, workspace_snapshot,changed_since_snapshot,snapshot_fingerprint, RuntimeEvents, requested_intent, computer_only, COMPUTER_TOOLS
+        from agent.core.unified_runtime import INSTRUCTIONS as UNIFIED_INSTRUCTIONS, PLAN_TOOL as UNIFIED_PLAN_TOOL, infer_intent, plan_steps, plan_view, verification_policy, result_view, workspace_snapshot,changed_since_snapshot,snapshot_fingerprint, RuntimeEvents, requested_intent, computer_only, COMPUTER_TOOLS, INTERACTION_CODE_TOOLS
         unified = unified or bool(execution.data.get('unified'))
         requested=execution.data.setdefault('unified_request',requested_intent(prompt)) if unified else None
+        if unified:
+            # Re-evaluate the original goal on recovery, not the generic UI
+            # "continue" prompt. Only narrow legacy snapshots misclassified as
+            # development; never expand a task's authorization here.
+            original_request=requested_intent(execution.data.get('unified_goal') or (active_plan['goal'] if active_plan else prompt))
+            if original_request['kind']=='interaction':
+                requested=original_request
+                execution.data['unified_request']=requested
         runtime = execution.data.setdefault('unified', {}) if unified else None
         if unified:
             # Add missing fields for pre-created/older queue snapshots without
@@ -2643,6 +2651,8 @@ class AgentServer:
                     execution.data['unified_provider_snapshot']=snapshot
         if unified:
             messages.append({'role':'system','content':UNIFIED_INSTRUCTIONS})
+            if requested['kind']=='interaction':
+                messages.append({'role':'system','content':'当前用户只要求界面操作。可读取所需结果文件，但不得修改源码或运行代码测试/终端修复；使用 start_process/read_process/stop_process 管理本次窗口进程。界面保存产生的数据文件不是开发任务。'})
             if self._permission_policy(project,execution).continuous:
                 messages.append({'role':'system','content':'用户已明确授予完全访问。普通文件、终端、Git 提交/推送及桌面操作可连续执行，无需逐项申请。用户本任务禁止的行为仍禁止；高风险、远程合并或正式发布须本任务单独授权。禁止提权或绕过系统保护。'})
         if unified:
@@ -2921,6 +2931,8 @@ class AgentServer:
                             schemas=[s for s in schemas if s['function']['name'] not in {'knowledge_search','project_memory','project_memory_search','environment_diagnose','environment_repair'}]
                         if unified and computer_only(authorization_prompt if authorization_prompt is not None else prompt):
                             schemas=[s for s in schemas if s['function']['name'] in COMPUTER_TOOLS]
+                        if unified and requested['kind']=='interaction':
+                            schemas=[s for s in schemas if s['function']['name'] not in INTERACTION_CODE_TOOLS]
                         if unified and requested['read_only']:
                             schemas=[s for s in schemas if s['function']['name'] in READ_ONLY_TOOLS or s['function']['name']=='run_command' or (s['function']['name']=='project_memory' and requested.get('memory_write')) or (s['function']['name']=='environment_repair' and requested.get('environment_write')) or ((tools.permission_metadata(s['function']['name']) or {}).get('trusted') and (tools.permission_metadata(s['function']['name']) or {}).get('read_only'))]
                         if unified and requested.get('pure_question'):
@@ -3146,7 +3158,7 @@ class AgentServer:
                         intermediate=bool(active_plan and runtime['intent']=='complex' and len(remaining_steps)>1)
                         change_version = json.dumps({p:current_snapshot.get(p) for p in actual_changes},sort_keys=True)+('intermediate' if intermediate else 'final')
                         runtime['changed_paths'] = actual_changes
-                        runtime['intent'] = infer_intent(runtime['intent'], '', changed_paths=actual_changes)
+                        runtime['intent'] = 'interaction' if requested['kind']=='interaction' else infer_intent(runtime['intent'], '', changed_paths=actual_changes)
                         if not actual_changes and not intermediate and requested['kind'] in {'change','complex'}:
                             if execution.data.get('no_change_repair',0)<1:
                                 execution.data['no_change_repair']=1;execution.save()
@@ -3154,7 +3166,7 @@ class AgentServer:
                                 continue
                             raise ProviderError('AGENT_NO_CHANGE_EVIDENCE','用户请求实际开发，但没有检测到文件变更；已停止，不能把文字或代码示例当作开发完成。')
                         # Run once after the latest edit, not after each prose response or plan step.
-                        if actual_changes and verification_sequence != change_version:
+                        if actual_changes and requested['kind']!='interaction' and verification_sequence != change_version:
                             from agent.core.verification import VerificationEngine
                             discovery_error = None
                             try:
@@ -3275,7 +3287,7 @@ class AgentServer:
                         )
                         verified = verification_passed(
                             active_step_id, requirement, evidence,
-                            loop_complete=not gaps or bool(plan_id) or (unified and (runtime['intent']=='complex' or (not requirement.strip() and verification_options.get('verification_level')=='none'))) or (not requirement.strip() and
+                            loop_complete=not gaps or bool(plan_id) or (unified and (runtime['intent']=='complex' or (requested['kind']=='interaction' and bool(execution.data.get('unified_interaction_evidence'))) or (not requirement.strip() and verification_options.get('verification_level')=='none'))) or (not requirement.strip() and
                                 active_plan["steps"][-1]["id"] != active_step_id))
                         advanced=self.store.task_plans.advance_verified(
                             active_plan["id"], active_step_id, evidence, verified)
@@ -3430,6 +3442,8 @@ class AgentServer:
                             raise ProviderError('WORKFLOW_ROLE_PERMISSION','当前角色 '+workflow_role()+' 不允许执行 '+call.name+'；既有权限和审批未被扩大。')
                     if unified and computer_only(authorization_prompt if authorization_prompt is not None else prompt) and call.name not in COMPUTER_TOOLS:
                         raise ProviderError('COMPUTER_TOOL_SCOPE','用户仅授权界面操作；没有执行源码、终端或其他越界工具。')
+                    if unified and requested['kind']=='interaction' and call.name in INTERACTION_CODE_TOOLS:
+                        raise ProviderError('COMPUTER_TOOL_SCOPE','界面任务不允许修改代码或运行代码测试/终端修复；没有执行该工具。')
                     if unified and active_plan and call.name=='workflow_adjust':
                         if len(tool_calls)!=1:raise ProviderError('WORKFLOW_ADJUST_BATCH','调整计划须单独调用，不执行同批其他操作')
                         if execution.data.get('workflow_adjustments',0)>=3:raise ProviderError('WORKFLOW_ADJUST_LIMIT','计划调整达到有界上限，保留原计划与证据')
