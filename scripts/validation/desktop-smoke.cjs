@@ -510,7 +510,7 @@ async function main() {
     assert.equal(await page.getByLabel("Default global_api_tokens",{exact:true}).inputValue(),"100000000");
     assert.equal(modelRequests.length,beforeLongBudget,"Editing budget must not send model requests");
     await page.getByRole("button", {name:"Save model configuration", exact:true}).click();
-    await page.getByText("Model configuration saved. Running task snapshots are unchanged.").waitFor();
+    await page.getByText(/^模型配置已保存，(?:API连接验证完成；运行任务快照不变。|运行任务快照不变；未自动探测本地服务。)$/).waitFor();
     await page.getByRole("button", {name:"Fetch model list (does not verify capabilities)", exact:true}).click();
     await page.getByRole("button", {name:"Add model: smoke-coder", exact:true}).waitFor();
     await screenshot("desktop-mixed-provider-settings.png");

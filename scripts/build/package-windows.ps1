@@ -166,7 +166,7 @@ Write-Host "[3/11] Build packaged Python Agent..."
 Remove-BuildArtifact "build\agent-dist"
 Remove-BuildArtifact "build\pyinstaller"
 New-Item -ItemType Directory -Path "build\pyinstaller" -Force | Out-Null
-Invoke-Checked uv run --no-sync pyinstaller --noconfirm --clean --collect-data agent.core --name lca-agent --distpath build\agent-dist --workpath build\pyinstaller\work --specpath build\pyinstaller agent\launcher.py
+Invoke-Checked uv run --no-sync pyinstaller --noconfirm --clean --paths . --add-data "agent/core/workflow_templates.json;agent/core" --name lca-agent --distpath build\agent-dist --workpath build\pyinstaller\work --specpath build\pyinstaller agent\launcher.py
 
 $AgentExe = Join-Path $RepoRoot "build\agent-dist\lca-agent\lca-agent.exe"
 if (-not (Test-Path $AgentExe)) { throw "Packaged Agent executable was not created: $AgentExe" }
@@ -234,11 +234,27 @@ $RetainedData = Join-Path $RepoRoot 'build\packaged-setup-no-sdk-data\local-codi
 if (-not (Test-Path $RetainedData)) { throw 'Restart did not retain application data.' }
 
 $Uninstaller = Get-ChildItem $InstallDir -Filter "Uninstall*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+$DefaultDataCanaries = @()
+if ($env:GITHUB_ACTIONS -eq 'true') {
+    # Hosted runner only: never expose a real user's existing data to an uninstall test.
+    foreach ($AppName in @('Local Coding Agent','local-coding-agent-desktop')) {
+        $CanaryDirectory = Join-Path $env:APPDATA $AppName
+        New-Item -ItemType Directory -Path $CanaryDirectory -Force | Out-Null
+        $Canary = Join-Path $CanaryDirectory ('v10-uninstall-canary-'+[guid]::NewGuid().ToString('N')+'.txt')
+        'owned CI data must survive uninstall' | Set-Content -LiteralPath $Canary
+        $DefaultDataCanaries += $Canary
+    }
+}
 if ($Uninstaller) {
     $UninstallProcess = Start-Process -FilePath $Uninstaller.FullName -ArgumentList "/S" -PassThru -Wait -WindowStyle Hidden
     if ($UninstallProcess.ExitCode -ne 0) { throw "Silent uninstall exited with code $($UninstallProcess.ExitCode)." }
 }
 if (-not (Test-Path $RetainedData)) { throw 'Uninstall removed isolated application data.' }
+foreach ($Canary in $DefaultDataCanaries) {
+    if (-not (Test-Path -LiteralPath $Canary)) { throw 'Uninstall removed default-profile personal data on isolated CI runner.' }
+    Remove-Item -LiteralPath $Canary
+}
+@{isolated_data_retained=$true;default_profile_data_checked=($DefaultDataCanaries.Count -gt 0);default_profile_canaries_retained=$DefaultDataCanaries.Count} | ConvertTo-Json | Set-Content (Join-Path $RepoRoot 'build\packaged-uninstall-smoke.json')
 Remove-BuildArtifact $InstallDir
 
 Write-Host "[11/11] Write and verify SHA256 checksums..."
