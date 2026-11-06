@@ -1,12 +1,12 @@
-## v1.0 Windows 候选版验收
+## v1.0 Windows x64
 
-统一权限、独立安装、数据迁移及在线代码/GUI分项已验证；完整组合任务、干净Windows镜像和真实有更新的升级闭环仍阻断正式发布。此版本号不代表已合并或发布。[验收状态](docs/v1.0/acceptance-report.md)。
+v1.0提供一次完全访问授权、Windows x64 Setup/Portable、数据保护与方案A手动更新。在线代码/GUI分项证据继续有效；当前Windows实装及最终发布状态见验收报告，不将未执行组合或干净系统标为通过。[验收状态](docs/v1.0/acceptance-report.md)。
 
 # Local Coding Agent
 
-v0.9.0 开发分支在原 Unified Runtime 上增加依赖工作流、逻辑四角色、独立审查、有限修复、后台任务和交付证据。继续使用同一个聊天入口，保留模型、项目、线程、Git、MCP、记忆、检索和 Windows Computer Agent。
+v1.0沿用原Unified Runtime、依赖工作流、逻辑四角色、独立审查、有限修复、后台任务和交付证据。继续使用同一个聊天入口，保留模型、项目、线程、Git、MCP、记忆、检索和Windows Computer Agent；新增一次完全访问、Windows独立运行和方案A手动更新。
 
-详见 [架构](docs/v0.9/architecture.md)、[角色配置](docs/v0.9/multi-agent.md)、[模板](docs/v0.9/workflow-templates.md)、[实际验收](docs/v0.9/acceptance-report.md)。进行中项目不代表已经通过；本次不创建 Release、Tag 或安装包。
+详见[v1.0使用说明](docs/v1.0/user-guide.md)、[权限](docs/v1.0/permission-model.md)、[软件更新](docs/v1.0/auto-update.md)、[测试](docs/v1.0/testing.md)。角色与模板沿用[v0.9架构](docs/v0.9/architecture.md)。正式产物状态以验收报告和GitHub Release为准。
 
 更新源码：`uv sync --locked`、`npm --prefix desktop ci`、`npm run desktop:build`，再运行 `npm run dev`。完整退出旧桌面与后端后再启动。设置中的“自主工作流 · 角色与模板”支持角色模型、有限修复和并行上限；缺省沿用聊天模型，新设置用于新工作流，旧任务保留快照。
 

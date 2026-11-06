@@ -1,9 +1,20 @@
 {
-  "status": "BLOCKED",
-  "clean_windows": false,
-  "installed_full_access": false,
+  "status": "PASS",
   "installed_full_access_components": true,
+  "installer_current_windows": true,
   "upgrade_uninstall": true,
-  "updater": false,
-  "note": "代码四角色、GUI、撤销等分项已验证；严格同一任务的完整组合仍未通过，最新等待诊断复验被API额度耗尽阻断。另缺干净Windows镜像及真实有更新的应用内升级闭环。保留PR，不合并、不创建Tag/正式Release。"
+  "updater_plan_a": true,
+  "validated_product_commit": "63d9e160df521d8ae6e8ce8b85df4e61632ec69b",
+  "core_ci_runs": [
+    42226827834,
+    42226835466
+  ],
+  "installer_candidate_ci": 42226827888,
+  "local_python_initial": "706 PASS / 2 SKIP / 4 GUI failures retained",
+  "local_gui_affected_retest": "4 PASS / 0 FAIL",
+  "clean_windows": "NOT_REQUIRED_NOT_RUN",
+  "combined_four_roles_gui": "NOT_REQUIRED_HISTORICAL_FAIL",
+  "automatic_install_restart": "NOT_REQUIRED_PLAN_A",
+  "publication": "NOT_YET_PUBLISHED",
+  "note": "功能、当前Windows实装和产品CI通过；最终文档/归档路径提交仍须PR必需CI，合并后须main CI成功才可创建正式Tag和Release。"
 }

@@ -57,4 +57,4 @@ jobs:
             desktop/release/*-x64-Portable.exe
             desktop/release/SHA256SUMS.txt
             build/packaged-*-smoke.json
-            validation-reports/desktop-smoke-report.json
+            validation-reports/desktop-smoke.json

@@ -16,4 +16,4 @@
 
 本轮权限单元基线见 validation-reports/v10-permission-baseline.log。Python 全程 uv run。
 
-本机未发现 Get-VM、WindowsSandbox.exe，不能把 PATH 隔离测试称为干净 Windows 镜像。将继续检查隔离安装能力；无法满足必需真实安装门槛时保留候选与 PR，不创建正式 Tag/Release。
+本机未发现 Get-VM、WindowsSandbox.exe，不能把 PATH 隔离测试称为干净 Windows 镜像。最终用户决策不要求干净OS；使用当前Windows真实安装与隔离PATH，差异记录为覆盖限制，不冒充干净系统通过。

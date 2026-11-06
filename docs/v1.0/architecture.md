@@ -4,7 +4,7 @@
 
 权限由 AuthorizationSettings 在原 SQLite 内持久化；全局默认、项目覆盖、任务临时覆盖按优先级解析。已绑定计划通过 permission_task_key 保留原任务授权；每次操作重新检查，可撤销。
 
-桌面主进程负责原生授权确认、Windows安全存储、GitHub更新下载及安装。后端负责任务暂停、Checkpoint、SQLite一致性备份和迁移检查。两者不把启动安装器误报为升级成功。
+桌面主进程负责原生授权确认、Windows安全存储、GitHub检查、下载与SHA256校验。方案A仅在用户点击后打开已校验安装包，不暂停任务、不退出或自动安装。后端继续负责Checkpoint、独立备份和迁移。
 
 Windows保留PyInstaller后端和Electron NSIS x64，Ubuntu只保留后端与测试，不构建安装包。
 
@@ -14,7 +14,7 @@ Windows保留PyInstaller后端和Electron NSIS x64，Ubuntu只保留后端与测
 | --- | --- |
 | 统一授权 | agent/permissions/authorization.py；原 PermissionPolicy 与后端 _authorize_tool |
 | 数据迁移 | agent/persistence；schema7、SQLite一致性备份、DataLock、离线检查与恢复 |
-| 更新 | desktop 主进程 updateManager、IPC/preload、后端 maintenance RPC |
+| 更新 | desktop updateManager/updateCheck、IPC/preload、React UpdateSettings；备份RPC独立保留 |
 | 凭据/日志 | 原 safeStorage；vaultFile 原子读写保护、运行日志脱敏与轮转 |
 | 首次体验/权限 | 原 React Settings、聊天工具栏、FirstRunCard，不增加新的 Agent 模式 |
 | Windows | 原 desktop worker；新增冻结依赖完整性与目标窗口异常诊断 |

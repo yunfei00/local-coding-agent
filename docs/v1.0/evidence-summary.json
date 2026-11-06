@@ -41,14 +41,9 @@
     "product_commit": "1cfb010871ac307f8c825588ecae1af077ddc8d5"
   },
   "total_request_attempts": 144.0,
-  "release_status": "BLOCKED",
+  "release_status": "VALIDATION_PASS_AWAITING_MERGE",
   "product_commit": "9bfff2335530e90ae24b755f1d4fc59d8ba4286a",
   "single_task_full_access": "BLOCKED",
-  "blockers": [
-    "缺少干净无SDK Windows镜像验收",
-    "真实有更新的应用内下载/安装/重启未运行",
-    "严格单任务开发/四角色/GUI组合未通过，最后诊断反馈复验首请求额度耗尽"
-  ],
   "runs": [
     {
       "run": "v10-installed-live",
@@ -402,5 +397,74 @@
     "node": "v24.14.0",
     "python": "Python 3.12.13",
     "build": "26200"
-  }
+  },
+  "historical_release_status": "BLOCKED",
+  "historical_blockers": [
+    "缺少干净无SDK Windows镜像验收",
+    "真实有更新的应用内下载/安装/重启未运行",
+    "严格单任务开发/四角色/GUI组合未通过，最后诊断反馈复验首请求额度耗尽"
+  ],
+  "blockers": [],
+  "final_integration": {
+    "date": "2026-11-06",
+    "code_commit": "63d9e160df521d8ae6e8ce8b85df4e61632ec69b",
+    "frontend_tests": {
+      "pass": 102,
+      "fail": 0
+    },
+    "plan_a_installed_ui": "4 PASS, real download/files/UI; controlled metadata and open callback",
+    "setup_portable_chat": "PASS each 2 runs, actual installed/portable frontend/backend/write_file; MOCK_LOOPBACK model",
+    "new_real_model_calls": 0,
+    "policy": "current Windows required, clean OS and costly combined task not required",
+    "local_initial_python": {
+      "total": 712,
+      "pass": 706,
+      "skip": 2,
+      "failure": 2,
+      "error": 2,
+      "exit": 1
+    },
+    "affected_gui_retest": {
+      "pass": 4,
+      "fail": 0,
+      "seconds": 172.76,
+      "source": "v10-plan-a-gui-affected-retest.log"
+    },
+    "core_ci": {
+      "push": 42226827834,
+      "pull_request": 42226835466,
+      "windows": "710 PASS / 2 SKIP",
+      "ubuntu": "695 PASS / 17 SKIP",
+      "status": "PASS"
+    },
+    "packaging": {
+      "status": "PASS",
+      "log": "v10-plan-a-package-resumed.log",
+      "exit_code": 0,
+      "electron": {
+        "pass": 55,
+        "skip": 0,
+        "fail": 0
+      },
+      "frozen_native_operations": 5,
+      "installed_permission_checks": 4,
+      "installed_plan_a_checks": 4,
+      "setup_chat_runs": 2,
+      "portable_chat_runs": 2,
+      "uninstall_isolated_data_retained": true,
+      "local_candidate_sha256": {
+        "Setup": "006d215d51a2cf19a47412f718a0666f4767c91a2de70dc47d14ec7c5d4d5752",
+        "Portable": "d0366afa1571d8cb2cc802baeb53e743bb41dfa2e992cb79645d51d51253dd2c"
+      }
+    },
+    "installer_candidate_ci": {
+      "run": 42226827888,
+      "status": "PASS"
+    }
+  },
+  "pending_publication_checks": [
+    "最终提交PR CI",
+    "合并后main CI",
+    "正式main构建及Release资产下载SHA校验"
+  ]
 }
