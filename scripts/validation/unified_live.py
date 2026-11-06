@@ -44,6 +44,7 @@ def main():
     parser.add_argument('--live',action='store_true')
     parser.add_argument('--allowed-model',action='append',default=[],help='本轮正向模型白名单；原始配置不变，别名不自动放行')
     parser.add_argument('--installed-executable',type=Path,help='实际安装的 Windows 应用，不能计为干净系统验收')
+    parser.add_argument('--release-task',action='store_true',help='一次综合任务验证代码、四角色、真实 GUI 和独立测试')
     parser.add_argument('--full-access',action='store_true',help='本轮隔离工程明确授权完全访问；不修改原用户配置')
     parser.add_argument('--suite',action='store_true')
     parser.add_argument('--headless-runtime',action='store_true',help='无桌面窗口，通过同一后端认证 WebSocket 验收；不能计为 GUI PASS')
@@ -76,6 +77,7 @@ def main():
     parser.add_argument('--max-calls',type=int,default=180)
     parser.add_argument('--max-tokens',type=int,default=20000000)
     args=parser.parse_args()
+    if args.release_task and (not args.full_access or args.case!=['native-gui']):parser.error('综合验收必须明确 --full-access 并只选择 --case native-gui')
     if args.prepared_fixture and (len(args.case)!=1 or args.case[0] not in {'react','electron'} or not args.prepared_fixture.resolve().is_relative_to(ROOT/'validation-reports')):
         parser.error('Prepared fixture must be a controlled frontend case')
     if args.reuse_project and (not args.case or 'gui' not in args.case or not args.reuse_project.resolve().is_relative_to(ROOT/'validation-reports')):parser.error('GUI reuse must remain inside controlled validation projects')
@@ -216,6 +218,7 @@ def main():
     manifest.update(excluded_models=excluded,allowed_models=args.allowed_model,discover_only=args.discover_only,case_names=args.case,request_seconds=args.request_seconds)
     manifest['installed_executable']=str(args.installed_executable.resolve()) if args.installed_executable else None
     manifest['full_access']=args.full_access
+    manifest['release_task']=args.release_task
     manifest['capabilities_only']=args.capabilities_only
     manifest['executor_model']=args.executor_model
     if args.prepared_fixture:manifest['prepared_fixture']=str(args.prepared_fixture.resolve())

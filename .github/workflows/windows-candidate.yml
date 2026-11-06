@@ -9,6 +9,8 @@ on:
       - scripts/build/**
       - scripts/validation/desktop-smoke.cjs
       - scripts/validation/packaged_agent_smoke.py
+      - scripts/validation/packaged_gui_smoke.py
+      - scripts/validation/v10-permission-desktop.cjs
       - pyproject.toml
       - uv.lock
       - package.json

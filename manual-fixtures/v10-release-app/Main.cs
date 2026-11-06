@@ -12,7 +12,7 @@ class ReleaseFixture {
         var input = new TextBox { Name = "DisplayName", AccessibleName = "验收内容", Left = 24, Top = 24, Width = 400 };
         var status = new Label { Name = "SaveStatus", AccessibleName = "保存状态", Text = "尚未保存", Left = 24, Top = 112, Width = 400 };
         var save = new Button { Name = "Save", AccessibleName = "保存", Text = "保存", Left = 24, Top = 64 };
-        save.Click += (sender, e) => { File.WriteAllText(Path.Combine(args[0], "gui-saved.txt"), input.Text); status.Text = "已保存：" + input.Text; };
+        save.Click += (sender, e) => { File.WriteAllText(Path.Combine(args[0], "gui-saved.txt"), input.Text); status.Text = "已保存：" + input.Text; status.AccessibleName = status.Text; };
         form.Controls.AddRange(new Control[] { input, save, status });
         form.Shown += (sender, e) => { Console.WriteLine("LCA_GUI_READY pid=" + System.Diagnostics.Process.GetCurrentProcess().Id); Console.Out.Flush(); };
         Application.Run(form);

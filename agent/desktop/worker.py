@@ -363,6 +363,28 @@ def find(window, selector):
     return matches[0]
 
 
+def caption_focus_click(binding):
+    """Ordinary mouse activation, only on the exposed native caption of this HWND.
+
+    Never click a client control, occluding window or system button. This does
+    not alter foreground-lock settings, synthesize Alt, or attach input queues.
+    """
+    hwnd=check(binding)
+    left,top,right,bottom=gui.GetWindowRect(hwnd)
+    point=(left+(right-left)//2,top+20)
+    def exposed_caption():
+        check(binding)
+        hit=gui.WindowFromPoint(point)
+        if not hit or gui.GetAncestor(hit,2)!=hwnd:return False
+        packed=((point[1]&0xffff)<<16)|(point[0]&0xffff)
+        return gui.SendMessage(hwnd,0x84,0,packed)==2  # WM_NCHITTEST / HTCAPTION
+    if not exposed_caption():return False
+    api.SetCursorPos(point)
+    if not exposed_caption():return False
+    input_batch([(0,0,2),(0,0,4)])
+    return True
+
+
 def focus(binding, control=None):
     hwnd = check(binding)
     if gui.IsIconic(hwnd):
@@ -378,15 +400,15 @@ def focus(binding, control=None):
     # Do not asynchronously focus the Chromium document when its window is
     # already active, just before requesting focus on the exact child Edit.
     if not gui.GetClassName(hwnd).startswith('Chrome_WidgetWin') or not active or gui.GetAncestor(active,2)!=hwnd:
-        window.set_focus()
-    if control is not None:
-        control.set_focus()
+        try:window.set_focus()
+        except Exception:pass  # Native foreground verification remains authoritative.
     # Activation can complete after the UIA focus request (new/moved WPF
     # windows). Retry only the ordinary Windows request for this same validated
     # binding; do not synthesize keys or change foreground-lock policy.
     for attempt in range(15):
         active=gui.GetForegroundWindow()
         if active and gui.IsWindow(active) and gui.GetAncestor(active,2)==hwnd:
+            if control is not None:control.set_focus()
             return
         check(binding)
         if attempt in (4, 9):
@@ -395,7 +417,14 @@ def focus(binding, control=None):
             except Exception:
                 pass
         time.sleep(.1)
-    fail('DESKTOP_FOCUS_FAILED', 'Windows did not grant focus; no input was sent')
+    clicked=caption_focus_click(binding)
+    for _ in range(5 if clicked else 0):
+        active=gui.GetForegroundWindow()
+        if active and gui.IsWindow(active) and gui.GetAncestor(active,2)==check(binding):
+            if control is not None:control.set_focus()
+            return
+        time.sleep(.1)
+    fail('DESKTOP_FOCUS_FAILED', 'Windows did not grant focus; no client or keyboard input was sent'+('; safe caption activation attempted' if clicked else ''))
 
 
 def input_batch(events):
@@ -438,19 +467,33 @@ def execute(request):
     binding = request.get('binding')
     if op == 'desktop_list_windows':
         windows = []
+        identity_errors=[]
+        matched_visible=0
         def visit(hwnd, _):
+            nonlocal matched_visible
             if len(windows) >= 200 or not gui.IsWindowVisible(hwnd):
                 return
             try:
-                ident = identity(hwnd)
-                if a.get('pid') and ident['pid'] != a['pid']:
+                # Filter before opening tokens or querying other processes.
+                if a.get('pid') and process.GetWindowThreadProcessId(hwnd)[1] != a['pid']:
                     return
+                matched_visible+=1
+                ident = identity(hwnd)
                 title=gui.GetWindowText(hwnd)
                 windows.append({'identity':ident, 'pid':ident['pid'], 'title':'[redacted title]' if SECRET.search(title) else redact_text(title)[:200], 'bounds':list(gui.GetWindowRect(hwnd)), 'dpi':user.GetDpiForWindow(hwnd)})
-            except Exception:
+            except Exception as exc:
+                identity_errors.append(exc)
                 return
         gui.EnumWindows(visit, None)
-        return {'windows':windows}
+        if a.get('pid') and matched_visible and not windows and identity_errors:
+            problem=identity_errors[0]
+            if isinstance(problem,DesktopError):raise problem
+            module=getattr(problem,'name','')
+            module=module if isinstance(module,str) and re.fullmatch(r'[A-Za-z0-9_.]{1,80}',module) else ''
+            fail('DESKTOP_WINDOW_ENUMERATION_FAILED',
+                 'Target window exists but identity lookup failed: '+type(problem).__name__+
+                 ('; missing module='+module if module else '')+'. Check packaged dependencies and permissions; no action performed.')
+        return {'windows':windows,'diagnostics':{'matched_visible':matched_visible,'unreadable':len(identity_errors)}}
     hwnd = check(binding)
     window = root(binding)
     if op == 'desktop_inspect':

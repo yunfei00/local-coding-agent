@@ -186,13 +186,14 @@ Remove-BuildArtifact "build\agent-dist"
 Remove-BuildArtifact "build\pyinstaller"
 New-Item -ItemType Directory -Path "build\pyinstaller" -Force | Out-Null
 $WorkflowTemplates = Join-Path $RepoRoot 'agent\core\workflow_templates.json'
-Invoke-Checked uv run --no-sync pyinstaller --noconfirm --clean --paths $RepoRoot --add-data "$WorkflowTemplates;agent/core" --name lca-agent --distpath build\agent-dist --workpath build\pyinstaller\work --specpath build\pyinstaller agent\launcher.py
+Invoke-Checked uv run --no-sync pyinstaller --noconfirm --clean --paths $RepoRoot --hidden-import win32timezone --add-data "$WorkflowTemplates;agent/core" --name lca-agent --distpath build\agent-dist --workpath build\pyinstaller\work --specpath build\pyinstaller agent\launcher.py
 
 $AgentExe = Join-Path $RepoRoot "build\agent-dist\lca-agent\lca-agent.exe"
 if (-not (Test-Path $AgentExe)) { throw "Packaged Agent executable was not created: $AgentExe" }
 
 Write-Host "[4/11] Smoke test packaged Agent..."
 Invoke-Checked uv run --no-sync python scripts\validation\packaged_agent_smoke.py $AgentExe
+Invoke-Checked uv run --no-sync python scripts\validation\packaged_gui_smoke.py $AgentExe --output build\packaged-gui-smoke.json
 
 Write-Host "[5/11] Install Desktop dependencies..."
 if ($ReuseDependencies) {
@@ -247,6 +248,9 @@ if ($InstallProcess.ExitCode -ne 0) { throw "Setup installer exited with code $(
 $InstalledExe = Join-Path $InstallDir "LocalCodingAgent.exe"
 if (-not (Test-Path $InstalledExe)) { throw "Setup did not create expected executable: $InstalledExe" }
 Invoke-DesktopSmoke -Executable $InstalledExe -Name "setup"
+$PermissionEvidence = Join-Path $RepoRoot ('validation-reports\v10-installed-permissions-'+[guid]::NewGuid().ToString('N'))
+Invoke-Checked node scripts/validation/v10-permission-desktop.cjs $InstalledExe $PermissionEvidence
+Copy-Item (Join-Path $PermissionEvidence 'report.json') (Join-Path $RepoRoot 'build\packaged-permission-smoke.json')
 Invoke-DesktopSmoke -Executable $InstalledExe -Name "setup-no-sdk" -NoSDK
 Copy-Item (Join-Path $RepoRoot 'build\packaged-setup-no-sdk-smoke.json') (Join-Path $RepoRoot 'build\packaged-setup-no-sdk-first-smoke.json')
 Invoke-DesktopSmoke -Executable $InstalledExe -Name "setup-no-sdk" -NoSDK -ReuseData

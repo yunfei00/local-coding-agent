@@ -124,6 +124,7 @@ async function main(){
   }
   await page.exposeFunction('unifiedValidationEvent',async e=>{
    const p=e.payload||{};
+   if(currentCase?.name==='native-gui'&&e.type==='tool.started'){const a=p.arguments||{};currentCase.native_operations||=[];currentCase.native_operations.push({name:p.name,pid:a.pid,window_id:a.window_id,path:a.path,...(['start_process','run_command'].includes(p.name)?{command:a.command}:{}),...(a.selector?{selector:a.selector}:{})});save();}
    const guiCase=currentCase?.name==='gui'||currentCase?.name==='visual';
    if(currentCase?.name==='visual'&&e.type==='model.attachment'){currentCase.attachment=p;save();}
    if(currentCase?.name==='visual'&&e.type==='vision.observed'){currentCase.attachment=p;save();}
@@ -277,7 +278,7 @@ async function main(){
      if(compiled.status!==0)throw Error('NATIVE_GUI_FIXTURE_COMPILE_FAILED');
      fs.appendFileSync(path.join(folder,'.gitignore'),'GuiFixture.exe\ngui-saved.txt\n');
      shell(['add','.gitignore'],folder);shell(['commit','-qm','Isolated native GUI fixture boundary'],folder);
-     await runCase(profile,'native-gui',`这是 Windows 界面操作验收，不是开发任务。通过 start_process 启动已编译的 ${executable}，唯一命令行参数为当前工程绝对路径（路径有空格必须正确引用）。通过 read_process 等待 stdout LCA_GUI_READY pid=，只使用本次实际 pid。定位“LCA v1.0 隔离保存验收”窗口、激活并读取 UIA。通过桌面工具在“验收内容”文本框输入 ${guiValue}，点击“保存”，检查“保存状态”控件变为已保存，并读取 gui-saved.txt 验证值。保存后调用 desktop_screenshot（share_with_model=false）留下真实结果图片，再停止本次启动的进程并报告真实证据。不得直接写 gui-saved.txt、不得修改夹具源码、不得运行代码测试。普通已授权 GUI 操作无需反复审批。`,r=>r.runtime.phase==='completed'&&r.native_gui_saved===guiValue&&r.tools.some(t=>t.ok&&t.name==='desktop_type_text')&&r.tools.some(t=>t.ok&&t.name==='desktop_click')&&r.tools.some(t=>t.ok&&t.name==='stop_process')&&r.tools.some(t=>t.ok&&t.name==='desktop_screenshot'),{folder,native:true});
+     await runCase(profile,'native-gui',(manifest.release_task?'这是一项综合开发与桌面任务。先使用 workflow_template bugfix，Planner 读取工程制定计划，Developer 修复 calculator.py 的 add 加法并为数字输入校验新增 unittest（原 tests/test_calc.py 不能修改），只允许有限 int/float，bool、字符串、None、NaN、Infinity 抛 ValueError；Developer 还必须完成下面的真实 GUI 操作，Reviewer 独立重新读取并 workflow_review，Tester 真正运行 uv run --no-project python -m unittest discover -s tests -v 与 git diff --check，完成全部计划并中文交付，不提交。':'这是 Windows 界面操作验收，不是开发任务。')+`通过 start_process 启动已编译的 ${executable}，唯一命令行参数为当前工程绝对路径（路径有空格必须正确引用）。通过 read_process 等待 stdout LCA_GUI_READY pid=，只使用本次实际 pid。定位“LCA v1.0 隔离保存验收”窗口、激活并读取 UIA。通过桌面工具在“验收内容”文本框输入 ${guiValue}，点击“保存”，检查“保存状态”控件变为已保存，并读取 gui-saved.txt 验证值。保存后调用 desktop_screenshot（share_with_model=false）留下真实结果图片，再停止本次启动的进程并报告真实证据。不得直接写 gui-saved.txt、不得修改夹具源码或直接写入 GUI 结果。GUI 必须使用桌面工具实际操作。普通已授权 GUI 操作无需反复审批。${manifest.release_task?'代码修改后必须独立运行测试。':'不得运行代码测试。'}`,r=>r.runtime.phase==='completed'&&r.native_gui_saved===guiValue&&r.tools.some(t=>t.ok&&t.name==='desktop_type_text')&&r.tools.some(t=>t.ok&&t.name==='desktop_click')&&r.tools.some(t=>t.ok&&t.name==='stop_process')&&r.tools.some(t=>t.ok&&t.name==='desktop_screenshot')&&(!manifest.release_task||(r.runtime.outcome==='completed_verified'&&r.independent?.exit_code===0&&['planner','developer','reviewer','tester'].every(role=>r.runtime.role_handoffs?.some(h=>h.role===role)))),{folder,native:true,workflow:!!manifest.release_task});
     }
     await runCase(profile,'analysis','解释 calculator.py 的职责，以及它为何不能通过 tests/test_calc.py。读取必要源码，给出真实文件证据与具体原因。',r=>r.runtime.intent==='analysis'&&r.runtime.phase==='completed'&&r.answer.length>0&&r.tools.some(t=>t.name==='read_file')&&r.dirty==='');
     await runCase(profile,'change','为 calculator.py 的 add 函数增加输入校验，只接受有限的 int/float 数字；任一参数为 bool、字符串、None、NaN、正负 Infinity 时抛 ValueError。修复加法，保留原测试，新增 unittest 覆盖上述全部边界。使用 uv run --no-project python -m unittest discover -s tests -v，不提交。',r=>r.runtime.outcome==='completed_verified'&&r.runtime.changed_paths.includes('calculator.py')&&r.independent?.exit_code===0);
@@ -461,7 +462,7 @@ async function main(){
    if(options.native){const file=path.join(currentFolder,'gui-saved.txt');currentCase.native_gui_saved=fs.existsSync(file)?fs.readFileSync(file,'utf8'):null;}
    if(options.gui){const file=path.join(currentFolder,'frontend/.runtime/saved.json');currentCase.gui={saved:fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')).value:null};}
    if(options.visual){const file=path.join(currentFolder,'frontend/.runtime/result.json');currentCase.visual_verified=fs.existsSync(file)&&JSON.parse(fs.readFileSync(file,'utf8')).verified===true;}
-   const contractArgs=['run','--locked','python','scripts/validation/unified_contract.py','--original',baselineTest,'--project',currentFolder,...(['change','followup'].includes(name)?['--input-validation']:[]),...(['question','analysis','context','json','project-memory','memory-reopen'].includes(name)||options.frontend||options.gui||options.native||options.revocation||options.approval?['--structure-only']:[])];
+   const contractArgs=['run','--locked','python','scripts/validation/unified_contract.py','--original',baselineTest,'--project',currentFolder,...((['change','followup'].includes(name)||(options.native&&manifest.release_task))?['--input-validation']:[]),...(['question','analysis','context','json','project-memory','memory-reopen'].includes(name)||options.frontend||options.gui||(options.native&&!options.workflow)||options.revocation||options.approval?['--structure-only']:[])];
    const originalCheck=cp.spawnSync('uv',contractArgs,{cwd:manifest.root,encoding:'utf8',windowsHide:true,timeout:60000});
    currentCase.original_test_contract={exit_code:originalCheck.status,...JSON.parse(originalCheck.stdout||'{}')};
    if(options.frontend){
@@ -480,7 +481,7 @@ async function main(){
      }catch(error){currentCase.gui={result:'FAIL',reason:String(error.message).slice(0,300)};}
      finally{if(fixture)await fixture.close().catch(()=>{});}
     }
-   }else if(!['question','analysis','context','json','project-memory','memory-reopen'].includes(name)&&!options.gui&&!options.native&&!options.revocation&&!options.approval){
+   }else if(!['question','analysis','context','json','project-memory','memory-reopen'].includes(name)&&!options.gui&&(!options.native||options.workflow)&&!options.revocation&&!options.approval){
     const check=cp.spawnSync('uv',['run','--no-project','python','-m','unittest','discover','-s','tests','-v'],{cwd:currentFolder,encoding:'utf8',windowsHide:true,timeout:60000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
     currentCase.independent={exit_code:check.status,summary:(check.stdout+check.stderr).slice(-2500)};
    }
