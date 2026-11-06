@@ -1,15 +1,26 @@
 import {describe,it,expect,vi,afterEach} from 'vitest';
-import {mkdtemp,readFile,writeFile,rm,readdir} from 'node:fs/promises';
+import {mkdtemp,readFile,writeFile,rm,readdir,rename} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {UpdateManager,releaseOffer,checksumFor,updateReceipt} from './updateManager';
+import {UpdateManager,releaseOffer,checksumFor,updateReceipt,installedUpdateSupported} from './updateManager';
 
 const binary=Buffer.from('isolated installer fixture, never executed');
 const hash=createHash('sha256').update(binary).digest('hex');
 const name='Local-Coding-Agent-1.0.1-x64-Setup.exe';
 function metadata(){return {tag_name:'v1.0.1',body:'中文更新说明',assets:[name,'SHA256SUMS.txt'].map(n=>({name:n,size:n===name?binary.length:200,browser_download_url:`https://github.com/yunfei00/local-coding-agent/releases/download/v1.0.1/${n}`}))};}
 const roots:string[]=[];
+
+it('recognizes actual NSIS uninstaller names while excluding portable, development and other platforms',async()=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'lca-installed-update-'));roots.push(root);
+ const executable=path.join(root,'LocalCodingAgent.exe'),runtime={packaged:true,platform:'win32',arch:'x64',portable:false};
+ expect(installedUpdateSupported(executable,runtime)).toBe(false);
+ await writeFile(path.join(root,'Uninstall LocalCodingAgent.exe'),'never executed');
+ expect(installedUpdateSupported(executable,runtime)).toBe(true);
+ await rename(path.join(root,'Uninstall LocalCodingAgent.exe'),path.join(root,'Uninstall Local Coding Agent.exe'));
+ expect(installedUpdateSupported(executable,runtime)).toBe(true);
+ for(const override of [{portable:true},{packaged:false},{platform:'linux'},{arch:'arm64'}])expect(installedUpdateSupported(executable,{...runtime,...override})).toBe(false);
+});
 afterEach(async()=>{for(const root of roots.splice(0))await rm(root,{recursive:true,force:true});});
 async function fixture(overrides:{badHash?:boolean;network?:boolean}={}){
  const root=await mkdtemp(path.join(os.tmpdir(),'lca-updater-test-'));roots.push(root);

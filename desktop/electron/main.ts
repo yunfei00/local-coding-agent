@@ -25,7 +25,7 @@ import { checkProtocolCompatibility } from "./protocol";
 import { checkForUpdates } from "./updateCheck";
 import {readProtectedJSON,writeProtectedCipher} from './vaultFile';
 import {appendBoundedLog} from './runtimeLog';
-import {UpdateManager,updateReceipt} from './updateManager';
+import {UpdateManager,updateReceipt,installedUpdateSupported} from './updateManager';
 import {desktopArtifact} from "./desktopArtifact";
 
 const APP_ID = "com.yunfei.localcodingagent";
@@ -947,8 +947,7 @@ ipcMain.handle("agent:update-check", async () => {
 });
 let updateManager:UpdateManager|undefined;
 function installedUpdater(){
-  if(!app.isPackaged||process.platform!=='win32'||process.arch!=='x64'||process.env.PORTABLE_EXECUTABLE_DIR||
-    !existsSync(path.join(path.dirname(process.execPath),'Uninstall Local Coding Agent.exe')))
+  if(!installedUpdateSupported(process.execPath,{packaged:app.isPackaged,platform:process.platform,arch:process.arch,portable:!!process.env.PORTABLE_EXECUTABLE_DIR}))
     throw new Error('自动安装更新仅支持 Windows x64 安装版；开发版和 Portable 请下载新安装包。');
   return updateManager ||=new UpdateManager(app.getPath('userData'),app.getVersion());
 }

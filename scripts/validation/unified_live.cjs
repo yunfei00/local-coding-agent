@@ -145,6 +145,7 @@ async function main(){
     }
     if(guiCase&&p.name==='desktop_inspect'&&guiInspectTarget)guiControls.set(guiInspectTarget,p.result?.data?.controls||[]);
     if(guiCase&&p.name==='desktop_screenshot'&&p.result?.ok)currentCase.capture={exists:!!p.result?.data?.path&&fs.existsSync(p.result.data.path),local_only:p.result?.data?.local_only===true};
+    if(currentCase?.name==='native-gui'&&p.name==='desktop_screenshot'&&p.result?.ok){const file=p.result?.data?.path;currentCase.capture={exists:!!file&&fs.existsSync(file),path:file,sha256:file&&fs.existsSync(file)?crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'):null};}
    }
    if(e.type==='approval.requested'){
     const args=p.arguments||{},tool=String(p.tool||'');

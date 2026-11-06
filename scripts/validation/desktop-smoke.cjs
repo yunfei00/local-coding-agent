@@ -489,6 +489,9 @@ async function main() {
         await page.getByLabel("Profile model ID", {exact:true}).fill(model);
         await page.getByLabel("Profile display name", {exact:true}).fill(model);
         await page.getByLabel("Profile context window", {exact:true}).fill("65536");
+        // This synthetic API emits <200 tokens. Keep the 30k budget test intact
+        // without reserving an unrelated 8192-token response for tiny fixtures.
+        if(model==='api-reviewer')await page.getByLabel('Profile output limit',{exact:true}).fill('1024');
         profileIds[model] = await page.getByLabel("Edit model profile", {exact:true}).inputValue();
       }
     }

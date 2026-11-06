@@ -1801,7 +1801,7 @@ function App() {
                 <option value="workspace">工作区</option>
                 <option value="full_access">完全访问</option>
               </select>
-              <input aria-label="Search chat models" placeholder="Search models / connections" value={modelSearch} onChange={e=>setModelSearch(e.target.value)} style={{maxWidth:180}} />
+              <input aria-label="Search chat models" placeholder="搜索模型或连接" value={modelSearch} onChange={e=>setModelSearch(e.target.value)} style={{maxWidth:180,minWidth:100}} />
               <select
                 className="model-select"
                 aria-label="Chat model"
@@ -1823,7 +1823,7 @@ function App() {
                   <option value="">No models</option>
                 )}
               </select>
-              {selectedModel!=='auto'?<label><input type="checkbox" checked={allowModelFallback} disabled={runningTurnId!==null} onChange={e=>setAllowModelFallback(e.target.checked)}/>允许模型自动回退</label>:null}
+              {selectedModel!=='auto'?<label className="model-fallback-toggle"><input type="checkbox" checked={allowModelFallback} disabled={runningTurnId!==null} onChange={e=>setAllowModelFallback(e.target.checked)}/>允许模型自动回退</label>:null}
               <span className="composer-hints">
                 {modelIdentity ? <span title={modelIdentity}>{modelIdentity}</span> : null}
                 {contextLabel ? (

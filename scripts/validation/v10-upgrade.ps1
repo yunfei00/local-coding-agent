@@ -11,7 +11,7 @@ foreach ($InputPath in @($PreviousInstaller,$PreviousSource,$CandidateInstaller)
     $Resolved=(Resolve-Path -LiteralPath $InputPath).Path
     if (-not ($Resolved.StartsWith((Join-Path $Repo 'build')+'\',[StringComparison]::OrdinalIgnoreCase) -or $Resolved.StartsWith((Join-Path $Repo 'desktop\release')+'\',[StringComparison]::OrdinalIgnoreCase))) { throw 'Only owned repository build artifacts may be installed.' }
 }
-$Existing=@('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*') | ForEach-Object { Get-ItemProperty $_ -ErrorAction SilentlyContinue } | Where-Object DisplayName -eq 'Local Coding Agent'
+$Existing=@('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*') | ForEach-Object { Get-ItemProperty $_ -ErrorAction SilentlyContinue } | Where-Object { $_.DisplayName -match '^Local\s*Coding\s*Agent(?:\s|$)' }
 if ($Existing) { throw 'Existing installation preserved; upgrade acceptance requires no existing registered product.' }
 $Output=Join-Path $Repo ('build\v10-upgrade-'+[guid]::NewGuid().ToString('N'))
 $Install=Join-Path $Output '安装目录 含空格'
@@ -57,5 +57,8 @@ try {
     @{result='PASS';source_version='0.9.0';target_version='1.0.0';data=$Result;installed_executable=(Join-Path $Install 'LocalCodingAgent.exe');kept_installed=[bool]$KeepInstalled;candidate_sha256=(Get-FileHash $CandidateInstaller -Algorithm SHA256).Hash.ToLowerInvariant();clean_os=$false} | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $Output 'report.json')
     Write-Host "Upgrade evidence: $Output"
 } finally {
-    foreach ($Key in $Saved.Keys) { [Environment]::SetEnvironmentVariable($Key,$Saved[$Key],'Process') }
+    foreach ($Key in $Saved.Keys) {
+        if ($null -eq $Saved[$Key]) { Remove-Item -LiteralPath "Env:$Key" -ErrorAction SilentlyContinue }
+        else { [Environment]::SetEnvironmentVariable($Key,$Saved[$Key],'Process') }
+    }
 }

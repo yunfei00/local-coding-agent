@@ -2,6 +2,7 @@ import https from 'node:https';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {createReadStream, createWriteStream} from 'node:fs';
+import {existsSync} from 'node:fs';
 import {mkdir,readFile,rename,unlink,writeFile,stat} from 'node:fs/promises';
 import {Transform} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
@@ -12,6 +13,11 @@ const API=`https://api.github.com/repos/${REPOSITORY}/releases/latest`;
 type Asset={name:string;browser_download_url:string;size:number};
 export type Offer={version:string;notes:string;installer:Asset;checksums:Asset};
 type Download=(url:string,file:string,limit:number)=>Promise<void>;
+
+export function installedUpdateSupported(executable:string,runtime:{packaged:boolean;platform:string;arch:string;portable:boolean}):boolean {
+  return runtime.packaged&&runtime.platform==='win32'&&runtime.arch==='x64'&&!runtime.portable&&
+    ['Uninstall LocalCodingAgent.exe','Uninstall Local Coding Agent.exe'].some(name=>existsSync(path.join(path.dirname(executable),name)));
+}
 
 export function releaseOffer(current:string,metadata:ReleaseMetadata):Offer|null {
   const tag=metadata.tag_name||'';

@@ -93,7 +93,7 @@ function Invoke-DesktopSmoke {
     $SavedRuntimeEnvironment = @{}
     foreach ($Key in @('PYTHONPATH','PYTHONHOME','VIRTUAL_ENV','NODE_PATH','UV_PROJECT_ENVIRONMENT','ELECTRON_RUN_AS_NODE')) {
         $SavedRuntimeEnvironment[$Key] = [Environment]::GetEnvironmentVariable($Key,'Process')
-        if ($NoSDK) { [Environment]::SetEnvironmentVariable($Key,$null,'Process') }
+        if ($NoSDK -or $Key -eq 'ELECTRON_RUN_AS_NODE') { Remove-Item -LiteralPath "Env:$Key" -ErrorAction SilentlyContinue }
     }
     if ($NoSDK) {
         $EmptyBin = Join-Path $SmokeData 'empty-path'
@@ -102,6 +102,9 @@ function Invoke-DesktopSmoke {
         $env:LCA_NO_SDK_ACCEPTANCE = '1'
     }
 
+    $DesktopProcess = $null
+    $Smoke = $null
+    $StartedAt = Get-Date
     try {
         $DesktopProcess = Start-Process -FilePath $Executable -PassThru -WindowStyle Hidden
         $Deadline = (Get-Date).AddSeconds(45)
@@ -113,7 +116,10 @@ function Invoke-DesktopSmoke {
         }
 
         if (-not (Test-Path $SmokeFile)) {
-            throw "$Name did not connect Renderer to its bundled Agent."
+            $DesktopProcess.Refresh()
+            $ExitCode = if ($DesktopProcess.HasExited) { $DesktopProcess.ExitCode } else { $null }
+            @{ok=$false;phase='before_renderer_backend_ready';pid=$DesktopProcess.Id;exit_code=$ExitCode;elapsed_seconds=((Get-Date)-$StartedAt).TotalSeconds;executable=$Executable} | ConvertTo-Json | Set-Content $SmokeFile
+            throw "$Name did not connect Renderer to its bundled Agent; pid=$($DesktopProcess.Id), exit=$ExitCode; evidence=$SmokeFile"
         }
 
         $Smoke = Get-Content $SmokeFile -Raw | ConvertFrom-Json
@@ -132,9 +138,19 @@ function Invoke-DesktopSmoke {
         }
     }
     finally {
+        if ($DesktopProcess) {
+            $DesktopProcess.Refresh()
+            if (-not $DesktopProcess.HasExited) {
+                # Exact process handle from this test; never kill by application name.
+                & (Join-Path $env:WINDIR 'System32\taskkill.exe') /PID $DesktopProcess.Id /T /F | Out-Null
+            }
+        }
         $env:PATH = $OldPath
         if ($null -eq $OldNoSdk) { Remove-Item Env:LCA_NO_SDK_ACCEPTANCE -ErrorAction SilentlyContinue } else { $env:LCA_NO_SDK_ACCEPTANCE=$OldNoSdk }
-        foreach ($Key in $SavedRuntimeEnvironment.Keys) { [Environment]::SetEnvironmentVariable($Key,$SavedRuntimeEnvironment[$Key],'Process') }
+        foreach ($Key in $SavedRuntimeEnvironment.Keys) {
+            if ($null -eq $SavedRuntimeEnvironment[$Key]) { Remove-Item -LiteralPath "Env:$Key" -ErrorAction SilentlyContinue }
+            else { [Environment]::SetEnvironmentVariable($Key,$SavedRuntimeEnvironment[$Key],'Process') }
+        }
         if ($null -eq $OldSmoke) { Remove-Item Env:LCA_PACKAGED_SMOKE_FILE -ErrorAction SilentlyContinue } else { $env:LCA_PACKAGED_SMOKE_FILE = $OldSmoke }
         if ($null -eq $OldData) { Remove-Item Env:LCA_DATA_DIR -ErrorAction SilentlyContinue } else { $env:LCA_DATA_DIR = $OldData }
         if ($null -eq $OldOllama) { Remove-Item Env:LCA_OLLAMA_URL -ErrorAction SilentlyContinue } else { $env:LCA_OLLAMA_URL = $OldOllama }
@@ -143,7 +159,10 @@ function Invoke-DesktopSmoke {
     }
 
     Start-Sleep -Milliseconds 750
-    $RemainingAgentIds = @(Get-Process "lca-agent" -ErrorAction SilentlyContinue | Where-Object { $BeforeAgentIds -notcontains $_.Id } | ForEach-Object { $_.Id })
+    $RemainingAgentIds = @(Get-CimInstance Win32_Process -Filter "Name='lca-agent.exe'" | Where-Object {
+        $BeforeAgentIds -notcontains $_.ProcessId -and $Smoke -and $_.ExecutablePath -eq $Smoke.agent_executable -and
+        ($_.ParentProcessId -eq $DesktopProcess.Id -or $Name -eq 'portable')
+    } | ForEach-Object { $_.ProcessId })
     if ($RemainingAgentIds.Count -gt 0) {
         Stop-Process -Id $RemainingAgentIds -Force -ErrorAction SilentlyContinue
         throw "$Name left Agent process(es) running: $($RemainingAgentIds -join ', ')"
@@ -219,7 +238,7 @@ Write-Host "[9/11] Smoke test Portable executable..."
 Invoke-DesktopSmoke -Executable $Portable -Name "portable"
 
 Write-Host "[10/11] Silent-install Setup and smoke test installed executable..."
-$ExistingInstall = @("HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*", "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*") | ForEach-Object { Get-ItemProperty -Path $_ -ErrorAction SilentlyContinue } | Where-Object DisplayName -EQ "Local Coding Agent"
+$ExistingInstall = @("HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*", "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*") | ForEach-Object { Get-ItemProperty -Path $_ -ErrorAction SilentlyContinue } | Where-Object { $_.DisplayName -match '^Local\s*Coding\s*Agent(?:\s|$)' }
 if ($ExistingInstall) { throw "Setup smoke requires a clean Windows profile; an existing Local Coding Agent installation was preserved. Use the clean Windows CI runner for Setup acceptance." }
 $InstallDir = Join-Path $RepoRoot ("build\安装验收 含空格 " + [guid]::NewGuid().ToString("N"))
 $InstallProcess = Start-Process -FilePath $Installer -ArgumentList @("/S", "/D=$InstallDir") -PassThru -Wait -WindowStyle Hidden
