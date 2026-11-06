@@ -346,6 +346,24 @@ def describe(control, parent_id=None):
             'sensitive':hidden, 'editable_document':info.control_type=='Document' and 'richedit' in str(info.class_name).lower(), 'bounds':[rect.left, rect.top, rect.right, rect.bottom]}
 
 
+def wait_timeout_message(state, control=None):
+    """Reuse inspect's redaction, never echo expected text or UIA exceptions."""
+    observation={'selector_found':control is not None}
+    if control is not None:
+        try:
+            item=describe(control)
+            hidden=item.get('sensitive') or item.get('control_type') in ('Edit','Document')
+            observation.update({key:('[redacted]' if hidden and key in ('name','automation_id') else item.get(key))
+                                for key in ('name','automation_id','control_type','enabled','visible')})
+        except Exception:
+            observation['observation']='unavailable; inspect the current window again'
+    safe_state=state if state in ('exists','enabled','disabled','visible','hidden','name') else '[invalid]'
+    return ('控件等待超时，未判定成功。state='+safe_state+
+            '；state=name 要求完整名称精确相等，不支持正则、前缀或包含匹配。'+
+            '请按当前 desktop_inspect 的真实名称修正 expected；名称会随状态变化时优先用稳定 automation_id 定位。'+
+            '当前脱敏观测='+json.dumps(observation,ensure_ascii=False))
+
+
 def find(window, selector):
     if not isinstance(selector, dict) or not selector or set(selector)-{'name','automation_id','control_type','runtime_id'}:
         fail('DESKTOP_SELECTOR_REQUIRED', 'Provide an exact selector from desktop_inspect')
@@ -557,6 +575,7 @@ def execute(request):
             fail('DESKTOP_INVALID_ARGUMENT', 'Wait seconds must be 0..30')
         deadline, state = time.monotonic()+seconds, a.get('state','exists')
         while True:
+            control=None
             try:
                 control = find(root(binding), a.get('selector'))
                 matched = {'exists':True,'enabled':control.is_enabled(),'disabled':not control.is_enabled(),'visible':control.is_visible(),'hidden':not control.is_visible(),'name':not sensitive(control) and control.element_info.control_type not in ('Edit','Document') and control.element_info.name == a.get('expected')}.get(state)
@@ -567,7 +586,7 @@ def execute(request):
             if matched:
                 return {'matched':True,'state':state}
             if time.monotonic() >= deadline:
-                fail('DESKTOP_WAIT_TIMEOUT', 'Requested control state did not occur before the deadline')
+                fail('DESKTOP_WAIT_TIMEOUT', wait_timeout_message(state,control))
             time.sleep(.05)
     if op == 'desktop_click' and a.get('method','uia') == 'coordinate':
         current=geometry(hwnd)

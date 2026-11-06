@@ -51,4 +51,32 @@ class PackagedWindowDiagnosticsTests(unittest.TestCase):
             self.assertTrue(worker.caption_focus_click({}));send.assert_called_once_with([(0,0,2),(0,0,4)])
 
 
+class WaitDiagnosticTests(unittest.TestCase):
+    def test_timeout_reports_safe_observed_label_and_exact_matching(self):
+        observed={'name':'已保存：GUI-unit','automation_id':'SaveStatus','control_type':'Text','enabled':True,'visible':True,'sensitive':False}
+        with patch.object(worker,'describe',return_value=observed):
+            message=worker.wait_timeout_message('name',object())
+        self.assertIn('已保存：GUI-unit',message)
+        self.assertIn('SaveStatus',message)
+        self.assertIn('精确相等',message)
+        self.assertIn('未判定成功',message)
+
+    def test_sensitive_or_editable_text_is_never_returned_in_diagnostic(self):
+        for kind,secret in (('Text',True),('Edit',False),('Document',False)):
+            with self.subTest(kind=kind),patch.object(worker,'describe',return_value={'name':'private-content','automation_id':'private-id','control_type':kind,'sensitive':secret}):
+                message=worker.wait_timeout_message('name',object())
+                self.assertNotIn('private-content',message);self.assertNotIn('private-id',message)
+
+    def test_missing_selector_requires_fresh_inspection(self):
+        message=worker.wait_timeout_message('exists')
+        self.assertIn('"selector_found": false',message)
+        self.assertIn('desktop_inspect',message)
+
+    def test_uia_exception_text_is_not_copied(self):
+        with patch.object(worker,'describe',side_effect=RuntimeError('private-content')):
+            message=worker.wait_timeout_message('name',object())
+        self.assertNotIn('private-content',message)
+        self.assertIn('unavailable',message)
+
+
 if __name__=='__main__':unittest.main()
