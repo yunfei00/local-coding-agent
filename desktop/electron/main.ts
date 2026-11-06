@@ -961,7 +961,7 @@ ipcMain.handle("agent:update-check", async () => {
 let updateManager:UpdateManager|undefined;
 function installedUpdater(){
   if(process.platform!=='win32'||process.arch!=='x64')throw new Error('更新下载仅支持 Windows x64');
-  return updateManager ||=new UpdateManager(app.getPath('userData'),app.getVersion(),undefined,undefined,{portable:!!process.env.PORTABLE_EXECUTABLE_DIR,emit:state=>mainWindow?.webContents.send('update:state',state)});
+  return updateManager ||=new UpdateManager(app.getPath('userData'),app.getVersion(),undefined,undefined,{portable:!!process.env.PORTABLE_EXECUTABLE_DIR,emit:state=>{if(mainWindow&&!mainWindow.isDestroyed()&&!mainWindow.webContents.isDestroyed())mainWindow.webContents.send('update:state',state);}});
 }
 ipcMain.handle('agent:environment',()=>sendRequest('maintenance.environment','maintenance.loaded'));
 ipcMain.handle('agent:data-backup',()=>sendRequest('maintenance.backup','maintenance.loaded'));
@@ -1542,6 +1542,7 @@ app.whenReady().then(() => {
 });
 
 app.on("before-quit", (event) => {
+  updateManager?.cancel();
   if (quitReady) {
     return;
   }

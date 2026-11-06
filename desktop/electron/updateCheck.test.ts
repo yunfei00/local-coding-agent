@@ -1,12 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it,vi } from "vitest";
+import https from 'node:https';
+import {EventEmitter} from 'node:events';
 
 import {
   checkForUpdates,
   compareVersions,
-  releaseResult
+  releaseResult,requestJson
 } from "./updateCheck";
 
 describe("manual update check policy", () => {
+  it('mid-response interruption is handled without an uncaught main-process error',async()=>{
+    const spy=vi.spyOn(https,'get').mockImplementation(((...args:unknown[])=>{
+      const request=Object.assign(new EventEmitter(),{setTimeout:vi.fn(),destroy:vi.fn()});
+      queueMicrotask(()=>{const response=Object.assign(new EventEmitter(),{setEncoding:vi.fn(),statusCode:200});(args[2] as (r:unknown)=>void)(response);response.emit('data','{');response.emit('aborted');response.emit('error',Error('connection reset'));request.emit('close');});
+      return request;
+    }) as unknown as typeof https.get);
+    try{await expect(requestJson('https://api.github.com/repos/yunfei00/local-coding-agent/releases/latest',1000)).rejects.toThrow('连接中断');}finally{spy.mockRestore();}
+  });
   it("compares semantic versions", () => {
     expect(compareVersions("0.2.0", "0.1.0")).toBe(1);
     expect(compareVersions("v0.1.0", "0.1.0")).toBe(0);

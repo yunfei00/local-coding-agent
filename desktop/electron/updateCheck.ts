@@ -113,6 +113,8 @@ export function requestJson(
         const status = response.statusCode ?? 0;
         let body = "";
         response.setEncoding("utf8");
+        response.on('error',reject);
+        response.on('aborted',()=>reject(new Error('更新检查连接中断')));
         response.on("data", (chunk: string) => {
           body += chunk;
           if (body.length > 1_000_000) {
@@ -136,6 +138,8 @@ export function requestJson(
     request.setTimeout(timeoutMs, () => {
       request.destroy(new Error("Update check timed out."));
     });
+    const deadline=setTimeout(()=>request.destroy(new Error('更新检查总时间超限')),timeoutMs);
+    request.on('close',()=>clearTimeout(deadline));
     request.on("error", reject);
   });
 }
