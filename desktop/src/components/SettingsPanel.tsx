@@ -1,3 +1,4 @@
+import {UpdateSettings} from './UpdateSettings';
 import { MCPSettingsSection } from "./MCPSettingsSection";
 import { ModelSettingsSection } from "./ModelSettingsSection";
 import { useEffect, useMemo, useState } from "react";
@@ -43,20 +44,8 @@ type PromptRulesPayload = {
   thread?: PromptRule | null;
 };
 
-type UpdateCheckResult = {
-  ok: boolean;
-  checked_at: string;
-  current_version: string;
-  latest_version?: string;
-  update_available: boolean;
-  release_url?: string;
-  error?: string;
-  automatic: false;
-  can_auto_download: false;
-  can_auto_install: false;
-};
-
 type Tab =
+  | "about"
   | "general"
   | "provider"
   | "models"
@@ -77,7 +66,8 @@ type Props = {
 };
 
 const tabs: Array<{ id: Tab; label: string }> = [
-  { id: "general", label: "General" },
+  { id: "general", label: "常规" },
+  { id: "about", label: "关于" },
   { id: "provider", label: "Provider" },
   { id: "models", label: "Models & Routing" },
   { id: "agent", label: "Agent" },
@@ -158,9 +148,10 @@ export function SettingsPanel({
     thread: true
   });
   const [busy, setBusy] = useState(false);
-  const [updateBusy, setUpdateBusy] = useState(false);
-  const [updateResult, setUpdateResult] =
-    useState<UpdateCheckResult | null>(null);
+  const [permissionScope,setPermissionScope]=useState("global");
+  const [permissionTask,setPermissionTask]=useState("");
+  const [authorization,setAuthorization]=useState<{global:string;projects:Record<string,string>;tasks:Record<string,string>}|null>(null);
+  useEffect(()=>{if(window.localAgent.getPermission)void window.localAgent.getPermission().then(event=>{setAuthorization(event.payload?.authorization as typeof authorization);setPermissionTask(String(event.payload?.task_key||''));}).catch(()=>{});},[projectId,threadId]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -231,41 +222,6 @@ export function SettingsPanel({
       current ? { ...current, [key]: value } : current
     );
     setMessage(null);
-  };
-
-  const checkUpdates = async () => {
-    setUpdateBusy(true);
-    setError(null);
-    try {
-      const result = await window.localAgent.checkForUpdates();
-      setUpdateResult(result);
-    } catch (nextError) {
-      setUpdateResult({
-        ok: false,
-        checked_at: new Date().toISOString(),
-        current_version: "unknown",
-        update_available: false,
-        error: String(nextError),
-        automatic: false,
-        can_auto_download: false,
-        can_auto_install: false
-      });
-    } finally {
-      setUpdateBusy(false);
-    }
-  };
-
-  const openRelease = async () => {
-    const url = updateResult?.release_url;
-    if (!url) {
-      return;
-    }
-    setError(null);
-    try {
-      await window.localAgent.openReleasePage(url);
-    } catch (nextError) {
-      setError(String(nextError));
-    }
   };
 
   const save = async () => {
@@ -378,14 +334,13 @@ export function SettingsPanel({
     }
   };
 
-  const changePermission = async (mode: PermissionMode) => {
-    if (running) {
-      return;
-    }
+  const changePermission = async (mode: PermissionMode | "inherit") => {
     setBusy(true);
     setError(null);
     try {
-      const event = await window.localAgent.setPermission(mode);
+      const event = await window.localAgent.setPermission(mode,{scope:permissionScope,target:permissionScope==="project"?projectId:permissionScope==="task"?permissionTask:undefined});
+      setAuthorization(event.payload?.authorization as typeof authorization);
+      if(permissionScope==='task'&&event.payload?.canonical_target)setPermissionTask(String(event.payload.canonical_target));
       const next = event.payload?.mode;
       if (
         next === "read_only" ||
@@ -394,7 +349,7 @@ export function SettingsPanel({
       ) {
         onPermissionChanged(next);
       }
-      setMessage("Permission mode updated.");
+      setMessage("权限已更新，新操作立即按有效授权检查。");
     } catch (nextError) {
       setError(String(nextError));
     } finally {
@@ -539,67 +494,6 @@ export function SettingsPanel({
                   <strong>{projectId ? "Open" : "None"}</strong>
                 </div>
               </div>
-              <div className="settings-update-card">
-                <div>
-                  <strong>Updates</strong>
-                  <p>
-                    Update checks are manual in v0.2. The app never downloads
-                    or installs an update automatically.
-                  </p>
-                </div>
-                <div className="settings-update-actions">
-                  <button
-                    type="button"
-                    className="settings-secondary"
-                    disabled={updateBusy}
-                    onClick={() => void checkUpdates()}
-                  >
-                    {updateBusy ? "Checking…" : "Check for updates"}
-                  </button>
-                  {updateResult?.update_available &&
-                  updateResult.release_url ? (
-                    <button
-                      type="button"
-                      onClick={() => void openRelease()}
-                    >
-                      Open release page
-                    </button>
-                  ) : null}
-                </div>
-                {updateResult ? (
-                  <div
-                    className={
-                      "settings-update-result " +
-                      (updateResult.ok ? "ok" : "error")
-                    }
-                  >
-                    {updateResult.ok ? (
-                      updateResult.update_available ? (
-                        <>
-                          Update available: v
-                          {updateResult.current_version} → v
-                          {updateResult.latest_version}
-                        </>
-                      ) : (
-                        <>
-                          Up to date · v{updateResult.current_version}
-                          {updateResult.latest_version
-                            ? " · latest v" + updateResult.latest_version
-                            : ""}
-                        </>
-                      )
-                    ) : (
-                      <>
-                        Update check unavailable
-                        {updateResult.error
-                          ? " · " + updateResult.error
-                          : ""}
-                      </>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-
               <div className="settings-bottom-actions">
                 <button
                   type="button"
@@ -612,6 +506,8 @@ export function SettingsPanel({
               </div>
             </div>
           ) : null}
+
+          {tab === "about" ? <div className="settings-section"><h2>关于</h2><UpdateSettings/><button onClick={()=>void window.localAgent.backupData().then(event=>setMessage('备份已保存：'+String(event.payload?.path))).catch(error=>setError(String(error)))}>备份应用数据</button></div> : null}
 
           {tab === "provider" ? <div className="settings-section"><h2>Provider Connections</h2><p>连接与模型统一由 Models &amp; Routing 管理。旧配置和凭据继续保留兼容。</p><button onClick={() => setTab("models")}>Manage model connections</button></div> : null}
 
@@ -770,29 +666,33 @@ export function SettingsPanel({
 
           {tab === "safety" ? (
             <div className="settings-section">
-              <h2>Safety</h2>
+              <h2>权限与安全</h2>
+              <label className="settings-field"><span>授权范围</span><select value={permissionScope} onChange={e=>{const scope=e.target.value;setPermissionScope(scope);if(scope==='task')void window.localAgent.getPermission().then(event=>{setAuthorization(event.payload?.authorization as typeof authorization);setPermissionTask(String(event.payload?.task_key||''));}).catch(error=>setError(String(error)));}}>
+                <option value="global">全局默认（新工程继承）</option><option value="project" disabled={!projectId}>当前项目覆盖</option><option value="task" disabled={!threadId}>当前任务临时覆盖</option>
+              </select></label>
+              {permissionScope==='task'?<label className="settings-field"><span>当前任务</span><code>{permissionTask||"尚无可授权任务，请先创建任务"}</code></label>:null}
+              {permissionScope!=='global'?<button onClick={()=>void changePermission('inherit')}>撤销本范围覆盖，继承上级权限</button>:null}
               <label className="settings-field">
-                <span>Permission mode</span>
+                <span>权限模式</span>
                 <select
-                  value={permissionMode}
-                  disabled={busy || running}
+                  value={permissionScope==='global'?(authorization?.global||permissionMode):permissionScope==='project'?(authorization?.projects[projectId||'']||'inherit'):(authorization?.tasks[permissionTask]||'inherit')}
+                  disabled={busy||(permissionScope==='task'&&!permissionTask)}
                   onChange={(event) =>
                     void changePermission(
-                      event.target.value as PermissionMode
+                      event.target.value as PermissionMode | "inherit"
                     )
                   }
                 >
-                  <option value="read_only">Read Only</option>
-                  <option value="workspace">Workspace</option>
-                  <option value="full_access">Full Access</option>
+                  {permissionScope!=='global'?<option value="inherit">继承上级权限</option>:null}
+                  <option value="read_only">只读</option>
+                  <option value="workspace">工作区</option>
+                  <option value="full_access">完全访问</option>
                 </select>
               </label>
               <div className="settings-safety-note">
-                <strong>Hard boundary</strong>
+                <strong>安全边界</strong>
                 <p>
-                  Prompt Rules cannot bypass permission checks, workspace
-                  boundaries or approval requirements. Risky publishing and
-                  destructive operations remain approval-gated.
+                  完全访问允许普通工具连续执行，首次启用确认一次；不取得管理员权限，不绕过 UAC、锁屏或系统保护。高风险、凭据外传、未知副作用重放和远程发布仍单独限制。可随时撤销，新操作立即生效。
                 </p>
               </div>
             </div>

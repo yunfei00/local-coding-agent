@@ -12,6 +12,14 @@ contextBridge.exposeInMainWorld("localAgent", {
   notifyRendererReady: () => ipcRenderer.send("renderer:ready"),
   getAgentStatus: () => ipcRenderer.invoke("agent:get-status"),
   checkForUpdates: () => ipcRenderer.invoke("agent:update-check"),
+  environment: () => ipcRenderer.invoke('agent:environment'),
+  backupData: () => ipcRenderer.invoke('agent:data-backup'),
+  downloadUpdate: () => ipcRenderer.invoke('agent:update-download'),
+  getUpdateState: () => ipcRenderer.invoke('agent:update-state'),
+  cancelUpdateDownload: () => ipcRenderer.invoke('agent:update-cancel'),
+  openUpdatePackage: () => ipcRenderer.invoke('agent:update-open-package'),
+  openUpdateFolder: () => ipcRenderer.invoke('agent:update-open-folder'),
+  onUpdateState: (handler:(state:unknown)=>void) => {const listener=(_event:unknown,state:unknown)=>handler(state);ipcRenderer.on('update:state',listener);return ()=>ipcRenderer.removeListener('update:state',listener);},
   openReleasePage: (url: string) =>
     ipcRenderer.invoke("agent:update-open-release", url),
   getDiagnostics: () => ipcRenderer.invoke("agent:diagnostics-get"),
@@ -106,8 +114,8 @@ contextBridge.exposeInMainWorld("localAgent", {
   refreshContext: (threadId: string) =>
     ipcRenderer.invoke("agent:context-refresh", threadId),
   getPermission: () => ipcRenderer.invoke("agent:permission-get"),
-  setPermission: (mode: string) =>
-    ipcRenderer.invoke("agent:permission-set", mode),
+  setPermission: (mode: string, options?: {scope?:string;target?:string}) =>
+    ipcRenderer.invoke("agent:permission-set", mode, options),
   respondApproval: (
     approvalId: string,
     decision: "allow_once" | "allow_turn" | "deny",

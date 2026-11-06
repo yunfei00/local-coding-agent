@@ -41,6 +41,14 @@ declare global {
         can_auto_install: false;
       }>;
       openReleasePage: (url: string) => Promise<{ ok: boolean }>;
+      environment: () => Promise<AgentEnvelope>;
+      backupData: () => Promise<AgentEnvelope>;
+      downloadUpdate: () => Promise<{ready:boolean;version:string;sha256:string;notes:string}>;
+      getUpdateState: () => Promise<import('../electron/updateManager').UpdateState>;
+      cancelUpdateDownload: () => Promise<{cancelled:boolean}>;
+      openUpdatePackage: () => Promise<{opened:boolean}>;
+      openUpdateFolder: () => Promise<{opened:boolean}>;
+      onUpdateState: (handler:(state:import('../electron/updateManager').UpdateState)=>void) => ()=>void;
       getDiagnostics: () => Promise<{
         event: AgentEnvelope;
         desktop: {
@@ -176,7 +184,7 @@ declare global {
         threadId?: string
       ) => Promise<AgentEnvelope>;
       getPermission: () => Promise<AgentEnvelope>;
-      setPermission: (mode: string) => Promise<AgentEnvelope>;
+      setPermission: (mode: string, options?: {scope?:string;target?:string}) => Promise<AgentEnvelope>;
       respondApproval: (
         approvalId: string,
         decision: "allow_once" | "allow_turn" | "deny",

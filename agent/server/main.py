@@ -177,6 +177,12 @@ class AgentServer:
                 self.permissions.set_mode(saved_permission)
             except ValueError:
                 pass
+        from agent.permissions.authorization import AuthorizationSettings
+        self.authorizations = AuthorizationSettings(self.store)
+        if self.store.get_setting(self.authorizations.KEY):
+            self.permissions.set_mode(self.authorizations.load()['global'])
+        if saved_permission == "full_access" and not self.authorizations.load()["full_access_confirmed"]:
+            self.permissions.set_mode("workspace")
         self.approvals = ApprovalManager()
         self.recent_errors: deque[dict[str, Any]] = deque(maxlen=20)
         self.last_context_usage: dict[str, Any] | None = None
@@ -293,7 +299,7 @@ class AgentServer:
             "context_window": self.provider.context_window,
             "settings": self._settings_payload(),
             "permission": {
-                "mode": self.permissions.mode.value,
+                "mode": self._permission_policy(self.projects.active).mode.value,
                 "available_modes": self.permissions.available_modes,
             },
             "persistence": {
@@ -623,7 +629,7 @@ class AgentServer:
                 return
 
             project.workspace.set_full_access(
-                self.permissions.mode == PermissionMode.FULL_ACCESS
+                self._permission_policy(project).mode == PermissionMode.FULL_ACCESS
             )
             self.mcp_runtime.apply_to_project(project)
             response_payload = self.projects.project_payload(project)
@@ -644,52 +650,74 @@ class AgentServer:
             )
             return
 
-        if message_type == "permission.get":
-            await ws.send_json(
-                envelope(
-                    "permission.loaded",
-                    {
-                        "mode": self.permissions.mode.value,
-                        "available_modes": self.permissions.available_modes,
-                    },
-                    request_id=request_id,
-                )
-            )
+        if message_type.startswith('maintenance.'):
+            try:
+                from agent.persistence.backup import create_backup
+                if message_type=='maintenance.environment':
+                    import shutil
+                    from agent.desktop.resources import memory_snapshot
+                    from agent.core.model_catalog import ModelCatalog
+                    catalog=ModelCatalog(self.store,self.settings).load()
+                    result={'windows':platform.platform(),'memory':memory_snapshot(),'disk_free_bytes':shutil.disk_usage(self.store.data_dir).free,
+                        'tools':{name:bool(shutil.which(name)) for name in ('git','node','uv','python')},
+                        'backend_ready':True,'bundled_backend':bool(getattr(sys,'frozen',False)),
+                        'provider_connections':len(catalog['connections']),'model_profiles':len(catalog['profiles']),
+                        'network':'未测试；保存模型或测试连接时验证','nonessential_dependencies_blocking':False}
+                elif message_type=='maintenance.prepare_update':
+                    self.update_preparing=True
+                    try:
+                        for plan_id in list(self.tasks.running):await self.tasks.interrupt(plan_id,'paused')
+                        pending=[]
+                        for turn_id,task in list(self.active_turns.items()):
+                            if task.done():continue
+                            self.paused_turns.add(turn_id)
+                            queued=self.queued_execution(turn_id)
+                            if queued:self.runtime_ledger.transition(queued,'paused',turn_id,outcome='awaiting_user',reason='更新前暂停；未重放操作')
+                            self.approvals.cancel_turn(turn_id);task.cancel();pending.append(task)
+                        if pending:await asyncio.wait_for(asyncio.gather(*pending,return_exceptions=True),45)
+                        result=create_backup(self.store.connection,self.store.data_dir,reason='before-application-update',credential_dir=os.getenv('LCA_DESKTOP_DATA_DIR'))
+                        result['tasks_paused']=True
+                    except BaseException:
+                        self.update_preparing=False
+                        raise
+                elif message_type=='maintenance.cancel_update':
+                    self.update_preparing=False;result={'update_pending':False}
+                elif message_type=='maintenance.backup':
+                    result=create_backup(self.store.connection,self.store.data_dir,reason='user-backup',credential_dir=os.getenv('LCA_DESKTOP_DATA_DIR'))
+                else:raise ValueError('未知维护操作')
+                await ws.send_json(envelope('maintenance.loaded',result,request_id=request_id))
+            except (ValueError,OSError,sqlite3.Error) as exc:
+                await self.send_error(ws,'MAINTENANCE_FAILED',str(exc),request_id=request_id)
+            return
+        if message_type in {'turn.start','task.start','task.resume'} and getattr(self,'update_preparing',False):
+            await self.send_error(ws,'UPDATE_PENDING','更新已准备，禁止新任务；取消更新后可从 Checkpoint 恢复',request_id=request_id)
             return
 
-        if message_type == "permission.set":
-            if any(not task.done() for task in self.active_turns.values()):
-                await self.send_error(
-                    ws,
-                    "TURN_RUNNING",
-                    "Stop the active turn before changing permission mode.",
-                    request_id=request_id,
-                )
-                return
-            requested = str(payload.get("mode") or "")
+        if message_type in {"permission.get", "permission.set"}:
             try:
-                mode = self.permissions.set_mode(requested)
-            except ValueError as exc:
-                await self.send_error(
-                    ws,
-                    "INVALID_PERMISSION_MODE",
-                    str(exc),
-                    request_id=request_id,
-                )
-                return
-
-            self._sync_workspace_permissions()
-            self.store.set_setting("permission_mode", mode.value)
-            await ws.send_json(
-                envelope(
-                    "permission.changed",
-                    {
-                        "mode": mode.value,
-                        "available_modes": self.permissions.available_modes,
-                    },
-                    request_id=request_id,
-                )
-            )
+                if message_type == 'permission.set':
+                    scope=payload.get('scope','global');target=payload.get('target')
+                    if scope=='current':
+                        current=self._current_permission_task()
+                        if current:scope,target='task',current
+                        elif self.projects.active:scope,target='project',self.projects.active.id
+                        else:scope,target='global',None
+                    if scope=='project' and not self.projects.get(target):raise ValueError('项目不存在')
+                    if scope=='task':
+                        row=self.store.connection.execute('SELECT data_json FROM agent_execution_runs WHERE id=?',(target,)).fetchone()
+                        if not row:row=self.store.connection.execute("SELECT data_json FROM agent_execution_runs WHERE json_extract(data_json,'$.permission_task_key')=? LIMIT 1",(target,)).fetchone()
+                        if row:target=json.loads(row[0]).get('permission_task_key',target)
+                        elif not self.store.connection.execute('SELECT id FROM task_plans WHERE id=?',(target,)).fetchone():raise ValueError('选择已创建的任务')
+                    self.authorizations.configure(payload.get('mode'),scope=scope,target=target,confirmed=payload.get('confirm_full_access') is True)
+                    self.permissions.set_mode(self.authorizations.load()['global'])
+                    self._sync_workspace_permissions()
+                data=self.authorizations.load();current=self._current_permission_task()
+                policy=self.authorizations.effective(self.projects.active.id if self.projects.active else None,current) if self.store.get_setting(self.authorizations.KEY) else self.permissions
+                await ws.send_json(envelope('permission.changed' if message_type=='permission.set' else 'permission.loaded',
+                    {'mode':policy.mode.value,'available_modes':self.permissions.available_modes,'authorization':data,'task_key':current,
+                     'canonical_target':target if message_type=='permission.set' else None},request_id=request_id))
+            except (ValueError,TypeError,sqlite3.OperationalError) as exc:
+                await self.send_error(ws,'INVALID_PERMISSION_CONFIG',str(exc),request_id=request_id)
             return
 
         if message_type == "settings.get":
@@ -1121,7 +1149,7 @@ class AgentServer:
                 return
 
             project.workspace.set_full_access(
-                self.permissions.mode == PermissionMode.FULL_ACCESS
+                self._permission_policy(project).mode == PermissionMode.FULL_ACCESS
             )
             self.mcp_runtime.apply_to_project(project)
             response_payload = self.projects.project_payload(project)
@@ -1177,7 +1205,7 @@ class AgentServer:
                 return
             project, thread = selected
             project.workspace.set_full_access(
-                self.permissions.mode == PermissionMode.FULL_ACCESS
+                self._permission_policy(project).mode == PermissionMode.FULL_ACCESS
             )
             self.mcp_runtime.apply_to_project(project)
             await ws.send_json(
@@ -1239,7 +1267,7 @@ class AgentServer:
                     return
             current = self.projects.active
             if current:
-                current.workspace.set_full_access(self.permissions.mode == PermissionMode.FULL_ACCESS)
+                current.workspace.set_full_access(self._permission_policy(current).mode == PermissionMode.FULL_ACCESS)
                 self.mcp_runtime.apply_to_project(current)
             result = self.projects.project_payload(current) if current else {"project":None, "threads":[], "active_thread":None, "messages":[]}
             await ws.send_json(envelope("project.removed", {**result, "removed_project_id":project_id, "active_changed":was_active, "projects":self.projects.list_payload()}, request_id=request_id))
@@ -2060,7 +2088,7 @@ class AgentServer:
                 "last_usage": self.last_context_usage,
             },
             "permission": {
-                "mode": self.permissions.mode.value,
+                "mode": self._permission_policy(self.projects.active).mode.value,
             },
             "workspace": project_payload,
             "prompt_rules": prompt_rules,
@@ -2131,19 +2159,45 @@ class AgentServer:
         self.available_models.clear()
         self.default_model = ('profile:'+self.store.get_setting('chat.default_profile_id')) if self.store.get_setting('chat.default_profile_id') else (self.provider.preferred_model or None)
 
+    def _current_permission_task(self):
+        project=self.projects.active
+        if not project or not project.active_thread_id:return None
+        for turn_id,execution in self.active_executions.items():
+            if self.active_turn_threads.get(turn_id)==project.active_thread_id:
+                return execution.data.get('permission_task_key',execution.key)
+        if self.store.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_execution_runs'").fetchone():
+            row=self.store.connection.execute("SELECT id,data_json FROM agent_execution_runs WHERE thread_id=? AND json_type(data_json,'$.unified')='object' ORDER BY rowid DESC LIMIT 1",(project.active_thread_id,)).fetchone()
+            if row:
+                data=json.loads(row['data_json']);key=data.get('permission_task_key',row['id'])
+                if data['unified'].get('phase') not in {'completed','cancelled'} or key in self.authorizations.load()['tasks']:return key
+        if hasattr(self,'tasks'):
+            tasks=self.tasks.runtime.list(project.active_thread_id)
+            if tasks and tasks[0]['status'] not in {'completed','cancelled'}:return tasks[0]['id']
+        return None
+
+    def _permission_policy(self, project=None, execution=None, turn_id=None):
+        if not self.store.get_setting(self.authorizations.KEY):
+            return self.permissions
+        ident=execution.data.get('permission_task_key',execution.key) if execution else None
+        if not ident and turn_id and hasattr(self,'tasks'):
+            ident=next((key for key,value in self.tasks.running.items() if value==turn_id),None)
+        return self.authorizations.effective(project.id if project else None,ident)
+
     def _sync_workspace_permissions(self) -> None:
-        full_access = self.permissions.mode == PermissionMode.FULL_ACCESS
         for project in self.projects.list_projects():
-            project.workspace.set_full_access(full_access)
+            project.workspace.set_full_access(self._permission_policy(project).mode == PermissionMode.FULL_ACCESS)
 
     def _permission_prompt(self) -> str:
-        mode = self.permissions.mode
+        policy=self._permission_policy(self.projects.active)
+        mode = policy.mode
         if mode == PermissionMode.READ_ONLY:
             return (
                 "Permission mode: Read Only. You can inspect files and Git state, "
                 "but you cannot modify files or run shell commands."
             )
         if mode == PermissionMode.FULL_ACCESS:
+            if policy.continuous:
+                return '当前权限：完全访问。普通开发/终端/Git/桌面操作已授权；不得提权、绕过系统保护或违反本任务限制。高风险操作仍需单独确认。'
             return (
                 "Permission mode: Full Access. Workspace operations are available. "
                 "Absolute paths outside the workspace may be used only when needed and "
@@ -2353,7 +2407,7 @@ class AgentServer:
 
         workspace = project.workspace
         workspace.set_full_access(
-            self.permissions.mode == PermissionMode.FULL_ACCESS
+            self._permission_policy(project).mode == PermissionMode.FULL_ACCESS
         )
         tools = project.tools
         knowledge_enabled=unified or bool(re.search(r'knowledge_search|project_memory|environment_diagnose|environment_repair|项目记忆|工程检索|环境诊断',authorization_prompt or prompt,re.I))
@@ -2546,15 +2600,24 @@ class AgentServer:
         from agent.core.execution import ExecutionBudget
         execution = ExecutionBudget(self.store.connection, execution_id or (active_plan['id'] if active_plan else turn_id), thread_id, self.continuation_policy,ledger=self.runtime_ledger)
         self.active_executions[turn_id]=execution
-        from agent.core.unified_runtime import INSTRUCTIONS as UNIFIED_INSTRUCTIONS, PLAN_TOOL as UNIFIED_PLAN_TOOL, infer_intent, plan_steps, plan_view, verification_policy, result_view, workspace_snapshot,changed_since_snapshot,snapshot_fingerprint, RuntimeEvents, requested_intent, computer_only, COMPUTER_TOOLS
+        from agent.core.unified_runtime import INSTRUCTIONS as UNIFIED_INSTRUCTIONS, PLAN_TOOL as UNIFIED_PLAN_TOOL, infer_intent, plan_steps, plan_view, verification_policy, result_view, workspace_snapshot,changed_since_snapshot,snapshot_fingerprint, RuntimeEvents, requested_intent, computer_only, COMPUTER_TOOLS, INTERACTION_CODE_TOOLS
         unified = unified or bool(execution.data.get('unified'))
         requested=execution.data.setdefault('unified_request',requested_intent(prompt)) if unified else None
+        if unified:
+            # Re-evaluate the original goal on recovery, not the generic UI
+            # "continue" prompt. Only narrow legacy snapshots misclassified as
+            # development; never expand a task's authorization here.
+            original_request=requested_intent(execution.data.get('unified_goal') or (active_plan['goal'] if active_plan else prompt))
+            if original_request['kind']=='interaction':
+                requested=original_request
+                execution.data['unified_request']=requested
         runtime = execution.data.setdefault('unified', {}) if unified else None
         if unified:
             # Add missing fields for pre-created/older queue snapshots without
             # resetting accumulated repairs, evidence or the frozen config.
             for key,value in {'intent':'question','phase':'executing','outcome':None,'changed_paths':[], 'verification':[], 'level':'none','repairs':0}.items():
                 runtime.setdefault(key,value)
+        if unified:execution.data.setdefault('permission_task_key',execution.key)
         initial_queued=bool(runtime and runtime.get('phase')=='queued')
         if unified:
             runtime['knowledge']=knowledge_status
@@ -2588,6 +2651,10 @@ class AgentServer:
                     execution.data['unified_provider_snapshot']=snapshot
         if unified:
             messages.append({'role':'system','content':UNIFIED_INSTRUCTIONS})
+            if requested['kind']=='interaction':
+                messages.append({'role':'system','content':'当前用户只要求界面操作。可读取所需结果文件，但不得修改源码或运行代码测试/终端修复；使用 start_process/read_process/stop_process 管理本次窗口进程。界面保存产生的数据文件不是开发任务。'})
+            if self._permission_policy(project,execution).continuous:
+                messages.append({'role':'system','content':'用户已明确授予完全访问。普通文件、终端、Git 提交/推送及桌面操作可连续执行，无需逐项申请。用户本任务禁止的行为仍禁止；高风险、远程合并或正式发布须本任务单独授权。禁止提权或绕过系统保护。'})
         if unified:
             ws=RuntimeEvents(ws,execution,runtime)
             with self.store.connection:
@@ -2859,11 +2926,13 @@ class AgentServer:
                                     await publish_runtime('executing')
                         request_messages[0]['content'] += runtime_suffix
                         await ws.send_json(envelope('model.identity', {**getattr(provider,'chat_identity',{}), **(tools.desktop.image_metadata.get(turn_id,{}) if capture else {}), 'executor_profile_id':getattr(provider,'profile',{}).get('model_profile_id') if plan_id else None, 'image_attached':bool(capture), 'vision_profile_id':getattr(observer,'chat_identity',{}).get('chat_profile_id'), 'model_id':model, 'attachment_state':'queued' if capture else 'none'}, thread_id=thread_id,turn_id=turn_id))
-                        schemas = tools.schemas(self.permissions.visible_tools(tools.names, tools.permission_metadata_map()), desktop_owner_id=turn_id)
+                        schemas = tools.schemas(self._permission_policy(project,execution).visible_tools(tools.names, tools.permission_metadata_map()), desktop_owner_id=turn_id)
                         if not knowledge_enabled:
                             schemas=[s for s in schemas if s['function']['name'] not in {'knowledge_search','project_memory','project_memory_search','environment_diagnose','environment_repair'}]
                         if unified and computer_only(authorization_prompt if authorization_prompt is not None else prompt):
                             schemas=[s for s in schemas if s['function']['name'] in COMPUTER_TOOLS]
+                        if unified and requested['kind']=='interaction':
+                            schemas=[s for s in schemas if s['function']['name'] not in INTERACTION_CODE_TOOLS]
                         if unified and requested['read_only']:
                             schemas=[s for s in schemas if s['function']['name'] in READ_ONLY_TOOLS or s['function']['name']=='run_command' or (s['function']['name']=='project_memory' and requested.get('memory_write')) or (s['function']['name']=='environment_repair' and requested.get('environment_write')) or ((tools.permission_metadata(s['function']['name']) or {}).get('trusted') and (tools.permission_metadata(s['function']['name']) or {}).get('read_only'))]
                         if unified and requested.get('pure_question'):
@@ -3089,7 +3158,7 @@ class AgentServer:
                         intermediate=bool(active_plan and runtime['intent']=='complex' and len(remaining_steps)>1)
                         change_version = json.dumps({p:current_snapshot.get(p) for p in actual_changes},sort_keys=True)+('intermediate' if intermediate else 'final')
                         runtime['changed_paths'] = actual_changes
-                        runtime['intent'] = infer_intent(runtime['intent'], '', changed_paths=actual_changes)
+                        runtime['intent'] = 'interaction' if requested['kind']=='interaction' else infer_intent(runtime['intent'], '', changed_paths=actual_changes)
                         if not actual_changes and not intermediate and requested['kind'] in {'change','complex'}:
                             if execution.data.get('no_change_repair',0)<1:
                                 execution.data['no_change_repair']=1;execution.save()
@@ -3097,7 +3166,7 @@ class AgentServer:
                                 continue
                             raise ProviderError('AGENT_NO_CHANGE_EVIDENCE','用户请求实际开发，但没有检测到文件变更；已停止，不能把文字或代码示例当作开发完成。')
                         # Run once after the latest edit, not after each prose response or plan step.
-                        if actual_changes and verification_sequence != change_version:
+                        if actual_changes and requested['kind']!='interaction' and verification_sequence != change_version:
                             from agent.core.verification import VerificationEngine
                             discovery_error = None
                             try:
@@ -3218,7 +3287,7 @@ class AgentServer:
                         )
                         verified = verification_passed(
                             active_step_id, requirement, evidence,
-                            loop_complete=not gaps or bool(plan_id) or (unified and (runtime['intent']=='complex' or (not requirement.strip() and verification_options.get('verification_level')=='none'))) or (not requirement.strip() and
+                            loop_complete=not gaps or bool(plan_id) or (unified and (runtime['intent']=='complex' or (requested['kind']=='interaction' and bool(execution.data.get('unified_interaction_evidence'))) or (not requirement.strip() and verification_options.get('verification_level')=='none'))) or (not requirement.strip() and
                                 active_plan["steps"][-1]["id"] != active_step_id))
                         advanced=self.store.task_plans.advance_verified(
                             active_plan["id"], active_step_id, evidence, verified)
@@ -3373,6 +3442,8 @@ class AgentServer:
                             raise ProviderError('WORKFLOW_ROLE_PERMISSION','当前角色 '+workflow_role()+' 不允许执行 '+call.name+'；既有权限和审批未被扩大。')
                     if unified and computer_only(authorization_prompt if authorization_prompt is not None else prompt) and call.name not in COMPUTER_TOOLS:
                         raise ProviderError('COMPUTER_TOOL_SCOPE','用户仅授权界面操作；没有执行源码、终端或其他越界工具。')
+                    if unified and requested['kind']=='interaction' and call.name in INTERACTION_CODE_TOOLS:
+                        raise ProviderError('COMPUTER_TOOL_SCOPE','界面任务不允许修改代码或运行代码测试/终端修复；没有执行该工具。')
                     if unified and active_plan and call.name=='workflow_adjust':
                         if len(tool_calls)!=1:raise ProviderError('WORKFLOW_ADJUST_BATCH','调整计划须单独调用，不执行同批其他操作')
                         if execution.data.get('workflow_adjustments',0)>=3:raise ProviderError('WORKFLOW_ADJUST_LIMIT','计划调整达到有界上限，保留原计划与证据')
@@ -3958,14 +4029,19 @@ class AgentServer:
                 review_arguments={**review_arguments,'target_window':{'title':binding.get('title',''), 'pid':binding['native']['pid'], 'class':binding['native']['class'], 'generation':binding['native']['generation']}}
             except ToolError as exc:
                 return {'ok':False, 'summary':exc.message, 'error':{'code':exc.code,'message':exc.message}, 'changed_paths':[]}
-        if autonomous:
+        if autonomous and not self._permission_policy(project,execution,turn_id).continuous:
             from agent.core.orchestration import autonomous_git_block
             reason = autonomous_git_block(call.name, call.arguments)
             if reason:
                 return {"ok": False, "summary": reason, "error": {"code": "TASK_GIT_REVIEW_REQUIRED", "message": reason}, "changed_paths": []}
-        verdict = self.permissions.evaluate(
+        policy=self._permission_policy(project,execution,turn_id)
+        project.workspace.set_full_access(policy.mode == PermissionMode.FULL_ACCESS)
+        permission_revision=self.authorizations.load()["revision"]
+        verdict = policy.evaluate(
             tool_name=call.name, arguments=call.arguments, workspace=project.workspace,
             tool_metadata=project.tools.permission_metadata(call.name), user_prompt=user_prompt)
+        self.authorizations.audit(getattr(project,'id',None),execution.key if execution else turn_id,call.name,policy.mode.value,
+            "approval" if verdict.requires_approval else "allow" if verdict.allowed else "deny",verdict.risk)
         if not verdict.allowed:
             return {"ok": False, "summary": verdict.reason,
                     "error": {"code": "PERMISSION_DENIED", "message": verdict.reason, "risk": verdict.risk}, "changed_paths": []}
@@ -3976,14 +4052,22 @@ class AgentServer:
                 return {'ok':False,'error':{'code':'APPROVAL_DENIED'},'summary':'未确认操作未获重试授权。','changed_paths':[]}
         if verdict.requires_approval:
             decision = await self.approvals.request(ws, turn_id=turn_id, thread_id=thread_id,
-                approval_key=(call_id if verdict.risk == 'desktop_fresh' else verdict.approval_key or call_id), tool_name=call.name,
+                approval_key=(call_id if verdict.risk in {'desktop_fresh','high_risk','desktop_share'} else verdict.approval_key or call_id), tool_name=call.name,
                 arguments=review_arguments, reason=verdict.reason, risk=verdict.risk)
             if decision == APPROVAL_DENY:
                 return {"ok": False, "summary": "User denied this operation.",
                         "error": {"code": "APPROVAL_DENIED", "message": "User denied this operation."}, "changed_paths": []}
-        return await self._execute_tool_call(ws, tools=project.tools, call=call,
-            call_id=call_id, thread_id=thread_id, turn_id=turn_id, on_raw_output=on_raw_output, environment=environment,
-            desktop_authorized=call.name in DESKTOP_TOOLS, supports_vision=supports_vision)
+        if permission_revision != self.authorizations.load()['revision']:
+            return {'ok':False,'summary':'授权已改变；未执行旧授权下的操作','error':{'code':'PERMISSION_CHANGED'},'changed_paths':[]}
+        project.workspace.set_full_access(policy.mode == PermissionMode.FULL_ACCESS or verdict.risk=='outside_workspace')
+        if policy.continuous and call.name in DESKTOP_TOOLS:
+            call=ToolCall(call.name,{**call.arguments,'confirm_risk':True})
+        try:
+            return await self._execute_tool_call(ws, tools=project.tools, call=call,
+                call_id=call_id, thread_id=thread_id, turn_id=turn_id, on_raw_output=on_raw_output, environment=environment,
+                desktop_authorized=call.name in DESKTOP_TOOLS, supports_vision=supports_vision)
+        finally:
+            project.workspace.set_full_access(self._permission_policy(project,execution,turn_id).mode == PermissionMode.FULL_ACCESS)
 
     async def _execute_tool_call(
         self,
@@ -4154,6 +4238,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Local Coding Agent server")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0)
+    parser.add_argument("--restore-backup")
+    parser.add_argument("--inspect-backup")
     return parser.parse_args()
 
 
@@ -4163,7 +4249,14 @@ def main() -> None:
         desktop_worker_main()
         return
     args = parse_args()
-    asyncio.run(run(args.host, args.port))
+    from agent.persistence.store import default_data_dir
+    from agent.persistence.backup import DataLock,restore_backup,inspect_backup
+    if args.inspect_backup:
+        print(json.dumps(inspect_backup(args.inspect_backup),ensure_ascii=False));return
+    with DataLock(default_data_dir()):
+        if args.restore_backup:
+            print(json.dumps(restore_backup(args.restore_backup,default_data_dir()),ensure_ascii=False));return
+        asyncio.run(run(args.host, args.port))
 
 
 if __name__ == "__main__":

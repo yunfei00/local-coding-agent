@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import queue
@@ -14,6 +15,21 @@ from pathlib import Path
 
 
 READY_PREFIX = "LCA_AGENT_READY "
+
+
+async def check_workflow_templates(ready):
+    import aiohttp
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+        async with session.ws_connect(f"http://127.0.0.1:{ready['port']}/ws",headers={'Authorization':f"Bearer {ready['token']}"}) as ws:
+            await ws.send_json({'type':'task.runtime.templates','request_id':'packaged-templates','payload':{}})
+            async for message in ws:
+                event=json.loads(message.data)
+                if event.get('request_id')!='packaged-templates':continue
+                if event.get('type')=='error':raise RuntimeError('Packaged workflow template RPC failed')
+                templates=event.get('payload',{}).get('templates')
+                if not isinstance(templates,list) or len(templates)<8:raise RuntimeError('Packaged workflow templates are incomplete')
+                return len(templates)
+    raise RuntimeError('Packaged template WebSocket closed without evidence')
 
 
 def read_lines(stream, output: queue.Queue[str]) -> None:
@@ -105,6 +121,7 @@ def main() -> int:
                 "Packaged Agent version mismatch between ready and health."
             )
 
+        templates=asyncio.run(check_workflow_templates(ready))
         shutdown = urllib.request.Request(
             f"http://127.0.0.1:{ready['port']}/shutdown",
             headers={"Authorization": f"Bearer {ready['token']}"},
@@ -122,6 +139,7 @@ def main() -> int:
             "version": ready.get("version"),
             "protocol": ready.get("protocol"),
             "port": ready.get("port"),
+            "workflow_templates":templates,
         }, ensure_ascii=False))
         return 0
     finally:

@@ -71,9 +71,12 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Install desktop test dependencies
+        run: npm --prefix desktop ci --no-audit --no-fund
+
       - name: Build and validate Windows package
         shell: pwsh
-        run: .\scripts\build\package-windows.ps1
+        run: .\scripts\build\package-windows.ps1 -ReuseDependencies
 
       - name: Publish GitHub Release
         shell: pwsh
@@ -91,13 +94,29 @@ jobs:
             throw "Expected Setup, Portable and SHA256SUMS release assets."
           }
 
+          if ($desktop.version -eq '1.0.0') {
+            $gate = Get-Content docs/v1.0/release-gate.json -Raw | ConvertFrom-Json
+            if ($gate.status -ne 'PASS' -or -not $gate.installed_full_access_components -or -not $gate.installer_current_windows -or -not $gate.upgrade_uninstall -or -not $gate.updater_plan_a) { throw 'v1.0 最终方案A发布验收尚未全部通过' }
+          }
+          git fetch origin main
+          git merge-base --is-ancestor $env:GITHUB_SHA origin/main
+          if ($LASTEXITCODE -ne 0) { throw '发布提交不在 main 历史中' }
+          $runs = gh run list --workflow ci.yml --commit $env:GITHUB_SHA --json conclusion,status --limit 10 | ConvertFrom-Json
+          if (-not ($runs | Where-Object { $_.status -eq 'completed' -and $_.conclusion -eq 'success' })) { throw '发布提交缺少成功 CI' }
           gh release view $releaseTag *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $releaseTag @assets --clobber
+          if ($LASTEXITCODE -eq 0) { throw 'Release 已存在；禁止覆盖正式产物' }
+          if ($desktop.version -eq '1.0.0') {
+            $documents = @('windows-installer.md','user-guide.md','release-notes.md','acceptance-report.md')
+            foreach ($document in $documents) {
+              $source = Join-Path 'docs/v1.0' $document
+              Copy-Item $source (Join-Path 'desktop/release' $document)
+              $assets += (Get-Item (Join-Path 'desktop/release' $document)).FullName
+            }
           }
-          elseif ($env:GITHUB_REF_TYPE -eq "tag") {
-            gh release create $releaseTag @assets --title "Local Coding Agent $releaseTag" --generate-notes
-          }
-          else {
-            gh release create $releaseTag @assets --target $env:GITHUB_SHA --title "Local Coding Agent $releaseTag" --generate-notes
-          }
+          $notes = if ($desktop.version -eq '1.0.0') { @('--notes-file','docs/v1.0/release-notes.md') } else { @('--generate-notes') }
+          gh release create $releaseTag @assets --draft --target $env:GITHUB_SHA --title "Local Coding Agent $releaseTag" @notes
+          if ($LASTEXITCODE -ne 0) { throw '创建草稿 Release 失败' }
+          $actual = gh release view $releaseTag --json assets | ConvertFrom-Json
+          if ($actual.assets.Count -ne $assets.Count) { throw '草稿产物数量不完整；保留草稿且不发布' }
+          gh release edit $releaseTag --draft=false
+          if ($LASTEXITCODE -ne 0) { throw '发布 Release 失败；检查草稿状态' }

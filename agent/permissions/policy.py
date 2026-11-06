@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from agent.tools.workspace import Workspace
+from agent.tools.base import ToolError
 from agent.desktop.runtime import NAMES as DESKTOP_TOOLS, public_arguments
 
 
@@ -39,6 +40,7 @@ WORKSPACE_TOOLS = READ_ONLY_TOOLS | set(DESKTOP_TOOLS) | {
     "project_memory",
     "environment_repair",
     "write_file",
+    "delete_file",
     "apply_patch",
     "run_command",
     "start_process",
@@ -53,11 +55,17 @@ WORKSPACE_TOOLS = READ_ONLY_TOOLS | set(DESKTOP_TOOLS) | {
 
 
 RISKY_COMMAND_PATTERNS: list[tuple[str, str, str]] = [
+    ('system_protection',r'(?i)(?:-verb\s+runas|set-mppreference|disable.*(?:antivirus|realtime)|bcdedit|diskpart|takeown\b)','禁止提权或修改系统保护。'),
     ("publish", r"(?i)\b(?:npm|pnpm|yarn)\s+(?:publish|deploy)\b", "Publishing or deployment requires approval."),
     (
         "delete",
         r"(?i)(?:^|[;&|]\s*)(?:remove-item|del|erase|rmdir)\b|\brd\s+/s\b|\brm\s+-",
         "Command may delete files or directories.",
+    ),
+    (
+        "git_destructive",
+        r"(?i)\bgit\b[^\r\n;&|]*\bpush\b[^\r\n;&|]*(?:\s[+:][^\s]+|--mirror\b|--force\b|--force-with-lease\b|--force-if-includes\b|\s-f(?:\s|$)|--delete\b)",
+        "Force, mirror and deletion refspec pushes require separate approval.",
     ),
     (
         "git_destructive",
@@ -163,14 +171,14 @@ def project_command_risk(workspace, command, cwd=".", seen=None):
         return None
     try:
         package = workspace.resolve(cwd, must_exist=True) / "package.json"
-        if not workspace.contains(package) or package.stat().st_size > 262144:
+        if (not workspace.allow_outside and not workspace.contains(package)) or package.stat().st_size > 262144:
             return ("project_script", "Review project scripts before execution: package.json is external or too large.")
         scripts = json.loads(package.read_text(encoding="utf-8")).get("scripts", {})
         if not isinstance(scripts, dict):
             raise ValueError("Invalid scripts")
     except FileNotFoundError:
         return None
-    except (OSError, ValueError):
+    except (OSError, ValueError, ToolError):
         return ("project_script", "Project scripts could not be inspected; review before execution.")
     seen = set() if seen is None else seen
     for name in matches:
@@ -187,7 +195,7 @@ def project_command_risk(workspace, command, cwd=".", seen=None):
 
 
 def _path_argument(name: str, arguments: dict[str, Any]) -> str | None:
-    if name in {"file_exists", "list_directory", "read_file", "write_file", "apply_patch"}:
+    if name in {"file_exists", "list_directory", "read_file", "write_file", "delete_file", "apply_patch"}:
         value = arguments.get("path")
         return str(value) if value is not None else "."
     if name == "search_files":
@@ -240,8 +248,9 @@ def command_external_reference(
 
 
 class PermissionPolicy:
-    def __init__(self, mode: PermissionMode = PermissionMode.WORKSPACE) -> None:
+    def __init__(self, mode: PermissionMode = PermissionMode.WORKSPACE, *, continuous=False) -> None:
         self.mode = mode
+        self.continuous = continuous
 
     @property
     def available_modes(self) -> list[str]:
@@ -287,6 +296,13 @@ class PermissionPolicy:
         user_prompt: str | None = None,
     ) -> PermissionVerdict:
         metadata = tool_metadata or {}
+        if tool_name in {'run_command','start_process'}:
+            protected=project_command_risk(workspace,str(arguments.get('command','')),str(arguments.get('cwd') or '.'))
+            if protected and protected[0]=='system_protection':
+                return PermissionVerdict(False,reason=protected[1],risk=protected[0])
+        if self.mode == PermissionMode.FULL_ACCESS and self.continuous:
+            from agent.permissions.authorization import continuous_verdict
+            return continuous_verdict(self,tool_name,arguments,workspace,metadata,user_prompt)
         if tool_name in DESKTOP_TOOLS:
             if self.mode == PermissionMode.READ_ONLY:
                 return PermissionVerdict(False, reason="Desktop tools require explicit desktop consent outside Read Only mode", risk="read_only")
@@ -454,7 +470,7 @@ class PermissionPolicy:
         if outside:
             if self.mode != PermissionMode.FULL_ACCESS:
                 return PermissionVerdict(
-                    allowed=False,
+                    allowed=True, requires_approval=True, approval_key='outside:'+tool_name+':'+str(path_value),
                     reason=(
                         "The requested path is outside the active workspace. "
                         "Use Full Access mode if project-external access is required."
@@ -462,7 +478,8 @@ class PermissionPolicy:
                     risk="outside_workspace",
                 )
 
-            normalized = str(Path(path_value or "").expanduser().resolve(strict=False))
+            raw = Path(path_value or '').expanduser()
+            normalized = str((raw if raw.is_absolute() else workspace.root/raw).resolve(strict=False))
             return PermissionVerdict(
                 allowed=True,
                 requires_approval=True,
@@ -480,7 +497,7 @@ class PermissionPolicy:
             if external_reason:
                 if self.mode != PermissionMode.FULL_ACCESS:
                     return PermissionVerdict(
-                        allowed=False,
+                        allowed=True, requires_approval=True, approval_key='command:outside:'+command,
                         reason=(
                             external_reason
                             + " Use Full Access mode if this is intentional."
@@ -498,6 +515,8 @@ class PermissionPolicy:
             risky = project_command_risk(workspace, command, str(arguments.get("cwd") or "."))
             if risky:
                 risk, reason = risky
+                if risk=='system_protection':
+                    return PermissionVerdict(False,reason=reason,risk=risk)
                 if risk == "git_commit" and not explicit_git_intent(
                     user_prompt,
                     "commit",

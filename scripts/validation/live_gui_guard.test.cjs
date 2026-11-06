@@ -2,6 +2,16 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {readyProcessId,matchesReadyProcess,closeOwnedApplication}=require('./live_gui_guard.cjs');
+test('原生恢复必须独立证明原进程退出，不能以旧句柄找不到或无权限作为成功',()=>{
+ const {nativeProcessReleaseEvidence}=require('./live_gui_guard.cjs');
+ const ops=[{name:'desktop_list_windows',pid:1234}],folder=path.join(os.tmpdir(),'owned-native');
+ assert.equal(nativeProcessReleaseEvidence(ops,folder,()=>null).released,true);
+ assert.equal(nativeProcessReleaseEvidence(ops,folder,()=>({path:path.join(folder,'GuiFixture.exe')})).released,false);
+ assert.equal(nativeProcessReleaseEvidence(ops,folder,()=>({path:path.join(folder,'other.exe')})).released,true);
+ assert.equal(nativeProcessReleaseEvidence(ops,folder,()=>({path:null})).released,false);
+ assert.equal(nativeProcessReleaseEvidence(ops,folder,()=>{throw Error('denied');}).released,false);
+ assert.equal(nativeProcessReleaseEvidence([],folder,()=>null).released,false);
+});
 test('视觉等待证据区分缺失选择器并脱敏非夹具内容',()=>{
  const {visualWaitEvidence}=require('./live_gui_guard.cjs');
  assert.deepEqual(visualWaitEvidence(),{state:'exists',seconds:5,selector_present:false,selector_keys:[],selector_name:null,expected:null});

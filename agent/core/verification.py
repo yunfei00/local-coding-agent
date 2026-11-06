@@ -62,7 +62,7 @@ def protected_edit(root: Path, baseline: dict, tool: str, arguments: dict) -> st
     """Block declared frozen expectations before mutation; never restore HEAD
     over a user's uncommitted test. Other dependencies in package.json may change.
     """
-    if tool not in {'write_file','apply_patch'}:return None
+    if tool not in {'write_file','apply_patch','delete_file'}:return None
     path=(root/str(arguments.get('path',''))).resolve()
     if not path.is_relative_to(root.resolve()):return None
     def key(value):
@@ -70,6 +70,7 @@ def protected_edit(root: Path, baseline: dict, tool: str, arguments: dict) -> st
         return value.casefold() if os.name=='nt' else value
     original={key(name):value for name,value in baseline.items()}.get(key(path.relative_to(root.resolve()).as_posix()))
     if original is None:return None
+    if tool=='delete_file':return '已冻结的测试或验证配置禁止删除；原文件保留。'
     if 'sha256' in original:return '原测试或验证配置已冻结；未写入。请将新增测试放到新的测试文件，不覆盖原文件或削弱验收。'
     try:
         text=str(arguments.get('content','')) if tool=='write_file' else path.read_text(encoding='utf-8-sig')

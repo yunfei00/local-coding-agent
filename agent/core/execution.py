@@ -60,6 +60,8 @@ def failure_diagnosis(tool, code):
     category, action, safe = 'tool', 'inspect_workspace', False
     if code=='BLOCKED_RESOURCE':
         category,action='environment','wait_for_memory_without_relaunch_or_model_retry'
+    elif code=='DESKTOP_WINDOW_ENUMERATION_FAILED':
+        category,action='environment','inspect_packaged_dependencies_and_permissions_before_retry'
     elif code in ('APPROVAL_DENIED','PERMISSION_DENIED') or 'SENSITIVE' in code or 'RISK_APPROVAL' in code:
         category, action = 'permission', 'request_explicit_approval'
     elif code.startswith('REPEATED_') or code == 'PLAN_OPERATION_ALREADY_APPLIED':
@@ -230,7 +232,7 @@ class ExecutionBudget:
             fact['error_code'] = failure_diagnosis(name, code)['error_code']
         if isinstance(payload.get('exit_code'), int) and not isinstance(payload['exit_code'], bool):
             fact['exit_code'] = payload['exit_code']
-        if name in {'read_file', 'write_file', 'apply_patch', 'file_exists', 'list_directory', 'search_files'}:
+        if name in {'read_file', 'write_file', 'apply_patch', 'delete_file', 'file_exists', 'list_directory', 'search_files'}:
             path = local_path(arguments.get('path', '.'))
             if path:
                 fact['path'] = path

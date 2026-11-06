@@ -2415,8 +2415,20 @@ summary:focus-visible {
 
 .model-controls {
   gap: 7px;
-  overflow: hidden;
+  flex-wrap: wrap;
+  overflow: visible;
 }
+
+.model-fallback-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: var(--font-size-caption);
+}
+
+.model-fallback-toggle input { width: 16px; margin: 0; }
 
 .permission-select,
 .model-select {

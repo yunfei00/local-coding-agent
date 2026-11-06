@@ -346,6 +346,24 @@ def describe(control, parent_id=None):
             'sensitive':hidden, 'editable_document':info.control_type=='Document' and 'richedit' in str(info.class_name).lower(), 'bounds':[rect.left, rect.top, rect.right, rect.bottom]}
 
 
+def wait_timeout_message(state, control=None):
+    """Reuse inspect's redaction, never echo expected text or UIA exceptions."""
+    observation={'selector_found':control is not None}
+    if control is not None:
+        try:
+            item=describe(control)
+            hidden=item.get('sensitive') or item.get('control_type') in ('Edit','Document')
+            observation.update({key:('[redacted]' if hidden and key in ('name','automation_id') else item.get(key))
+                                for key in ('name','automation_id','control_type','enabled','visible')})
+        except Exception:
+            observation['observation']='unavailable; inspect the current window again'
+    safe_state=state if state in ('exists','enabled','disabled','visible','hidden','name') else '[invalid]'
+    return ('控件等待超时，未判定成功。state='+safe_state+
+            '；state=name 要求完整名称精确相等，不支持正则、前缀或包含匹配。'+
+            '请按当前 desktop_inspect 的真实名称修正 expected；名称会随状态变化时优先用稳定 automation_id 定位。'+
+            '当前脱敏观测='+json.dumps(observation,ensure_ascii=False))
+
+
 def find(window, selector):
     if not isinstance(selector, dict) or not selector or set(selector)-{'name','automation_id','control_type','runtime_id'}:
         fail('DESKTOP_SELECTOR_REQUIRED', 'Provide an exact selector from desktop_inspect')
@@ -363,6 +381,28 @@ def find(window, selector):
     return matches[0]
 
 
+def caption_focus_click(binding):
+    """Ordinary mouse activation, only on the exposed native caption of this HWND.
+
+    Never click a client control, occluding window or system button. This does
+    not alter foreground-lock settings, synthesize Alt, or attach input queues.
+    """
+    hwnd=check(binding)
+    left,top,right,bottom=gui.GetWindowRect(hwnd)
+    point=(left+(right-left)//2,top+20)
+    def exposed_caption():
+        check(binding)
+        hit=gui.WindowFromPoint(point)
+        if not hit or gui.GetAncestor(hit,2)!=hwnd:return False
+        packed=((point[1]&0xffff)<<16)|(point[0]&0xffff)
+        return gui.SendMessage(hwnd,0x84,0,packed)==2  # WM_NCHITTEST / HTCAPTION
+    if not exposed_caption():return False
+    api.SetCursorPos(point)
+    if not exposed_caption():return False
+    input_batch([(0,0,2),(0,0,4)])
+    return True
+
+
 def focus(binding, control=None):
     hwnd = check(binding)
     if gui.IsIconic(hwnd):
@@ -378,15 +418,15 @@ def focus(binding, control=None):
     # Do not asynchronously focus the Chromium document when its window is
     # already active, just before requesting focus on the exact child Edit.
     if not gui.GetClassName(hwnd).startswith('Chrome_WidgetWin') or not active or gui.GetAncestor(active,2)!=hwnd:
-        window.set_focus()
-    if control is not None:
-        control.set_focus()
+        try:window.set_focus()
+        except Exception:pass  # Native foreground verification remains authoritative.
     # Activation can complete after the UIA focus request (new/moved WPF
     # windows). Retry only the ordinary Windows request for this same validated
     # binding; do not synthesize keys or change foreground-lock policy.
     for attempt in range(15):
         active=gui.GetForegroundWindow()
         if active and gui.IsWindow(active) and gui.GetAncestor(active,2)==hwnd:
+            if control is not None:control.set_focus()
             return
         check(binding)
         if attempt in (4, 9):
@@ -395,7 +435,14 @@ def focus(binding, control=None):
             except Exception:
                 pass
         time.sleep(.1)
-    fail('DESKTOP_FOCUS_FAILED', 'Windows did not grant focus; no input was sent')
+    clicked=caption_focus_click(binding)
+    for _ in range(5 if clicked else 0):
+        active=gui.GetForegroundWindow()
+        if active and gui.IsWindow(active) and gui.GetAncestor(active,2)==check(binding):
+            if control is not None:control.set_focus()
+            return
+        time.sleep(.1)
+    fail('DESKTOP_FOCUS_FAILED', 'Windows did not grant focus; no client or keyboard input was sent'+('; safe caption activation attempted' if clicked else ''))
 
 
 def input_batch(events):
@@ -438,19 +485,33 @@ def execute(request):
     binding = request.get('binding')
     if op == 'desktop_list_windows':
         windows = []
+        identity_errors=[]
+        matched_visible=0
         def visit(hwnd, _):
+            nonlocal matched_visible
             if len(windows) >= 200 or not gui.IsWindowVisible(hwnd):
                 return
             try:
-                ident = identity(hwnd)
-                if a.get('pid') and ident['pid'] != a['pid']:
+                # Filter before opening tokens or querying other processes.
+                if a.get('pid') and process.GetWindowThreadProcessId(hwnd)[1] != a['pid']:
                     return
+                matched_visible+=1
+                ident = identity(hwnd)
                 title=gui.GetWindowText(hwnd)
                 windows.append({'identity':ident, 'pid':ident['pid'], 'title':'[redacted title]' if SECRET.search(title) else redact_text(title)[:200], 'bounds':list(gui.GetWindowRect(hwnd)), 'dpi':user.GetDpiForWindow(hwnd)})
-            except Exception:
+            except Exception as exc:
+                identity_errors.append(exc)
                 return
         gui.EnumWindows(visit, None)
-        return {'windows':windows}
+        if a.get('pid') and matched_visible and not windows and identity_errors:
+            problem=identity_errors[0]
+            if isinstance(problem,DesktopError):raise problem
+            module=getattr(problem,'name','')
+            module=module if isinstance(module,str) and re.fullmatch(r'[A-Za-z0-9_.]{1,80}',module) else ''
+            fail('DESKTOP_WINDOW_ENUMERATION_FAILED',
+                 'Target window exists but identity lookup failed: '+type(problem).__name__+
+                 ('; missing module='+module if module else '')+'. Check packaged dependencies and permissions; no action performed.')
+        return {'windows':windows,'diagnostics':{'matched_visible':matched_visible,'unreadable':len(identity_errors)}}
     hwnd = check(binding)
     window = root(binding)
     if op == 'desktop_inspect':
@@ -514,6 +575,7 @@ def execute(request):
             fail('DESKTOP_INVALID_ARGUMENT', 'Wait seconds must be 0..30')
         deadline, state = time.monotonic()+seconds, a.get('state','exists')
         while True:
+            control=None
             try:
                 control = find(root(binding), a.get('selector'))
                 matched = {'exists':True,'enabled':control.is_enabled(),'disabled':not control.is_enabled(),'visible':control.is_visible(),'hidden':not control.is_visible(),'name':not sensitive(control) and control.element_info.control_type not in ('Edit','Document') and control.element_info.name == a.get('expected')}.get(state)
@@ -524,7 +586,7 @@ def execute(request):
             if matched:
                 return {'matched':True,'state':state}
             if time.monotonic() >= deadline:
-                fail('DESKTOP_WAIT_TIMEOUT', 'Requested control state did not occur before the deadline')
+                fail('DESKTOP_WAIT_TIMEOUT', wait_timeout_message(state,control))
             time.sleep(.05)
     if op == 'desktop_click' and a.get('method','uia') == 'coordinate':
         current=geometry(hwnd)

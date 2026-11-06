@@ -31,6 +31,7 @@ from agent.tools.processes import ProcessManager
 from agent.desktop.runtime import DesktopRuntime, NAMES as DESKTOP_TOOLS
 from agent.tools.desktop import desktop_tools
 from agent.tools.workspace import Workspace
+from agent.tools.delete_file import DeleteFileTool
 
 
 class ToolRegistry:
@@ -49,6 +50,7 @@ class ToolRegistry:
             SearchFilesTool(workspace),
             WriteFileTool(workspace),
             ApplyPatchTool(workspace),
+            DeleteFileTool(workspace),
             RunCommandTool(workspace, self.processes),
             StartProcessTool(workspace, self.processes),
             ReadProcessTool(self.processes),

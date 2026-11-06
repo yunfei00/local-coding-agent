@@ -1,0 +1,470 @@
+{
+  "baseline_main": "7325c04ea6b2b378ed446c4b5159161309aba6ca",
+  "new_wait_diagnostic": {
+    "ignored_failure": false,
+    "real_model_retest": "BLOCKED_API_QUOTA",
+    "unit_tests": "10 PASS（含新增4）"
+  },
+  "timezone": "Asia/Shanghai",
+  "downloaded_historical_candidate": {
+    "result": "PASS",
+    "artifact_id": 13490211076,
+    "source_run": 42188962308,
+    "artifacts": [
+      {
+        "verified": true,
+        "name": "Local-Coding-Agent-1.0.0-x64-Setup.exe",
+        "bytes": 122722531,
+        "sha256": "d15059493daa0cc823dd41e7e4ad7a1f73fbaf1f79f9d222dd876fdd92e3a536"
+      },
+      {
+        "verified": true,
+        "name": "Local-Coding-Agent-1.0.0-x64-Portable.exe",
+        "bytes": 122492472,
+        "sha256": "f10b64b78f32cea361d5cc42bde585f67848d518b5cea63fb32c37a8cc437c2d"
+      }
+    ],
+    "source_commit": "1cfb010871ac307f8c825588ecae1af077ddc8d5"
+  },
+  "successful_gui_component": {
+    "model": "deepseek-v4-pro-0813",
+    "actual_tokens": 214355,
+    "application_exit_code": 0,
+    "screenshot_sha256": "f76b85b4f6e12aa96b71ecefaebdddae28ea74fa60cc17ce37fc44053769b08f",
+    "actual_calls": 18,
+    "result": "PASS",
+    "ordinary_approvals": 0,
+    "forced_termination": false,
+    "code_tests": "NOT_RUN_GUI_ONLY",
+    "source_unchanged": true,
+    "permission_revoked": true,
+    "product_commit": "1cfb010871ac307f8c825588ecae1af077ddc8d5"
+  },
+  "total_request_attempts": 144.0,
+  "release_status": "VALIDATION_PASS_AWAITING_MERGE",
+  "product_commit": "9bfff2335530e90ae24b755f1d4fc59d8ba4286a",
+  "single_task_full_access": "BLOCKED",
+  "runs": [
+    {
+      "run": "v10-installed-live",
+      "additional_calls": 18,
+      "additional_accounted_tokens": 208796,
+      "raw_result": "PARTIAL",
+      "cases": [
+        {
+          "error_code": "MODEL_REQUEST_TIMEOUT",
+          "runtime_phase": "failed",
+          "raw_result": "FAIL",
+          "name": "native-gui",
+          "runtime_outcome": "failed",
+          "model": "qwen3.8-27b"
+        },
+        {
+          "error_code": null,
+          "runtime_phase": "completed",
+          "raw_result": "PASS",
+          "name": "workflow-python",
+          "runtime_outcome": "completed_verified",
+          "model": "qwen3.8-27b"
+        },
+        {
+          "error_code": "AGENT_NO_CHANGE_EVIDENCE",
+          "runtime_phase": "failed",
+          "raw_result": "PASS",
+          "name": "revocation",
+          "runtime_outcome": "failed",
+          "model": "qwen3.8-27b"
+        }
+      ],
+      "contains_estimate": true
+    },
+    {
+      "run": "v10-installed-native-retest",
+      "additional_calls": 12,
+      "additional_accounted_tokens": 116169,
+      "raw_result": "PARTIAL",
+      "cases": [
+        {
+          "error_code": "TOOL_LOOP_DETECTED",
+          "runtime_phase": "failed",
+          "raw_result": "FAIL",
+          "name": "native-gui",
+          "runtime_outcome": "failed",
+          "model": "qwen3.8-2.4t-a95b"
+        }
+      ],
+      "contains_estimate": false
+    },
+    {
+      "run": "v10-installed-release-task",
+      "additional_calls": 2,
+      "additional_accounted_tokens": 50041,
+      "raw_result": "PARTIAL",
+      "cases": [
+        {
+          "error_code": "MODEL_QUOTA_EXHAUSTED",
+          "runtime_phase": "failed",
+          "raw_result": "FAIL",
+          "name": "native-gui",
+          "runtime_outcome": "failed",
+          "model": "qwen3.8-2.4t-a95b"
+        }
+      ],
+      "contains_estimate": true
+    },
+    {
+      "run": "v10-installed-release-task-27b",
+      "additional_calls": 10,
+      "additional_accounted_tokens": 150661,
+      "raw_result": "PARTIAL",
+      "cases": [
+        {
+          "error_code": "BUDGET_EXHAUSTED",
+          "runtime_phase": "failed",
+          "raw_result": "FAIL",
+          "name": "native-gui",
+          "runtime_outcome": "partially_completed",
+          "model": "qwen3.8-27b"
+        }
+      ],
+      "contains_estimate": false
+    },
+    {
+      "run": "v10-installed-release-resume",
+      "additional_calls": 1,
+      "additional_accounted_tokens": 55868,
+      "raw_result": "FAIL",
+      "cases": [
+        {
+          "error_code": "MODEL_QUOTA_EXHAUSTED",
+          "runtime_phase": "failed",
+          "raw_result": "FAIL",
+          "name": "native-gui",
+          "runtime_outcome": "partially_completed",
+          "model": "qwen3.8-27b"
+        }
+      ],
+      "contains_estimate": true
+    },
+    {
+      "run": "v10-installed-native-max",
+      "additional_calls": 12,
+      "additional_accounted_tokens": 139506,
+      "raw_result": "PARTIAL",
+      "cases": [
+        {
+          "error_code": "BUDGET_EXHAUSTED",
+          "runtime_phase": "failed",
+          "raw_result": "FAIL",
+          "name": "native-gui",
+          "runtime_outcome": "failed",
+          "model": "qwen3.8-max-0902"
+        }
+      ],
+      "contains_estimate": false
+    },
+    {
+      "run": "v10-installed-native-max-resume",
+      "additional_calls": 8,
+      "additional_accounted_tokens": 119875,
+      "raw_result": "FAIL",
+      "cases": [
+        {
+          "error_code": null,
+          "runtime_phase": "completed",
+          "raw_result": "FAIL",
+          "name": "native-gui",
+          "runtime_outcome": "completed_verified",
+          "model": "qwen3.8-max-0902"
+        }
+      ],
+      "contains_estimate": false
+    },
+    {
+      "run": "v10-installed-native-final",
+      "additional_calls": 1,
+      "additional_accounted_tokens": 31821,
+      "raw_result": "PARTIAL",
+      "cases": [
+        {
+          "error_code": "MODEL_REQUEST_TIMEOUT",
+          "runtime_phase": "failed",
+          "raw_result": "FAIL",
+          "name": "native-gui",
+          "runtime_outcome": "failed",
+          "model": "qwen3.8-max-0902"
+        }
+      ],
+      "contains_estimate": true
+    },
+    {
+      "run": "v10-installed-native-deepseek",
+      "additional_calls": 18,
+      "additional_accounted_tokens": 214355,
+      "raw_result": "PASS",
+      "cases": [
+        {
+          "error_code": null,
+          "runtime_phase": "completed",
+          "raw_result": "PASS",
+          "name": "native-gui",
+          "runtime_outcome": "completed_unverified",
+          "model": "deepseek-v4-pro-0813"
+        }
+      ],
+      "contains_estimate": false
+    },
+    {
+      "run": "v10-installed-comprehensive-deepseek",
+      "additional_calls": 1,
+      "additional_accounted_tokens": 35279,
+      "raw_result": "PARTIAL",
+      "cases": [
+        {
+          "error_code": "MODEL_QUOTA_EXHAUSTED",
+          "runtime_phase": "failed",
+          "raw_result": "FAIL",
+          "name": "native-gui",
+          "runtime_outcome": "failed",
+          "model": "deepseek-v4-pro-0813"
+        }
+      ],
+      "contains_estimate": true
+    },
+    {
+      "run": "v10-installed-comprehensive-flash",
+      "additional_calls": 27,
+      "additional_accounted_tokens": 537971,
+      "raw_result": "PARTIAL",
+      "cases": [
+        {
+          "error_code": "BUDGET_EXHAUSTED",
+          "runtime_phase": "failed",
+          "raw_result": "FAIL",
+          "name": "native-gui",
+          "runtime_outcome": "partially_completed",
+          "model": "deepseek-v4.1-flash-1017"
+        }
+      ],
+      "contains_estimate": false
+    },
+    {
+      "run": "v10-installed-comprehensive-flash-resume",
+      "additional_calls": 12,
+      "additional_accounted_tokens": 345362,
+      "raw_result": "FAIL",
+      "cases": [
+        {
+          "error_code": null,
+          "runtime_phase": "cancelled",
+          "raw_result": "FAIL",
+          "name": "native-gui",
+          "runtime_outcome": "cancelled",
+          "model": "deepseek-v4.1-flash-1017"
+        }
+      ],
+      "contains_estimate": true
+    },
+    {
+      "run": "v10-installed-comprehensive-flash-final",
+      "additional_calls": 21,
+      "additional_accounted_tokens": 534285,
+      "raw_result": "FAIL",
+      "cases": [
+        {
+          "error_code": "PLAN_TOOLS_UNRESOLVED",
+          "runtime_phase": "failed",
+          "raw_result": "FAIL",
+          "name": "native-gui",
+          "runtime_outcome": "partially_completed",
+          "model": "deepseek-v4.1-flash-1017"
+        }
+      ],
+      "contains_estimate": true
+    },
+    {
+      "run": "v10-installed-comprehensive-flash-diagnostic",
+      "additional_calls": 1,
+      "additional_accounted_tokens": 64316,
+      "raw_result": "FAIL",
+      "cases": [
+        {
+          "error_code": "MODEL_QUOTA_EXHAUSTED",
+          "runtime_phase": "failed",
+          "raw_result": "FAIL",
+          "name": "native-gui",
+          "runtime_outcome": "partially_completed",
+          "model": "deepseek-v4.1-flash-1017"
+        }
+      ],
+      "contains_estimate": true
+    }
+  ],
+  "usage_note": "包含超时、控制器取消及403未知Usage预留，不是全部实际计费Token；恢复增量未重复计数",
+  "permission_components": "PASS",
+  "total_conservatively_accounted_tokens": 2604305.0,
+  "date": "2026-11-06",
+  "last_uninstall": {
+    "user_database_unchanged": true,
+    "uninstall_exit_code": 0,
+    "isolated_migrated_databases_retained": 2,
+    "result": "PASS",
+    "source_commit": "9bfff2335530e90ae24b755f1d4fc59d8ba4286a"
+  },
+  "latest_local_candidate": {
+    "files": [
+      {
+        "sha256": "7c5fd84774f5445650765b10faf947a6da3f381806079e11296a571d2666c80c",
+        "bytes": 122689836,
+        "name": "Local-Coding-Agent-1.0.0-x64-Setup.exe"
+      },
+      {
+        "sha256": "333214706dab4f110706e7834d912b5527d0fde4c2c6cd49358b64f9e7359ebd",
+        "bytes": 122459782,
+        "name": "Local-Coding-Agent-1.0.0-x64-Portable.exe"
+      }
+    ],
+    "source_commit": "9bfff2335530e90ae24b755f1d4fc59d8ba4286a"
+  },
+  "automated_tests": {
+    "driver_guards": {
+      "failed": 0,
+      "passed": 5
+    },
+    "electron_smoke": {
+      "passed": 55,
+      "skipped": 0,
+      "model_decisions": "MOCK"
+    },
+    "counts_are_not_additive": true,
+    "frontend": {
+      "passed": 84,
+      "files": 22,
+      "failed": 0
+    },
+    "windows_python": {
+      "total": 712,
+      "skipped": 2,
+      "failed": 0,
+      "passed": 710
+    },
+    "product_commit": "9bfff2335530e90ae24b755f1d4fc59d8ba4286a",
+    "ubuntu_python": {
+      "total": 712,
+      "skipped": 17,
+      "failed": 0,
+      "passed": 695
+    }
+  },
+  "ci": [
+    {
+      "run_id": 42194575907,
+      "result": "PASS",
+      "kind": "push core Windows/Ubuntu"
+    },
+    {
+      "run_id": 42194583689,
+      "result": "PASS",
+      "kind": "PR core Windows/Ubuntu"
+    },
+    {
+      "artifact_id": 13491224268,
+      "run_id": 42194575897,
+      "result": "PASS",
+      "downloaded_latest_artifact_on_host": false,
+      "kind": "Windows安装候选"
+    }
+  ],
+  "cost_status": "UNKNOWN",
+  "final_process_release": {
+    "inspection": "只读，未终止任何进程",
+    "owned_test_processes_remaining": 0
+  },
+  "new_model_probe": {
+    "text": "PASS",
+    "tested_at": "2026-11-06T17:02:42.971429+08:00",
+    "tools": "PASS",
+    "requests": 2,
+    "live": true,
+    "model": "deepseek-v4.1-flash-1017"
+  },
+  "environment": {
+    "electron": "38.8.6",
+    "windows": "Microsoft Windows 11 家庭版 中文版",
+    "uv": "uv 0.11.2 (02036a8ba 2026-03-26 x86_64-pc-windows-msvc)",
+    "memory_bytes": 16889192448,
+    "version": "10.0.26200",
+    "node": "v24.14.0",
+    "python": "Python 3.12.13",
+    "build": "26200"
+  },
+  "historical_release_status": "BLOCKED",
+  "historical_blockers": [
+    "缺少干净无SDK Windows镜像验收",
+    "真实有更新的应用内下载/安装/重启未运行",
+    "严格单任务开发/四角色/GUI组合未通过，最后诊断反馈复验首请求额度耗尽"
+  ],
+  "blockers": [],
+  "final_integration": {
+    "date": "2026-11-06",
+    "code_commit": "63d9e160df521d8ae6e8ce8b85df4e61632ec69b",
+    "frontend_tests": {
+      "pass": 102,
+      "fail": 0
+    },
+    "plan_a_installed_ui": "4 PASS, real download/files/UI; controlled metadata and open callback",
+    "setup_portable_chat": "PASS each 2 runs, actual installed/portable frontend/backend/write_file; MOCK_LOOPBACK model",
+    "new_real_model_calls": 0,
+    "policy": "current Windows required, clean OS and costly combined task not required",
+    "local_initial_python": {
+      "total": 712,
+      "pass": 706,
+      "skip": 2,
+      "failure": 2,
+      "error": 2,
+      "exit": 1
+    },
+    "affected_gui_retest": {
+      "pass": 4,
+      "fail": 0,
+      "seconds": 172.76,
+      "source": "v10-plan-a-gui-affected-retest.log"
+    },
+    "core_ci": {
+      "push": 42226827834,
+      "pull_request": 42226835466,
+      "windows": "710 PASS / 2 SKIP",
+      "ubuntu": "695 PASS / 17 SKIP",
+      "status": "PASS"
+    },
+    "packaging": {
+      "status": "PASS",
+      "log": "v10-plan-a-package-resumed.log",
+      "exit_code": 0,
+      "electron": {
+        "pass": 55,
+        "skip": 0,
+        "fail": 0
+      },
+      "frozen_native_operations": 5,
+      "installed_permission_checks": 4,
+      "installed_plan_a_checks": 4,
+      "setup_chat_runs": 2,
+      "portable_chat_runs": 2,
+      "uninstall_isolated_data_retained": true,
+      "local_candidate_sha256": {
+        "Setup": "006d215d51a2cf19a47412f718a0666f4767c91a2de70dc47d14ec7c5d4d5752",
+        "Portable": "d0366afa1571d8cb2cc802baeb53e743bb41dfa2e992cb79645d51d51253dd2c"
+      }
+    },
+    "installer_candidate_ci": {
+      "run": 42226827888,
+      "status": "PASS"
+    }
+  },
+  "pending_publication_checks": [
+    "最终提交PR CI",
+    "合并后main CI",
+    "正式main构建及Release资产下载SHA校验"
+  ]
+}

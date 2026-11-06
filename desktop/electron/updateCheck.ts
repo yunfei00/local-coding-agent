@@ -13,20 +13,22 @@ export type UpdateCheckResult = {
   can_auto_install: false;
 };
 
-type ReleaseMetadata = {
+export type ReleaseMetadata = {
   tag_name?: string;
   html_url?: string;
   draft?: boolean;
   prerelease?: boolean;
+  body?: string;
+  assets?: {name:string;browser_download_url:string;size:number}[];
 };
 
-function numericParts(value: string): number[] | null {
+function numericParts(value: string): bigint[] | null {
   const normalized = value.trim().replace(/^v/i, "");
   const match = normalized.match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);
   if (!match) {
     return null;
   }
-  return match.slice(1, 4).map((item) => Number(item));
+  return match.slice(1, 4).map((item) => BigInt(item));
 }
 
 export function compareVersions(left: string, right: string): number {
@@ -39,6 +41,18 @@ export function compareVersions(left: string, right: string): number {
     if (a[index] !== b[index]) {
       return a[index] > b[index] ? 1 : -1;
     }
+  }
+  const pre=(v:string)=>v.trim().replace(/^v/i,'').split('+')[0].split('-').slice(1).join('-');
+  const x=pre(left),y=pre(right);
+  if(!x||!y)return x===y?0:x?-1:1;
+  const xx=x.split('.'),yy=y.split('.');
+  for(let i=0;i<Math.max(xx.length,yy.length);i++){
+    if(xx[i]===yy[i])continue;
+    if(xx[i]===undefined)return -1;if(yy[i]===undefined)return 1;
+    const nx=/^\d+$/.test(xx[i]),ny=/^\d+$/.test(yy[i]);
+    if(nx&&ny)return BigInt(xx[i])>BigInt(yy[i])?1:-1;
+    if(nx!==ny)return nx?-1:1;
+    return xx[i]>yy[i]?1:-1;
   }
   return 0;
 }
@@ -82,7 +96,7 @@ export function releaseResult(
   };
 }
 
-function requestJson(
+export function requestJson(
   url: string,
   timeoutMs: number
 ): Promise<ReleaseMetadata> {
@@ -99,6 +113,8 @@ function requestJson(
         const status = response.statusCode ?? 0;
         let body = "";
         response.setEncoding("utf8");
+        response.on('error',reject);
+        response.on('aborted',()=>reject(new Error('更新检查连接中断')));
         response.on("data", (chunk: string) => {
           body += chunk;
           if (body.length > 1_000_000) {
@@ -122,6 +138,8 @@ function requestJson(
     request.setTimeout(timeoutMs, () => {
       request.destroy(new Error("Update check timed out."));
     });
+    const deadline=setTimeout(()=>request.destroy(new Error('更新检查总时间超限')),timeoutMs);
+    request.on('close',()=>clearTimeout(deadline));
     request.on("error", reject);
   });
 }

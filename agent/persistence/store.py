@@ -9,7 +9,7 @@ from agent.task_plans import TaskPlanStore
 from agent.core.task_runtime import TaskRuntimeStore
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 def default_data_dir() -> Path:
@@ -30,6 +30,17 @@ class SQLiteStore:
         self.path = self.data_dir / "local-coding-agent.sqlite3"
         self.connection = sqlite3.connect(self.path)
         self.connection.row_factory = sqlite3.Row
+        try:
+            if self.connection.execute('PRAGMA quick_check').fetchone()[0]!='ok':
+                raise ValueError('数据库完整性检查失败；原文件保留，请恢复备份')
+            version=self.connection.execute('PRAGMA user_version').fetchone()[0]
+            if version>SCHEMA_VERSION:raise ValueError('数据库来自较新版本，未修改；请使用匹配的软件版本。')
+            if 0<version<SCHEMA_VERSION:
+                from agent.persistence.backup import create_backup
+                create_backup(self.connection,self.data_dir,reason='before-schema-'+str(SCHEMA_VERSION),credential_dir=os.getenv('LCA_DESKTOP_DATA_DIR'))
+        except Exception:
+            self.connection.close()
+            raise
         self.connection.execute("PRAGMA foreign_keys = ON")
         self.connection.execute("PRAGMA journal_mode = WAL")
         self.connection.execute("PRAGMA synchronous = NORMAL")

@@ -301,7 +301,7 @@ async function main() {
     await screenshot("desktop-reference-dark.png");
     checks.push("Reference-derived cool chrome/near-white sidebar, #181818 dark canvas, one File/Edit/View/Help row, native Select All restores editor focus");
     await toggleSettings(page);
-    await page.getByRole("button",{name:"General",exact:true}).click();
+    await page.getByRole("button",{name:"常规",exact:true}).click();
     await screenshot("desktop-settings-reference-dark.png");
     assert.equal(await page.locator(".sidebar").isVisible(), false);
     await appMenus.getByRole("menuitem",{name:"视图",exact:true}).click();
@@ -310,6 +310,9 @@ async function main() {
     await screenshot("desktop-settings-reference-light.png");
     assert.equal(await page.locator(".settings-content").evaluate(e => getComputedStyle(e).color), "rgb(26, 28, 30)");
     assert.equal(await page.locator(".settings-nav").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(248, 252, 253)");
+    await page.getByRole('button',{name:'关于',exact:true}).click();
+    await page.getByRole('button',{name:'下载更新',exact:true}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'打开安装包',exact:true}).isDisabled(),true);
     assert.equal(await page.locator(".settings-update-card").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(255, 255, 255)");
     assert.equal(await page.locator(".settings-footer").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(255, 255, 255)");
     assert.equal(await page.locator(".settings-secondary").first().evaluate(e => getComputedStyle(e).backgroundColor), "rgb(255, 255, 255)");
@@ -489,6 +492,9 @@ async function main() {
         await page.getByLabel("Profile model ID", {exact:true}).fill(model);
         await page.getByLabel("Profile display name", {exact:true}).fill(model);
         await page.getByLabel("Profile context window", {exact:true}).fill("65536");
+        // This synthetic API emits <200 tokens. Keep the 30k budget test intact
+        // without reserving an unrelated 8192-token response for tiny fixtures.
+        if(model==='api-reviewer')await page.getByLabel('Profile output limit',{exact:true}).fill('1024');
         profileIds[model] = await page.getByLabel("Edit model profile", {exact:true}).inputValue();
       }
     }
@@ -510,7 +516,7 @@ async function main() {
     assert.equal(await page.getByLabel("Default global_api_tokens",{exact:true}).inputValue(),"100000000");
     assert.equal(modelRequests.length,beforeLongBudget,"Editing budget must not send model requests");
     await page.getByRole("button", {name:"Save model configuration", exact:true}).click();
-    await page.getByText("Model configuration saved. Running task snapshots are unchanged.").waitFor();
+    await page.getByText(/^模型配置已保存，(?:API连接验证完成；运行任务快照不变。|运行任务快照不变；未自动探测本地服务。)$/).waitFor();
     await page.getByRole("button", {name:"Fetch model list (does not verify capabilities)", exact:true}).click();
     await page.getByRole("button", {name:"Add model: smoke-coder", exact:true}).waitFor();
     await screenshot("desktop-mixed-provider-settings.png");
@@ -643,7 +649,7 @@ async function main() {
       await page.getByLabel("Default api_calls",{exact:true}).fill(String(calls));
       await page.getByLabel("Default api_tokens",{exact:true}).fill("30000");
       await page.getByRole("button",{name:"Save model configuration",exact:true}).click();
-      await page.getByText("Model configuration saved. Running task snapshots are unchanged.").waitFor();
+      await page.getByText(/^模型配置已保存，(?:API连接验证完成；运行任务快照不变。|运行任务快照不变；未自动探测本地服务。)$/).waitFor();
       await toggleSettings(page);
     };
     await saveOnlineDefaults(0);

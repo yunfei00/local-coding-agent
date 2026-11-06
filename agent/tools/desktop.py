@@ -17,7 +17,7 @@ EXTRA = {
     'desktop_type_text': {'text':{'type':'string','maxLength':4000}},
     'desktop_keypress': {'keys':{'type':'string','description':'Named key or chord e.g. CTRL+A, TAB, ENTER, CTRL+K (no arbitrary key script)'}},
     'desktop_scroll': {'direction':{'type':'string','enum':['up','down','left','right']},'amount':{'type':'integer','minimum':1,'maximum':10}},
-    'desktop_wait': {'state':{'type':'string','enum':['exists','enabled','disabled','visible','hidden','name']},'expected':{'type':'string'},'seconds':{'type':'number','minimum':0,'maximum':30}},
+    'desktop_wait': {'state':{'type':'string','enum':['exists','enabled','disabled','visible','hidden','name']},'expected':{'type':'string','description':'state=name时必须与desktop_inspect观测的完整控件名称精确相等；不支持正则、前缀或包含匹配。状态名变化时用稳定automation_id定位。'},'seconds':{'type':'number','minimum':0,'maximum':30}},
 }
 
 

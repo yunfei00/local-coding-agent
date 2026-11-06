@@ -43,12 +43,15 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--live',action='store_true')
     parser.add_argument('--allowed-model',action='append',default=[],help='本轮正向模型白名单；原始配置不变，别名不自动放行')
+    parser.add_argument('--installed-executable',type=Path,help='实际安装的 Windows 应用，不能计为干净系统验收')
+    parser.add_argument('--release-task',action='store_true',help='一次综合任务验证代码、四角色、真实 GUI 和独立测试')
+    parser.add_argument('--full-access',action='store_true',help='本轮隔离工程明确授权完全访问；不修改原用户配置')
     parser.add_argument('--suite',action='store_true')
     parser.add_argument('--headless-runtime',action='store_true',help='无桌面窗口，通过同一后端认证 WebSocket 验收；不能计为 GUI PASS')
     parser.add_argument('--isolate-git-path',action='store_true',help='仅本轮 Electron/Agent 子进程移除 Git PATH，保留父进程及用户配置')
     parser.add_argument('--automatic-routing',action='store_true',help='真实聊天选择自动模型，候选来自本轮实际能力探针')
     parser.add_argument('--reopen-memory-report',type=Path,help='仅重启本仓库隔离目录内的记忆验收，不读写用户数据')
-    parser.add_argument('--case',action='append',choices=['question','analysis','change','python-smoke','react','electron','gui','visual','approval','network','followup','coupon','environment','repair','context','interruption','websocket','json','project-memory','memory-reopen','knowledge-fix','environment-repair','environment-git','environment-python','routing','workflow-python','workflow-react'],default=[])
+    parser.add_argument('--case',action='append',choices=['question','analysis','change','python-smoke','react','electron','gui','visual','approval','network','followup','coupon','environment','repair','context','interruption','websocket','json','project-memory','memory-reopen','knowledge-fix','environment-repair','environment-git','environment-python','routing','workflow-python','workflow-react','native-gui','revocation'],default=[])
     parser.add_argument('--request-seconds',type=int,default=60)
     parser.add_argument('--output-tokens',type=int,default=8192)
     parser.add_argument('--validation-task-calls',type=int,help='用户授权的隔离验收任务请求上限，不修改原 Settings')
@@ -71,9 +74,15 @@ def main():
     parser.add_argument('--only-model',action='append',default=[],help='Run actual Agent cases only for these allowed IDs')
     parser.add_argument('--data-dir',type=Path,default=Path(os.environ.get('APPDATA',Path.home()))/'local-coding-agent-desktop')
     parser.add_argument('--output',type=Path,default=ROOT/'validation-reports/unified-live')
-    parser.add_argument('--max-calls',type=int,default=180)
-    parser.add_argument('--max-tokens',type=int,default=20000000)
+    parser.add_argument('--max-calls',type=int)
+    parser.add_argument('--max-tokens',type=int)
     args=parser.parse_args()
+    # Recovery retains its smaller default. Explicit bounded CLI values must
+    # actually govern the driver instead of being replaced by hidden constants.
+    if args.max_calls is None:args.max_calls=25 if args.resume_report else 180
+    if args.max_tokens is None:args.max_tokens=500000 if args.resume_report else 20000000
+    if args.max_calls<1 or args.max_tokens<1:parser.error('验收请求和 Token 上限必须为正整数')
+    if args.release_task and (not args.full_access or args.case!=['native-gui']):parser.error('综合验收必须明确 --full-access 并只选择 --case native-gui')
     if args.prepared_fixture and (len(args.case)!=1 or args.case[0] not in {'react','electron'} or not args.prepared_fixture.resolve().is_relative_to(ROOT/'validation-reports')):
         parser.error('Prepared fixture must be a controlled frontend case')
     if args.reuse_project and (not args.case or 'gui' not in args.case or not args.reuse_project.resolve().is_relative_to(ROOT/'validation-reports')):parser.error('GUI reuse must remain inside controlled validation projects')
@@ -90,7 +99,10 @@ def main():
             if not Path(value).resolve().is_relative_to(ROOT/'validation-reports'):parser.error('Resume outside controlled validation directory')
         args.output.mkdir(parents=True,exist_ok=False)
         manifest={**original,'output':str(args.output.resolve()),'report':str((args.output/'report.json').resolve()),
-                  'resume_case':case,'resume_source':str(args.resume_report.resolve()),'verify_completed':args.verify_completed,'max_calls':25,'max_tokens':500000}
+                  'resume_case':case,'resume_source':str(args.resume_report.resolve()),'verify_completed':args.verify_completed,
+                  'max_calls':args.max_calls,'max_tokens':args.max_tokens,
+                  'original_source_commit':original.get('source_commit'),
+                  'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()}
         path=args.output/'manifest.json';path.write_text(json.dumps(manifest),encoding='utf-8')
         if args.headless_runtime:
             from agent.desktop.resources import require_resources,MIB
@@ -182,7 +194,14 @@ def main():
                   task_seconds=min(limits['task_seconds'],600),request_seconds=min(limits['request_seconds'],args.request_seconds))
     args.max_calls=limits['global_api_calls'];args.max_tokens=limits['global_api_tokens']
     config=validate_config({**saved,'budget':limits})
+    if args.installed_executable:
+        executable=args.installed_executable.resolve()
+        if not executable.is_file() or executable.name!='LocalCodingAgent.exe' or not executable.is_relative_to(ROOT/'build'):
+            parser.error('安装版必须在本仓库 build 隔离安装路径内')
     store=SQLiteStore(data)
+    if args.full_access:
+        from agent.permissions.authorization import AuthorizationSettings
+        AuthorizationSettings(store).configure('full_access',confirmed=True)
     store.set_setting(KEY,json.dumps({'connections':ali,'profiles':profiles}))
     store.set_setting('orchestration.config',json.dumps(config))
     if args.reuse_capabilities:
@@ -205,6 +224,9 @@ def main():
               'context_project':str(context.resolve()),'reuse_capabilities':str(args.reuse_capabilities.resolve()) if args.reuse_capabilities else None,
               'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()}
     manifest.update(excluded_models=excluded,allowed_models=args.allowed_model,discover_only=args.discover_only,case_names=args.case,request_seconds=args.request_seconds)
+    manifest['installed_executable']=str(args.installed_executable.resolve()) if args.installed_executable else None
+    manifest['full_access']=args.full_access
+    manifest['release_task']=args.release_task
     manifest['capabilities_only']=args.capabilities_only
     manifest['executor_model']=args.executor_model
     if args.prepared_fixture:manifest['prepared_fixture']=str(args.prepared_fixture.resolve())

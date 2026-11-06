@@ -24,14 +24,17 @@ class ProjectPermissionTests(unittest.TestCase):
                     verdict = policy.evaluate(tool_name=name, arguments={'command':'npm run ' + ('dev' if 'dev' in scripts else 'test')}, workspace=workspace)
                     self.assertTrue(verdict.requires_approval, (name,scripts))
 
-    def test_new_tools_not_available_in_read_only_and_no_external_start(self):
+    def test_read_only_denies_tools_and_external_start_requires_approval(self):
         with tempfile.TemporaryDirectory() as temp:
             workspace = Workspace(temp)
             policy = PermissionPolicy('read_only')
             for name in ('start_process','read_process','stop_process'):
                 self.assertFalse(policy.evaluate(tool_name=name,arguments={},workspace=workspace).allowed)
             policy.set_mode('workspace')
-            self.assertFalse(policy.evaluate(tool_name='start_process',arguments={'command':'node dev.cjs','cwd':'..'},workspace=workspace).allowed)
+            verdict=policy.evaluate(tool_name='start_process',arguments={'command':'node dev.cjs','cwd':'..'},workspace=workspace)
+            self.assertTrue(verdict.allowed)
+            self.assertTrue(verdict.requires_approval)
+            self.assertTrue(verdict.approval_key)
 
     def test_detects_actual_fixtures_without_executing_scripts(self):
         fixtures = Path(__file__).resolve().parents[1]/'manual-fixtures'

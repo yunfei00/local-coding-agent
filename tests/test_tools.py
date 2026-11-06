@@ -32,6 +32,7 @@ class WorkspaceTests(unittest.TestCase):
                 names,
                 [
                     "apply_patch",
+                    "delete_file",
                     "desktop_click",
                     "desktop_focus_window",
                     "desktop_inspect",
