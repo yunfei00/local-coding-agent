@@ -21,6 +21,13 @@ NAMES = tuple('desktop_' + n for n in ('list_windows', 'screenshot', 'inspect', 
 _locks = {}
 
 
+def text_confirmation(session_token, window_id, text):
+    """Session-keyed proof for scoped approvals without exposing typed text."""
+    import hmac
+    encoded = json.dumps(["desktop_type_text", window_id, text], ensure_ascii=True).encode("ascii")
+    return hmac.digest(session_token.encode("utf-8"), encoded, "sha256").hex()
+
+
 def public_arguments(name, arguments):
     if name in {'project_memory','project_memory_search'}:
         return {'action':arguments.get('action') if arguments.get('action') in {'save','search'} else 'invalid','content':'[记忆内容或检索词略]'}
@@ -139,6 +146,19 @@ class DesktopRuntime:
             data = {'windows': windows, 'session_scope': 'current interactive user only'}
         if name in ('desktop_inspect','desktop_screenshot'):
             self.binding(arguments.get('window_id'),owner)['geometry']={k:data[k] for k in ('client_size','dpi','client_origin')}
+        if name == 'desktop_inspect':
+            editors = [
+                {'selector': {'runtime_id': control['runtime_id'], 'control_type': control['control_type']},
+                 'confirm_risk': bool(control.get('editable_document'))}
+                for control in data['controls']
+                if control.get('runtime_id') and control['visible'] and control['enabled'] and not control['sensitive']
+                and (control['control_type'] == 'Edit' or control.get('editable_document'))
+            ][:8]
+            data['action_state'] = {
+                'window_id': arguments['window_id'], 'focused': data.get('focused', False),
+                'editable_targets': editors,
+                'guidance': 'Use an exact selector for the next requested action. Reinspect only if the control, window or expected state changed.',
+            }
         if name == 'desktop_screenshot':
             path = Path(request['artifact_path'])
             if path.stat().st_size > 32*1024*1024:

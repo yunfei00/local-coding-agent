@@ -114,9 +114,11 @@ class CapabilityRegistry:
             s=self.state(p)
             if s['availability']=='UNAVAILABLE' or any(s['capabilities'][c]['state']!=SUPPORTED for c in need['capabilities']):continue
             window=p.get('context_window')
-            if not window or window-(p.get('max_output_tokens') or 1024)<need['context_minimum']:continue
+            if not window:continue
+            reserve = p.get('max_output_tokens') or min(self.catalog.defaults.context_reserved_output_tokens, window // 2)
+            if window-reserve<need['context_minimum']:continue
             total=s['successes']+s['failures'];score=100+(10*s['successes']/total if total else 0)-min((s['latency_ms'] or 0)/10000,10)
-            reason=['能力匹配：'+','.join(CAP_NAMES[c] for c in need['capabilities']),f'配置上下文 {window}，输出预留 {p.get("max_output_tokens") or 1024}',f'真实成功/失败 {s["successes"]}/{s["failures"]}']
+            reason=['能力匹配：'+','.join(CAP_NAMES[c] for c in need['capabilities']),f'配置上下文 {window}，输出预留 {reserve}',f'真实成功/失败 {s["successes"]}/{s["failures"]}']
             resolved=self.catalog.profile(p['model_profile_id'])
             resolved['supports_vision']=s['capabilities']['vision']['state']==SUPPORTED
             rows.append({'profile_id':p['model_profile_id'],'score':score,'reason':reason,'snapshot':{'profile':resolved,'capabilities':self.catalog.test_result(p['model_profile_id']),'request_seconds':120,'fingerprint':self.catalog.fingerprint(p['model_profile_id'])}})

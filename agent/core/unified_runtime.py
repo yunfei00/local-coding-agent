@@ -31,12 +31,15 @@ Answer ordinary questions directly, with no tools or plan. Analyze using relevan
 For a small change use normal tools directly. For complex multi-file development call agent_plan with 1-4 cohesive executable steps before editing.
 For complex development prefer workflow_template bugfix/feature, or provide a bounded DAG in agent_plan with task_id, dependencies, assigned_role and acceptance_criteria. Use planner for actual inspection, developer for edits, reviewer for independent read-only review and tester for real commands. The reviewer must call workflow_review; prose approval is insufficient. Small tasks remain direct, with no mandatory workflow.
 Keep each tool batch small: create a short file skeleton then apply small focused patches (about 80 lines per edit). Do not emit an entire multi-file project in one tool response; each response must finish within the configured request timeout.
+For a greenfield project, establish the entry point first, implement one component at a time, and validate each component before expanding. Use the most recent tool result and plan checkpoint; do not rediscover files that have not changed.
 Each step must have real tool evidence; avoid prose-only steps. Use an empty verification for edit/inspection steps, a concrete command for test steps.
 Do not ask the user to choose chat/development modes. You may upgrade a small task using agent_plan, preserving all existing changes and evidence.
 After code changes the runtime independently runs verification. Never claim tests passed without actual exit-code evidence.
+Use temporary input and storage for smoke tests of stateful programs, so the delivered project does not contain sample user state. For Git restore, first verify the exact file exists in the source commit; a successful commit alone does not prove the path was tracked.
 For project questions use knowledge_search to retrieve actual paths/lines and read the relevant files. project_memory may search or save concise candidate knowledge, never raw chat or secrets. Candidate memory is unverified; current code and real test evidence take priority. Do not overwrite user rules. environment_diagnose performs read-only checks; environment_repair always requires the existing approval and a real re-check. Never modify global settings to hide environment errors.
 Keep the final report in Chinese, including changed files, actual verification and unresolved issues. Environment failures must not cause endless retries.
 For Windows computer tasks discover and authorize the exact window, focus it, then inspect live UIA controls. Verify actual state after actions; do not confuse a request being sent with its effect being verified.
+After a successful inspection, use its action_state and exact selector for the next requested action. When the same window is already focused and its controls are unchanged, do not repeat discovery or focus. After typing check the tool's verified text result, then save with the appropriate UI action and verify the saved result when allowed.
 Only when UIA cannot locate/invoke the target, request an authorized screenshot for a vision-capable model. Use desktop_click method=coordinate, coordinate_space=model_image, artifact_id from that capture and its image-pixel x/y, with fresh confirm_risk approval. Do not guess coordinates, read source code to bypass the interface, or fallback after a privacy/approval/session denial. Re-capture after movement, resizing or stale capture errors.
 Ordinary editable controls use exact selectors. RichEdit Document controls require confirm_risk and verified text readback; webpage Document or arbitrary Pane is not an editor.
 Windows app activation can reuse a process/window: use a unique task-owned file/window and actual discovery, not an assumed launcher PID. Never terminate a pre-existing user application. On BLOCKED_RESOURCE stop launching GUI processes; preserve progress and continue unrelated checks.
@@ -67,10 +70,12 @@ def requested_intent(prompt):
     """Conservative request-shape fallback; model plans and tool evidence refine it."""
     paths=set(re.findall(r'[\w./\\-]+\.(?:py|tsx?|jsx?|json|toml|ya?ml|md)\b',prompt,re.I))
     text=re.sub(r'[\w./\\-]+\.(?:py|tsx?|jsx?|json|toml|ya?ml|md)\b',' FILE ',prompt,flags=re.I)
-    readonly=bool(re.search(r'只分析|仅分析|只读|(?:不|不要|禁止|不得)(?:修改|改动|编辑)(?:任何)?(?:代码|源码|文件|工程)|不(?:读取或)?修改工程|本轮只分析|do not (?:edit|modify) (?:any )?(?:files|code)',text,re.I))
+    readonly=bool(re.search(r'只分析|仅分析|只读|(?:不|不要|禁止|不得)(?:修改|改动|编辑)(?:任何)?(?:代码|源码|文件|工程)|不(?:读取或)?修改工程|本轮只分析|analysis only|only analy[sz]e|do not (?:edit|modify) (?:any )?(?:files|code)',text,re.I))
     question=bool(re.search(r'^\s*(?:请)?(?:解释|讲解|如何|怎么|什么|只回答|仅回答|只返回|仅返回|what\b|how\b|why\b|explain\b)|是什么|什么意思',text,re.I))
     direct=bool(re.search(r'(?:请|帮我|直接|现在)(?:实现|开发|修复|修改|重构|新增)|can you (?:add|fix|implement|create|change)',text,re.I))
-    change=not readonly and bool(re.search(r'实现|开发|修复|修改|重构|新增|增加|改成|改为|改中文|编写|创建|\b(?:implement|develop|refactor|create|fix|add|change|update)\b',text,re.I)) and (not question or direct)
+    repair_file = bool(re.search(r'(?:^\s*(?:please\s+|can you\s+)?|\b(?:and|then)\s+)repair\s+(?:the\s+)?FILE\b', text, re.I))
+    inspect_and_repair = bool(re.search(r'^\s*(?:please\s+)?(?:inspect|diagnose)\s+and\s+repair\b', text, re.I))
+    change=not readonly and (repair_file or inspect_and_repair or bool(re.search(r'实现|开发|修复|修改|重构|新增|增加|改成|改为|改中文|编写|创建|\b(?:implement|develop|refactor|create|fix|add|change|update)\b',text,re.I))) and (not question or direct)
     listed=len(re.findall(r'(?m)^\s*(?:\d+[.)、]|[-*])\s*\S',prompt))
     kind='question' if question and not direct else 'complex' if change and (listed>=3 or len(paths)>=3) else 'change' if change else 'analysis' if readonly or re.search(r'分析|诊断|检查|inspect|analy[sz]e|diagnos',text,re.I) else 'question'
     positive=re.sub(r'(?:不是|并非|不属于)(?:一项|一个)?(?:代码)?开发(?:任务|工作)?','',text)
@@ -147,6 +152,15 @@ def changed_since_snapshot(before,after):
             if len(new)<3 or old[0]!=new[0] or old[2]!=new[2]:changed.add(path)
         elif old[:2]!=new[:2]:changed.add(path)
     return changed
+
+
+def unreviewed_test_data(before, after, edited_paths):
+    """Find newly created data that did not come from an explicit file edit."""
+    data_extensions = {".json", ".jsonl", ".csv", ".db", ".sqlite", ".sqlite3"}
+    names = set(after) - set(before) - set(edited_paths)
+    return sorted(path for path in names
+                  if Path(path).suffix.lower() in data_extensions
+                  and Path(path).name not in {"package-lock.json", "composer.lock"})[:12]
 
 def snapshot_fingerprint(snapshot):
     return json.dumps({p:[v[0],v[2]] if len(v)>2 else v for p,v in snapshot.items()},sort_keys=True)

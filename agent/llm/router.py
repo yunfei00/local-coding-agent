@@ -61,7 +61,7 @@ def validate_config(raw: dict | None = None) -> dict:
             raise ValueError("Invalid model name")
         for key, minimum, maximum in (("output_limit", 64, 32768), ("context_window", 1024, 262144)):
             value = profile[key]
-            if key == "context_window" and value is None:
+            if value is None and (key == "context_window" or profile["route"] == "local"):
                 continue
             if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
                 raise ValueError(f"Invalid {key}")
@@ -119,6 +119,8 @@ class ModelRouter:
         else:
             # Legacy snapshots retain their original strategy semantics.
             route = "local" if strategy == "local-only" else "api" if strategy in {"api-only", "single-agent"} else profile["route"]
+        if route == "api" and profile["output_limit"] is None:
+            profile["output_limit"] = 1024
         provider = self.factory(route, profile)
         model = profile["model"] or provider.preferred_model
         if not model:
@@ -189,6 +191,7 @@ class RoutedProvider:
         self.max_output_tokens = profile['output_limit']
         self.provider.context_window = self.context_window
         self.provider.max_output_tokens = profile["output_limit"]
+        self.output_reservation = self.max_output_tokens or min(4096, self.context_window // 4)
         self.provider.request_timeout = router.config["budget"]["request_seconds"]
 
     async def stream_chat(self, *, model, messages, tools=None):
@@ -227,7 +230,7 @@ class RoutedProvider:
             await self.router.notify("model.compatibility", {"model": model, "mode": "json", "message": "Native tools unavailable; using validated JSON tool compatibility."})
         request_id = self.router.budget.reserve(route=self.route, role=self.role, model=model,
             messages=messages, tools=None if fallback else tools, context_window=self.context_window,
-            output_limit=self.profile["output_limit"], input_price=self.profile["input_price"], output_price=self.profile["output_price"],retry=getattr(self,'retry_index',0))
+            output_limit=self.output_reservation, input_price=self.profile["input_price"], output_price=self.profile["output_price"],retry=getattr(self,'retry_index',0))
         self.request_id = request_id
         self.provider.request_observer=self.router.budget.runtime.ledger.request_callback(
             self.router.budget.plan_id,self.router.budget.runtime.get(self.router.budget.plan_id)['thread_id'],request_id,
@@ -241,15 +244,16 @@ class RoutedProvider:
             # Extend the existing budget journal; do not create a second request ledger.
             self.router.budget.annotate(request_id, identity)
             await self.router.notify("model.active", {"request_id": request_id, "role": self.role, "route": self.route, "model": model, **identity})
+            response_bytes_bound = (self.max_output_tokens or self.context_window) * 32 + 65536
             async with asyncio.timeout(self.router.config["budget"]["request_seconds"]):
                 dispatched = True
                 async with aclosing(self.provider.stream_chat(model=model, messages=messages, tools=None if fallback else tools)) as stream:
                     async for chunk in stream:
                         text += chunk.content
-                        if len(text) > self.profile["output_limit"] * 32 + 65536:
+                        if len(text) > response_bytes_bound:
                             raise ProviderError("MODEL_OUTPUT_LIMIT", "Provider exceeded bounded output size")
                         if chunk.done:
-                            if len(text) + sum(len(json.dumps(c.arguments, ensure_ascii=False)) for c in chunk.tool_calls) > self.profile["output_limit"] * 32 + 65536:
+                            if len(text) + sum(len(json.dumps(c.arguments, ensure_ascii=False)) for c in chunk.tool_calls) > response_bytes_bound:
                                 raise ProviderError("MODEL_OUTPUT_LIMIT", "Provider exceeded bounded structured output size")
                             finish = chunk.finish_reason
                             self.router.budget.annotate(request_id, {"finish_reason":chunk.finish_reason,

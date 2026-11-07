@@ -25,6 +25,7 @@ def validate_catalog(raw):
         if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", value):
             raise ValueError("Invalid connection/profile identifier")
     ids = set()
+    local_ids = set()
     for c in connections:
         if not isinstance(c, dict) or set(c) != {"connection_id", "display_name", "provider_type", "base_url", "credential_reference", "enabled"}:
             raise ValueError("Invalid provider connection fields")
@@ -34,6 +35,8 @@ def validate_catalog(raw):
         ids.add(c["connection_id"])
         if c["provider_type"] not in {"ollama", "openai_compatible"} or not isinstance(c["enabled"], bool):
             raise ValueError("Invalid provider type/enabled flag")
+        if c["provider_type"] == "ollama":
+            local_ids.add(c["connection_id"])
         if not isinstance(c["display_name"], str) or not 1 <= len(c["display_name"].strip()) <= 200:
             raise ValueError("Connection display name is required")
         if not isinstance(c["base_url"], str) or len(c["base_url"]) > 2000:
@@ -64,7 +67,8 @@ def validate_catalog(raw):
             if not isinstance(p[k], str) or not 1 <= len(p[k].strip()) <= 200:
                 raise ValueError("Model ID and display name are required")
         p.setdefault("context_window", None)
-        p.setdefault("max_output_tokens", 1024)
+        local = p["connection_id"] in local_ids
+        p.setdefault("max_output_tokens", None if local else 1024)
         p.setdefault("temperature", None)
         p.setdefault("pricing", None)
         p.setdefault("tool_mode", "auto")
@@ -74,7 +78,7 @@ def validate_catalog(raw):
         pricing = p["pricing"] or {}
         if not isinstance(pricing, dict) or set(pricing) - {"input_price", "output_price"}:
             raise ValueError("Pricing uses input_price/output_price per million tokens")
-        validate_config({"roles": {"executor": {"model": p["model_id"], "context_window": p["context_window"],
+        validate_config({"roles": {"executor": {"route": "local" if local else "api", "model": p["model_id"], "context_window": p["context_window"],
             "output_limit": p["max_output_tokens"], "tool_mode": p["tool_mode"], **pricing}}})
         t = p["temperature"]
         if t is not None and (isinstance(t, bool) or not isinstance(t, (float, int)) or not math.isfinite(t) or not 0 <= t <= 2):
@@ -140,8 +144,13 @@ class ModelCatalog:
         if config["strategy"] == "api-only":
             for binding in config["roles"].values():
                 binding["route"] = "api"
+                if binding["output_limit"] is None:
+                    binding["output_limit"] = 1024
         elif config["strategy"] == "single-agent":
-            config["roles"]["executor"]["route"] = "api"
+            binding = config["roles"]["executor"]
+            binding["route"] = "api"
+            if binding["output_limit"] is None:
+                binding["output_limit"] = 1024
         settings = asdict(self.defaults)
         catalog = {"connections": [], "profiles": []}
         for route, provider, prefix in (("local", "ollama", "ollama"), ("api", "openai_compatible", "openai")):
@@ -155,7 +164,7 @@ class ModelCatalog:
                 old_profile = next((p for p in config["roles"].values() if p["model"] == model and p["route"] == route), {})
                 catalog["profiles"].append({"model_profile_id": pid, "connection_id": cid, "model_id": model, "display_name": model,
                     "context_window": old_profile.get("context_window") or settings[prefix + "_context_window"],
-                    "max_output_tokens": old_profile.get("output_limit", 1024), "temperature": settings[prefix + "_temperature"],
+                    "max_output_tokens": old_profile.get("output_limit", None if route == "local" else 1024), "temperature": settings[prefix + "_temperature"],
                     "tool_mode": old_profile.get("tool_mode", "auto"),
                     "pricing": {k: old_profile[k] for k in ("input_price", "output_price") if old_profile.get(k) is not None} or None})
             for role in ROLES:

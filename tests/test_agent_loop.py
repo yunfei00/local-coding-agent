@@ -9,6 +9,15 @@ from agent.core.agent_loop import (
 
 
 class AgentLoopTests(unittest.TestCase):
+    def test_compaction_preserves_actionable_desktop_selector(self):
+        selector = {"control_type": "Document", "runtime_id": [42, 11, -3]}
+        action = {"window_id": "owned", "focused": True,
+                  "editable_targets": [{"selector": selector, "confirm_risk": True}]}
+        result = {"ok": True, "data": {"action_state": action, "controls": ["x" * 5000] * 50}}
+        for limit in (12000, 500000):
+            compacted = compact_tool_payload(result, max_chars=limit)
+            self.assertEqual(compacted["data"]["action_state"], action)
+
     def test_verified_step_allows_fresh_checks_but_keeps_evidence_and_failure_state(self):
         guard=ToolLoopGuard(max_identical_calls=2)
         for _ in range(2):
@@ -92,6 +101,14 @@ class AgentLoopTests(unittest.TestCase):
             },
         )
         self.assertEqual(guard.completion_gaps(), [])
+
+    def test_non_git_code_changes_still_require_validation(self) -> None:
+        guard = ToolLoopGuard()
+        guard.record_result("apply_patch", {"ok": True, "changed_paths": ["app.py"]})
+        self.assertEqual(guard.completion_gaps(require_git_diff=False), ["validation"])
+        guard.record_result("run_command", {"ok": True, "exit_code": 0})
+        self.assertEqual(guard.completion_gaps(require_git_diff=False), [])
+        self.assertEqual(guard.completion_gaps(), ["git_diff"])
 
     def test_document_change_does_not_force_test_command(self) -> None:
         guard = ToolLoopGuard()

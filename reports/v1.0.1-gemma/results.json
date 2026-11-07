@@ -1,0 +1,2936 @@
+{
+  "installed_baseline": [
+    {
+      "model": "gemma4:31b",
+      "case": "B",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": []
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null,
+          "changed_paths": []
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 138990,
+        "output_tokens": 3502
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 157.91,
+      "tool_calls": 23,
+      "token_samples": 19,
+      "completed_model_calls": 19,
+      "model_calls": 19,
+      "runtime_tool_calls": 23,
+      "protocol_repairs": 0,
+      "task": "Implement items.py CLI: add NAME, list, update OLD NEW, delete NAME. Store a JSON array of names in items.json in the working directory. list prints one name per line. Reject blank or duplicate names and missing update/delete targets with nonzero exit; preserve storage on errors.",
+      "finish_reasons": {
+        "stop": 19
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "verifying",
+        "completed"
+      ]
+    }
+  ],
+  "original_21": [
+    {
+      "model": "gemma4:31b",
+      "case": "A",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "draft.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "final.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "delete_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "obsolete.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "ref.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "FILE_NOT_FOUND"
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "OUTPUT_TRUNCATED",
+      "tokens": {
+        "input_tokens": 65316,
+        "output_tokens": 2940
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_TRUNCATED",
+      "outcome": null,
+      "seconds": 101.84,
+      "tool_calls": 8,
+      "token_samples": 10,
+      "completed_model_calls": 10,
+      "model_calls": 10,
+      "runtime_tool_calls": 8,
+      "protocol_repairs": 1,
+      "task": "Read seed.txt, create draft.txt with its content, rename draft.txt to final.txt, append a newline and READY, delete obsolete.txt. Create ref.txt containing final.txt. Try reading absent.txt and recover without creating it.",
+      "finish_reasons": {
+        "stop": 8,
+        "length": 2
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "failed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "A",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "draft.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "final.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "delete_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "obsolete.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "ref.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "FILE_NOT_FOUND"
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "ls",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "PERMISSION_DENIED"
+        },
+        {
+          "name": "cat",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "PERMISSION_DENIED"
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TOOL_FAILURE",
+      "tokens": {
+        "input_tokens": 72237,
+        "output_tokens": 2446
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "TOOL_FAILURE_LIMIT",
+      "outcome": null,
+      "seconds": 89.88,
+      "tool_calls": 11,
+      "token_samples": 11,
+      "completed_model_calls": 11,
+      "model_calls": 11,
+      "runtime_tool_calls": 11,
+      "protocol_repairs": 0,
+      "task": "Read seed.txt, create draft.txt with its content, rename draft.txt to final.txt, append a newline and READY, delete obsolete.txt. Create ref.txt containing final.txt. Try reading absent.txt and recover without creating it.",
+      "finish_reasons": {
+        "stop": 11
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "failed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "A",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "draft.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "final.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "delete_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "obsolete.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "ref.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "FILE_NOT_FOUND"
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 48966,
+        "output_tokens": 1125
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": "awaiting_user",
+      "seconds": 48.8,
+      "tool_calls": 7,
+      "token_samples": 8,
+      "completed_model_calls": 8,
+      "model_calls": 8,
+      "runtime_tool_calls": 7,
+      "protocol_repairs": 0,
+      "task": "Read seed.txt, create draft.txt with its content, rename draft.txt to final.txt, append a newline and READY, delete obsolete.txt. Create ref.txt containing final.txt. Try reading absent.txt and recover without creating it.",
+      "finish_reasons": {
+        "stop": 8
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "verifying",
+        "paused"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "B",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "items.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "PLAN_OPERATION_ALREADY_APPLIED"
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "PLAN_OPERATION_ALREADY_APPLIED"
+        }
+      ],
+      "status": "FAIL",
+      "failure": "OUTPUT_TRUNCATED",
+      "tokens": {
+        "input_tokens": 83768,
+        "output_tokens": 4086
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_TRUNCATED",
+      "outcome": null,
+      "seconds": 137.45,
+      "tool_calls": 10,
+      "token_samples": 12,
+      "completed_model_calls": 12,
+      "model_calls": 12,
+      "runtime_tool_calls": 10,
+      "protocol_repairs": 1,
+      "task": "Implement items.py CLI: add NAME, list, update OLD NEW, delete NAME. Store a JSON array of names in items.json in the working directory. list prints one name per line. Reject blank or duplicate names and missing update/delete targets with nonzero exit; preserve storage on errors.",
+      "finish_reasons": {
+        "stop": 10,
+        "length": 2
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "failed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "B",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "items.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "PLAN_OPERATION_ALREADY_APPLIED"
+        }
+      ],
+      "status": "FAIL",
+      "failure": "OUTPUT_TRUNCATED",
+      "tokens": {
+        "input_tokens": 79526,
+        "output_tokens": 3967
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_TRUNCATED",
+      "outcome": null,
+      "seconds": 140.25,
+      "tool_calls": 9,
+      "token_samples": 11,
+      "completed_model_calls": 11,
+      "model_calls": 11,
+      "runtime_tool_calls": 9,
+      "protocol_repairs": 1,
+      "task": "Implement items.py CLI: add NAME, list, update OLD NEW, delete NAME. Store a JSON array of names in items.json in the working directory. list prints one name per line. Reject blank or duplicate names and missing update/delete targets with nonzero exit; preserve storage on errors.",
+      "finish_reasons": {
+        "stop": 9,
+        "length": 2
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "failed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "B",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "items.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 61652,
+        "output_tokens": 2439
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 109.89,
+      "tool_calls": 10,
+      "token_samples": 9,
+      "completed_model_calls": 9,
+      "model_calls": 9,
+      "runtime_tool_calls": 10,
+      "protocol_repairs": 0,
+      "task": "Implement items.py CLI: add NAME, list, update OLD NEW, delete NAME. Store a JSON array of names in items.json in the working directory. list prints one name per line. Reject blank or duplicate names and missing update/delete targets with nonzero exit; preserve storage on errors.",
+      "finish_reasons": {
+        "stop": 9
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "verifying",
+        "completed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "C",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "environment_diagnose",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "mathbox.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 37104,
+        "output_tokens": 863
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 51.95,
+      "tool_calls": 6,
+      "token_samples": 6,
+      "completed_model_calls": 6,
+      "model_calls": 6,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0,
+      "task": "Identify Python and pytest availability, run python -m pytest -q, diagnose the failing assertion and repair mathbox.py, then run python -m pytest -q again. Keep test_mathbox.py unchanged.",
+      "finish_reasons": {
+        "stop": 6
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "verifying",
+        "completed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "C",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "environment_diagnose",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "mathbox.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 37092,
+        "output_tokens": 877
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 45.59,
+      "tool_calls": 6,
+      "token_samples": 6,
+      "completed_model_calls": 6,
+      "model_calls": 6,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0,
+      "task": "Identify Python and pytest availability, run python -m pytest -q, diagnose the failing assertion and repair mathbox.py, then run python -m pytest -q again. Keep test_mathbox.py unchanged.",
+      "finish_reasons": {
+        "stop": 6
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "verifying",
+        "completed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "C",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "environment_diagnose",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "mathbox.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 37111,
+        "output_tokens": 884
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 46.01,
+      "tool_calls": 6,
+      "token_samples": 6,
+      "completed_model_calls": 6,
+      "model_calls": 6,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0,
+      "task": "Identify Python and pytest availability, run python -m pytest -q, diagnose the failing assertion and repair mathbox.py, then run python -m pytest -q again. Keep test_mathbox.py unchanged.",
+      "finish_reasons": {
+        "stop": 6
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "verifying",
+        "completed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "D",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "slug.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_slug.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 23188,
+        "output_tokens": 1277
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 45.58,
+      "tool_calls": 5,
+      "token_samples": 4,
+      "completed_model_calls": 4,
+      "model_calls": 4,
+      "runtime_tool_calls": 5,
+      "protocol_repairs": 0,
+      "task": "Build slug.py with function slugify(text): lowercase, replace each run of non-ASCII-alphanumeric characters with one hyphen and trim edge hyphens. Add your own pytest tests and run python -m pytest -q. Repair any failures.",
+      "finish_reasons": {
+        "stop": 4
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "verifying",
+        "completed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "D",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "slug.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_slug.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 28822,
+        "output_tokens": 2227
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 65.05,
+      "tool_calls": 5,
+      "token_samples": 5,
+      "completed_model_calls": 5,
+      "model_calls": 5,
+      "runtime_tool_calls": 5,
+      "protocol_repairs": 1,
+      "task": "Build slug.py with function slugify(text): lowercase, replace each run of non-ASCII-alphanumeric characters with one hyphen and trim edge hyphens. Add your own pytest tests and run python -m pytest -q. Repair any failures.",
+      "finish_reasons": {
+        "stop": 4,
+        "length": 1
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "verifying",
+        "completed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "D",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "slug.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_slug.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_slug.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 37519,
+        "output_tokens": 1505
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 57.7,
+      "tool_calls": 7,
+      "token_samples": 6,
+      "completed_model_calls": 6,
+      "model_calls": 6,
+      "runtime_tool_calls": 7,
+      "protocol_repairs": 0,
+      "task": "Build slug.py with function slugify(text): lowercase, replace each run of non-ASCII-alphanumeric characters with one hyphen and trim edge hyphens. Add your own pytest tests and run python -m pytest -q. Repair any failures.",
+      "finish_reasons": {
+        "stop": 6
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "verifying",
+        "completed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "E",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "PLAN_OPERATION_ALREADY_APPLIED"
+        },
+        {
+          "name": "git_status",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_stage",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_commit",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "scratch.txt"
+          ],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "OUTPUT_TRUNCATED",
+      "tokens": {
+        "input_tokens": 110116,
+        "output_tokens": 3730
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_TRUNCATED",
+      "outcome": null,
+      "seconds": 146.41,
+      "tool_calls": 13,
+      "token_samples": 15,
+      "completed_model_calls": 15,
+      "model_calls": 15,
+      "runtime_tool_calls": 13,
+      "protocol_repairs": 1,
+      "task": "Initialize Git, create branch benchmark-work, commit baseline note.txt, append NEW to note.txt, inspect git diff, modify scratch.txt then restore scratch.txt from the commit. Leave note.txt change uncommitted. Use only repository-local identity and never push.",
+      "finish_reasons": {
+        "stop": 13,
+        "length": 2
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "failed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "E",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 128,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_stage",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_commit",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "note.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 62019,
+        "output_tokens": 2387
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": "awaiting_user",
+      "seconds": 86.45,
+      "tool_calls": 10,
+      "token_samples": 9,
+      "completed_model_calls": 9,
+      "model_calls": 9,
+      "runtime_tool_calls": 10,
+      "protocol_repairs": 0,
+      "task": "Initialize Git, create branch benchmark-work, commit baseline note.txt, append NEW to note.txt, inspect git diff, modify scratch.txt then restore scratch.txt from the commit. Leave note.txt change uncommitted. Use only repository-local identity and never push.",
+      "finish_reasons": {
+        "stop": 9
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "verifying",
+        "paused"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "E",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_branches",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "PLAN_OPERATION_ALREADY_APPLIED"
+        },
+        {
+          "name": "git_status",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_stage",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_commit",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "scratch.txt"
+          ],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "OUTPUT_TRUNCATED",
+      "tokens": {
+        "input_tokens": 118741,
+        "output_tokens": 3732
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_TRUNCATED",
+      "outcome": null,
+      "seconds": 149.52,
+      "tool_calls": 14,
+      "token_samples": 16,
+      "completed_model_calls": 16,
+      "model_calls": 16,
+      "runtime_tool_calls": 14,
+      "protocol_repairs": 1,
+      "task": "Initialize Git, create branch benchmark-work, commit baseline note.txt, append NEW to note.txt, inspect git diff, modify scratch.txt then restore scratch.txt from the commit. Leave note.txt change uncommitted. Use only repository-local identity and never push.",
+      "finish_reasons": {
+        "stop": 14,
+        "length": 2
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "failed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-vision",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": "image_attached",
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 20032,
+        "output_tokens": 647
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 39.88,
+      "tool_calls": 2,
+      "token_samples": 3,
+      "completed_model_calls": 3,
+      "model_calls": 3,
+      "runtime_tool_calls": 2,
+      "protocol_repairs": 0,
+      "finish_reasons": {
+        "stop": 3
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "completed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-vision",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": "image_attached",
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 20072,
+        "output_tokens": 351
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 31.5,
+      "tool_calls": 2,
+      "token_samples": 3,
+      "completed_model_calls": 3,
+      "model_calls": 3,
+      "runtime_tool_calls": 2,
+      "protocol_repairs": 0,
+      "finish_reasons": {
+        "stop": 3
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "completed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-vision",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": "image_attached",
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "OUTPUT_TRUNCATED",
+      "tokens": {
+        "input_tokens": 28267,
+        "output_tokens": 2370
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_TRUNCATED",
+      "outcome": null,
+      "seconds": 77.03,
+      "tool_calls": 2,
+      "token_samples": 4,
+      "completed_model_calls": 4,
+      "model_calls": 4,
+      "runtime_tool_calls": 2,
+      "protocol_repairs": 1,
+      "finish_reasons": {
+        "stop": 2,
+        "length": 2
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "failed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "REPEATED_TOOL_CYCLE"
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TOOL_FAILURE",
+      "tokens": {
+        "input_tokens": 25173,
+        "output_tokens": 1218
+      },
+      "repairs": 0,
+      "foreground_switch": false,
+      "terminal": "turn.failed",
+      "code": "TOOL_LOOP_DETECTED",
+      "outcome": null,
+      "seconds": 63.76,
+      "tool_calls": 6,
+      "token_samples": 6,
+      "completed_model_calls": 6,
+      "model_calls": 6,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0,
+      "finish_reasons": {
+        "stop": 6
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "failed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 2,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "existing_notepad",
+      "seconds": 0.36,
+      "tool_calls": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "REPEATED_TOOL_CYCLE"
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TOOL_FAILURE",
+      "tokens": {
+        "input_tokens": 20241,
+        "output_tokens": 1446
+      },
+      "repairs": 0,
+      "foreground_switch": false,
+      "terminal": "turn.failed",
+      "code": "TOOL_LOOP_DETECTED",
+      "outcome": null,
+      "seconds": 64.58,
+      "tool_calls": 6,
+      "token_samples": 5,
+      "completed_model_calls": 5,
+      "model_calls": 5,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0,
+      "finish_reasons": {
+        "stop": 5
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "failed"
+      ]
+    }
+  ],
+  "desktop_retry": [
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "REPEATED_TOOL_CYCLE"
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TOOL_FAILURE",
+      "tokens": {
+        "input_tokens": 20262,
+        "output_tokens": 1328
+      },
+      "repairs": 0,
+      "foreground_switch": false,
+      "terminal": "turn.failed",
+      "code": "TOOL_LOOP_DETECTED",
+      "outcome": null,
+      "seconds": 51.22,
+      "tool_calls": 6,
+      "token_samples": 5,
+      "completed_model_calls": 5,
+      "model_calls": 5,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0,
+      "finish_reasons": {
+        "stop": 5
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "failed"
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "model": "gemma4:31b",
+      "case": "P1",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "todo.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_todo.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "OUTPUT_TRUNCATED",
+      "tokens": {
+        "input_tokens": 34040,
+        "output_tokens": 3801
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_TRUNCATED",
+      "outcome": null,
+      "seconds": 113.05,
+      "tool_calls": 3,
+      "token_samples": 5,
+      "completed_model_calls": 5,
+      "model_calls": 5,
+      "runtime_tool_calls": 3,
+      "protocol_repairs": 1,
+      "task": "From scratch implement a Python todo CLI todo.py with add NAME, list, update OLD NEW, delete NAME. Persist a JSON array in todos.json, reject blank or duplicate names and nonexistent targets with nonzero exit. list prints one name per line. Include pytest tests and a Chinese README.md with usage. Run the tests and fix failures.",
+      "finish_reasons": {
+        "stop": 3,
+        "length": 2
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "failed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "P2",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "scan.py"
+          ],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "OUTPUT_TRUNCATED",
+      "tokens": {
+        "input_tokens": 24091,
+        "output_tokens": 3154
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_TRUNCATED",
+      "outcome": null,
+      "seconds": 82.47,
+      "tool_calls": 2,
+      "token_samples": 4,
+      "completed_model_calls": 4,
+      "model_calls": 4,
+      "runtime_tool_calls": 2,
+      "protocol_repairs": 1,
+      "task": "From scratch implement Python scan.py DIRECTORY OUTPUT.csv. Recursively scan files, print counts by lowercase extension as JSON to stdout, hash each file with SHA256, and export CSV with relative path, extension, sha256, duplicate columns (duplicate is true for every member of a repeated digest). Exclude the output file itself. Include and run pytest tests. Fix failures.",
+      "finish_reasons": {
+        "stop": 2,
+        "length": 2
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "failed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "P3",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "calculator.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_calculator.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "REPEATED_TOOL_CYCLE"
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TOOL_FAILURE",
+      "tokens": {
+        "input_tokens": 41704,
+        "output_tokens": 2556
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "TOOL_LOOP_DETECTED",
+      "outcome": null,
+      "seconds": 82.58,
+      "tool_calls": 9,
+      "token_samples": 7,
+      "completed_model_calls": 7,
+      "model_calls": 7,
+      "runtime_tool_calls": 9,
+      "protocol_repairs": 0,
+      "task": "From scratch build a Windows Tkinter calculator in calculator.py with create_app() returning a Tk window. Use direct child Button widgets labelled 0–9, +, -, *, /, =, C and a direct child Label showing the result. Show Error on division by zero. Add GUI pytest tests and run them. Do not touch any existing window or user file.",
+      "finish_reasons": {
+        "stop": 7
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "failed"
+      ]
+    }
+  ],
+  "lifecycle": [
+    {
+      "model": "gemma4:31b",
+      "case": "R",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "environment_diagnose",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "mathbox.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 49726,
+        "output_tokens": 1830
+      },
+      "repairs": 0,
+      "cancelled_generation": true,
+      "reconnected": true,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 69.19,
+      "tool_calls": 10,
+      "token_samples": 8,
+      "completed_model_calls": 8,
+      "model_calls": 9,
+      "runtime_tool_calls": 10,
+      "protocol_repairs": 0,
+      "finish_reasons": {
+        "stop": 8
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "cancelled",
+        "verifying",
+        "completed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "N",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "REPEATED_TOOL_CYCLE"
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TOOL_FAILURE",
+      "tokens": {
+        "input_tokens": 25094,
+        "output_tokens": 1426
+      },
+      "repairs": 0,
+      "foreground_switch": false,
+      "terminal": "turn.failed",
+      "code": "TOOL_LOOP_DETECTED",
+      "outcome": null,
+      "seconds": 54.81,
+      "tool_calls": 6,
+      "token_samples": 6,
+      "completed_model_calls": 6,
+      "model_calls": 6,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0,
+      "finish_reasons": {
+        "stop": 6
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "failed"
+      ]
+    }
+  ],
+  "packaged": [
+    {
+      "model": "gemma4:31b",
+      "case": "C",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "environment_diagnose",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "mathbox.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 37144,
+        "output_tokens": 859
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 44.69,
+      "tool_calls": 6,
+      "token_samples": 6,
+      "completed_model_calls": 6,
+      "model_calls": 6,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0,
+      "task": "Identify Python and pytest availability, run python -m pytest -q, diagnose the failing assertion and repair mathbox.py, then run python -m pytest -q again. Keep test_mathbox.py unchanged.",
+      "finish_reasons": {
+        "stop": 6
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "verifying",
+        "completed"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "B",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "items.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 61690,
+        "output_tokens": 2134
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 84.45,
+      "tool_calls": 10,
+      "token_samples": 9,
+      "completed_model_calls": 9,
+      "model_calls": 9,
+      "runtime_tool_calls": 10,
+      "protocol_repairs": 0,
+      "task": "Implement items.py CLI: add NAME, list, update OLD NEW, delete NAME. Store a JSON array of names in items.json in the working directory. list prints one name per line. Reject blank or duplicate names and missing update/delete targets with nonzero exit; preserve storage on errors.",
+      "finish_reasons": {
+        "stop": 9
+      },
+      "observed_models": [
+        "gemma4:31b"
+      ],
+      "request_errors": {},
+      "output_limits": [],
+      "phases": [
+        "executing",
+        "verifying",
+        "completed"
+      ]
+    }
+  ],
+  "native_control": {
+    "result": "PASS",
+    "file_readback_verified": true,
+    "characters": 34,
+    "window_closed": true
+  }
+}

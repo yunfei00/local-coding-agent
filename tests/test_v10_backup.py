@@ -6,12 +6,17 @@ from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
-from agent.persistence.store import SQLiteStore,SCHEMA_VERSION
+from agent.persistence.store import SQLiteStore,SCHEMA_VERSION,default_data_dir
 from agent.persistence.backup import create_backup,inspect_backup,restore_backup,DataLock,file_digest
 from agent.server.projects import ProjectRegistry
 
 
 class BackupTests(unittest.TestCase):
+    def test_environment_data_directory_cannot_resolve_under_executable_cwd(self):
+        with patch.dict('os.environ', {'LCA_DATA_DIR': 'build/pilot'}):
+            with self.assertRaisesRegex(ValueError, '绝对路径'):
+                default_data_dir()
+
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.addCleanup(lambda:self.store.close() if self.store else None);self.root=Path(self.temp.name);self.data=self.root/'data';self.repo=self.root/'project';self.repo.mkdir()
         self.store=SQLiteStore(self.data)

@@ -8,20 +8,36 @@ import tempfile
 import unittest
 from unittest.mock import patch,AsyncMock
 
-from agent.core.unified_runtime import infer_intent, verification_policy, result_view, workspace_snapshot,requested_intent
+from agent.core.unified_runtime import infer_intent, verification_policy, result_view, workspace_snapshot,requested_intent,unreviewed_test_data
 from agent.llm.router import validate_config
+from agent.llm.base import ProviderChunk, ToolCall
 from agent.server.main import AgentServer
 from agent.task_plans import TaskPlanStore
 from test_agent_reliability import FakeWebSocket, ScriptedProvider, final_step, tool_step
 
 
 class UnifiedPolicyTests(unittest.TestCase):
+    def test_delivery_review_only_lists_new_nonedit_data(self):
+        before = {"existing.json": [1, 1]}
+        after = {path: [2, 2] for path in (
+            "existing.json", "fixture.json", "export.csv", "package-lock.json", "app.py")}
+        self.assertEqual(unreviewed_test_data(before, after, ["export.csv"]), ["fixture.json"])
+
     def test_request_shape_is_refined_by_tools_and_respects_read_only(self):
         self.assertEqual(requested_intent('Python 装饰器是什么？')['kind'],'question')
         self.assertEqual(requested_intent('请解释如何修改 Python 代码')['kind'],'question')
         self.assertEqual(requested_intent('把登录按钮文字改成中文')['kind'],'change')
         self.assertEqual(requested_intent('只返回 JSON，不读取或修改工程')['kind'],'question')
         self.assertTrue(requested_intent('只分析启动失败，不修改任何文件')['read_only'])
+        self.assertFalse(requested_intent('Diagnose the failing assertion and repair mathbox.py, then run pytest again.')['read_only'])
+        self.assertTrue(requested_intent('Only analyze why we need to repair mathbox.py.')['read_only'])
+        self.assertTrue(requested_intent('Analyze repair options for mathbox.py.')['read_only'])
+        for prompt in ('修复这个文件', '修改代码并运行测试', '诊断并修复错误',
+                       'Diagnose and fix the file', 'Inspect and repair'):
+            with self.subTest(prompt=prompt):
+                self.assertFalse(requested_intent(prompt)['read_only'])
+                self.assertEqual(requested_intent(prompt)['kind'], 'change')
+        self.assertTrue(requested_intent('Inspect and repair. Do not modify any files.')['read_only'])
         self.assertEqual(requested_intent('实现以下要求\n1. 创建核心模块\n2. 编写测试\n3. 生成交付报告')['kind'],'complex')
 
     def test_intent_uses_model_plan_and_actual_evidence_not_words(self):
@@ -102,6 +118,28 @@ class UnifiedPolicyTests(unittest.TestCase):
 
 
 class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
+    async def test_same_file_replacement_resolves_a_stale_patch(self):
+        _, runtime = await self.run_steps([
+            tool_step("apply_patch", {"path": "calculator.py", "old_text": "not present", "new_text": "ignored"}),
+            tool_step("write_file", {"path": "calculator.py", "content": "def add(a, b): return a+b\n"}),
+            final_step("实现完成"),
+        ])
+        self.assertEqual(runtime["outcome"], "completed_verified")
+        results = [event["payload"]["result"] for event in self.ws.messages if event["type"] == "tool.completed"]
+        self.assertEqual(results[0]["error"]["code"], "PATCH_NOT_FOUND")
+        self.assertTrue(results[1]["ok"])
+
+    async def test_unrelated_write_does_not_resolve_a_stale_patch(self):
+        (self.repo / "calculator.py").write_text("def add(a, b): return a+b\n", encoding="utf-8")
+        await self.run_steps([
+            tool_step("apply_patch", {"path": "calculator.py", "old_text": "not present", "new_text": "ignored"}),
+            tool_step("write_file", {"path": "other.py", "content": "ready = True\n"}),
+            final_step("实现完成"),
+            final_step("实现完成"),
+        ])
+        failures = [event["payload"]["code"] for event in self.ws.messages if event["type"] == "turn.failed"]
+        self.assertEqual(failures, ["PLAN_TOOLS_UNRESOLVED"])
+
     async def asyncSetUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name);self.repo=self.root/'repo';self.repo.mkdir()
         self.env=patch.dict(os.environ,{'LCA_DATA_DIR':str(self.root/'data')});self.env.start()
@@ -124,6 +162,28 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
         await self.server.run_tool_turn(self.ws,thread_id=self.thread.id,turn_id='unified-test',prompt='按照实际需求完成工作',model='mock',provider=provider,unified=True)
         updates=[x['payload']['runtime'] for x in self.ws.messages if x['type']=='agent.runtime.updated']
         return provider,updates[-1]
+
+    async def test_truncated_batch_retries_without_dispatching_buffered_calls(self):
+        self.server.model_retry_attempts = 2
+        provider = ScriptedProvider([
+            tool_step("read_file", {"path": "calculator.py"}),
+            ProviderChunk(content="partial", done=True, finish_reason="length",
+                          tool_calls=(ToolCall("write_file", {"path": "discard.txt", "content": "bad"}),)),
+            final_step("读取完成"),
+        ])
+        await self.server.run_tool_turn(self.ws, thread_id=self.thread.id, turn_id="truncated-test",
+            prompt="检查当前工程的计算器", model="mock", provider=provider, unified=True)
+        self.assertEqual(provider.calls, 3)
+        self.assertFalse((self.repo / "discard.txt").exists())
+        completed = [e["payload"]["name"] for e in self.ws.messages if e["type"] == "tool.completed"]
+        self.assertEqual(completed, ["read_file"])
+        retry = next(e["payload"] for e in self.ws.messages
+                     if e["type"] == "turn.status" and e["payload"].get("phase") == "tool_protocol_retry")
+        self.assertEqual(retry["discarded_tool_calls"], 1)
+        events = self.server.runtime_ledger.events(run_id="truncated-test")
+        failures = [e for e in events if e["kind"] == "request.failed"]
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(failures[0]["metadata"]["failure_class"], "OUTPUT_TRUNCATED")
 
     async def test_workflow_roles_use_same_loop_and_actual_evidence(self):
         nodes=[

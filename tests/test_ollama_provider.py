@@ -13,6 +13,17 @@ from agent.llm.ollama import (
 
 
 class OllamaParsingTests(unittest.TestCase):
+    def test_generation_limit_is_optional_and_positive(self):
+        provider = OllamaProvider(context_window=32768)
+        options = lambda: provider._prepare_chat_request("gemma4:31b", [], None)["options"]
+        self.assertNotIn("num_predict", options())
+        provider.max_output_tokens = 4096
+        self.assertEqual(options()["num_predict"], 4096)
+        self.assertEqual(options()["num_ctx"], 32768)
+        provider.max_output_tokens = -1
+        with self.assertRaises(ValueError):
+            options()
+
     def test_parse_models(self) -> None:
         models = parse_model_list(
             {
@@ -90,7 +101,7 @@ class OllamaProviderIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 headers={"Content-Type": "application/x-ndjson"},
             )
             await response.prepare(request)
-            for payload in [
+            records = [
                 {
                     "message": {"role": "assistant", "content": "Hello "},
                     "done": False,
@@ -106,7 +117,13 @@ class OllamaProviderIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     "prompt_eval_count": 11,
                     "eval_count": 7,
                 },
-            ]:
+            ]
+            if body["messages"][0]["content"] == "truncate":
+                records[-1]["done_reason"] = "length"
+                records[-1]["message"]["tool_calls"] = [
+                    {"function": {"name": "write_file", "arguments": '{"path":'}}
+                ]
+            for payload in records:
                 await response.write((json.dumps(payload) + "\n").encode("utf-8"))
             await response.write_eof()
             return response
@@ -145,6 +162,18 @@ class OllamaProviderIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("".join(item.content for item in chunks), "Hello world")
         self.assertTrue(chunks[-1].done)
         self.assertEqual(chunks[-1].eval_count, 7)
+
+    async def test_terminal_length_keeps_usage_without_parsing_partial_tool(self) -> None:
+        chunks = [
+            chunk async for chunk in self.provider.stream_chat(
+                model="qwen3-coder:30b",
+                messages=[{"role": "user", "content": "truncate"}],
+            )
+        ]
+        self.assertEqual(chunks[-1].finish_reason, "length")
+        self.assertTrue(chunks[-1].done)
+        self.assertEqual(chunks[-1].eval_count, 7)
+        self.assertEqual(chunks[-1].tool_calls, ())
 
 
 if __name__ == "__main__":

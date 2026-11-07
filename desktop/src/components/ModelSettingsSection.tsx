@@ -90,7 +90,10 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
         <label className="settings-field">Model ID<input aria-label="Profile model ID" value={profile.model_id} onChange={e => editProfile({model_id:e.target.value})} /></label>
         <label className="settings-field">Display name<input aria-label="Profile display name" value={profile.display_name} onChange={e => editProfile({display_name:e.target.value})} /></label>
         <label className="settings-field">Context window<input aria-label="Profile context window" type="number" value={profile.context_window ?? ""} onChange={e => editProfile({context_window:e.target.value ? Number(e.target.value) : null})} /></label>
-        <label className="settings-field">Maximum output tokens<input aria-label="Profile output limit" type="number" value={profile.max_output_tokens ?? 1024} onChange={e => editProfile({max_output_tokens:Number(e.target.value)})} /></label>
+        <label className="settings-field">单次输出 Token 上限<input aria-label="Profile output limit" type="number" min={64} max={32768}
+          placeholder={profileConnection?.provider_type === 'ollama' ? "使用 Ollama 默认值" : undefined}
+          value={profile.max_output_tokens ?? (profileConnection?.provider_type === 'ollama' ? "" : 1024)}
+          onChange={e => editProfile({max_output_tokens:e.target.value ? Number(e.target.value) : profileConnection?.provider_type === 'ollama' ? null : 1024})} /></label>
         <small>这是单次响应的输出上限，与 Task 累计 Token 预算不同。过小可能截断工具参数或最终报告；请按模型实际能力配置。</small>
         {profileConnection?.provider_type === 'openai_compatible' ? <button onClick={() => editProfile(codingOutputProfile(profile))}>Use coding output limit</button> : null}
         <label className="settings-field">Temperature<input aria-label="Profile temperature" type="number" step="0.1" value={profile.temperature ?? ""} onChange={e => editProfile({temperature:e.target.value ? Number(e.target.value) : null})} /></label>
