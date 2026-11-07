@@ -15,13 +15,17 @@ class RunCommandTool(BaseTool):
     name = "run_command"
     description = (
         "Run a foreground development command with live stdout/stderr, actual exit code and retained logs. "
-        "shell=auto uses PowerShell on Windows and Bash elsewhere; cmd is also supported on Windows. "
+        "shell=auto uses PowerShell on Windows and Bash elsewhere; use shell=cmd for && chains on Windows. "
         "For a development server use start_process, read_process and stop_process. "
         "Timeout/cancellation cleans up the owned process tree. Existing permissions and approvals apply."
     )
     parameters = {"type": "object", "properties": {
         "command": {"type": "string", "description": "Command text in the selected shell."},
         "cwd": {"type": "string", "description": "Workspace-relative working directory; external paths require approval."},
+        "isolated_cwd": {"type": "boolean", "description": "For stateful smoke tests, use a disposable working directory shared within this task. Omit cwd. Small projects have safe source files mirrored here, without data files. LCA_PROJECT_ROOT identifies the original project."},
+        "expected_exit_codes": {"type": "array", "minItems": 1, "maxItems": 8,
+                                "items": {"type": "integer", "minimum": 0, "maximum": 255},
+                                "description": "Only in isolated_cwd. Explicit acceptable actual exit codes for a positive or negative smoke assertion."},
         "shell": {"type": "string", "enum": ["auto", "powershell", "cmd", "bash"], "default": "auto"},
         "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 86400, "default": 120},
     }, "required": ["command"]}
@@ -31,12 +35,27 @@ class RunCommandTool(BaseTool):
 
     async def execute(self, arguments, *, on_output=None, on_raw_output=None, environment=None, owner_id=""):
         validate_command(str(arguments.get("command", "")))
-        return await self.manager.run(arguments, owner=owner_id, on_output=on_output,
-                                      on_raw_output=on_raw_output, environment=environment)
+        expected = arguments.get("expected_exit_codes")
+        if expected is not None and (
+            arguments.get("isolated_cwd") is not True or not isinstance(expected, list) or not 1 <= len(expected) <= 8
+            or any(type(code) is not int or not 0 <= code <= 255 for code in expected)
+        ):
+            raise ToolError("INVALID_EXPECTED_EXIT", "Expected exit codes require an isolated command and a bounded integer list")
+        result = await self.manager.run(arguments, owner=owner_id, on_output=on_output,
+                                        on_raw_output=on_raw_output, environment=environment)
+        if expected is not None and result.data.get("state") in {"completed", "failed"}:
+            result.ok = result.exit_code in expected
+            result.data["expected_exit_codes"] = expected
+            result.data["error_code"] = None if result.ok else "UNEXPECTED_EXIT_STATUS"
+            result.summary = f"Actual exit code {result.exit_code}; expected {expected}; matched={result.ok}"
+        return result
 
 
 class StartProcessTool(RunCommandTool):
     name = "start_process"
+    parameters = {**RunCommandTool.parameters, "properties": {
+        key: value for key, value in RunCommandTool.parameters["properties"].items()
+        if key not in {"isolated_cwd", "expected_exit_codes"}}}
     description = (
         "Start a long-running development server in an owned process tree and return an opaque process_id. "
         "Read readiness/output using read_process; starting alone does not prove readiness. "

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,6 +16,8 @@ from agent.tools.git import (
     GitWorktreeRemoveTool,
     _validated_branch,
     _worktree_records,
+    missing_initial_commit_paths,
+    missing_literal_appends,
 )
 from agent.tools.workspace import Workspace
 
@@ -41,6 +44,30 @@ class _FakeProcess:
 
 
 class GitWorkflowV3Tests(unittest.IsolatedAsyncioTestCase):
+    async def test_exact_literal_diff_reports_extra_whitespace(self):
+        with tempfile.TemporaryDirectory() as root:
+            workspace = Workspace(root)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            path = Path(root) / "entry.txt"
+            path.write_text("original\n", encoding="utf-8")
+            subprocess.run(["git", "add", "--", "entry.txt"], cwd=root, check=True)
+            subprocess.run(["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                            "commit", "-qm", "baseline"], cwd=root, check=True)
+            path.write_text("original\n MARKER\n", encoding="utf-8")
+            self.assertEqual(await missing_literal_appends(workspace, [("entry.txt", "MARKER")]),
+                             [{"path": "entry.txt", "expected_added_line": "MARKER"}])
+            path.write_text("original\nMARKER\n", encoding="utf-8")
+            self.assertEqual(await missing_literal_appends(workspace, [("entry.txt", "MARKER")]), [])
+
+    async def test_restore_source_is_checked_against_initial_index(self):
+        with tempfile.TemporaryDirectory() as root:
+            workspace = Workspace(root)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            (Path(root) / "restore-me.txt").write_text("baseline", encoding="utf-8")
+            self.assertEqual(await missing_initial_commit_paths(workspace, ["restore-me.txt"]), ["restore-me.txt"])
+            subprocess.run(["git", "add", "--", "restore-me.txt"], cwd=root, check=True)
+            self.assertEqual(await missing_initial_commit_paths(workspace, ["restore-me.txt"]), [])
+
     def test_branch_validation(self) -> None:
         self.assertEqual(
             _validated_branch("phase25/task-worktree"),

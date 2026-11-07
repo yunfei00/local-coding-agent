@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import signal
 import subprocess
+import tempfile
 import time
 import uuid
 
@@ -156,6 +157,55 @@ class ProcessManager:
         base = Path(os.getenv("LCA_DATA_DIR") or Path.home() / ".local-coding-agent")
         self.log_root = Path(log_root) if log_root else base / "command-logs"
         self.sessions = {}
+        self.scratch_workdirs = {}
+        self.scratch_sources = {}
+
+    def scratch_cwd(self, owner):
+        if not owner:
+            raise ToolError("INVALID_COMMAND_CWD", "An owned task is required for an isolated command")
+        if owner not in self.scratch_workdirs:
+            parent = self.workspace.root / ".runtime"
+            if parent.is_symlink() or getattr(parent, "is_junction", lambda: False)():
+                raise ToolError("INVALID_COMMAND_CWD", "The scratch directory cannot be a link")
+            parent.mkdir(exist_ok=True)
+            if parent.resolve() != parent:
+                raise ToolError("INVALID_COMMAND_CWD", "The scratch directory must remain in the workspace")
+            self.scratch_workdirs[owner] = tempfile.TemporaryDirectory(prefix="command-", dir=parent)
+            self.scratch_sources[owner] = {}
+        return self.scratch_workdirs[owner].name
+
+    def mirror_scratch_sources(self, owner, cwd):
+        from agent.core.project_files import ProjectFiles
+        policy = ProjectFiles(self.workspace.root)
+        visible = list(policy.paths(maximum=129))
+        mirrored = self.scratch_sources[owner]
+        current = {}
+        remaining = 4 * 1024 * 1024
+        for path in visible if len(visible) <= 128 else ():
+            if path.suffix.lower() not in {".py", ".ts", ".tsx", ".js", ".jsx"}:
+                continue
+            source = policy.read(path)
+            if source is None:
+                continue
+            content = source.encode("utf-8")
+            remaining -= len(content)
+            if remaining < 0:
+                break
+            target = cwd / path.relative_to(self.workspace.root)
+            if not target.resolve().is_relative_to(cwd) or target.is_symlink():
+                continue
+            if target.exists() and (target not in mirrored or target.stat().st_size != len(mirrored[target])
+                                    or target.read_bytes() != mirrored[target]):
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+            current[target] = content
+        for target, content in mirrored.items():
+            if (target not in current and target.resolve().is_relative_to(cwd) and not target.is_symlink()
+                    and target.is_file() and target.stat().st_size == len(content)
+                    and target.read_bytes() == content):
+                target.unlink()
+        self.scratch_sources[owner] = current
 
     async def _emit(self, session, event, **data):
         if session.on_output:
@@ -218,6 +268,8 @@ class ProcessManager:
         if sum(s.owner == owner and s.state == "running" for s in self.sessions.values()) >= 8 or len(self.sessions) >= 64:
             raise ToolError("PROCESS_LIMIT", "Stop existing processes before starting more")
         env = {**os.environ, "PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1"}
+        if arguments.get("isolated_cwd") is True:
+            env["LCA_PROJECT_ROOT"] = str(self.workspace.root)
         if self.project_path_prefix:env['PATH']=os.pathsep.join([*self.project_path_prefix,env.get('PATH','')])
         if self.project_path_prefix and argv:
             # Windows resolves argv[0] before applying the child's environment.
@@ -379,13 +431,30 @@ class ProcessManager:
                     self.sessions.pop(ident, None)
         if errors:
             raise ToolError("PROCESS_CLEANUP_FAILED", "Process cleanup failed; inspect process logs: " + ", ".join(errors))
+        scratch = self.scratch_workdirs.pop(owner, None)
+        self.scratch_sources.pop(owner, None)
+        if scratch:
+            try:
+                scratch.cleanup()
+            except OSError as exc:
+                raise ToolError("PROCESS_CLEANUP_FAILED", "Could not clean the owned scratch directory") from exc
         return results
 
     async def close(self):
-        for owner in {s.owner for s in self.sessions.values()}:
+        for owner in {s.owner for s in self.sessions.values()} | self.scratch_workdirs.keys():
             await self.close_owner(owner)
 
     async def run(self, arguments, *, owner="", **kwargs):
+        isolated = arguments.get("isolated_cwd", False)
+        if not isinstance(isolated, bool) or (isolated and arguments.get("cwd") not in (None, "", ".")):
+            raise ToolError("INVALID_COMMAND_CWD", "Use isolated_cwd without a custom cwd")
+        if isolated:
+            try:
+                scratch = Path(self.scratch_cwd(owner))
+                self.mirror_scratch_sources(owner, scratch)
+            except OSError as exc:
+                raise ToolError("INVALID_COMMAND_CWD", "Could not prepare the owned scratch directory") from exc
+            arguments = {**arguments, "cwd": str(scratch)}
         session = await self.launch(arguments, owner=owner, **kwargs)
         try:
             await asyncio.shield(session.task)

@@ -53,6 +53,37 @@ async def wait_file(path):
 
 
 class ProcessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_negative_isolated_assertion_preserves_real_exit_code(self):
+        args = {"command": 'python -c "raise SystemExit(4)"', "isolated_cwd": True,
+                "expected_exit_codes": [4]}
+        result = await self.tools.execute("run_command", args, owner_id="negative-check")
+        self.assertTrue(result.ok, result.summary)
+        self.assertEqual(result.exit_code, 4)
+        wrong = await self.tools.execute("run_command", {**args, "expected_exit_codes": [3]}, owner_id="negative-check")
+        self.assertFalse(wrong.ok)
+        self.assertEqual(wrong.exit_code, 4)
+        with self.assertRaises(ToolError):
+            await self.tools.execute("run_command", {**args, "isolated_cwd": False}, owner_id="negative-check")
+
+    async def test_isolated_command_state_is_owned_and_never_changes_delivery(self):
+        fixture = self.root / "state.txt"
+        fixture.write_text("original")
+        source = self.root / "smoke.py"
+        source.write_text("from pathlib import Path\nPath('state.txt').write_text('scratch')\n")
+        first = await self.tools.execute("run_command", {
+            "command": "python smoke.py",
+            "isolated_cwd": True}, owner_id="check")
+        self.assertTrue(first.ok, first.stderr)
+        second = await self.tools.execute("run_command", {
+            "command": 'python -c "import os; from pathlib import Path; print(Path(\'state.txt\').read_text()); print(Path(os.environ[\'LCA_PROJECT_ROOT\'], \'state.txt\').read_text())"',
+            "isolated_cwd": True}, owner_id="check")
+        self.assertTrue(second.ok, second.stderr)
+        self.assertEqual(second.stdout.splitlines(), ["scratch", "original"])
+        scratch = Path(self.tools.processes.scratch_workdirs["check"].name)
+        await self.tools.processes.close_owner("check")
+        self.assertFalse(scratch.exists())
+        self.assertEqual(fixture.read_text(), "original")
+
     async def test_stop_cleanup_failure_keeps_specific_error_and_read_cannot_claim_success(self):
         started=await self.tools.execute('start_process',{'command':'node tree.cjs'},owner_id='cleanup-fault')
         session=self.tools.processes.get(started.data['process_id'],'cleanup-fault')

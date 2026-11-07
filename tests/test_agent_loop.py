@@ -9,6 +9,14 @@ from agent.core.agent_loop import (
 
 
 class AgentLoopTests(unittest.TestCase):
+    def test_git_state_change_allows_fresh_inspection_but_not_mutation_replay(self):
+        guard = ToolLoopGuard(max_identical_calls=1)
+        self.assertTrue(guard.register_call("git_status", {})[0])
+        self.assertTrue(guard.register_call("git_stage", {"paths": ["a.py"]})[0])
+        guard.record_result("git_stage", {"ok": True})
+        self.assertTrue(guard.register_call("git_status", {})[0])
+        self.assertFalse(guard.register_call("git_stage", {"paths": ["a.py"]})[0])
+
     def test_compaction_preserves_actionable_desktop_selector(self):
         selector = {"control_type": "Document", "runtime_id": [42, 11, -3]}
         action = {"window_id": "owned", "focused": True,

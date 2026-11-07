@@ -117,8 +117,12 @@ def start_gui(case, root, work, code):
                   "Take its window screenshot with share_with_model=true. Read the six-digit code drawn in pixels and reply with it. "
                   "Use only desktop_list_windows and desktop_screenshot.")
     else:
-        listed = subprocess.check_output(["tasklist","/FI","IMAGENAME eq Notepad.exe","/FO","CSV","/NH"], text=True, errors="replace")
-        if re.search(r'^"notepad\.exe"',listed,re.I|re.M):
+        for _ in range(8):
+            listed = subprocess.check_output(["tasklist","/FI","IMAGENAME eq Notepad.exe","/FO","CSV","/NH"], text=True, errors="replace")
+            if not re.search(r'^"notepad\.exe"',listed,re.I|re.M):
+                break
+            time.sleep(.25)
+        else:
             raise RuntimeError("existing_notepad")
         file = work / ("desktop-test.txt" if case == "N" else f"benchmark-note-{code}.txt")
         file.write_text("BASE",encoding="utf-8")
@@ -162,6 +166,24 @@ def foreground_pid():
     import win32process
     handle = win32gui.GetForegroundWindow()
     return win32process.GetWindowThreadProcessId(handle)[1] if handle else None
+
+
+async def activate_foreground_fixture(pid):
+    from agent.desktop.runtime import DesktopRuntime
+    runtime = DesktopRuntime()
+    owner = "foreground-fixture"
+    try:
+        listed = await runtime.execute("desktop_list_windows", {"pid": pid}, owner=owner, authorized=True)
+        windows = [window for window in listed.data["windows"]
+                   if window["title"] == "LCA focus fixture" and window["pid"] == pid]
+        if len(windows) != 1:
+            raise RuntimeError("foreground_fixture_not_proven")
+        await runtime.execute("desktop_focus_window", {"window_id": windows[0]["window_id"]},
+                              owner=owner, authorized=True)
+        if foreground_pid() != pid:
+            raise RuntimeError("foreground_fixture_not_active")
+    finally:
+        await runtime.close_owner(owner)
 
 def discover(*, profiles=False):
     data = P(os.environ["APPDATA"]) / "local-coding-agent-desktop"
@@ -297,6 +319,7 @@ finally:
 """)
 
 async def attempt(session, binary, url, model, case, root, number, source=False, challenge=None, *, profile, options):
+    from agent.core.diagnostics import redact_text
     from scripts.validation.packaged_agent_smoke import read_lines
     from agent.tools.base import ToolError
     work = root / "work"
@@ -308,6 +331,7 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
     start = time.monotonic()
     ready = None
     fixture = None
+    foreground_fixture = None
     reconnected = None
     if case == "P3":
         from agent.desktop.session import require_interactive_session
@@ -344,6 +368,8 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
         env=env)
     lines = queue.Queue()
     threading.Thread(target=read_lines, args=(proc.stdout, lines), daemon=True).start()
+    trace = (root / "turn-events.jsonl").open("w", encoding="utf-8")
+    trace_bytes = 0
     try:
         deadline = time.monotonic() + 25
         while time.monotonic() < deadline and proc.poll() is None:
@@ -394,6 +420,14 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
             while True:
                 event = await ws.receive_json()
                 kind, p = event["type"], event.get("payload", {})
+                if kind in {"turn.delta", "turn.status", "tool.started", "tool.completed",
+                            "turn.failed", "turn.cancelled", "turn.completed", "error"} and trace_bytes < 32 * 1024 * 1024:
+                    content = redact_text(json.dumps(p, ensure_ascii=False),
+                                          exact_secrets=(ready["token"],), max_chars=32000)
+                    row = json.dumps({"type": kind, "payload": content}, ensure_ascii=False) + "\n"
+                    trace.write(row)
+                    trace.flush()
+                    trace_bytes += len(row.encode("utf-8"))
                 if kind == "turn.started":
                     turn_id = event.get("turn_id")
                 if kind == "agent.runtime.updated":
@@ -414,11 +448,17 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                     if fixture:
                         safe = fixture.poll() is None and gui_approval(tool,args,fixture.pid,case,editors,expected,ready["token"])
                         if safe and tool == "desktop_focus_window":
-                            if isinstance(fixture, OwnedNotepad) and not result.get("foreground_switch"):
-                                # Prepare only the test window. Windows may
-                                # activate it asynchronously after launch.
-                                fixture.minimize_if_foreground()
-                                await asyncio.sleep(.15)
+                            if isinstance(fixture, OwnedNotepad) and foreground_fixture is None:
+                                # Establish a real, separate foreground window
+                                # owned by this test. Never activate user windows.
+                                foreground_fixture = await asyncio.create_subprocess_exec(
+                                    getattr(sys, "_base_executable", sys.executable), "-c",
+                                    "import tkinter as t; r=t.Tk(); r.title('LCA focus fixture'); "
+                                    "r.geometry('200x70+8+8'); r.attributes('-topmost', True); r.update(); r.mainloop()",
+                                    env=child_environment(), creationflags=subprocess.CREATE_NO_WINDOW,
+                                )
+                                await asyncio.sleep(1)
+                                await activate_foreground_fixture(foreground_fixture.pid)
                             focus_before = foreground_pid()
                     denied |= not safe
                     await ws.send_json({"type":"approval.respond","payload":{"approval_id":p["approval_id"],"decision":"allow_once" if safe else "deny"}})
@@ -428,7 +468,12 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                         editors = [c for c in (r.get("data") or {}).get("controls",[])
                                    if c.get("control_type") in {"Edit","Document"} and not c.get("sensitive")]
                     if case in {"F-desktop", "N"} and p.get("name") == "desktop_focus_window" and r.get("ok"):
+                        observation = r.get("data") or {}
+                        before = observation.get("foreground_before_pid")
+                        after = observation.get("foreground_after_pid")
+                        result.setdefault("foreground_evidence", []).append({"before_pid": before, "after_pid": after})
                         result["foreground_switch"] = bool(result.get("foreground_switch") or
+                            (before is not None and before != fixture.pid and after == fixture.pid) or
                             (focus_before is not None and focus_before != fixture.pid and foreground_pid() == fixture.pid))
                     result["tools"].append({"name":p.get("name"),"ok":r.get("ok"),
                                             "exit_code":r.get("exit_code",(r.get("data") or {}).get("exit_code")),
@@ -486,6 +531,10 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
     except (RuntimeError, aiohttp.ClientError, TypeError) as exc:
         result.update(failure="ENVIRONMENT_FAILURE", detail=str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__)
     finally:
+        trace.close()
+        if foreground_fixture and foreground_fixture.returncode is None:
+            foreground_fixture.terminate()
+            await foreground_fixture.wait()
         if reconnected:
             await reconnected.close()
         if ready:

@@ -570,8 +570,14 @@ def execute(request):
         image.save(request['artifact_path'], format='PNG')
         return {'capture_method':image.info.get('capture_method','unknown'),'raw_capture_valid':True,'width':image.width,'height':image.height,'origin':origin, **geometry(hwnd), 'pixel_to_screen_scale':[1/scale_x,1/scale_y],'redacted_controls':redactions,'redacted_area_fraction':min(1.0,round(redacted_area/max(1,image.width*image.height),4)),'redaction_policy':'text editors concealed with light placeholder; sensitive controls black','scope':a.get('scope','window'), 'screen_policy':'only authorized window pixels; remaining desktop masked'}
     if op == 'desktop_focus_window':
+        previous = gui.GetForegroundWindow()
+        previous_pid = process.GetWindowThreadProcessId(previous)[1] if previous else None
         focus(binding)
-        return {'focused':True}
+        current = gui.GetForegroundWindow()
+        if not current or gui.GetAncestor(current, 2) != check(binding):
+            fail('DESKTOP_FOCUS_FAILED', 'Foreground changed before verification')
+        current_pid = process.GetWindowThreadProcessId(current)[1]
+        return {'focused': True, 'foreground_before_pid': previous_pid, 'foreground_after_pid': current_pid}
     if op == 'desktop_wait':
         seconds = a.get('seconds', 5)
         if isinstance(seconds,bool) or not isinstance(seconds,(int,float)) or not 0 <= seconds <= 30:

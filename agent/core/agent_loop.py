@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -248,6 +249,17 @@ class ToolLoopGuard:
         if ok:
             self.consecutive_failures = 0
             self.last_failure_code = None
+            command = str((payload.get("data") or {}).get("command", "")) if name == "run_command" else ""
+            git_changed = name in {"git_stage", "git_unstage", "git_commit"} or (
+                name == "run_command" and re.match(
+                    r"^\s*git\s+(?:add|commit|restore|reset|switch|checkout)\b", command, re.I
+                ) is not None)
+            if git_changed:
+                # The index or HEAD changed. Old reads cannot prove new state,
+                # but mutation replay protection and cycle history stay intact.
+                observations = ("git_status:", "git_diff:", "git_log:", "git_branches:")
+                self.call_counts = {key: value for key, value in self.call_counts.items()
+                                    if not key.startswith(observations)}
             if name in {'desktop_click','desktop_type_text','desktop_keypress','desktop_scroll'}:
                 # Re-inspection is necessary after a scoped UI action. Do not
                 # reset action counts or cycle detection: repeated clicks and

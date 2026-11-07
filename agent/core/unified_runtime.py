@@ -35,7 +35,9 @@ For a greenfield project, establish the entry point first, implement one compone
 Each step must have real tool evidence; avoid prose-only steps. Use an empty verification for edit/inspection steps, a concrete command for test steps.
 Do not ask the user to choose chat/development modes. You may upgrade a small task using agent_plan, preserving all existing changes and evidence.
 After code changes the runtime independently runs verification. Never claim tests passed without actual exit-code evidence.
-Use temporary input and storage for smoke tests of stateful programs, so the delivered project does not contain sample user state. For Git restore, first verify the exact file exists in the source commit; a successful commit alone does not prove the path was tracked.
+Use run_command with isolated_cwd=true for smoke tests of stateful programs. Small projects mirror safe source files into that directory, without data. The directory is reused within this task. For large projects refer to scripts using LCA_PROJECT_ROOT ($env:LCA_PROJECT_ROOT in PowerShell). For Git restore, first verify the exact file exists in the source commit; a successful commit alone does not prove the path was tracked.
+For negative smoke tests declare the exact expected_exit_codes on the isolated command or use a test script that asserts the real child exit codes. Keep the actual return code in evidence.
+For a requested Git workflow, identify the exact paths the final commit must contain, including the source of any requested restore. Before committing, inspect the staged paths. After editing, compare the requested literal bytes and whitespace against the actual diff and confirm the required staged, committed and unstaged states separately.
 For project questions use knowledge_search to retrieve actual paths/lines and read the relevant files. project_memory may search or save concise candidate knowledge, never raw chat or secrets. Candidate memory is unverified; current code and real test evidence take priority. Do not overwrite user rules. environment_diagnose performs read-only checks; environment_repair always requires the existing approval and a real re-check. Never modify global settings to hide environment errors.
 Keep the final report in Chinese, including changed files, actual verification and unresolved issues. Environment failures must not cause endless retries.
 For Windows computer tasks discover and authorize the exact window, focus it, then inspect live UIA controls. Verify actual state after actions; do not confuse a request being sent with its effect being verified.
@@ -161,6 +163,69 @@ def unreviewed_test_data(before, after, edited_paths):
     return sorted(path for path in names
                   if Path(path).suffix.lower() in data_extensions
                   and Path(path).name not in {"package-lock.json", "composer.lock"})[:12]
+
+
+def initial_commit_restore_paths(goal):
+    """Exact relative paths explicitly requested from the commit being made."""
+    matches = re.findall(
+        r"\brestore\s+([\w.][\w./\\-]*)\s+from\s+(?:the|that)\s+commit\b",
+        goal, re.IGNORECASE,
+    )
+    return list(dict.fromkeys(path.replace("\\", "/") for path in matches
+                              if not any(part in {"", ".", ".."} for part in path.replace("\\", "/").split("/"))))[:12]
+
+
+def literal_append_requirements(goal):
+    """Recognize explicit uppercase literals and ordinary relative filenames."""
+    return [
+        (path, value) for value, path in re.findall(
+            r"\b[Aa]ppend\s+([A-Z][A-Z0-9_-]*)\s+to\s+([\w.-]+\.\w+)\b", goal
+        ) if not path.startswith(".")
+    ][:12]
+
+
+def missing_file_references(root, goal, original_paths):
+    """Check new text files requested to contain a literal relative filename."""
+    from agent.core.project_files import ProjectFiles
+    matches = re.findall(
+        r"\bcreate\s+([\w.-]+\.(?:txt|md|rst))\s+containing\s+([\w.-]+\.\w+)(?=[.?!\n]|$)",
+        goal, re.IGNORECASE,
+    )
+    if not matches:
+        return []
+    policy = ProjectFiles(root)
+    missing = []
+    for path, expected in matches[:12]:
+        if path in original_paths or path.startswith("."):
+            continue
+        content = policy.read(Path(root) / path)
+        if content is None or content.strip() != expected:
+            missing.append({"path": path, "literal_filename": expected})
+    return missing
+
+
+def deletion_generation(workspace, raw_path, original_paths, previous):
+    """Distinguish a recreated task artifact from replay of a removed file."""
+    from agent.tools.base import ToolError
+    if not isinstance(raw_path, str) or not raw_path:
+        return None
+    try:
+        target = workspace.resolve(raw_path, must_exist=False)
+        relative = target.relative_to(workspace.root).as_posix()
+        original = relative in original_paths or (
+            os.name == 'nt' and any(path.casefold() == relative.casefold() for path in original_paths))
+        if original or '.lca-snapshot-incomplete' in original_paths:
+            return None
+        try:
+            stat = target.stat()
+        except FileNotFoundError:
+            return (relative, previous[relative]) if relative in previous else None
+        if not target.is_file():
+            return None
+        identity = f"{stat.st_dev}:{stat.st_ino}:{stat.st_ctime_ns}:{stat.st_mtime_ns}:{stat.st_size}"
+        return relative, hashlib.sha256(identity.encode()).hexdigest()
+    except (ToolError, OSError, ValueError):
+        return None
 
 def snapshot_fingerprint(snapshot):
     return json.dumps({p:[v[0],v[2]] if len(v)>2 else v for p,v in snapshot.items()},sort_keys=True)
