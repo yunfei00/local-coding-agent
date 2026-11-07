@@ -18,6 +18,11 @@ on:
       - package.json
       - .github/workflows/windows-candidate.yml
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact main commit for v1.0.1 upgrade validation
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -35,6 +40,8 @@ jobs:
       LCA_REQUIRE_INTERACTIVE_DESKTOP: '1'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
         with:
           python-version: '3.12'
@@ -58,3 +65,37 @@ jobs:
             desktop/release/SHA256SUMS.txt
             build/packaged-*-smoke.json
             validation-reports/desktop-smoke.json
+            build/v10-upgrade-*/report.json
+      - name: Validate v1.0.0 to v1.0.1 upgrade
+        if: inputs.source_sha != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v1.0.0 --pattern '*-x64-Setup.exe' --pattern SHA256SUMS.txt --dir build/upgrade-baseline
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $old = Get-ChildItem build/upgrade-baseline -Filter '*-x64-Setup.exe' | Select-Object -First 1
+          $expected = (Get-Content build/upgrade-baseline/SHA256SUMS.txt | Where-Object { $_.EndsWith($old.Name) }).Split(' ')[0]
+          if ((Get-FileHash $old.FullName).Hash -ne $expected) { throw 'Baseline installer checksum mismatch' }
+          git fetch origin tag v1.0.0
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          git worktree add --detach build/upgrade-source v1.0.0
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $fixture = 'scripts/validation/v10_upgrade_profile.py'
+          $text = (Get-Content $fixture -Raw).Replace('SCHEMA_VERSION!=6','SCHEMA_VERSION!=7').Replace("        assert any((data/'backups').iterdir())","        # v1.0.0 and v1.0.1 both use schema 7.").Replace("'migration_backup':True","'migration_backup_required':False").Replace("'schema':6","'schema':7")
+          $model = '{"connections":[{"connection_id":"fixture","display_name":"Isolated Ollama","provider_type":"ollama","base_url":"http://127.0.0.1:1","credential_reference":null,"enabled":true}],"profiles":[{"model_profile_id":"gemma","connection_id":"fixture","model_id":"gemma4:31b","display_name":"Gemma"}]}'
+          $text = $text.Replace("            store.set_setting('permission_mode','workspace')", "            store.set_setting('permission_mode','workspace')`n            store.set_setting('models.catalog.v1', '$model')")
+          $text = $text.Replace("        assert store.get_setting('permission_mode')=='workspace'", "        assert store.get_setting('permission_mode')=='workspace'`n        assert json.loads(store.get_setting('models.catalog.v1')) == json.loads('$model')")
+          Set-Content $fixture $text -Encoding utf8NoBOM
+          $script = 'scripts/validation/v10-upgrade.ps1'
+          $text = (Get-Content $script -Raw).Replace("'v10-upgraded' '1.0.0'","'v101-upgraded' '1.0.1'").Replace("'0.9.0'","'1.0.0'").Replace("target_version='1.0.0'","target_version='1.0.1'")
+          $text = [regex]::Replace($text, '(?ms)^\$CredentialSource=.*?(?=^\$Saved=)', '')
+          Set-Content $script $text -Encoding utf8NoBOM
+          $new = Get-ChildItem desktop/release -Filter '*-x64-Setup.exe' | Select-Object -First 1
+          & $script -PreviousInstaller $old.FullName -PreviousSource build/upgrade-source -CandidateInstaller $new.FullName
+      - name: Retain upgrade evidence
+        if: always() && inputs.source_sha != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-v101-upgrade
+          path: build/v10-upgrade-*/report.json
