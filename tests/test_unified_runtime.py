@@ -22,6 +22,9 @@ class UnifiedPolicyTests(unittest.TestCase):
         self.assertEqual(requested_intent('把登录按钮文字改成中文')['kind'],'change')
         self.assertEqual(requested_intent('只返回 JSON，不读取或修改工程')['kind'],'question')
         self.assertTrue(requested_intent('只分析启动失败，不修改任何文件')['read_only'])
+        self.assertFalse(requested_intent('Diagnose the failing assertion and repair mathbox.py, then run pytest again.')['read_only'])
+        self.assertTrue(requested_intent('Only analyze why we need to repair mathbox.py.')['read_only'])
+        self.assertTrue(requested_intent('Analyze repair options for mathbox.py.')['read_only'])
         self.assertEqual(requested_intent('实现以下要求\n1. 创建核心模块\n2. 编写测试\n3. 生成交付报告')['kind'],'complex')
 
     def test_intent_uses_model_plan_and_actual_evidence_not_words(self):

@@ -67,10 +67,11 @@ def requested_intent(prompt):
     """Conservative request-shape fallback; model plans and tool evidence refine it."""
     paths=set(re.findall(r'[\w./\\-]+\.(?:py|tsx?|jsx?|json|toml|ya?ml|md)\b',prompt,re.I))
     text=re.sub(r'[\w./\\-]+\.(?:py|tsx?|jsx?|json|toml|ya?ml|md)\b',' FILE ',prompt,flags=re.I)
-    readonly=bool(re.search(r'只分析|仅分析|只读|(?:不|不要|禁止|不得)(?:修改|改动|编辑)(?:任何)?(?:代码|源码|文件|工程)|不(?:读取或)?修改工程|本轮只分析|do not (?:edit|modify) (?:any )?(?:files|code)',text,re.I))
+    readonly=bool(re.search(r'只分析|仅分析|只读|(?:不|不要|禁止|不得)(?:修改|改动|编辑)(?:任何)?(?:代码|源码|文件|工程)|不(?:读取或)?修改工程|本轮只分析|analysis only|only analy[sz]e|do not (?:edit|modify) (?:any )?(?:files|code)',text,re.I))
     question=bool(re.search(r'^\s*(?:请)?(?:解释|讲解|如何|怎么|什么|只回答|仅回答|只返回|仅返回|what\b|how\b|why\b|explain\b)|是什么|什么意思',text,re.I))
     direct=bool(re.search(r'(?:请|帮我|直接|现在)(?:实现|开发|修复|修改|重构|新增)|can you (?:add|fix|implement|create|change)',text,re.I))
-    change=not readonly and bool(re.search(r'实现|开发|修复|修改|重构|新增|增加|改成|改为|改中文|编写|创建|\b(?:implement|develop|refactor|create|fix|add|change|update)\b',text,re.I)) and (not question or direct)
+    repair_file = bool(re.search(r'(?:^\s*(?:please\s+|can you\s+)?|\b(?:and|then)\s+)repair\s+(?:the\s+)?FILE\b', text, re.I))
+    change=not readonly and (repair_file or bool(re.search(r'实现|开发|修复|修改|重构|新增|增加|改成|改为|改中文|编写|创建|\b(?:implement|develop|refactor|create|fix|add|change|update)\b',text,re.I))) and (not question or direct)
     listed=len(re.findall(r'(?m)^\s*(?:\d+[.)、]|[-*])\s*\S',prompt))
     kind='question' if question and not direct else 'complex' if change and (listed>=3 or len(paths)>=3) else 'change' if change else 'analysis' if readonly or re.search(r'分析|诊断|检查|inspect|analy[sz]e|diagnos',text,re.I) else 'question'
     positive=re.sub(r'(?:不是|并非|不属于)(?:一项|一个)?(?:代码)?开发(?:任务|工作)?','',text)
