@@ -198,7 +198,7 @@ def missing_file_references(root, goal, original_paths):
     for path, expected in matches[:12]:
         if path in original_paths or path.startswith("."):
             continue
-        content = policy.read(Path(root) / path)
+        content = policy.read(policy.root / path)
         if content is None or content.strip() != expected:
             missing.append({"path": path, "literal_filename": expected})
     return missing

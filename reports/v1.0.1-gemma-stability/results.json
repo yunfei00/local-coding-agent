@@ -16406,5 +16406,384 @@
         "completed_verified"
       ]
     }
+  ],
+  "ci-reference": [
+    {
+      "model": "gemma4:31b",
+      "case": "A",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "draft.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "final.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "delete_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "obsolete.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "ref.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "FILE_NOT_FOUND"
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 89139,
+        "output_tokens": 1747
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": "awaiting_user",
+      "seconds": 83.97,
+      "tool_calls": 11,
+      "token_samples": 12,
+      "completed_model_calls": 12,
+      "model_calls": 12,
+      "runtime_tool_calls": 11,
+      "protocol_repairs": 0,
+      "trace_available": true,
+      "max_output_observed": 475,
+      "finish_reasons": {
+        "stop": 12
+      },
+      "plan_count": 1,
+      "runtime_outcomes": [
+        "awaiting_user"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "A",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "draft.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "final.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "delete_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "obsolete.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "ref.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "FILE_NOT_FOUND"
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 61229,
+        "output_tokens": 1386
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": "awaiting_user",
+      "seconds": 56.39,
+      "tool_calls": 8,
+      "token_samples": 9,
+      "completed_model_calls": 9,
+      "model_calls": 9,
+      "runtime_tool_calls": 8,
+      "protocol_repairs": 0,
+      "trace_available": true,
+      "max_output_observed": 441,
+      "finish_reasons": {
+        "stop": 9
+      },
+      "plan_count": 1,
+      "runtime_outcomes": [
+        "awaiting_user"
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "A",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "draft.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "final.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "delete_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "obsolete.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "ref.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "FILE_NOT_FOUND"
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 69616,
+        "output_tokens": 1382
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": "awaiting_user",
+      "seconds": 60.03,
+      "tool_calls": 9,
+      "token_samples": 10,
+      "completed_model_calls": 10,
+      "model_calls": 10,
+      "runtime_tool_calls": 9,
+      "protocol_repairs": 0,
+      "trace_available": true,
+      "max_output_observed": 534,
+      "finish_reasons": {
+        "stop": 10
+      },
+      "plan_count": 1,
+      "runtime_outcomes": [
+        "awaiting_user"
+      ]
+    }
   ]
 }
