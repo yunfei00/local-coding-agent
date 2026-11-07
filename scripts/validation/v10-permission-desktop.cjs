@@ -22,7 +22,7 @@ async function launch(){
  while(Date.now()<deadline){try{connected=!!(await page.evaluate(()=>window.localAgent.getPermission())).payload?.mode;}catch{}if(connected)break;await new Promise(resolve=>setTimeout(resolve,200));}
  assert(connected,'Authenticated backend permission RPC did not become ready');
  assert.equal(await app.evaluate(({app})=>app.isPackaged),true);
- assert.equal(await app.evaluate(({app})=>app.getVersion()),'1.0.0');
+ assert.equal(await app.evaluate(({app})=>app.getVersion()),require('../../desktop/package.json').version);
  await app.evaluate(({dialog})=>{globalThis.permissionDialogs=[];globalThis.permissionAnswer=0;dialog.showMessageBox=async options=>{globalThis.permissionDialogs.push({title:options.title,detail:options.detail});return {response:globalThis.permissionAnswer,checkboxChecked:false};};});
  return page;
 }
