@@ -115,6 +115,10 @@ def compact_tool_payload(
     max_chars: int = DEFAULT_TOOL_PAYLOAD_CHAR_BUDGET,
 ) -> dict[str, Any]:
     compacted = _compact_value(payload)
+    data = payload.get("data")
+    if isinstance(data, dict) and isinstance(data.get("action_state"), dict):
+        # Preserve the exact UIA runtime ID components for the next action.
+        compacted["data"]["action_state"] = _compact_value(data["action_state"])
     encoded = json.dumps(
         compacted,
         ensure_ascii=False,
@@ -130,6 +134,7 @@ def compact_tool_payload(
         "exit_code": payload.get("exit_code"),
         "duration_ms": payload.get("duration_ms"),
         "changed_paths": list(payload.get("changed_paths") or []),
+        "error": compacted.get("error"),
         "truncated_for_model": True,
     }
 
@@ -140,10 +145,9 @@ def compact_tool_payload(
     if stderr:
         minimal["stderr_tail"] = stderr[-8_000:]
 
-    data = payload.get("data")
     if data:
         if isinstance(data, dict):
-            minimal["data"] = {k: data[k] for k in ("process_id", "pid", "next_cursor", "state", "log_path", "log_truncated") if k in data}
+            minimal["data"] = {k: compacted["data"][k] for k in ("process_id", "pid", "next_cursor", "state", "log_path", "log_truncated", "action_state") if k in data}
         data_text = json.dumps(data, ensure_ascii=False, default=str)
         minimal["data_excerpt"] = data_text[-6_000:]
 

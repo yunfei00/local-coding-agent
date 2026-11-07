@@ -29,7 +29,7 @@ GUI_CASES = ("F-vision", "F-desktop")
 NOTEPAD_PHRASE = "Local Coding Agent Gemma 桌面自动化测试成功"
 PROJECTS = {
     "P1": "From scratch implement a Python todo CLI todo.py with add NAME, list, update OLD NEW, delete NAME. Persist a JSON array in todos.json, reject blank or duplicate names and nonexistent targets with nonzero exit. list prints one name per line. Include pytest tests and a Chinese README.md with usage. Run the tests and fix failures.",
-    "P2": "From scratch implement Python scan.py DIRECTORY OUTPUT.csv. Recursively scan files, print counts by lowercase extension as JSON to stdout, hash each file with SHA256, and export CSV with relative path, extension, sha256, duplicate columns (duplicate is true for every member of a repeated digest). Exclude the output file itself. Include and run pytest tests. Fix failures.",
+    "P2": "From scratch implement Python scan.py DIRECTORY OUTPUT.csv. Recursively scan files, print counts by lowercase extension as JSON to stdout, hash each file with SHA256, and export CSV with columns path (relative to DIRECTORY), extension, sha256, duplicate (true for every member of a repeated digest). Exclude the output file itself. Include and run pytest tests. Fix failures.",
     "P3": "From scratch build a Windows Tkinter calculator in calculator.py with create_app() returning a Tk window. Use direct child Button widgets labelled 0–9, +, -, *, /, =, C and a direct child Label showing the result. Show Error on division by zero. Add GUI pytest tests and run them. Do not touch any existing window or user file.",
 }
 
@@ -38,7 +38,17 @@ def child_environment():
     return {key: value for key, value in os.environ.items()
             if not sensitive.search(key) or key == "LCA_CONTEXT_RESERVED_OUTPUT_TOKENS"}
 
+
+def case_environment(root):
+    temporary = root / "temp"
+    temporary.mkdir(exist_ok=True)
+    return {**child_environment(), "TMP": str(temporary), "TEMP": str(temporary), "TMPDIR": str(temporary)}
+
 class OwnedNotepad:
+    @staticmethod
+    def owns_title(title, filename):
+        return title.removeprefix("*").startswith(filename + " - ")
+
     def __init__(self, filename):
         import win32gui
         import win32process
@@ -48,7 +58,7 @@ class OwnedNotepad:
             windows = []
             win32gui.EnumWindows(lambda hwnd, _: windows.append(hwnd), None)
             matches = [hwnd for hwnd in windows if win32gui.IsWindowVisible(hwnd)
-                       and win32gui.GetWindowText(hwnd).startswith(filename + " - ")]
+                       and self.owns_title(win32gui.GetWindowText(hwnd), filename)]
             if len(matches) == 1:
                 self.hwnd = matches[0]
                 self.pid = win32process.GetWindowThreadProcessId(self.hwnd)[1]
@@ -63,13 +73,19 @@ class OwnedNotepad:
             return 0
         if win32process.GetWindowThreadProcessId(self.hwnd)[1] != self.pid:
             return 0
-        return None if win32gui.GetWindowText(self.hwnd).startswith(self.filename + " - ") else 0
+        return None if self.owns_title(win32gui.GetWindowText(self.hwnd), self.filename) else 0
 
     def terminate(self):
         import win32gui
         import win32con
         if self.poll() is None:
             win32gui.PostMessage(self.hwnd, win32con.WM_CLOSE, 0, 0)
+
+    def minimize_if_foreground(self):
+        if self.poll() is None and foreground_pid() == self.pid:
+            import win32con
+            import win32gui
+            win32gui.ShowWindow(self.hwnd, win32con.SW_MINIMIZE)
 
     def wait(self, timeout):
         deadline = time.monotonic() + timeout
@@ -111,12 +127,13 @@ def start_gui(case, root, work, code):
         startup.wShowWindow = 4
         subprocess.Popen([str(P(os.environ["WINDIR"])/"System32/notepad.exe"),str(file)], startupinfo=startup)
         proc = OwnedNotepad(file.name)
+        proc.minimize_if_foreground()
         prompt = (f"仅桌面操作。用 desktop_list_windows 的 pid 参数查找 PID {proc.pid} 的记事本窗口，"
                   f"激活该窗口，查看 UIA 控件，点击编辑区，输入 {code} 替换 BASE，再按 Ctrl+S。"
                   "禁止读取源码或用文件工具写入。")
     return proc, code, prompt
 
-def gui_approval(tool, args, pid, case, editors, expected):
+def gui_approval(tool, args, pid, case, editors, expected, session_token):
     if tool == "desktop_list_windows":
         return args.get("pid") == pid
     target = args.get("target_window", {})
@@ -132,7 +149,13 @@ def gui_approval(tool, args, pid, case, editors, expected):
         return False
     selector = args.get("selector") or {}
     match = bool(selector) and any(all(control.get(k) == v for k,v in selector.items()) for control in editors)
-    return match and (tool == "desktop_click" or args.get("text") == expected)
+    if not match or tool == "desktop_click":
+        return match
+    import hmac
+    from agent.desktop.runtime import text_confirmation
+    proof = args.get("text_confirmation")
+    return isinstance(proof, str) and hmac.compare_digest(
+        proof, text_confirmation(session_token, args["window_id"], expected))
 
 def foreground_pid():
     import win32gui
@@ -140,13 +163,18 @@ def foreground_pid():
     handle = win32gui.GetForegroundWindow()
     return win32process.GetWindowThreadProcessId(handle)[1] if handle else None
 
-def discover():
+def discover(*, profiles=False):
     data = P(os.environ["APPDATA"]) / "local-coding-agent-desktop"
     with sqlite3.connect((data / "local-coding-agent.sqlite3").as_uri() + "?mode=ro", uri=True) as db:
         def setting(key):
             row = db.execute("select value from settings where key=?", (key,)).fetchone()
             return json.loads(row[0]) if row else None
         catalog = setting("models.catalog.v1")
+        runtime = {
+            "context_window": setting("runtime.ollama_context_window"),
+            "model_steps": setting("runtime.max_model_steps"),
+            "request_seconds": (setting("orchestration.config") or {}).get("budget", {}).get("request_seconds"),
+        } if profiles else None
     connections = {c["connection_id"]: c for c in catalog["connections"]
                    if c["provider_type"] == "ollama" and c.get("enabled", True)}
     urls = {}
@@ -156,7 +184,7 @@ def discover():
                 url = connections[profile["connection_id"]]["base_url"]
                 parsed = urllib.parse.urlsplit(url)
                 if parsed.scheme in ("http", "https") and not any((parsed.username, parsed.password, parsed.query, parsed.fragment)):
-                    urls[model] = url.rstrip("/")
+                    urls[model] = (url.rstrip("/"), profile, runtime) if profiles else url.rstrip("/")
                     break
     return urls
 
@@ -173,9 +201,9 @@ def score(work, case, events):
     def read(name):
         return (work / name).read_text(encoding="utf-8")
     def run(*args, good=True):
-        p = subprocess.run(args, cwd=work, env=child_environment(),
+        p = subprocess.run(args, cwd=work, env=case_environment(work.parent),
                            capture_output=True, text=True, timeout=20)
-        assert (p.returncode == 0) == good
+        assert (p.returncode == 0) == good, "unexpected_command_exit_status"
         return p.stdout.strip()
     py = sys.executable
     commands = [x for x in events if x["name"] == "run_command"]
@@ -187,7 +215,7 @@ def score(work, case, events):
     elif case == "B":
         def cli(*args, good=True):
             return run(py, "items.py", *args, good=good)
-        assert not (work / "items.json").exists() or json.loads(read("items.json")) == []
+        assert not (work / "items.json").exists() or json.loads(read("items.json")) == [], "cli_delivered_with_test_data"
         cli("add", "Alpha")
         cli("add", "Beta")
         cli("add", "Alpha", good=False)
@@ -208,10 +236,13 @@ def score(work, case, events):
         run(py, "-m", "pytest", "-q")
         run(py, "-c", "from slug import slugify; assert slugify(' Hi__THERE! ')=='hi-there'; assert slugify('é---')==''; assert slugify('a42')=='a42'")
     elif case == "E":
-        assert run("git", "branch", "--show-current") == "benchmark-work"
-        assert run("git", "show", "HEAD:scratch.txt") == "KEEP"
-        assert read("scratch.txt").strip() == "KEEP"
-        assert "+NEW" in run("git", "diff", "--", "note.txt")
+        assert run("git", "branch", "--show-current") == "benchmark-work", "unexpected_git_branch"
+        try:
+            assert run("git", "show", "HEAD:scratch.txt") == "KEEP"
+        except AssertionError:
+            raise AssertionError("git_baseline_missing_or_incorrect_scratch") from None
+        assert read("scratch.txt").strip() == "KEEP", "git_restore_content_mismatch"
+        assert "+NEW" in run("git", "diff", "--", "note.txt"), "git_diff_missing_change"
         assert any(x["name"] in ("git_diff", "run_command") for x in events)
     elif case in PROJECTS:
         assert any(x["exit_code"] == 0 for x in commands)
@@ -265,14 +296,15 @@ finally:
     root.destroy()
 """)
 
-async def attempt(session, binary, url, model, case, root, number, source=False, challenge=None):
+async def attempt(session, binary, url, model, case, root, number, source=False, challenge=None, *, profile, options):
     from scripts.validation.packaged_agent_smoke import read_lines
     from agent.tools.base import ToolError
     work = root / "work"
     work.mkdir(parents=True)
     seed(work, case)
     result = {"model": model, "case": case, "repeat": number, "tools": [],
-              "status": "BLOCKED", "failure": None, "tokens": None, "repairs": None}
+              "status": "BLOCKED", "failure": None, "tokens": None, "repairs": None,
+              "configuration": options}
     start = time.monotonic()
     ready = None
     fixture = None
@@ -301,11 +333,15 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
     if source:
         command += ["-m", "agent.server.main"]
         cwd = P(__file__).resolve().parents[2]
+    env = {**case_environment(root), "LCA_DATA_DIR": str(root / "data"), "LCA_PROVIDER": "ollama",
+           "LCA_OLLAMA_URL": url, "LCA_OLLAMA_MODEL": model}
+    if options["model_steps"] is not None:
+        env["LCA_MAX_MODEL_STEPS"] = str(options["model_steps"])
+    if options["context_window"] is not None:
+        env["LCA_OLLAMA_NUM_CTX"] = str(options["context_window"])
     proc = subprocess.Popen(command + ["--port", "0"], cwd=cwd,
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace",
-        env={**child_environment(), "LCA_DATA_DIR": str(root / "data"), "LCA_PROVIDER": "ollama",
-             "LCA_OLLAMA_URL": url, "LCA_OLLAMA_MODEL": model, "LCA_OLLAMA_NUM_CTX": "8192",
-             "LCA_MAX_MODEL_STEPS": "18", "LCA_CONTEXT_RESERVED_OUTPUT_TOKENS": "1024"})
+        env=env)
     lines = queue.Queue()
     threading.Thread(target=read_lines, args=(proc.stdout, lines), daemon=True).start()
     try:
@@ -322,16 +358,16 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
             raise RuntimeError("packaged_boot")
         base = f"http://127.0.0.1:{ready['port']}"
         headers = {"Authorization": "Bearer " + ready["token"]}
-        async with asyncio.timeout(600 if case in PROJECTS else 240), session.ws_connect(base + "/ws", headers=headers) as ws:
-            selected = model
-            if fixture:
+        async with asyncio.timeout(options["case_seconds"]), session.ws_connect(base + "/ws", headers=headers) as ws:
+            if profile:
                 catalog = {"connections":[{"connection_id":"bench","display_name":"Benchmark Ollama",
                     "provider_type":"ollama","base_url":url,"credential_reference":None,"enabled":True}],
-                    "profiles":[{"model_profile_id":"bench","connection_id":"bench","model_id":model,
-                    "display_name":model,"supports_vision":True,"context_window":8192,"max_output_tokens":1024}]}
+                    "profiles":[{**profile,"model_profile_id":"bench","connection_id":"bench",
+                                 "supports_vision": True if fixture else profile.get("supports_vision", False)}]}
                 await ws.send_json({"type":"task.catalog.update","request_id":"bench-catalog",
                                     "payload":{"catalog":catalog,"chat_default":"bench",
-                                               "config":{"strategy":"single-agent","roles":{"executor":{"model_profile_id":"bench"}}}}})
+                                               "config":{"strategy":"single-agent","roles":{"executor":{"model_profile_id":"bench"}},
+                                                         "budget":{"request_seconds":options["request_seconds"]}}}})
                 while True:
                     msg = await ws.receive_json()
                     if msg.get("request_id") == "bench-catalog":
@@ -376,8 +412,13 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                             'git commit -m "baseline"', 'git config user.name Benchmark',
                             'git config user.email benchmark@example.invalid'})
                     if fixture:
-                        safe = fixture.poll() is None and gui_approval(tool,args,fixture.pid,case,editors,expected)
+                        safe = fixture.poll() is None and gui_approval(tool,args,fixture.pid,case,editors,expected,ready["token"])
                         if safe and tool == "desktop_focus_window":
+                            if isinstance(fixture, OwnedNotepad) and not result.get("foreground_switch"):
+                                # Prepare only the test window. Windows may
+                                # activate it asynchronously after launch.
+                                fixture.minimize_if_foreground()
+                                await asyncio.sleep(.15)
                             focus_before = foreground_pid()
                     denied |= not safe
                     await ws.send_json({"type":"approval.respond","payload":{"approval_id":p["approval_id"],"decision":"allow_once" if safe else "deny"}})
@@ -422,10 +463,11 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                                 assert re.search(r"\b"+expected+r"\b","".join(chunks))
                             elif case in {"F-desktop", "N"}:
                                 successful = {t["name"] for t in result["tools"] if t["ok"]}
-                                assert {"desktop_focus_window","desktop_inspect","desktop_click","desktop_type_text","desktop_keypress"} <= successful
-                                assert result.get("foreground_switch")
                                 filename = "desktop-test.txt" if case == "N" else f"benchmark-note-{expected}.txt"
-                                assert (work/filename).read_text(encoding="utf-8-sig").strip() == expected
+                                result["saved_text_verified"] = (work/filename).read_text(encoding="utf-8-sig").strip() == expected
+                                assert {"desktop_focus_window","desktop_inspect","desktop_click","desktop_type_text","desktop_keypress"} <= successful, "desktop_required_tool_missing"
+                                assert result.get("foreground_switch"), "desktop_foreground_switch_not_observed"
+                                assert result["saved_text_verified"], "desktop_saved_text_mismatch"
                                 assert not successful & {"write_file","apply_patch","run_command"}
                             else:
                                 score(work, case, result["tools"])
@@ -435,8 +477,9 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                             result.update(status="PASS")
                         except ToolError as exc:
                             result.update(status="BLOCKED", failure="ENVIRONMENT_FAILURE", detail=exc.code)
-                        except (AssertionError, OSError, ValueError, subprocess.SubprocessError):
+                        except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as exc:
                             result.update(status="FAIL", failure="TOOL_PERMISSION" if denied else "MODEL_FAILURE")
+                            result["assertion_failure"] = (str(exc) or "assertion_failed") if isinstance(exc, AssertionError) else type(exc).__name__
                     break
     except TimeoutError:
         result.update(status="FAIL",failure="TIMEOUT")
@@ -476,17 +519,30 @@ async def main():
     parser.add_argument("--case", choices=(*CASES,*GUI_CASES,*PROJECTS,"R","N"), action="append")
     parser.add_argument("--repeat", type=int, default=3)
     parser.add_argument("--model", choices=MODELS, action="append")
+    parser.add_argument("--context-window", type=int, metavar="TOKENS")
+    parser.add_argument("--output-tokens", help="Positive cap, or 'ollama' to use the service default")
+    parser.add_argument("--model-steps", type=int, choices=range(1, 129), metavar="STEPS")
+    parser.add_argument("--case-seconds", type=int, default=600)
+    parser.add_argument("--request-seconds", type=int)
     parser.add_argument("--continue-locked", type=P, help="Retry only desktop rounds blocked by a locked session")
     parser.add_argument("--continue-blocked-desktop", type=P,
                         help="Retry rounds blocked before dispatch by a locked session or existing Notepad")
     args = parser.parse_args()
+    if args.context_window is not None and not 1024 <= args.context_window <= 262144:
+        parser.error("--context-window must be 1024..262144")
+    if args.output_tokens not in (None, "ollama") and (
+        not args.output_tokens.isdecimal() or not 64 <= int(args.output_tokens) <= 32768
+    ):
+        parser.error("--output-tokens must be 64..32768 or ollama")
+    if not 1 <= args.case_seconds <= 1800 or (args.request_seconds is not None and not 1 <= args.request_seconds <= 600):
+        parser.error("case and request timeouts are outside benchmark bounds")
     args.output = args.output.resolve()
     args.output.mkdir(parents=True, exist_ok=False)
     sandbox = P(tempfile.mkdtemp(prefix="lca-real-benchmark-")).resolve()
     binary = args.agent.resolve() if args.agent else P(sys.executable).resolve()
     report = {"version":"1.0.0","entrypoint":"source" if args.source else "installed_backend","results":[]}
     (args.output / "scratch-path.txt").write_text(str(sandbox), encoding="utf-8")
-    urls = discover()
+    models = discover(profiles=True)
     challenges = {(case,n): str(100000 + secrets.randbelow(900000)) if case == "F-vision" else "LCA-" + secrets.token_hex(4)
                   for case in GUI_CASES for n in range(1,args.repeat+1)}
     pending = None
@@ -516,7 +572,21 @@ async def main():
         print(result["model"],result["case"],result["repeat"],result["status"],result.get("failure"),flush=True)
     async with aiohttp.ClientSession() as session:
         for model in args.model or MODELS:
-            url = urls.get(model)
+            url, profile, runtime = models.get(model, (None, {}, {}))
+            if args.context_window is not None:
+                profile["context_window"] = args.context_window
+            if args.output_tokens is not None:
+                profile["max_output_tokens"] = None if args.output_tokens == "ollama" else int(args.output_tokens)
+            from agent.core.budget import DEFAULT_LIMITS
+            options = {"context_window": profile.get("context_window") or runtime.get("context_window"),
+                       "max_output_tokens": profile.get("max_output_tokens"),
+                       "context_source": "benchmark_override" if args.context_window else
+                           "saved_profile" if profile.get("context_window") else "runtime_settings",
+                       "output_source": "benchmark_override" if args.output_tokens else "saved_profile",
+                       "model_steps": args.model_steps or runtime.get("model_steps"),
+                       "model_steps_source": "benchmark_override" if args.model_steps else "runtime_settings",
+                       "request_seconds": args.request_seconds or runtime.get("request_seconds") or DEFAULT_LIMITS["request_seconds"],
+                       "case_seconds": args.case_seconds}
             online = False
             if url:
                 try:
@@ -532,7 +602,8 @@ async def main():
                         save(await attempt(session,binary,url,model,case,
                                            sandbox / model.replace(":","-") / f"{case}-{n}",n,args.source,
                                            NOTEPAD_PHRASE if case == "N" else
-                                           challenges.get((model,case,n), challenges.get((case,n)))))
+                                           challenges.get((model,case,n), challenges.get((case,n))),
+                                           profile=profile, options=options))
                     else:
                         save({"model":model,"case":case,"repeat":n,"status":"BLOCKED","failure":"ENVIRONMENT_FAILURE"})
 

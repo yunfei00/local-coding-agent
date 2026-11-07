@@ -411,8 +411,10 @@ class TaskService:
             return self.provider_factory_override(route, profile)
         connection = profile.get("_connection")
         if connection:
+            context_default = (self.server.settings.ollama_context_window if connection["provider_type"] == "ollama"
+                               else self.server.settings.openai_context_window)
             kwargs = {"base_url": connection["base_url"], "preferred_model": profile.get("model", ""),
-                      "context_window": profile.get("context_window") or 32768,
+                      "context_window": profile.get("context_window") or context_default,
                       "temperature": profile.get("temperature") if profile.get("temperature") is not None else 0.2}
             if connection["provider_type"] == "ollama":
                 provider = OllamaProvider(**kwargs)

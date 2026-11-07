@@ -5,13 +5,30 @@ import tempfile
 from unittest.mock import AsyncMock,patch
 from agent.desktop.resources import require_resources,MIB
 from agent.desktop.visual_target import resolve_visual_point,coordinate_grid
-from agent.desktop.runtime import DesktopRuntime
+from agent.desktop.runtime import DesktopRuntime, public_arguments, text_confirmation
 from agent.tools.base import ToolError
 from types import SimpleNamespace
 from agent.desktop.worker import document_reader,DesktopError,controls
 from agent.core.unified_runtime import computer_only
 
 class ComputerContracts(unittest.IsolatedAsyncioTestCase):
+    def test_scoped_approval_checks_exact_input_without_disclosing_it(self):
+        from scripts.validation.local_ollama_benchmark import gui_approval
+        raw = {"window_id": "test-window", "selector": {"runtime_id": [42]}, "text": "fixture text"}
+        args = public_arguments("desktop_type_text", raw)
+        args["target_window"] = {"pid": 123}
+        args["text_confirmation"] = text_confirmation("test-session", raw["window_id"], raw["text"])
+        self.assertNotIn(raw["text"], repr(args))
+        editors = [{"runtime_id": [42]}]
+        self.assertTrue(gui_approval("desktop_type_text", args, 123, "F-desktop", editors, raw["text"], "test-session"))
+        self.assertFalse(gui_approval("desktop_type_text", args, 123, "F-desktop", editors, "different", "test-session"))
+        self.assertFalse(gui_approval("desktop_type_text", args, 123, "F-desktop", editors, raw["text"], "different-session"))
+
+    def test_dirty_notepad_title_still_belongs_to_exact_test_file(self):
+        from scripts.validation.local_ollama_benchmark import OwnedNotepad
+        self.assertTrue(OwnedNotepad.owns_title("*benchmark.txt - Notepad", "benchmark.txt"))
+        self.assertFalse(OwnedNotepad.owns_title("*other.txt - Notepad", "benchmark.txt"))
+
     def test_gui_fixture_preflight_blocks_before_any_desktop_probe(self):
         import windows_desktop_support as support
         with patch('windows_desktop_support.require_resources',side_effect=ToolError('BLOCKED_RESOURCE','low memory')),patch('windows_desktop_support.require_interactive_session') as session,patch.dict('os.environ',{'LCA_REQUIRE_INTERACTIVE_DESKTOP':'0'}):

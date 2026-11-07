@@ -14,6 +14,22 @@ from agent.llm.base import ProviderError
 import test_v04_orchestration as legacy
 
 
+class OutputProfileTests(unittest.TestCase):
+    def test_default_ollama_limit_is_optional_but_api_limit_is_required(self):
+        connection = {"connection_id": "local", "display_name": "Local", "provider_type": "ollama",
+                      "base_url": "http://127.0.0.1:11434", "credential_reference": None, "enabled": True}
+        profile = {"model_profile_id": "local-model", "connection_id": "local",
+                   "model_id": "local-model", "display_name": "Local Model"}
+        catalog = {"connections": [connection], "profiles": [profile]}
+        self.assertIsNone(validate_catalog(catalog)["profiles"][0]["max_output_tokens"])
+        profile["max_output_tokens"] = 1024
+        self.assertEqual(validate_catalog(catalog)["profiles"][0]["max_output_tokens"], 1024)
+        connection["provider_type"] = "openai_compatible"
+        profile["max_output_tokens"] = None
+        with self.assertRaisesRegex(ValueError, "output_limit"):
+            validate_catalog(catalog)
+
+
 class MixedProviderTests(unittest.IsolatedAsyncioTestCase):
     asyncSetUp = legacy.TaskTests.asyncSetUp
     asyncTearDown = legacy.TaskTests.asyncTearDown

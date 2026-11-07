@@ -1,0 +1,3382 @@
+{
+  "direct": [
+    {
+      "limit": 2048,
+      "http": 200,
+      "elapsed": 44.27,
+      "done_reason": "length",
+      "prompt_eval_count": 51,
+      "eval_count": 2048,
+      "eval_duration": 33311218710,
+      "context_length": 32768,
+      "size": 27931777664,
+      "size_vram": 27931777664
+    },
+    {
+      "limit": 4096,
+      "http": 200,
+      "elapsed": 71.72,
+      "done_reason": "length",
+      "prompt_eval_count": 51,
+      "eval_count": 4096,
+      "eval_duration": 67585449116,
+      "context_length": 32768,
+      "size": 27931777664,
+      "size_vram": 27931777664
+    },
+    {
+      "limit": null,
+      "http": 200,
+      "elapsed": 101.86,
+      "done_reason": "stop",
+      "prompt_eval_count": 51,
+      "eval_count": 5736,
+      "eval_duration": 96503704115,
+      "context_length": 32768,
+      "size": 27931777664,
+      "size_vram": 27931777664
+    }
+  ],
+  "provider": [
+    {
+      "limit": 2048,
+      "context": 32768,
+      "elapsed": 35.03,
+      "done_reason": "length",
+      "prompt_eval_count": 51,
+      "eval_count": 2048,
+      "http": 200
+    },
+    {
+      "limit": 4096,
+      "context": 32768,
+      "elapsed": 70.33,
+      "done_reason": "length",
+      "prompt_eval_count": 51,
+      "eval_count": 4096,
+      "http": 200
+    },
+    {
+      "limit": null,
+      "context": 32768,
+      "elapsed": 100.89,
+      "done_reason": "stop",
+      "prompt_eval_count": 51,
+      "eval_count": 5736,
+      "http": 200
+    },
+    {
+      "limit": 128,
+      "context": 32768,
+      "elapsed": 6.0,
+      "done_reason": "stop",
+      "prompt_eval_count": 14424,
+      "eval_count": 9,
+      "http": 200
+    }
+  ],
+  "targeted": [
+    {
+      "model": "gemma4:31b",
+      "case": "B",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "items.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_items.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_items.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 75315,
+        "output_tokens": 3032
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "assertion_failure": "cli_delivered_with_test_data",
+      "seconds": 99.89,
+      "tool_calls": 10,
+      "token_samples": 8,
+      "completed_model_calls": 8,
+      "model_calls": 8,
+      "runtime_tool_calls": 10,
+      "protocol_repairs": 0,
+      "task": "Implement items.py CLI: add NAME, list, update OLD NEW, delete NAME. Store a JSON array of names in items.json in the working directory. list prints one name per line. Reject blank or duplicate names and missing update/delete targets with nonzero exit; preserve storage on errors.",
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "completed",
+          "intent": "complex",
+          "outcome": "completed_verified"
+        }
+      ],
+      "maximum_observed_response_tokens": 847,
+      "finish_reasons": {
+        "stop": 8
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "B",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "items.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "PLAN_OPERATION_ALREADY_APPLIED"
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 80445,
+        "output_tokens": 2693
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "assertion_failure": "cli_delivered_with_test_data",
+      "seconds": 92.69,
+      "tool_calls": 11,
+      "token_samples": 10,
+      "completed_model_calls": 10,
+      "model_calls": 10,
+      "runtime_tool_calls": 11,
+      "protocol_repairs": 0,
+      "task": "Implement items.py CLI: add NAME, list, update OLD NEW, delete NAME. Store a JSON array of names in items.json in the working directory. list prints one name per line. Reject blank or duplicate names and missing update/delete targets with nonzero exit; preserve storage on errors.",
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "completed",
+          "intent": "change",
+          "outcome": "completed_verified"
+        }
+      ],
+      "maximum_observed_response_tokens": 661,
+      "finish_reasons": {
+        "stop": 10
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "B",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "items.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_items.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 78525,
+        "output_tokens": 2712
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "assertion_failure": "cli_delivered_with_test_data",
+      "seconds": 94.41,
+      "tool_calls": 10,
+      "token_samples": 8,
+      "completed_model_calls": 8,
+      "model_calls": 8,
+      "runtime_tool_calls": 10,
+      "protocol_repairs": 0,
+      "task": "Implement items.py CLI: add NAME, list, update OLD NEW, delete NAME. Store a JSON array of names in items.json in the working directory. list prints one name per line. Reject blank or duplicate names and missing update/delete targets with nonzero exit; preserve storage on errors.",
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "completed",
+          "intent": "complex",
+          "outcome": "completed_verified"
+        }
+      ],
+      "maximum_observed_response_tokens": 798,
+      "finish_reasons": {
+        "stop": 8
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "E",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_stage",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_commit",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "note.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "scratch.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 155366,
+        "output_tokens": 2007
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": "awaiting_user",
+      "seconds": 111.75,
+      "tool_calls": 17,
+      "token_samples": 17,
+      "completed_model_calls": 17,
+      "model_calls": 17,
+      "runtime_tool_calls": 17,
+      "protocol_repairs": 0,
+      "task": "Initialize Git, create branch benchmark-work, commit baseline note.txt, append NEW to note.txt, inspect git diff, modify scratch.txt then restore scratch.txt from the commit. Leave note.txt change uncommitted. Use only repository-local identity and never push.",
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "paused",
+          "intent": "complex",
+          "outcome": "awaiting_user"
+        }
+      ],
+      "maximum_observed_response_tokens": 362,
+      "finish_reasons": {
+        "stop": 17
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "E",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_stage",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_commit",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "scratch.txt"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 164448,
+        "output_tokens": 7177
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": "awaiting_user",
+      "assertion_failure": "git_baseline_missing_or_incorrect_scratch",
+      "seconds": 212.74,
+      "tool_calls": 17,
+      "token_samples": 17,
+      "completed_model_calls": 17,
+      "model_calls": 17,
+      "runtime_tool_calls": 17,
+      "protocol_repairs": 0,
+      "task": "Initialize Git, create branch benchmark-work, commit baseline note.txt, append NEW to note.txt, inspect git diff, modify scratch.txt then restore scratch.txt from the commit. Leave note.txt change uncommitted. Use only repository-local identity and never push.",
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "paused",
+          "intent": "complex",
+          "outcome": "awaiting_user"
+        }
+      ],
+      "maximum_observed_response_tokens": 2123,
+      "finish_reasons": {
+        "stop": 17
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "E",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_stage",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_commit",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_stage",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_commit",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_status",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 134118,
+        "output_tokens": 1521
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": "awaiting_user",
+      "assertion_failure": "git_diff_missing_change",
+      "seconds": 96.5,
+      "tool_calls": 15,
+      "token_samples": 15,
+      "completed_model_calls": 15,
+      "model_calls": 15,
+      "runtime_tool_calls": 15,
+      "protocol_repairs": 0,
+      "task": "Initialize Git, create branch benchmark-work, commit baseline note.txt, append NEW to note.txt, inspect git diff, modify scratch.txt then restore scratch.txt from the commit. Leave note.txt change uncommitted. Use only repository-local identity and never push.",
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "paused",
+          "intent": "change",
+          "outcome": "awaiting_user"
+        }
+      ],
+      "maximum_observed_response_tokens": 577,
+      "finish_reasons": {
+        "stop": 15
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_click",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_type_text",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_type_text",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_type_text",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TOOL_PERMISSION",
+      "tokens": {
+        "input_tokens": 96556,
+        "output_tokens": 4875
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "foreground_switch": false,
+      "terminal": "turn.failed",
+      "code": "TOOL_FAILURE_LIMIT",
+      "outcome": null,
+      "seconds": 139.14,
+      "tool_calls": 10,
+      "token_samples": 10,
+      "completed_model_calls": 10,
+      "model_calls": 10,
+      "runtime_tool_calls": 10,
+      "protocol_repairs": 0,
+      "task": null,
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "failed",
+          "intent": "interaction",
+          "outcome": "failed"
+        }
+      ],
+      "maximum_observed_response_tokens": 995,
+      "finish_reasons": {
+        "stop": 10
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_click",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_type_text",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_type_text",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TOOL_PERMISSION",
+      "tokens": {
+        "input_tokens": 97222,
+        "output_tokens": 3851
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "foreground_switch": false,
+      "terminal": "turn.failed",
+      "code": "TOOL_FAILURE_LIMIT",
+      "outcome": null,
+      "seconds": 120.69,
+      "tool_calls": 10,
+      "token_samples": 10,
+      "completed_model_calls": 10,
+      "model_calls": 10,
+      "runtime_tool_calls": 10,
+      "protocol_repairs": 0,
+      "task": null,
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "failed",
+          "intent": "interaction",
+          "outcome": "failed"
+        }
+      ],
+      "maximum_observed_response_tokens": 894,
+      "finish_reasons": {
+        "stop": 10
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_click",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_type_text",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_type_text",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_type_text",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_type_text",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "DESKTOP_RISK_APPROVAL_REQUIRED"
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TOOL_PERMISSION",
+      "tokens": {
+        "input_tokens": 110089,
+        "output_tokens": 5797
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "foreground_switch": false,
+      "terminal": "turn.failed",
+      "code": "TOOL_FAILURE_LIMIT",
+      "outcome": null,
+      "seconds": 161.73,
+      "tool_calls": 11,
+      "token_samples": 11,
+      "completed_model_calls": 11,
+      "model_calls": 11,
+      "runtime_tool_calls": 11,
+      "protocol_repairs": 0,
+      "task": null,
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "failed",
+          "intent": "interaction",
+          "outcome": "failed"
+        }
+      ],
+      "maximum_observed_response_tokens": 1400,
+      "finish_reasons": {
+        "stop": 11
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "model": "gemma4:31b",
+      "case": "P1",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "todo.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_todo.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "README.md"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 35116,
+        "output_tokens": 2485
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 900
+      },
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 71.25,
+      "tool_calls": 6,
+      "token_samples": 5,
+      "completed_model_calls": 5,
+      "model_calls": 5,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0,
+      "task": "From scratch implement a Python todo CLI todo.py with add NAME, list, update OLD NEW, delete NAME. Persist a JSON array in todos.json, reject blank or duplicate names and nonexistent targets with nonzero exit. list prints one name per line. Include pytest tests and a Chinese README.md with usage. Run the tests and fix failures.",
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "completed",
+          "intent": "complex",
+          "outcome": "completed_verified"
+        }
+      ],
+      "maximum_observed_response_tokens": 854,
+      "finish_reasons": {
+        "stop": 5
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "P2",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "scan.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_scan.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TOOL_PERMISSION",
+      "tokens": {
+        "input_tokens": 110644,
+        "output_tokens": 4881
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 900
+      },
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "assertion_failure": "unexpected_command_exit_status",
+      "seconds": 138.51,
+      "tool_calls": 9,
+      "token_samples": 9,
+      "completed_model_calls": 9,
+      "model_calls": 9,
+      "runtime_tool_calls": 9,
+      "protocol_repairs": 0,
+      "task": "From scratch implement Python scan.py DIRECTORY OUTPUT.csv. Recursively scan files, print counts by lowercase extension as JSON to stdout, hash each file with SHA256, and export CSV with columns path (relative to DIRECTORY), extension, sha256, duplicate (true for every member of a repeated digest). Exclude the output file itself. Include and run pytest tests. Fix failures.",
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "completed",
+          "intent": "complex",
+          "outcome": "completed_verified"
+        }
+      ],
+      "maximum_observed_response_tokens": 1334,
+      "finish_reasons": {
+        "stop": 9
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "P3",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "calculator.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "calculator.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_calculator.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "PATCH_NOT_FOUND"
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_calculator.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_calculator.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_calculator.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_calculator.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "AGENT_FAILURE",
+      "tokens": {
+        "input_tokens": 284841,
+        "output_tokens": 8771
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 900
+      },
+      "terminal": "turn.failed",
+      "code": "PLAN_TOOLS_UNRESOLVED",
+      "outcome": null,
+      "seconds": 294.61,
+      "tool_calls": 16,
+      "token_samples": 16,
+      "completed_model_calls": 16,
+      "model_calls": 16,
+      "runtime_tool_calls": 16,
+      "protocol_repairs": 0,
+      "task": "From scratch build a Windows Tkinter calculator in calculator.py with create_app() returning a Tk window. Use direct child Button widgets labelled 0–9, +, -, *, /, =, C and a direct child Label showing the result. Show Error on division by zero. Add GUI pytest tests and run them. Do not touch any existing window or user file.",
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "failed",
+          "intent": "complex",
+          "outcome": "partially_completed"
+        }
+      ],
+      "maximum_observed_response_tokens": 1371,
+      "finish_reasons": {
+        "stop": 16
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    }
+  ],
+  "project-retest": [
+    {
+      "model": "gemma4:31b",
+      "case": "P2",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "scan.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_scan.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "scan.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 51090,
+        "output_tokens": 2825
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 900
+      },
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 80.86,
+      "tool_calls": 7,
+      "token_samples": 6,
+      "completed_model_calls": 6,
+      "model_calls": 6,
+      "runtime_tool_calls": 7,
+      "protocol_repairs": 0,
+      "task": "From scratch implement Python scan.py DIRECTORY OUTPUT.csv. Recursively scan files, print counts by lowercase extension as JSON to stdout, hash each file with SHA256, and export CSV with columns path (relative to DIRECTORY), extension, sha256, duplicate (true for every member of a repeated digest). Exclude the output file itself. Include and run pytest tests. Fix failures.",
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "completed",
+          "intent": "change",
+          "outcome": "completed_verified"
+        }
+      ],
+      "maximum_observed_response_tokens": 1210,
+      "finish_reasons": {
+        "stop": 6
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "P3",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "calculator.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "calculator.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "test_calculator.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 44939,
+        "output_tokens": 3456
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 900
+      },
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 90.64,
+      "tool_calls": 7,
+      "token_samples": 6,
+      "completed_model_calls": 6,
+      "model_calls": 6,
+      "runtime_tool_calls": 7,
+      "protocol_repairs": 0,
+      "task": "From scratch build a Windows Tkinter calculator in calculator.py with create_app() returning a Tk window. Use direct child Button widgets labelled 0–9, +, -, *, /, =, C and a direct child Label showing the result. Show Error on division by zero. Add GUI pytest tests and run them. Do not touch any existing window or user file.",
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "completed",
+          "intent": "change",
+          "outcome": "completed_verified"
+        }
+      ],
+      "maximum_observed_response_tokens": 1319,
+      "finish_reasons": {
+        "stop": 6
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    }
+  ],
+  "cli-repair": [
+    {
+      "model": "gemma4:31b",
+      "case": "B",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "items.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "git_status",
+          "ok": false,
+          "exit_code": 128,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "delete_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "items.json"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 66177,
+        "output_tokens": 6366
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "assertion_failure": "cli_delivered_with_test_data",
+      "seconds": 153.44,
+      "tool_calls": 9,
+      "token_samples": 9,
+      "completed_model_calls": 9,
+      "model_calls": 9,
+      "runtime_tool_calls": 9,
+      "protocol_repairs": 0,
+      "task": "Implement items.py CLI: add NAME, list, update OLD NEW, delete NAME. Store a JSON array of names in items.json in the working directory. list prints one name per line. Reject blank or duplicate names and missing update/delete targets with nonzero exit; preserve storage on errors.",
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "completed",
+          "intent": "change",
+          "outcome": "completed_verified"
+        }
+      ],
+      "maximum_observed_response_tokens": 1073,
+      "finish_reasons": {
+        "stop": 9
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    }
+  ],
+  "cli-final": [
+    {
+      "model": "gemma4:31b",
+      "case": "B",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [
+            "items.py"
+          ],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "PLAN_OPERATION_ALREADY_APPLIED"
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "PLAN_OPERATION_ALREADY_APPLIED"
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "PLAN_OPERATION_ALREADY_APPLIED"
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "AGENT_FAILURE",
+      "tokens": {
+        "input_tokens": 127562,
+        "output_tokens": 2632
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "terminal": "turn.failed",
+      "code": "TOOL_FAILURE_LIMIT",
+      "outcome": null,
+      "seconds": 110.14,
+      "tool_calls": 14,
+      "token_samples": 14,
+      "completed_model_calls": 14,
+      "model_calls": 14,
+      "runtime_tool_calls": 14,
+      "protocol_repairs": 0,
+      "task": "Implement items.py CLI: add NAME, list, update OLD NEW, delete NAME. Store a JSON array of names in items.json in the working directory. list prints one name per line. Reject blank or duplicate names and missing update/delete targets with nonzero exit; preserve storage on errors.",
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "failed",
+          "intent": "complex",
+          "outcome": "partially_completed"
+        }
+      ],
+      "maximum_observed_response_tokens": 744,
+      "finish_reasons": {
+        "stop": 14
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    }
+  ],
+  "desktop-retest": [
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 1,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "detail": "existing_notepad",
+      "seconds": 0.19,
+      "tool_calls": 0,
+      "task": null
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 2,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "detail": "existing_notepad",
+      "seconds": 0.16,
+      "tool_calls": 0,
+      "task": null
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 3,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "detail": "existing_notepad",
+      "seconds": 0.16,
+      "tool_calls": 0,
+      "task": null
+    }
+  ],
+  "desktop-final": [
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_click",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_type_text",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "DESKTOP_RISK_APPROVAL_REQUIRED"
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_type_text",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": "APPROVAL_DENIED"
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TOOL_PERMISSION",
+      "tokens": {
+        "input_tokens": 123318,
+        "output_tokens": 3964
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "foreground_switch": true,
+      "terminal": "turn.failed",
+      "code": "TOOL_FAILURE_LIMIT",
+      "outcome": null,
+      "seconds": 135.73,
+      "tool_calls": 12,
+      "token_samples": 12,
+      "completed_model_calls": 12,
+      "model_calls": 12,
+      "runtime_tool_calls": 12,
+      "protocol_repairs": 0,
+      "task": null,
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "failed",
+          "intent": "interaction",
+          "outcome": "failed"
+        }
+      ],
+      "maximum_observed_response_tokens": 922,
+      "finish_reasons": {
+        "stop": 12
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 2,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "detail": "existing_notepad",
+      "seconds": 0.17,
+      "tool_calls": 0,
+      "task": null
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 3,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "detail": "existing_notepad",
+      "seconds": 0.16,
+      "tool_calls": 0,
+      "task": null
+    }
+  ],
+  "desktop-confirmed": [
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_click",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_type_text",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 60631,
+        "output_tokens": 2769
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "foreground_switch": true,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 86.05,
+      "tool_calls": 6,
+      "token_samples": 7,
+      "completed_model_calls": 7,
+      "model_calls": 7,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0,
+      "task": null,
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "completed",
+          "intent": "interaction",
+          "outcome": "completed_unverified"
+        }
+      ],
+      "maximum_observed_response_tokens": 975,
+      "finish_reasons": {
+        "stop": 7
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_click",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_type_text",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 60710,
+        "output_tokens": 2273
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "foreground_switch": false,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "assertion_failure": "assertion_failed",
+      "seconds": 76.89,
+      "tool_calls": 6,
+      "token_samples": 7,
+      "completed_model_calls": 7,
+      "model_calls": 7,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0,
+      "task": null,
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "completed",
+          "intent": "interaction",
+          "outcome": "completed_unverified"
+        }
+      ],
+      "maximum_observed_response_tokens": 710,
+      "finish_reasons": {
+        "stop": 7
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_click",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_type_text",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 60663,
+        "output_tokens": 1795
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "foreground_switch": false,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "assertion_failure": "assertion_failed",
+      "seconds": 68.69,
+      "tool_calls": 6,
+      "token_samples": 7,
+      "completed_model_calls": 7,
+      "model_calls": 7,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0,
+      "task": null,
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "completed",
+          "intent": "interaction",
+          "outcome": "completed_unverified"
+        }
+      ],
+      "maximum_observed_response_tokens": 730,
+      "finish_reasons": {
+        "stop": 7
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    }
+  ],
+  "desktop-focus": [
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_click",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_type_text",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 60593,
+        "output_tokens": 2022
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "foreground_switch": true,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "saved_text_verified": true,
+      "seconds": 72.58,
+      "tool_calls": 6,
+      "token_samples": 7,
+      "completed_model_calls": 7,
+      "model_calls": 7,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0,
+      "task": null,
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "completed",
+          "intent": "interaction",
+          "outcome": "completed_unverified"
+        }
+      ],
+      "maximum_observed_response_tokens": 793,
+      "finish_reasons": {
+        "stop": 7
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_click",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_type_text",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        },
+        {
+          "name": "desktop_keypress",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null,
+          "changed_paths": [],
+          "error_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 60703,
+        "output_tokens": 2241
+      },
+      "repairs": 0,
+      "configuration": {
+        "context_window": 32768,
+        "max_output_tokens": null,
+        "context_source": "benchmark_override",
+        "output_source": "benchmark_override",
+        "model_steps": 100,
+        "model_steps_source": "benchmark_override",
+        "request_seconds": 180,
+        "case_seconds": 600
+      },
+      "foreground_switch": false,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "saved_text_verified": true,
+      "assertion_failure": "desktop_foreground_switch_not_observed",
+      "seconds": 77.14,
+      "tool_calls": 6,
+      "token_samples": 7,
+      "completed_model_calls": 7,
+      "model_calls": 7,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0,
+      "task": null,
+      "plan_count": 1,
+      "terminal_runtime": [
+        {
+          "phase": "completed",
+          "intent": "interaction",
+          "outcome": "completed_unverified"
+        }
+      ],
+      "maximum_observed_response_tokens": 1032,
+      "finish_reasons": {
+        "stop": 7
+      },
+      "effective_parameters": [
+        {
+          "model": "gemma4:31b",
+          "provider": "ollama",
+          "output_limit": null,
+          "output_limit_source": "provider_default",
+          "context_window": 32768,
+          "context_window_source": "model_profile",
+          "model_steps_per_slice": 100,
+          "request_timeout_seconds": 180,
+          "reserved_output_tokens": 4096
+        }
+      ]
+    }
+  ],
+  "full": [],
+  "native_notepad": {
+    "result": "PASS",
+    "file_readback_verified": true,
+    "window_closed": true
+  }
+}

@@ -68,6 +68,8 @@ async def run(args):
             editors=[c for c in tree['controls'] if c['control_type'] in ('Edit','Document') and not c['sensitive']]
             if len(editors)!=1:raise RuntimeError('NO_UNIQUE_DOCUMENT')
             text='Local Coding Agent Gemma 桌面自动化测试成功' if getattr(args, 'gemma_notepad_fixture', False) else 'V07 中文记事本 '+marker
+            if getattr(args, 'gemma_notepad_fixture', False):
+                await call('desktop_click',selector={'runtime_id':editors[0]['runtime_id']},confirm_risk=True)
             await call('desktop_type_text',selector={'runtime_id':editors[0]['runtime_id']},text=text,confirm_risk=True)
             await call('desktop_keypress',keys='CTRL+S',confirm_risk=True)
             for _ in range(30):

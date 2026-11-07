@@ -6,7 +6,7 @@ const saved: TaskConfig = {strategy:"local-only", budget:{api_calls:0,api_tokens
 describe("Task edits over latest Settings", () => {
   it('uses a coding output default for new API profiles while keeping the local default', () => {
     expect(defaultModelOutput('openai_compatible')).toBe(8192);
-    expect(defaultModelOutput('ollama')).toBe(1024);
+    expect(defaultModelOutput('ollama')).toBeNull();
   });
   it('raises only the selected profile output and preserves larger limits and identity', () => {
     const original={model_profile_id:'selected',connection_id:'api',model_id:'model',display_name:'Model',

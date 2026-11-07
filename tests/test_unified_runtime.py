@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch,AsyncMock
 
-from agent.core.unified_runtime import infer_intent, verification_policy, result_view, workspace_snapshot,requested_intent
+from agent.core.unified_runtime import infer_intent, verification_policy, result_view, workspace_snapshot,requested_intent,unreviewed_test_data
 from agent.llm.router import validate_config
 from agent.llm.base import ProviderChunk, ToolCall
 from agent.server.main import AgentServer
@@ -17,6 +17,12 @@ from test_agent_reliability import FakeWebSocket, ScriptedProvider, final_step, 
 
 
 class UnifiedPolicyTests(unittest.TestCase):
+    def test_delivery_review_only_lists_new_nonedit_data(self):
+        before = {"existing.json": [1, 1]}
+        after = {path: [2, 2] for path in (
+            "existing.json", "fixture.json", "export.csv", "package-lock.json", "app.py")}
+        self.assertEqual(unreviewed_test_data(before, after, ["export.csv"]), ["fixture.json"])
+
     def test_request_shape_is_refined_by_tools_and_respects_read_only(self):
         self.assertEqual(requested_intent('Python 装饰器是什么？')['kind'],'question')
         self.assertEqual(requested_intent('请解释如何修改 Python 代码')['kind'],'question')
@@ -112,6 +118,28 @@ class UnifiedPolicyTests(unittest.TestCase):
 
 
 class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
+    async def test_same_file_replacement_resolves_a_stale_patch(self):
+        _, runtime = await self.run_steps([
+            tool_step("apply_patch", {"path": "calculator.py", "old_text": "not present", "new_text": "ignored"}),
+            tool_step("write_file", {"path": "calculator.py", "content": "def add(a, b): return a+b\n"}),
+            final_step("实现完成"),
+        ])
+        self.assertEqual(runtime["outcome"], "completed_verified")
+        results = [event["payload"]["result"] for event in self.ws.messages if event["type"] == "tool.completed"]
+        self.assertEqual(results[0]["error"]["code"], "PATCH_NOT_FOUND")
+        self.assertTrue(results[1]["ok"])
+
+    async def test_unrelated_write_does_not_resolve_a_stale_patch(self):
+        (self.repo / "calculator.py").write_text("def add(a, b): return a+b\n", encoding="utf-8")
+        await self.run_steps([
+            tool_step("apply_patch", {"path": "calculator.py", "old_text": "not present", "new_text": "ignored"}),
+            tool_step("write_file", {"path": "other.py", "content": "ready = True\n"}),
+            final_step("实现完成"),
+            final_step("实现完成"),
+        ])
+        failures = [event["payload"]["code"] for event in self.ws.messages if event["type"] == "turn.failed"]
+        self.assertEqual(failures, ["PLAN_TOOLS_UNRESOLVED"])
+
     async def asyncSetUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name);self.repo=self.root/'repo';self.repo.mkdir()
         self.env=patch.dict(os.environ,{'LCA_DATA_DIR':str(self.root/'data')});self.env.start()

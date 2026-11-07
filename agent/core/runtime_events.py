@@ -17,6 +17,7 @@ TRACE_FIELDS = frozenset({
     'http_status','request_sent','network_attempted','error_code','category','recoverable',
     'retry','duration_ms','input_tokens','output_tokens','cached_tokens','estimated',
     'reserved_tokens','released_tokens','output_limit','context_window','message_id',
+    'output_limit_source','context_window_source','model_steps_per_slice','request_timeout_seconds','reserved_output_tokens',
     'characters','boundary','reason','field','limit','used','required','scope',
     'stream_events','content_chars','reasoning_chars','tool_argument_chars',
     'first_event_at','last_event_at','response_complete','finish_reason','response_type',

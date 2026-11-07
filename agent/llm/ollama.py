@@ -223,7 +223,11 @@ class OllamaProvider:
     def _prepare_chat_request(self,model,messages,tools):
         body={'model':model,'messages':self._wire_messages(messages),'stream':True,'keep_alive':'10m',
               'options':{'num_ctx':self.context_window,'temperature':self.temperature}}
-        if getattr(self,'max_output_tokens',None):body['options']['num_predict']=self.max_output_tokens
+        limit = getattr(self, "max_output_tokens", None)
+        if limit is not None:
+            if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+                raise ValueError("Ollama 输出上限必须为正整数，或留空使用服务端配置。")
+            body["options"]["num_predict"] = limit
         if tools:body['tools']=tools
         json.dumps(body,allow_nan=False)
         return body
