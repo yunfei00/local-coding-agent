@@ -128,4 +128,3 @@ assert r.returncode==0 and 'Ran 0 tests' not in r.stderr
 ]
 
 CASES = {c.id: c for c in (*PYTHON,*FRONTEND,*GIT,*ENVIRONMENT,*LONG,*DELIVERY)}
-

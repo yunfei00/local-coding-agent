@@ -185,4 +185,3 @@ GIT = [
          "from pathlib import Path\nassert Path('feature.txt').read_text().splitlines()==['base']"),
     ]
 ]
-

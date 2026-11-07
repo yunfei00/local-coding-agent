@@ -27,4 +27,3 @@
 | 工程索引与检索 | 已实现且真实验证 | `agent/core/project_knowledge.py`、`agent/core/repository_map.py`、`agent/tools/knowledge.py`；v0.8 报告和 `tests/test_v08_knowledge.py` | 词法和符号检索，语义召回不是当前基线。P1 |
 | 多模型角色协作 | 已实现且真实验证 | `agent/core/workflow.py`、`agent/core/orchestration.py`、`agent/llm/router.py`；v0.9 协作证据 | 本轮排除多模型变量。P1 |
 | 多机调度 | 未实现 | `agent/core/background.py` 和 `workflow.py` 的队列、并发冲突规则限于本地运行时 | 无远程工作节点、租约、分布式恢复。暂缓 |
-

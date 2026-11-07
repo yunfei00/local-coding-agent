@@ -52,4 +52,3 @@ uv run --locked python -m scripts.validation.realworld_benchmark --rebuild-repor
 任务限定工程内操作、无外网、无远程 Git。Git 只使用临时仓库的本地身份。审批回包只对受控操作放行。当前进程与终端仍继承当前用户的 OS 权限；对不可信输入应在另行隔离的账号或虚拟机运行。不要发布 scratch 路径、完整日志或工作区数据库。每轮结果分片不覆盖，续跑保留已有分片并从新工作区开始未提交结果的轮次。汇总 JSON 与 Markdown 可重建，真实原始结果保留。
 
 PASS 以外部断言通过为准。FAIL 表示已运行且未满足合同，BLOCKED 表示环境或驱动没有产生可评分结果，NOT_RUN 表示尚未执行。用例退出码失败需结合实际文件、工具结果和模型错误区分根因。Ollama 返回的 input/output token 按完成响应累加，缺失时保持未知。输入统计可包含重复提示；不等同于唯一上下文长度。
-

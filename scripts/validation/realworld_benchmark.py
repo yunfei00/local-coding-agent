@@ -2,7 +2,7 @@
 import argparse
 import asyncio
 from collections import Counter
-from contextlib import closing
+from contextlib import closing, contextmanager
 import hashlib
 import json
 import os
@@ -40,9 +40,26 @@ def signature():
     return hashlib.sha256(b"".join((root / name).read_bytes() for name in paths)).hexdigest()
 
 
+@contextmanager
+def run_lock(directory):
+    with (directory / ".run.lock").open("a+b") as handle:
+        try:
+            if os.name == "nt":
+                import msvcrt
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            raise SystemExit("Another runner is using this output directory.") from error
+        yield
+
+
 def collect(root, *, write_events=True):
     db = root / "data" / "local-coding-agent.sqlite3"
     events = []
+    recoveries = []
     if db.is_file():
         with closing(sqlite3.connect(db.as_uri() + "?mode=ro", uri=True)) as connection:
             rows = connection.execute("SELECT kind, metadata_json FROM runtime_events ORDER BY sequence")
@@ -51,6 +68,8 @@ def collect(root, *, write_events=True):
                 public = {k: data[k] for k in ("input_tokens", "output_tokens", "estimated", "duration_ms",
                     "error_code", "http_status", "finish_reason", "recovery_count", "status") if k in data}
                 events.append({"event": kind, **public})
+            if connection.execute("SELECT 1 FROM sqlite_master WHERE name='agent_execution_runs'").fetchone():
+                recoveries = [json.loads(row[0]) for row in connection.execute("SELECT data_json FROM agent_execution_runs")]
     if write_events:
         save_json(root / "model-events.json", events)
     usage = [e for e in events if e["event"] == "response.completed"
@@ -61,7 +80,8 @@ def collect(root, *, write_events=True):
                        "output": sum(e["output_tokens"] for e in usage),
                        "reported_calls": len(usage)} if usage else None,
             "model_calls": count, "model_error_classes": dict(errors),
-            "recovery_count": max((e.get("recovery_count", 0) for e in events), default=0)}
+            "recovery_count": sum(row.get("recovery_count", 0) for row in recoveries),
+            "completion_repair_count": sum(row.get("completion_recovery_attempts", 0) for row in recoveries)}
 
 
 def render(out, manifest, results, prior):
@@ -91,8 +111,9 @@ async def run(args):
                 and (not args.category or case.category in args.category) for repeat in range(1, args.repeat+1)]
     if args.retry:
         previous = json.loads(args.retry.read_text(encoding="utf-8"))["results"]
-        pending = {(r["case"], r["repeat"]) for r in previous if r["status"] in {"FAIL", "BLOCKED"}}
-        selected = [pair for pair in selected if pair in pending]
+        allowed_ids = {id for id, _ in selected}
+        selected = sorted({(r["case"], r["repeat"]) for r in previous
+                           if r["status"] in {"FAIL", "BLOCKED"} and r["case"] in allowed_ids})
     manifest = {"commit": commit, "driver": signature(), "model": MODEL, "config": config,
                 "planned": [list(pair) for pair in selected]}
     if args.resume:
@@ -102,6 +123,11 @@ async def run(args):
     else:
         out.mkdir(parents=True, exist_ok=False)
         save_json(out / "manifest.json", manifest)
+    with run_lock(out):
+        await execute(args, out, selected, manifest, prior, config)
+
+
+async def execute(args, out, selected, manifest, prior, config):
     scratch = Path(tempfile.mkdtemp(prefix="lca-phase0-")).resolve()
     base = {}
     url = None
@@ -151,6 +177,10 @@ async def run(args):
                     row = await attempt(session, Path(sys.executable), url, MODEL, id, root, n,
                                         True, profile=profile, options=config, scenario=scenario)
                     row.update(collect(root))
+                    if row.get("code") == "UNIFIED_READ_ONLY_INTENT":
+                        row["failure"] = "AGENT_INTENT_CLASSIFICATION"
+                    elif row.get("failure") == "TOOL_PERMISSION" and row.get("harness_denials"):
+                        row.update(status="BLOCKED", failure="HARNESS_APPROVAL_DENIED")
                 except (OSError, sqlite3.Error, ValueError, AssertionError, subprocess.SubprocessError) as error:
                     row.update(status="BLOCKED", failure="HARNESS_FAILURE", detail=type(error).__name__)
                 row["evidence"] = str(root)
@@ -189,4 +219,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

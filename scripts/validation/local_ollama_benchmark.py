@@ -456,6 +456,8 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                             'git config user.email benchmark@example.invalid'})
                     if scenario:
                         safe = scenario.approve(tool, args)
+                        if not safe:
+                            result.setdefault("harness_denials", []).append(tool)
                     if fixture:
                         safe = fixture.poll() is None and gui_approval(tool,args,fixture.pid,case,editors,expected,ready["token"])
                         if safe and tool == "desktop_focus_window":
