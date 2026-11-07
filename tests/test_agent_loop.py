@@ -93,6 +93,14 @@ class AgentLoopTests(unittest.TestCase):
         )
         self.assertEqual(guard.completion_gaps(), [])
 
+    def test_non_git_code_changes_still_require_validation(self) -> None:
+        guard = ToolLoopGuard()
+        guard.record_result("apply_patch", {"ok": True, "changed_paths": ["app.py"]})
+        self.assertEqual(guard.completion_gaps(require_git_diff=False), ["validation"])
+        guard.record_result("run_command", {"ok": True, "exit_code": 0})
+        self.assertEqual(guard.completion_gaps(require_git_diff=False), [])
+        self.assertEqual(guard.completion_gaps(), ["git_diff"])
+
     def test_document_change_does_not_force_test_command(self) -> None:
         guard = ToolLoopGuard()
         guard.record_result(

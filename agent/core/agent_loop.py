@@ -297,12 +297,12 @@ class ToolLoopGuard:
             for path in self.changed_paths
         )
 
-    def completion_gaps(self) -> list[str]:
+    def completion_gaps(self, *, require_git_diff: bool = True) -> list[str]:
         if self.last_change_sequence < 0:
             return []
 
         gaps: list[str] = []
-        if self.last_diff_sequence < self.last_change_sequence:
+        if require_git_diff and self.last_diff_sequence < self.last_change_sequence:
             gaps.append("git_diff")
         if (
             self.changed_code()
@@ -311,8 +311,8 @@ class ToolLoopGuard:
             gaps.append("validation")
         return gaps
 
-    def completion_note(self) -> str | None:
-        gaps = self.completion_gaps()
+    def completion_note(self, *, require_git_diff: bool = True) -> str | None:
+        gaps = self.completion_gaps(require_git_diff=require_git_diff)
         if not gaps:
             return None
 
