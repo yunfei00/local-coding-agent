@@ -2,8 +2,10 @@
 from dataclasses import dataclass, field
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
+import tempfile
 
 
 @dataclass(frozen=True)
@@ -17,7 +19,6 @@ class Case:
     language: str = "python"
     git: str = ""
     control: str = ""
-    seconds: int = 480
     preserve: tuple = field(default_factory=tuple)
 
     def seed(self, work):
@@ -89,14 +90,50 @@ class Case:
             assert evidence.get("cancelled_generation") and evidence.get("reconnected"), "missing_cancel_or_reconnect"
             expected = "resume" if self.control == "resume" else "restart"
             assert evidence.get("control") == expected, "wrong_control_action"
-        if self.language == "node":
-            run(work, ["node", "--input-type=module", "-e", self.check])
-        else:
-            run(work, [sys.executable, "-B", "-c", self.check])
-        if self.id in {"22", "25"}:
-            tests = [t for t in evidence["tools"] if t["name"] == "run_command"]
-            assert any(t["exit_code"] == 1 for t in tests), "failing_test_not_observed"
-            assert any(t["exit_code"] == 0 for t in tests), "successful_test_not_observed"
+        if self.id == "20":
+            assert not (work / ".git").exists(), "unexpected_git_initialization"
+        with tempfile.TemporaryDirectory(prefix="lca-score-") as temporary:
+            copy = Path(temporary)
+            snapshot(work, copy)
+            if self.language == "node":
+                run(copy, ["node", "--input-type=module", "-e", self.check])
+            else:
+                run(copy, [sys.executable, "-B", "-c", self.check])
+        if self.id in {"10", "22", "25", "29"}:
+            verify_command_evidence(self.id, evidence["tools"])
+
+
+def verify_command_evidence(case_id, tools):
+    succeeded = {t.get("verification_command") for t in tools if t["exit_code"] == 0}
+    if case_id == "10":
+        assert {"npm test", "npm run build"} <= succeeded, "npm_test_or_build_evidence_missing"
+    elif case_id in {"22", "25", "29"}:
+        assert "python -m unittest -q" in succeeded, "successful_unittest_evidence_missing"
+        if case_id != "29":
+            assert any(t.get("verification_command") == "python -m unittest -q" and t["exit_code"] == 1
+                       for t in tools), "failing_unittest_evidence_missing"
+
+
+
+def snapshot(source, target):
+    """Copy only bounded project files; scoring must not mutate the delivery."""
+    ignored = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache"}
+    count = size = 0
+    for directory, folders, files in os.walk(source, followlinks=False):
+        folder = Path(directory)
+        folders[:] = [name for name in folders if name not in ignored]
+        for name in [*folders, *files]:
+            path = folder / name
+            assert not (path.is_symlink() or path.is_junction()), "snapshot_link_rejected"
+        for name in files:
+            path = folder / name
+            assert path.is_file(), "snapshot_special_file"
+            count += 1
+            size += path.stat().st_size
+            assert count <= 256 and size <= 16 * 1024 * 1024, "snapshot_budget_exceeded"
+            destination = target / path.relative_to(source)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, destination)
 
 
 def run(work, command, *, success=True):

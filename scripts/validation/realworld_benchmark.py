@@ -18,6 +18,7 @@ import aiohttp
 
 from agent.core.runtime_events import failure_class
 from scripts.validation.local_ollama_benchmark import attempt, discover
+from scripts.validation.realworld_cases import verify_command_evidence
 from scripts.validation.realworld_extended import CASES
 
 MODEL = "gemma4:31b"
@@ -179,6 +180,8 @@ async def execute(args, out, selected, manifest, prior, config):
                     row.update(collect(root))
                     if row.get("code") == "UNIFIED_READ_ONLY_INTENT":
                         row["failure"] = "AGENT_INTENT_CLASSIFICATION"
+                    elif row.get("code") == "PLAN_RESUME_CONFIRMATION_REQUIRED":
+                        row.update(status="BLOCKED", failure="PRODUCT_RESUME_CONFIRMATION")
                     elif row.get("failure") == "TOOL_PERMISSION" and row.get("harness_denials"):
                         row.update(status="BLOCKED", failure="HARNESS_APPROVAL_DENIED")
                 except (OSError, sqlite3.Error, ValueError, AssertionError, subprocess.SubprocessError) as error:
@@ -188,6 +191,43 @@ async def execute(args, out, selected, manifest, prior, config):
             results[id,n] = row
             publish()
             print(id, n, row["status"], row.get("failure"), flush=True)
+
+
+def derive(row):
+    """Use already retained evidence; do not execute the prior worktree again."""
+    if not row.get("evidence"):
+        return
+    root = Path(row["evidence"])
+    if not root.is_dir():
+        row["evidence_status"] = "MISSING_SCRATCH"
+        return
+    row.update(collect(root, write_events=False))
+    row["raw_status"] = row["status"]
+    if row.get("code") == "UNIFIED_READ_ONLY_INTENT":
+        row["failure"] = "AGENT_INTENT_CLASSIFICATION"
+    if row.get("code") == "PLAN_RESUME_CONFIRMATION_REQUIRED":
+        row.update(status="BLOCKED", failure="PRODUCT_RESUME_CONFIRMATION")
+    if row["status"] != "PASS" or row["case"] not in {"10", "22", "25", "29"}:
+        return
+    commands = {}
+    tools = []
+    with (root / "turn-events.jsonl").open(encoding="utf-8") as trace:
+        for line in trace:
+            event = json.loads(line)
+            if event["type"] not in {"tool.started", "tool.completed"}:
+                continue
+            payload = json.loads(event["payload"])
+            id = payload.get("tool_call_id")
+            if event["type"] == "tool.started":
+                commands[id] = payload.get("arguments", {}).get("command")
+            else:
+                result = payload.get("result", {})
+                tools.append({"verification_command":commands.pop(id, None),
+                              "exit_code":result.get("exit_code", (result.get("data") or {}).get("exit_code"))})
+    try:
+        verify_command_evidence(row["case"], tools)
+    except AssertionError as error:
+        row.update(status="FAIL", failure="DELIVERY_ASSERTION", assertion_failure=str(error))
 
 
 def main():
@@ -210,9 +250,8 @@ def main():
         previous = json.loads(args.rebuild_report.read_text(encoding="utf-8"))
         args.output.mkdir(parents=True, exist_ok=False)
         for row in previous["results"]:
-            if row.get("evidence"):
-                row.update(collect(Path(row["evidence"]), write_events=False))
-        render(args.output, previous["manifest"], previous["results"], None)
+            derive(row)
+        render(args.output, {**previous["manifest"], "derived_driver":signature()}, previous["results"], None)
     else:
         asyncio.run(run(args))
 

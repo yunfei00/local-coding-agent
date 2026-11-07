@@ -44,7 +44,7 @@ try: handle(d/'不存在.txt')
 except FileNotFoundError: pass
 else: raise AssertionError('missing path swallowed')
 """),
-    py("20","environment","无 Git 工程版本","该目录不是 Git 仓库。让版本查询从 VERSION 读取并去掉行尾空白。缺失时返回 unknown。不要初始化 Git。",
+    py("20","environment","无 Git 工程版本","该目录不是 Git 仓库。让 handle(path) 读取传入路径（正常调用传 VERSION）并去掉行尾空白。传入文件缺失时返回 unknown。保持 VERSION 原样，不要初始化 Git。",
        "import subprocess\ndef operation(name): return subprocess.check_output(['git','describe'],text=True).strip()",
        """from pathlib import Path
 assert not Path('.git').exists()
@@ -73,7 +73,7 @@ LONG = [
     pipeline("22","long","失败驱动修复",REPAIR+PIPELINE),
     pipeline("23","long","断线恢复", "首先修复 parser.py，再完成汇总和接线。若中断请继续已完成工作。"+PIPELINE,control="resume"),
     pipeline("24","long","取消后重新执行", "按阶段执行，若取消后收到同一需求，检查当前文件再继续。"+PIPELINE,control="restart"),
-    py("25","long","验证失败后修复","运行 python -m unittest -q，再修复订单定价；总价使用数量乘单价，会员总价打九折，拒绝负数。最后再次运行测试。",
+    py("25","long","验证失败后修复","运行 python -m unittest -q，再修复订单定价；总价使用数量乘单价，会员总价打九折，数量或价格为负数时抛 ValueError。最后再次运行测试。",
        "def operation(value):\n count,price,member=value\n return price*.9 if member else price",
        """assert handle((3,100,True))==270
 assert handle((0,100,False))==0
@@ -84,7 +84,7 @@ else: raise AssertionError('negative accepted')
 ]
 
 DELIVERY = [
-    py("26","delivery","已有工程兼容修复","这是合成的已有日志工程。修复大小写不同的日志级别聚合，不改公开接口或已有文档。",
+    py("26","delivery","已有工程兼容修复","这是合成的已有日志工程。修复大小写不同的日志级别聚合，输出键统一小写。不改公开接口或已有文档。",
        "from collections import Counter\ndef operation(levels): return dict(Counter(levels))",
        "assert handle(['WARN','warn','info','Info','warn'])=={'warn':3,'info':2}\nassert handle([])=={}",
        extra={"README.md":"# 日志聚合器\nservice.handle(levels) 统计日志级别。\n"},preserve=("README.md",)),

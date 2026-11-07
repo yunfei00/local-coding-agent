@@ -26,9 +26,11 @@ class RealworldBenchmarkTests(unittest.TestCase):
                      if path.is_file() and ".git" not in path.relative_to(work).parts},
                     set(case.files),
                 )
+                before = {p: (work / p).read_bytes() for p in case.files}
                 with self.assertRaises((AssertionError, subprocess.SubprocessError)):
                     case.score(work, {"tools": [], "cancelled_generation": True,
                                      "reconnected": True, "control": case.control})
+                self.assertEqual({p: (work / p).read_bytes() for p in case.files}, before)
 
     def test_scope_does_not_auto_approve_network_or_compound_commands(self):
         case = CASES["15"]

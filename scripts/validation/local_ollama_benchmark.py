@@ -422,6 +422,7 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
             control = scenario.control if scenario else "resume" if case == "R" else ""
             denied = False
             chunks = []
+            verification_commands = {}
             focus_before = None
             editors = []
             turn_id = run_id = None
@@ -475,6 +476,10 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                             focus_before = foreground_pid()
                     denied |= not safe
                     await ws.send_json({"type":"approval.respond","payload":{"approval_id":p["approval_id"],"decision":"allow_once" if safe else "deny"}})
+                if scenario and kind == "tool.started" and p.get("name") == "run_command":
+                    command = p.get("arguments", {}).get("command")
+                    if command in {"python -m unittest -q", "npm test", "npm run build"}:
+                        verification_commands[p.get("tool_call_id")] = command
                 if kind == "tool.completed":
                     r = p.get("result", {})
                     if case in {"F-desktop", "N"} and p.get("name") == "desktop_inspect" and r.get("ok"):
@@ -493,6 +498,9 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                                             "vision_feedback":(r.get("data") or {}).get("vision_feedback"),
                                             "changed_paths":r.get("changed_paths", []),
                                             "error_code":(r.get("error") or {}).get("code")})
+                    observed_command = verification_commands.pop(p.get("tool_call_id"), None)
+                    if observed_command:
+                        result["tools"][-1]["verification_command"] = observed_command
                     if control and not cancellation_requested and turn_id and run_id and r.get("ok") and (r.get("changed_paths") if scenario else "mathbox.py" in r.get("changed_paths", [])):
                         cancellation_requested = True
                         await ws.send_json({"type":"turn.cancel","turn_id":turn_id})
