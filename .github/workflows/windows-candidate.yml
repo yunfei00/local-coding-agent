@@ -99,3 +99,10 @@ jobs:
         with:
           name: windows-v101-upgrade
           path: build/v10-upgrade-*/report.json
+      - name: Retain packaged backend for LAN model verification
+        if: inputs.source_sha != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-v101-packaged-agent
+          path: build/agent-dist/lca-agent/
+          retention-days: 3
