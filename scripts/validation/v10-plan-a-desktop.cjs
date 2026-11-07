@@ -4,19 +4,21 @@ const {_electron}=require('../../desktop/node_modules/playwright-core');
 const {closeOwnedApplication}=require('./live_gui_guard.cjs');
 const root=path.resolve(__dirname,'../..'),exe=path.resolve(process.argv[2]),out=path.resolve(process.argv[3]);
 assert(exe.startsWith(path.join(root,'build')+path.sep)&&!fs.existsSync(out)&&out.startsWith(path.join(root,'validation-reports')+path.sep));fs.mkdirSync(out,{recursive:true});
-const data=Buffer.from('CONTROLLED UPDATE FILE, NEVER EXECUTE\n'.repeat(5000)),hash=crypto.createHash('sha256').update(data).digest('hex'),name='Local-Coding-Agent-1.0.1-x64-Setup.exe';let mode='slow',app;
+const [major,minor,patch]=require('../../desktop/package.json').version.split('.').map(Number);
+const updateVersion=major+'.'+minor+'.'+(patch+1);
+const data=Buffer.from('CONTROLLED UPDATE FILE, NEVER EXECUTE\n'.repeat(5000)),hash=crypto.createHash('sha256').update(data).digest('hex'),name='Local-Coding-Agent-'+updateVersion+'-x64-Setup.exe';let mode='slow',app;
 const server=http.createServer((req,res)=>{if(req.url.endsWith('SHA256SUMS.txt'))return res.end(`${mode==='bad'?'0'.repeat(64):hash}  ${name}\n`);res.setHeader('Content-Length',data.length);let i=0;const send=()=>{if(res.destroyed)return;if(i>=data.length)return res.end();res.write(data.subarray(i,i+4096));i+=4096;setTimeout(send,mode==='slow'?30:1);};send();});
 const report={result:'RUNNING',real:'installed UI, IPC, backend, HTTP and files',mock:'release metadata namespace, network mapping to loopback, native confirmation, OS open callbacks; inert fixture never executed',checks:[]};
 async function launch(){
  const env={...process.env,LCA_DATA_DIR:path.join(out,'agent'),LCA_DESKTOP_DATA_DIR:path.join(out,'desktop'),LCA_HEADLESS_SMOKE:'1',LCA_PROVIDER:'openai_compatible',LCA_OPENAI_BASE_URL:'http://127.0.0.1:1/v1',LCA_OPENAI_API_KEY:'',LCA_OLLAMA_URL:'http://127.0.0.1:1'};for(const key of ['ELECTRON_RUN_AS_NODE','LCA_PACKAGED_SMOKE_FILE'])delete env[key];
  app=await _electron.launch({executablePath:exe,args:['--disable-gpu'],env,cwd:out,timeout:60000});const page=await app.firstWindow();await page.waitForFunction(()=>!!window.localAgent);
  const deadline=Date.now()+45000;let ready=false;while(Date.now()<deadline){ready=(await page.evaluate(()=>window.localAgent.getAgentStatus())).state==='ready';if(ready)break;await new Promise(r=>setTimeout(r,100));}assert(ready);
- await app.evaluate(({app,dialog,shell},{port,name,size,hash})=>{
+ await app.evaluate(({app,dialog,shell},{port,name,size,hash,updateVersion})=>{
   const require=process.mainModule.require.bind(process.mainModule),path=require('node:path'),http=require('node:http');
   const module=require(path.join(app.getAppPath(),'dist-electron/updateManager.js')),original=module.UpdateManager.prototype.check;
-  module.UpdateManager.prototype.check=function(){this.fetchMetadata=async()=>({tag_name:'v1.0.1',body:'受控方案A验收，不是真实线上新版',assets:[name,'SHA256SUMS.txt'].map(n=>({name:n,size:n===name?size:200,browser_download_url:'https://github.com/yunfei00/local-coding-agent/releases/download/v1.0.1/'+n}))});this.download=module.assetDownloader((url,options,callback)=>http.get('http://127.0.0.1:'+port+url.pathname,options,callback));return original.call(this);};
+  module.UpdateManager.prototype.check=function(){this.fetchMetadata=async()=>({tag_name:'v'+updateVersion,body:'受控方案A验收，不是真实线上新版',assets:[name,'SHA256SUMS.txt'].map(n=>({name:n,size:n===name?size:200,browser_download_url:'https://github.com/yunfei00/local-coding-agent/releases/download/v'+updateVersion+'/'+n}))});this.download=module.assetDownloader((url,options,callback)=>http.get('http://127.0.0.1:'+port+url.pathname,options,callback));return original.call(this);};
   globalThis.updateOpenCalls=[];globalThis.updateFolders=[];shell.openPath=async file=>{globalThis.updateOpenCalls.push(file);return '';};shell.showItemInFolder=file=>globalThis.updateFolders.push(file);dialog.showMessageBox=async()=>({response:1,checkboxChecked:false});
- },{port:server.address().port,name,size:data.length,hash});
+ },{port:server.address().port,name,size:data.length,hash,updateVersion});
  await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'关于',exact:true}).click();return page;
 }
 async function close(){if(app){Object.assign(report,await closeOwnedApplication(app,app.process()));app=null;}}
