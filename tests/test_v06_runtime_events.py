@@ -28,6 +28,11 @@ class RuntimeEventTests(unittest.TestCase):
 
     def tearDown(self):self.db.close()
 
+    def test_failure_class_is_derived_from_recorded_error(self):
+        observe = self.ledger.request_callback('run', 'thread', 'request', {})
+        event = observe('request.failed', {'error_code': 'MODEL_TRUNCATED'})
+        self.assertEqual(event['metadata']['failure_class'], 'OUTPUT_TRUNCATED')
+
     def test_completed_attempt_cannot_regress_or_accept_unknown_phase(self):
         execution=ExecutionFixture(self.db)
         self.ledger.transition(execution,'completed','attempt-1')

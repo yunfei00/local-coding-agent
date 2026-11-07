@@ -520,7 +520,7 @@ export function SettingsPanel({
               <p>提高模型步骤与工具调用额度，保留重复操作、连续失败和 Provider 重试保护。点击 Save settings 后生效。</p>
               <div className="settings-field-row">
                 <label className="settings-field">
-                  <span>Max model steps</span>
+                  <span>每个执行段的模型步数</span>
                   <input
                     type="number"
                     min={1}

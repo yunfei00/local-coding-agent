@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -115,6 +116,10 @@ def compact_tool_payload(
     max_chars: int = DEFAULT_TOOL_PAYLOAD_CHAR_BUDGET,
 ) -> dict[str, Any]:
     compacted = _compact_value(payload)
+    data = payload.get("data")
+    if isinstance(data, dict) and isinstance(data.get("action_state"), dict):
+        # Preserve the exact UIA runtime ID components for the next action.
+        compacted["data"]["action_state"] = _compact_value(data["action_state"])
     encoded = json.dumps(
         compacted,
         ensure_ascii=False,
@@ -130,6 +135,7 @@ def compact_tool_payload(
         "exit_code": payload.get("exit_code"),
         "duration_ms": payload.get("duration_ms"),
         "changed_paths": list(payload.get("changed_paths") or []),
+        "error": compacted.get("error"),
         "truncated_for_model": True,
     }
 
@@ -140,10 +146,9 @@ def compact_tool_payload(
     if stderr:
         minimal["stderr_tail"] = stderr[-8_000:]
 
-    data = payload.get("data")
     if data:
         if isinstance(data, dict):
-            minimal["data"] = {k: data[k] for k in ("process_id", "pid", "next_cursor", "state", "log_path", "log_truncated") if k in data}
+            minimal["data"] = {k: compacted["data"][k] for k in ("process_id", "pid", "next_cursor", "state", "log_path", "log_truncated", "action_state") if k in data}
         data_text = json.dumps(data, ensure_ascii=False, default=str)
         minimal["data_excerpt"] = data_text[-6_000:]
 
@@ -244,6 +249,17 @@ class ToolLoopGuard:
         if ok:
             self.consecutive_failures = 0
             self.last_failure_code = None
+            command = str((payload.get("data") or {}).get("command", "")) if name == "run_command" else ""
+            git_changed = name in {"git_stage", "git_unstage", "git_commit"} or (
+                name == "run_command" and re.match(
+                    r"^\s*git\s+(?:add|commit|restore|reset|switch|checkout)\b", command, re.I
+                ) is not None)
+            if git_changed:
+                # The index or HEAD changed. Old reads cannot prove new state,
+                # but mutation replay protection and cycle history stay intact.
+                observations = ("git_status:", "git_diff:", "git_log:", "git_branches:")
+                self.call_counts = {key: value for key, value in self.call_counts.items()
+                                    if not key.startswith(observations)}
             if name in {'desktop_click','desktop_type_text','desktop_keypress','desktop_scroll'}:
                 # Re-inspection is necessary after a scoped UI action. Do not
                 # reset action counts or cycle detection: repeated clicks and
@@ -297,12 +313,12 @@ class ToolLoopGuard:
             for path in self.changed_paths
         )
 
-    def completion_gaps(self) -> list[str]:
+    def completion_gaps(self, *, require_git_diff: bool = True) -> list[str]:
         if self.last_change_sequence < 0:
             return []
 
         gaps: list[str] = []
-        if self.last_diff_sequence < self.last_change_sequence:
+        if require_git_diff and self.last_diff_sequence < self.last_change_sequence:
             gaps.append("git_diff")
         if (
             self.changed_code()
@@ -311,8 +327,8 @@ class ToolLoopGuard:
             gaps.append("validation")
         return gaps
 
-    def completion_note(self) -> str | None:
-        gaps = self.completion_gaps()
+    def completion_note(self, *, require_git_diff: bool = True) -> str | None:
+        gaps = self.completion_gaps(require_git_diff=require_git_diff)
         if not gaps:
             return None
 

@@ -516,7 +516,10 @@ def execute(request):
     window = root(binding)
     if op == 'desktop_inspect':
         items, truncated, parents = controls(window)
-        return {'controls':[describe(c,parents.get(tuple(c.element_info.runtime_id))) for c in items], 'truncated':truncated, 'coordinate_space':'physical screen pixels', **geometry(hwnd)}
+        foreground = gui.GetForegroundWindow()
+        return {'controls':[describe(c,parents.get(tuple(c.element_info.runtime_id))) for c in items],
+                'focused':bool(foreground and gui.GetAncestor(foreground, 2) == hwnd),
+                'truncated':truncated, 'coordinate_space':'physical screen pixels', **geometry(hwnd)}
     if op == 'desktop_screenshot':
         from PIL import Image, ImageDraw
         if gui.IsIconic(hwnd):
@@ -567,8 +570,14 @@ def execute(request):
         image.save(request['artifact_path'], format='PNG')
         return {'capture_method':image.info.get('capture_method','unknown'),'raw_capture_valid':True,'width':image.width,'height':image.height,'origin':origin, **geometry(hwnd), 'pixel_to_screen_scale':[1/scale_x,1/scale_y],'redacted_controls':redactions,'redacted_area_fraction':min(1.0,round(redacted_area/max(1,image.width*image.height),4)),'redaction_policy':'text editors concealed with light placeholder; sensitive controls black','scope':a.get('scope','window'), 'screen_policy':'only authorized window pixels; remaining desktop masked'}
     if op == 'desktop_focus_window':
+        previous = gui.GetForegroundWindow()
+        previous_pid = process.GetWindowThreadProcessId(previous)[1] if previous else None
         focus(binding)
-        return {'focused':True}
+        current = gui.GetForegroundWindow()
+        if not current or gui.GetAncestor(current, 2) != check(binding):
+            fail('DESKTOP_FOCUS_FAILED', 'Foreground changed before verification')
+        current_pid = process.GetWindowThreadProcessId(current)[1]
+        return {'focused': True, 'foreground_before_pid': previous_pid, 'foreground_after_pid': current_pid}
     if op == 'desktop_wait':
         seconds = a.get('seconds', 5)
         if isinstance(seconds,bool) or not isinstance(seconds,(int,float)) or not 0 <= seconds <= 30:
@@ -615,6 +624,23 @@ def execute(request):
         fail('DESKTOP_CONTROL_UNAVAILABLE','Target must be visible and enabled')
     if op == 'desktop_click':
         risk_check(control,a)
+        info = control.element_info
+        editable = info.control_type == 'Edit' or (
+            info.control_type == 'Document' and 'richedit' in str(info.class_name).lower())
+        if editable:
+            # Editors generally do not expose InvokePattern. Clicking the
+            # editor for text entry means focusing this exact UIA element.
+            from pywinauto.uia_defines import IUIA
+            focus(binding, control)
+            for _ in range(20):
+                check(binding)
+                foreground = gui.GetForegroundWindow()
+                focused = IUIA().iuia.GetFocusedElement()
+                if (foreground and gui.GetAncestor(foreground, 2) == hwnd and focused is not None
+                        and tuple(focused.GetRuntimeId()) == tuple(info.runtime_id)):
+                    return {'method': 'uia_focus', 'focused': True}
+                time.sleep(.025)
+            fail('DESKTOP_FOCUS_FAILED', 'The selected editor did not receive keyboard focus; no input sent')
         # No automatic coordinate fallback: the model must request separate consent.
         try:
             control.iface_invoke.Invoke()

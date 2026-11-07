@@ -90,6 +90,15 @@ class ProjectCreationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("GIT_NOT_FOUND",event["payload"]["warning"])
         self.assertTrue((self.root / "新工程").is_dir())
 
+    async def test_git_init_nonzero_keeps_project_usable(self):
+        with patch("agent.tools.git._git", new_callable=AsyncMock, return_value=(1, "", "init failed")):
+            event = await self.create()
+        self.assertEqual(event["type"], "project.opened")
+        self.assertIn("Git initialization failed", event["payload"]["warning"])
+        folder = self.root / "新工程"
+        self.assertEqual(self.server.projects.active.workspace.root, folder.resolve())
+        self.assertFalse((folder / ".git").exists())
+
     async def test_rename_inactive_project_does_not_change_active_conversation(self):
         one = self.root / "one"; one.mkdir()
         two = self.root / "two"; two.mkdir()

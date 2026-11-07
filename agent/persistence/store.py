@@ -15,7 +15,10 @@ SCHEMA_VERSION = 7
 def default_data_dir() -> Path:
     configured = os.getenv("LCA_DATA_DIR")
     if configured:
-        return Path(configured).expanduser().resolve(strict=False)
+        directory = Path(configured).expanduser()
+        if not directory.is_absolute():
+            raise ValueError("LCA_DATA_DIR 必须是绝对路径，避免把数据写到进程工作目录。")
+        return directory.resolve(strict=False)
     return (Path.home() / ".local-coding-agent").resolve(strict=False)
 
 

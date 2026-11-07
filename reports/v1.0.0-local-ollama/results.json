@@ -1,0 +1,3054 @@
+{
+  "version": "1.0.0",
+  "planned": 42,
+  "results": [
+    {
+      "model": "gemma4:31b",
+      "case": "A",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "delete_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": false,
+          "exit_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 67045,
+        "output_tokens": 1750
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": "awaiting_user",
+      "seconds": 78.53,
+      "tool_calls": 10,
+      "token_samples": 10,
+      "completed_model_calls": 10,
+      "model_calls": 10,
+      "runtime_tool_calls": 10,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "A",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "delete_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": false,
+          "exit_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 72242,
+        "output_tokens": 2322
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": "awaiting_user",
+      "seconds": 89.2,
+      "tool_calls": 11,
+      "token_samples": 11,
+      "completed_model_calls": 11,
+      "model_calls": 11,
+      "runtime_tool_calls": 11,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "A",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "delete_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": false,
+          "exit_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 66934,
+        "output_tokens": 2261
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": "awaiting_user",
+      "seconds": 86.23,
+      "tool_calls": 10,
+      "token_samples": 10,
+      "completed_model_calls": 10,
+      "model_calls": 10,
+      "runtime_tool_calls": 10,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "B",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 32178,
+        "output_tokens": 3526
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_TRUNCATED",
+      "outcome": null,
+      "seconds": 94.27,
+      "tool_calls": 3,
+      "token_samples": 5,
+      "completed_model_calls": 5,
+      "model_calls": 5,
+      "runtime_tool_calls": 3,
+      "protocol_repairs": 1
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "B",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 90806,
+        "output_tokens": 4414
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_TRUNCATED",
+      "outcome": null,
+      "seconds": 150.97,
+      "tool_calls": 11,
+      "token_samples": 13,
+      "completed_model_calls": 13,
+      "model_calls": 13,
+      "runtime_tool_calls": 11,
+      "protocol_repairs": 1
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "B",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129
+        },
+        {
+          "name": "python_interpreter",
+          "ok": false,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "AGENT_FAILURE",
+      "tokens": {
+        "input_tokens": 110648,
+        "output_tokens": 4452
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "PLAN_TOOLS_UNRESOLVED",
+      "outcome": null,
+      "seconds": 170.75,
+      "tool_calls": 15,
+      "token_samples": 15,
+      "completed_model_calls": 15,
+      "model_calls": 15,
+      "runtime_tool_calls": 15,
+      "protocol_repairs": 1
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "C",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "environment_diagnose",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "AGENT_FAILURE",
+      "tokens": {
+        "input_tokens": 16385,
+        "output_tokens": 512
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "UNIFIED_READ_ONLY_INTENT",
+      "outcome": null,
+      "seconds": 29.31,
+      "tool_calls": 3,
+      "token_samples": 4,
+      "completed_model_calls": 4,
+      "model_calls": 4,
+      "runtime_tool_calls": 4,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "C",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "environment_diagnose",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "AGENT_FAILURE",
+      "tokens": {
+        "input_tokens": 16364,
+        "output_tokens": 514
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "UNIFIED_READ_ONLY_INTENT",
+      "outcome": null,
+      "seconds": 27.25,
+      "tool_calls": 3,
+      "token_samples": 4,
+      "completed_model_calls": 4,
+      "model_calls": 4,
+      "runtime_tool_calls": 4,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "C",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "environment_diagnose",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "AGENT_FAILURE",
+      "tokens": {
+        "input_tokens": 16394,
+        "output_tokens": 515
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "UNIFIED_READ_ONLY_INTENT",
+      "outcome": null,
+      "seconds": 27.34,
+      "tool_calls": 3,
+      "token_samples": 4,
+      "completed_model_calls": 4,
+      "model_calls": 4,
+      "runtime_tool_calls": 4,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "D",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129
+        },
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 61931,
+        "output_tokens": 3791
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_TRUNCATED",
+      "outcome": null,
+      "seconds": 118.02,
+      "tool_calls": 7,
+      "token_samples": 9,
+      "completed_model_calls": 9,
+      "model_calls": 9,
+      "runtime_tool_calls": 7,
+      "protocol_repairs": 1
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "D",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129
+        },
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        }
+      ],
+      "status": "FAIL",
+      "failure": "AGENT_FAILURE",
+      "tokens": {
+        "input_tokens": 69474,
+        "output_tokens": 2835
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "PLAN_STEP_NO_EVIDENCE",
+      "outcome": null,
+      "seconds": 103.01,
+      "tool_calls": 11,
+      "token_samples": 10,
+      "completed_model_calls": 10,
+      "model_calls": 10,
+      "runtime_tool_calls": 11,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "D",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129
+        },
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        }
+      ],
+      "status": "FAIL",
+      "failure": "AGENT_FAILURE",
+      "tokens": {
+        "input_tokens": 77138,
+        "output_tokens": 3785
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "PLAN_STEP_NO_EVIDENCE",
+      "outcome": null,
+      "seconds": 129.73,
+      "tool_calls": 11,
+      "token_samples": 11,
+      "completed_model_calls": 11,
+      "model_calls": 11,
+      "runtime_tool_calls": 11,
+      "protocol_repairs": 1
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "E",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null
+        },
+        {
+          "name": "git_status",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "git_stage",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "git_commit",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "git_diff",
+          "ok": true,
+          "exit_code": 0
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 101577,
+        "output_tokens": 3712
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": "awaiting_user",
+      "seconds": 149.64,
+      "tool_calls": 13,
+      "token_samples": 14,
+      "completed_model_calls": 14,
+      "model_calls": 14,
+      "runtime_tool_calls": 13,
+      "protocol_repairs": 1
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "E",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null
+        },
+        {
+          "name": "git_status",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "git_stage",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "git_commit",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "git_diff",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 109817,
+        "output_tokens": 3266
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_TRUNCATED",
+      "outcome": null,
+      "seconds": 145.75,
+      "tool_calls": 13,
+      "token_samples": 15,
+      "completed_model_calls": 15,
+      "model_calls": 15,
+      "runtime_tool_calls": 13,
+      "protocol_repairs": 1
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "E",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": null
+        },
+        {
+          "name": "git_status",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "git_stage",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "git_commit",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "git_diff",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "git_log",
+          "ok": true,
+          "exit_code": 0
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 125458,
+        "output_tokens": 4690
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_TRUNCATED",
+      "outcome": null,
+      "seconds": 185.42,
+      "tool_calls": 16,
+      "token_samples": 17,
+      "completed_model_calls": 17,
+      "model_calls": 17,
+      "runtime_tool_calls": 16,
+      "protocol_repairs": 1
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-vision",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": "image_attached"
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 20054,
+        "output_tokens": 502
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 27.02,
+      "tool_calls": 2,
+      "token_samples": 3,
+      "completed_model_calls": 3,
+      "model_calls": 3,
+      "runtime_tool_calls": 2,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-vision",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": "image_attached"
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 28216,
+        "output_tokens": 1468
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 50.97,
+      "tool_calls": 2,
+      "token_samples": 4,
+      "completed_model_calls": 4,
+      "model_calls": 4,
+      "runtime_tool_calls": 2,
+      "protocol_repairs": 1
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-vision",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_screenshot",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": "image_attached"
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 20048,
+        "output_tokens": 978
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 36.42,
+      "tool_calls": 2,
+      "token_samples": 3,
+      "completed_model_calls": 3,
+      "model_calls": 3,
+      "runtime_tool_calls": 2,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": {
+        "input_tokens": 25307,
+        "output_tokens": 1704
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "TOOL_LOOP_DETECTED",
+      "outcome": null,
+      "seconds": 70.3,
+      "tool_calls": 6,
+      "token_samples": 6,
+      "completed_model_calls": 6,
+      "focus_error": "DESKTOP_FOCUS_FAILED",
+      "model_calls": 6,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": {
+        "input_tokens": 25256,
+        "output_tokens": 1160
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "TOOL_LOOP_DETECTED",
+      "outcome": null,
+      "seconds": 58.72,
+      "tool_calls": 6,
+      "token_samples": 6,
+      "completed_model_calls": 6,
+      "focus_error": "DESKTOP_FOCUS_FAILED",
+      "model_calls": 6,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_focus_window",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "desktop_inspect",
+          "ok": false,
+          "exit_code": null,
+          "vision_feedback": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": {
+        "input_tokens": 20320,
+        "output_tokens": 1627
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "TOOL_LOOP_DETECTED",
+      "outcome": null,
+      "seconds": 65.33,
+      "tool_calls": 6,
+      "token_samples": 5,
+      "completed_model_calls": 5,
+      "focus_error": "DESKTOP_FOCUS_FAILED",
+      "model_calls": 5,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "A",
+      "repeat": 1,
+      "tools": [],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": null,
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_REQUEST_TIMEOUT",
+      "outcome": null,
+      "seconds": 125.61,
+      "tool_calls": 0,
+      "token_samples": 0,
+      "completed_model_calls": 0,
+      "model_calls": 1,
+      "runtime_tool_calls": 0,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "A",
+      "repeat": 2,
+      "tools": [],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": null,
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_REQUEST_TIMEOUT",
+      "outcome": null,
+      "seconds": 125.16,
+      "tool_calls": 0,
+      "token_samples": 0,
+      "completed_model_calls": 0,
+      "model_calls": 1,
+      "runtime_tool_calls": 0,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "A",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 24223,
+        "output_tokens": 482
+      },
+      "repairs": 0,
+      "seconds": 241.66,
+      "tool_calls": 4,
+      "token_samples": 4,
+      "completed_model_calls": 4,
+      "model_calls": 5,
+      "runtime_tool_calls": 4,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "B",
+      "repeat": 1,
+      "tools": [],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": null,
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_REQUEST_TIMEOUT",
+      "outcome": null,
+      "seconds": 121.72,
+      "tool_calls": 0,
+      "token_samples": 0,
+      "completed_model_calls": 0,
+      "model_calls": 1,
+      "runtime_tool_calls": 0,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "B",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 5348,
+        "output_tokens": 138
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_REQUEST_TIMEOUT",
+      "outcome": null,
+      "seconds": 203.75,
+      "tool_calls": 1,
+      "token_samples": 1,
+      "completed_model_calls": 1,
+      "model_calls": 2,
+      "runtime_tool_calls": 1,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "B",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 11000,
+        "output_tokens": 307
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_EMPTY_RESPONSE",
+      "outcome": null,
+      "seconds": 109.03,
+      "tool_calls": 1,
+      "token_samples": 2,
+      "completed_model_calls": 2,
+      "model_calls": 2,
+      "runtime_tool_calls": 1,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "C",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "environment_diagnose",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "environment_diagnose",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 12373,
+        "output_tokens": 280
+      },
+      "repairs": 0,
+      "seconds": 241.55,
+      "tool_calls": 5,
+      "token_samples": 3,
+      "completed_model_calls": 3,
+      "model_calls": 4,
+      "runtime_tool_calls": 5,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "C",
+      "repeat": 2,
+      "tools": [],
+      "status": "FAIL",
+      "failure": "AGENT_FAILURE",
+      "tokens": {
+        "input_tokens": 3709,
+        "output_tokens": 158
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "UNIFIED_READ_ONLY_INTENT",
+      "outcome": null,
+      "seconds": 60.28,
+      "tool_calls": 0,
+      "token_samples": 1,
+      "completed_model_calls": 1,
+      "model_calls": 1,
+      "runtime_tool_calls": 1,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "C",
+      "repeat": 3,
+      "tools": [],
+      "status": "FAIL",
+      "failure": "AGENT_FAILURE",
+      "tokens": {
+        "input_tokens": 3709,
+        "output_tokens": 170
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "UNIFIED_READ_ONLY_INTENT",
+      "outcome": null,
+      "seconds": 84.55,
+      "tool_calls": 0,
+      "token_samples": 1,
+      "completed_model_calls": 1,
+      "model_calls": 1,
+      "runtime_tool_calls": 1,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "D",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 10993,
+        "output_tokens": 382
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_REQUEST_TIMEOUT",
+      "outcome": null,
+      "seconds": 240.83,
+      "tool_calls": 2,
+      "token_samples": 2,
+      "completed_model_calls": 2,
+      "model_calls": 3,
+      "runtime_tool_calls": 2,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "D",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "file_exists",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "file_exists",
+          "ok": true,
+          "exit_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 17466,
+        "output_tokens": 619
+      },
+      "repairs": 0,
+      "seconds": 241.77,
+      "tool_calls": 4,
+      "token_samples": 3,
+      "completed_model_calls": 3,
+      "model_calls": 4,
+      "runtime_tool_calls": 4,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "D",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 10987,
+        "output_tokens": 405
+      },
+      "repairs": 0,
+      "seconds": 241.62,
+      "tool_calls": 2,
+      "token_samples": 2,
+      "completed_model_calls": 2,
+      "model_calls": 3,
+      "runtime_tool_calls": 2,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "E",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "git_status",
+          "ok": false,
+          "exit_code": 128
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 128
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 18282,
+        "output_tokens": 230
+      },
+      "repairs": 0,
+      "seconds": 241.59,
+      "tool_calls": 3,
+      "token_samples": 3,
+      "completed_model_calls": 3,
+      "model_calls": 4,
+      "runtime_tool_calls": 3,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "E",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null
+        },
+        {
+          "name": "git_status",
+          "ok": false,
+          "exit_code": 128
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 11455,
+        "output_tokens": 333
+      },
+      "repairs": 0,
+      "seconds": 242.11,
+      "tool_calls": 3,
+      "token_samples": 2,
+      "completed_model_calls": 2,
+      "model_calls": 3,
+      "runtime_tool_calls": 3,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "E",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "git_status",
+          "ok": false,
+          "exit_code": 128
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 18312,
+        "output_tokens": 343
+      },
+      "repairs": 0,
+      "seconds": 242.19,
+      "tool_calls": 3,
+      "token_samples": 3,
+      "completed_model_calls": 3,
+      "model_calls": 4,
+      "runtime_tool_calls": 3,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-vision",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 5331,
+        "output_tokens": 137
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_REQUEST_TIMEOUT",
+      "outcome": null,
+      "seconds": 173.86,
+      "tool_calls": 1,
+      "token_samples": 1,
+      "completed_model_calls": 1,
+      "model_calls": 2,
+      "runtime_tool_calls": 1,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-vision",
+      "repeat": 2,
+      "tools": [],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": null,
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_REQUEST_TIMEOUT",
+      "outcome": null,
+      "seconds": 124.69,
+      "tool_calls": 0,
+      "token_samples": 0,
+      "completed_model_calls": 0,
+      "model_calls": 1,
+      "runtime_tool_calls": 0,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-vision",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 5332,
+        "output_tokens": 154
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_REQUEST_TIMEOUT",
+      "outcome": null,
+      "seconds": 194.88,
+      "tool_calls": 1,
+      "token_samples": 1,
+      "completed_model_calls": 1,
+      "model_calls": 2,
+      "runtime_tool_calls": 1,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-desktop",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 2803,
+        "output_tokens": 175
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_REQUEST_TIMEOUT",
+      "outcome": null,
+      "seconds": 225.98,
+      "tool_calls": 1,
+      "token_samples": 1,
+      "completed_model_calls": 1,
+      "model_calls": 2,
+      "runtime_tool_calls": 1,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-desktop",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 2798,
+        "output_tokens": 178
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_REQUEST_TIMEOUT",
+      "outcome": null,
+      "seconds": 190.52,
+      "tool_calls": 1,
+      "token_samples": 1,
+      "completed_model_calls": 1,
+      "model_calls": 2,
+      "runtime_tool_calls": 1,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-desktop",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "desktop_list_windows",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 2802,
+        "output_tokens": 180
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_REQUEST_TIMEOUT",
+      "outcome": null,
+      "seconds": 204.28,
+      "tool_calls": 1,
+      "token_samples": 1,
+      "completed_model_calls": 1,
+      "model_calls": 2,
+      "runtime_tool_calls": 1,
+      "protocol_repairs": 0
+    }
+  ],
+  "scores": {
+    "gemma4:31b": {
+      "PASS": 5,
+      "FAIL": 16
+    },
+    "qwen3.5:9b": {
+      "FAIL": 21
+    }
+  },
+  "source_retest": [
+    {
+      "model": "gemma4:31b",
+      "case": "C",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 56063,
+        "output_tokens": 967
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 54.88,
+      "tool_calls": 8,
+      "token_samples": 8,
+      "completed_model_calls": 8,
+      "model_calls": 8,
+      "runtime_tool_calls": 8,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "C",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "environment_diagnose",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 37077,
+        "output_tokens": 846
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 40.22,
+      "tool_calls": 6,
+      "token_samples": 6,
+      "completed_model_calls": 6,
+      "model_calls": 6,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "C",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "environment_diagnose",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 37079,
+        "output_tokens": 837
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 40.2,
+      "tool_calls": 6,
+      "token_samples": 6,
+      "completed_model_calls": 6,
+      "model_calls": 6,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "D",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 23099,
+        "output_tokens": 1316
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 43.83,
+      "tool_calls": 5,
+      "token_samples": 4,
+      "completed_model_calls": 4,
+      "model_calls": 4,
+      "runtime_tool_calls": 5,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "D",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 23232,
+        "output_tokens": 1465
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 46.97,
+      "tool_calls": 5,
+      "token_samples": 4,
+      "completed_model_calls": 4,
+      "model_calls": 4,
+      "runtime_tool_calls": 5,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "D",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        }
+      ],
+      "status": "PASS",
+      "failure": null,
+      "tokens": {
+        "input_tokens": 31182,
+        "output_tokens": 1849
+      },
+      "repairs": 0,
+      "terminal": "turn.completed",
+      "code": null,
+      "outcome": null,
+      "seconds": 59.52,
+      "tool_calls": 6,
+      "token_samples": 5,
+      "completed_model_calls": 5,
+      "model_calls": 5,
+      "runtime_tool_calls": 6,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "C",
+      "repeat": 1,
+      "tools": [],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": null,
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_REQUEST_TIMEOUT",
+      "outcome": null,
+      "seconds": 122.25,
+      "tool_calls": 0,
+      "token_samples": 0,
+      "completed_model_calls": 0,
+      "model_calls": 1,
+      "runtime_tool_calls": 0,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "C",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 5388,
+        "output_tokens": 219
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_REQUEST_TIMEOUT",
+      "outcome": null,
+      "seconds": 215.83,
+      "tool_calls": 4,
+      "token_samples": 1,
+      "completed_model_calls": 1,
+      "model_calls": 2,
+      "runtime_tool_calls": 4,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "C",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 18737,
+        "output_tokens": 248
+      },
+      "repairs": 0,
+      "seconds": 242.08,
+      "tool_calls": 3,
+      "token_samples": 3,
+      "completed_model_calls": 3,
+      "model_calls": 4,
+      "runtime_tool_calls": 3,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "D",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 11008,
+        "output_tokens": 407
+      },
+      "repairs": 0,
+      "seconds": 242.61,
+      "tool_calls": 2,
+      "token_samples": 2,
+      "completed_model_calls": 2,
+      "model_calls": 3,
+      "runtime_tool_calls": 2,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "D",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "list_directory",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 11003,
+        "output_tokens": 365
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_REQUEST_TIMEOUT",
+      "outcome": null,
+      "seconds": 237.51,
+      "tool_calls": 2,
+      "token_samples": 2,
+      "completed_model_calls": 2,
+      "model_calls": 3,
+      "runtime_tool_calls": 2,
+      "protocol_repairs": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "D",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "write_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "TIMEOUT",
+      "tokens": {
+        "input_tokens": 5348,
+        "output_tokens": 392
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_REQUEST_TIMEOUT",
+      "outcome": null,
+      "seconds": 207.58,
+      "tool_calls": 1,
+      "token_samples": 1,
+      "completed_model_calls": 1,
+      "model_calls": 2,
+      "runtime_tool_calls": 1,
+      "protocol_repairs": 0
+    }
+  ],
+  "intermediate_source_retest": [
+    {
+      "model": "gemma4:31b",
+      "case": "C",
+      "repeat": 1,
+      "tools": [
+        {
+          "name": "environment_diagnose",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "AGENT_FAILURE",
+      "tokens": {
+        "input_tokens": 60842,
+        "output_tokens": 2570
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "PLAN_STEP_NO_EVIDENCE",
+      "outcome": null,
+      "seconds": 94.62,
+      "tool_calls": 8,
+      "token_samples": 9,
+      "completed_model_calls": 9,
+      "model_calls": 9,
+      "runtime_tool_calls": 8,
+      "protocol_repairs": 1
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "C",
+      "repeat": 2,
+      "tools": [
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "AGENT_FAILURE",
+      "tokens": {
+        "input_tokens": 72951,
+        "output_tokens": 2501
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "PLAN_STEP_NO_EVIDENCE",
+      "outcome": null,
+      "seconds": 93.3,
+      "tool_calls": 9,
+      "token_samples": 10,
+      "completed_model_calls": 10,
+      "model_calls": 10,
+      "runtime_tool_calls": 9,
+      "protocol_repairs": 1
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "C",
+      "repeat": 3,
+      "tools": [
+        {
+          "name": "environment_diagnose",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": false,
+          "exit_code": 1,
+          "vision_feedback": null
+        },
+        {
+          "name": "read_file",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "apply_patch",
+          "ok": true,
+          "exit_code": null,
+          "vision_feedback": null
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "run_command",
+          "ok": true,
+          "exit_code": 0,
+          "vision_feedback": null
+        },
+        {
+          "name": "git_diff",
+          "ok": false,
+          "exit_code": 129,
+          "vision_feedback": null
+        }
+      ],
+      "status": "FAIL",
+      "failure": "MODEL_FAILURE",
+      "tokens": {
+        "input_tokens": 60767,
+        "output_tokens": 2884
+      },
+      "repairs": 0,
+      "terminal": "turn.failed",
+      "code": "MODEL_TRUNCATED",
+      "outcome": null,
+      "seconds": 95.19,
+      "tool_calls": 8,
+      "token_samples": 9,
+      "completed_model_calls": 9,
+      "model_calls": 9,
+      "runtime_tool_calls": 8,
+      "protocol_repairs": 1
+    }
+  ],
+  "native_control": {
+    "result": "PASS",
+    "model": "NOT_USED",
+    "worker": "frozen executable",
+    "operations": [
+      {
+        "operation": "desktop_list_windows",
+        "ok": true,
+        "code": null
+      },
+      {
+        "operation": "desktop_focus_window",
+        "ok": true,
+        "code": null
+      },
+      {
+        "operation": "desktop_type_text",
+        "ok": true,
+        "code": null
+      },
+      {
+        "operation": "desktop_click",
+        "ok": true,
+        "code": null
+      },
+      {
+        "operation": "desktop_inspect",
+        "ok": true,
+        "code": null
+      }
+    ],
+    "owned_window": true,
+    "saved_file": true,
+    "saved_uia_status": true,
+    "fixture_exited": true
+  },
+  "gui_setup_attempts": [
+    {
+      "model": "gemma4:31b",
+      "case": "F-vision",
+      "repeat": 1,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "isolated_catalog_update",
+      "seconds": 4.12,
+      "tool_calls": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-vision",
+      "repeat": 2,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "isolated_catalog_update",
+      "seconds": 3.64,
+      "tool_calls": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-vision",
+      "repeat": 3,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "isolated_catalog_update",
+      "seconds": 3.66,
+      "tool_calls": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 1,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "isolated_catalog_update",
+      "seconds": 3.75,
+      "tool_calls": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 2,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "existing_notepad",
+      "seconds": 0.16,
+      "tool_calls": 0
+    },
+    {
+      "model": "gemma4:31b",
+      "case": "F-desktop",
+      "repeat": 3,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "existing_notepad",
+      "seconds": 0.16,
+      "tool_calls": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-vision",
+      "repeat": 1,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "isolated_catalog_update",
+      "seconds": 3.66,
+      "tool_calls": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-vision",
+      "repeat": 2,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "isolated_catalog_update",
+      "seconds": 3.69,
+      "tool_calls": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-vision",
+      "repeat": 3,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "isolated_catalog_update",
+      "seconds": 3.66,
+      "tool_calls": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-desktop",
+      "repeat": 1,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "existing_notepad",
+      "seconds": 0.16,
+      "tool_calls": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-desktop",
+      "repeat": 2,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "existing_notepad",
+      "seconds": 0.17,
+      "tool_calls": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-desktop",
+      "repeat": 3,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "existing_notepad",
+      "seconds": 0.19,
+      "tool_calls": 0
+    }
+  ],
+  "gui_replaced_attempts": [
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-vision",
+      "repeat": 2,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "DESKTOP_SESSION_LOCKED",
+      "seconds": 0.0,
+      "tool_calls": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-vision",
+      "repeat": 3,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "DESKTOP_SESSION_LOCKED",
+      "seconds": 0.0,
+      "tool_calls": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-desktop",
+      "repeat": 1,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "DESKTOP_SESSION_LOCKED",
+      "seconds": 0.0,
+      "tool_calls": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-desktop",
+      "repeat": 2,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "DESKTOP_SESSION_LOCKED",
+      "seconds": 0.0,
+      "tool_calls": 0
+    },
+    {
+      "model": "qwen3.5:9b",
+      "case": "F-desktop",
+      "repeat": 3,
+      "tools": [],
+      "status": "BLOCKED",
+      "failure": "ENVIRONMENT_FAILURE",
+      "tokens": null,
+      "repairs": null,
+      "detail": "DESKTOP_SESSION_LOCKED",
+      "seconds": 0.01,
+      "tool_calls": 0
+    }
+  ]
+}

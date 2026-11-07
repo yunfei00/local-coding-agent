@@ -42,6 +42,36 @@ async def _git(
         await manager.close()
 
 
+async def missing_initial_commit_paths(workspace, paths):
+    """An initial commit has no inherited tree, so restore sources must be staged."""
+    code, _, _ = await _git(workspace, "rev-parse", "--is-inside-work-tree", private_output=True)
+    if code != 0:
+        return []
+    code, _, _ = await _git(workspace, "rev-parse", "--verify", "HEAD", private_output=True)
+    if code == 0:
+        return []
+    missing = []
+    for path in paths:
+        code, _, _ = await _git(workspace, "--literal-pathspecs", "ls-files", "--error-unmatch", "--", path,
+                                private_output=True)
+        if code != 0:
+            missing.append(path)
+    return missing
+
+
+async def missing_literal_appends(workspace, requirements):
+    missing = []
+    for path, value in requirements:
+        code, baseline, _ = await _git(workspace, "show", f"HEAD:{path}", private_output=True)
+        if code != 0 or (baseline and not baseline.endswith("\n")):
+            continue
+        code, diff, _ = await _git(workspace, "--literal-pathspecs", "diff", "--no-ext-diff", "--", path,
+                                   private_output=True)
+        if code == 0 and "+" + value not in diff.splitlines():
+            missing.append({"path": path, "expected_added_line": value})
+    return missing
+
+
 class GitCIStatusTool(BaseTool):
     name='git_ci_status'
     description='只读检查当前 GitHub origin 仓库、指定 Commit 的 CI 状态；不触发工作流、推送或合并。需要已授权的 gh CLI。'
