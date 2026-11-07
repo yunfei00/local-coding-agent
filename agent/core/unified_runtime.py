@@ -71,7 +71,8 @@ def requested_intent(prompt):
     question=bool(re.search(r'^\s*(?:请)?(?:解释|讲解|如何|怎么|什么|只回答|仅回答|只返回|仅返回|what\b|how\b|why\b|explain\b)|是什么|什么意思',text,re.I))
     direct=bool(re.search(r'(?:请|帮我|直接|现在)(?:实现|开发|修复|修改|重构|新增)|can you (?:add|fix|implement|create|change)',text,re.I))
     repair_file = bool(re.search(r'(?:^\s*(?:please\s+|can you\s+)?|\b(?:and|then)\s+)repair\s+(?:the\s+)?FILE\b', text, re.I))
-    change=not readonly and (repair_file or bool(re.search(r'实现|开发|修复|修改|重构|新增|增加|改成|改为|改中文|编写|创建|\b(?:implement|develop|refactor|create|fix|add|change|update)\b',text,re.I))) and (not question or direct)
+    inspect_and_repair = bool(re.search(r'^\s*(?:please\s+)?(?:inspect|diagnose)\s+and\s+repair\b', text, re.I))
+    change=not readonly and (repair_file or inspect_and_repair or bool(re.search(r'实现|开发|修复|修改|重构|新增|增加|改成|改为|改中文|编写|创建|\b(?:implement|develop|refactor|create|fix|add|change|update)\b',text,re.I))) and (not question or direct)
     listed=len(re.findall(r'(?m)^\s*(?:\d+[.)、]|[-*])\s*\S',prompt))
     kind='question' if question and not direct else 'complex' if change and (listed>=3 or len(paths)>=3) else 'change' if change else 'analysis' if readonly or re.search(r'分析|诊断|检查|inspect|analy[sz]e|diagnos',text,re.I) else 'question'
     positive=re.sub(r'(?:不是|并非|不属于)(?:一项|一个)?(?:代码)?开发(?:任务|工作)?','',text)

@@ -2852,6 +2852,7 @@ class AgentServer:
                 attempt_limit=self.model_retry_attempts+(3 if (execution.data.get('model_routing') or {}).get('allow_fallback') else 0)
                 for attempt in range(1, attempt_limit + 1):
                     model_request_id=None
+                    model_request_prepared = False
                     capture=None
                     request_target=provider
                     final_chunk=None
@@ -2983,6 +2984,7 @@ class AgentServer:
                                 thread_id=thread_id,turn_id=turn_id))
                         request_target=provider
                         model_request_id=reserve_model(provider,request_messages,schemas,model)
+                        model_request_prepared = True
                         execution.data['model_identity'] = {**getattr(provider,'chat_identity',{}), 'model_id':model,
                             'vision_profile_id':getattr(observer,'chat_identity',{}).get('vision_profile_id') or getattr(observer,'chat_identity',{}).get('chat_profile_id'),
                             'vision_connection_id':getattr(observer,'chat_identity',{}).get('connection_id'),
@@ -3065,19 +3067,23 @@ class AgentServer:
                             execution.finish_api(locals().get('observation_request'),status='failed',error_code=exc.code,metadata=getattr(getattr(observer,'provider',observer),'response_metadata',{}))
                             raise
                         execution.finish_api(model_request_id,status='failed',error_code=exc.code,metadata=getattr(getattr(provider,'provider',provider),'response_metadata',{}))
-                        if model_request_id:
+                        if unified and model_request_prepared:
                             from agent.llm.base import observe_request
                             observe_request(getattr(provider,'provider',provider),'request.failed',error_code=exc.code)
                         if await switch_model(exc,sum(map(len,assistant_parts)),permit=attempt<attempt_limit):
                             retry_capture=capture or retry_capture;assistant_parts.clear();tool_calls.clear();step_tool_keys.clear();observed_output=False;continue
-                        protocol_error = exc.code in {"MODEL_INVALID_TOOL_CALL", "MODEL_TOOL_ARGUMENTS_TRUNCATED", "MODEL_TRUNCATED"}
+                        protocol_error = exc.code in {"MODEL_INVALID_TOOL_CALL", "MODEL_TOOL_ARGUMENTS_TRUNCATED", "MODEL_TRUNCATED", "MODEL_EMPTY_RESPONSE"}
                         repairs = execution.data.get("tool_protocol_repairs", 0)
-                        if protocol_error and not tool_calls and attempt < self.model_retry_attempts and repairs < self.model_retry_attempts - 1:
+                        if protocol_error and attempt < self.model_retry_attempts and repairs < self.model_retry_attempts - 1:
                             # The provider rejected the complete call batch before
                             # tool execution. Ask the SAME model to regenerate it;
                             # never guess/fix malformed arguments or replay tools.
                             execution.data["tool_protocol_repairs"] = repairs + 1
                             execution.save()
+                            self.runtime_ledger.record(execution.key, thread_id, 'request.retry_scheduled', {
+                                'retry': repairs + 1, 'error_code': exc.code,
+                                'reason': '响应无效，本批工具未执行；原预算内重新生成。',
+                            }, request_id=model_request_id)
                             output_limit = getattr(provider, "max_output_tokens", None) or "Provider default (client did not set max_output_tokens)"
                             messages.append({"role":"system", "content":
                                 f"Runtime protocol feedback: {exc.code}. The previous malformed tool-call batch was NOT executed. "
@@ -3085,11 +3091,13 @@ class AgentServer:
                                 "with escaped newlines and quotes. Reissue only the failed operation; for long code use a small file skeleton "
                                 "and several small apply_patch edits. Do not replay earlier successful tools or claim unexecuted changes."})
                             discarded_chars = sum(len(part) for part in assistant_parts)
+                            discarded_calls = len(tool_calls)
                             retry_capture=capture or retry_capture
-                            assistant_parts.clear(); step_tool_keys.clear(); observed_output = False
+                            assistant_parts.clear(); tool_calls.clear(); step_tool_keys.clear(); observed_output = False
                             metrics.retries += 1
                             await ws.send_json(envelope("turn.status", {"phase":"tool_protocol_retry", "code":exc.code,
                                 "discard_response_characters":discarded_chars,
+                                "discarded_tool_calls":discarded_calls,
                                 "message":f"响应截断或工具参数无效，未执行本批工具；让同一模型分小段重新生成（{repairs+1}/{self.model_retry_attempts-1}），每次请求仍检查预算。"}, thread_id=thread_id, turn_id=turn_id))
                             continue
                         can_retry = (
@@ -3984,7 +3992,9 @@ class AgentServer:
                     execution.finish_api(request['id'],status='interrupted',error_code=execution.data.get('last_error') or runtime.get('error_code') if runtime else None)
             if unified and runtime.get('phase') not in {'completed','cancelled','paused'}:
                 with suppress(ConnectionResetError,RuntimeError):
-                    await publish_runtime('failed',outcome='partially_completed' if runtime.get('changed_paths') else 'failed',reason=runtime.get('reason') or execution.data.get('last_error','执行中断，查看诊断与检查点'))
+                    error_code = execution.data.get('last_error') or runtime.get('error_code')
+                    await publish_runtime('failed',outcome='partially_completed' if runtime.get('changed_paths') else 'failed',
+                        error_code=error_code, reason=runtime.get('reason') or error_code or '执行中断，查看诊断与检查点')
             try:
                 if active_plan:
                     with self.store.connection:

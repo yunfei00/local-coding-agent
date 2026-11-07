@@ -10,6 +10,7 @@ from unittest.mock import patch,AsyncMock
 
 from agent.core.unified_runtime import infer_intent, verification_policy, result_view, workspace_snapshot,requested_intent
 from agent.llm.router import validate_config
+from agent.llm.base import ProviderChunk, ToolCall
 from agent.server.main import AgentServer
 from agent.task_plans import TaskPlanStore
 from test_agent_reliability import FakeWebSocket, ScriptedProvider, final_step, tool_step
@@ -25,6 +26,12 @@ class UnifiedPolicyTests(unittest.TestCase):
         self.assertFalse(requested_intent('Diagnose the failing assertion and repair mathbox.py, then run pytest again.')['read_only'])
         self.assertTrue(requested_intent('Only analyze why we need to repair mathbox.py.')['read_only'])
         self.assertTrue(requested_intent('Analyze repair options for mathbox.py.')['read_only'])
+        for prompt in ('修复这个文件', '修改代码并运行测试', '诊断并修复错误',
+                       'Diagnose and fix the file', 'Inspect and repair'):
+            with self.subTest(prompt=prompt):
+                self.assertFalse(requested_intent(prompt)['read_only'])
+                self.assertEqual(requested_intent(prompt)['kind'], 'change')
+        self.assertTrue(requested_intent('Inspect and repair. Do not modify any files.')['read_only'])
         self.assertEqual(requested_intent('实现以下要求\n1. 创建核心模块\n2. 编写测试\n3. 生成交付报告')['kind'],'complex')
 
     def test_intent_uses_model_plan_and_actual_evidence_not_words(self):
@@ -127,6 +134,28 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
         await self.server.run_tool_turn(self.ws,thread_id=self.thread.id,turn_id='unified-test',prompt='按照实际需求完成工作',model='mock',provider=provider,unified=True)
         updates=[x['payload']['runtime'] for x in self.ws.messages if x['type']=='agent.runtime.updated']
         return provider,updates[-1]
+
+    async def test_truncated_batch_retries_without_dispatching_buffered_calls(self):
+        self.server.model_retry_attempts = 2
+        provider = ScriptedProvider([
+            tool_step("read_file", {"path": "calculator.py"}),
+            ProviderChunk(content="partial", done=True, finish_reason="length",
+                          tool_calls=(ToolCall("write_file", {"path": "discard.txt", "content": "bad"}),)),
+            final_step("读取完成"),
+        ])
+        await self.server.run_tool_turn(self.ws, thread_id=self.thread.id, turn_id="truncated-test",
+            prompt="检查当前工程的计算器", model="mock", provider=provider, unified=True)
+        self.assertEqual(provider.calls, 3)
+        self.assertFalse((self.repo / "discard.txt").exists())
+        completed = [e["payload"]["name"] for e in self.ws.messages if e["type"] == "tool.completed"]
+        self.assertEqual(completed, ["read_file"])
+        retry = next(e["payload"] for e in self.ws.messages
+                     if e["type"] == "turn.status" and e["payload"].get("phase") == "tool_protocol_retry")
+        self.assertEqual(retry["discarded_tool_calls"], 1)
+        events = self.server.runtime_ledger.events(run_id="truncated-test")
+        failures = [e for e in events if e["kind"] == "request.failed"]
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(failures[0]["metadata"]["failure_class"], "OUTPUT_TRUNCATED")
 
     async def test_workflow_roles_use_same_loop_and_actual_evidence(self):
         nodes=[

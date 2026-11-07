@@ -26,6 +26,12 @@ CASES = {
 }
 TEST = "from mathbox import add\ndef test_add():\n    assert add(2, 3) == 5\n"
 GUI_CASES = ("F-vision", "F-desktop")
+NOTEPAD_PHRASE = "Local Coding Agent Gemma 桌面自动化测试成功"
+PROJECTS = {
+    "P1": "From scratch implement a Python todo CLI todo.py with add NAME, list, update OLD NEW, delete NAME. Persist a JSON array in todos.json, reject blank or duplicate names and nonexistent targets with nonzero exit. list prints one name per line. Include pytest tests and a Chinese README.md with usage. Run the tests and fix failures.",
+    "P2": "From scratch implement Python scan.py DIRECTORY OUTPUT.csv. Recursively scan files, print counts by lowercase extension as JSON to stdout, hash each file with SHA256, and export CSV with relative path, extension, sha256, duplicate columns (duplicate is true for every member of a repeated digest). Exclude the output file itself. Include and run pytest tests. Fix failures.",
+    "P3": "From scratch build a Windows Tkinter calculator in calculator.py with create_app() returning a Tk window. Use direct child Button widgets labelled 0–9, +, -, *, /, =, C and a direct child Label showing the result. Show Error on division by zero. Add GUI pytest tests and run them. Do not touch any existing window or user file.",
+}
 
 def child_environment():
     sensitive = re.compile(r"api.?key|secret|credential|password|token", re.I)
@@ -98,7 +104,7 @@ def start_gui(case, root, work, code):
         listed = subprocess.check_output(["tasklist","/FI","IMAGENAME eq Notepad.exe","/FO","CSV","/NH"], text=True, errors="replace")
         if re.search(r'^"notepad\.exe"',listed,re.I|re.M):
             raise RuntimeError("existing_notepad")
-        file = work / f"benchmark-note-{code}.txt"
+        file = work / ("desktop-test.txt" if case == "N" else f"benchmark-note-{code}.txt")
         file.write_text("BASE",encoding="utf-8")
         startup = subprocess.STARTUPINFO()
         startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -160,7 +166,7 @@ def seed(work, case):
         "C": {"mathbox.py": "def add(a, b): return a-b\n", "test_mathbox.py": TEST},
         "E": {"note.txt": "BASE\n", "scratch.txt": "KEEP\n"},
     }
-    for name, contents in files.get(case, {}).items():
+    for name, contents in files.get("C" if case == "R" else case, {}).items():
         (work / name).write_text(contents, encoding="utf-8")
 
 def score(work, case, events):
@@ -192,7 +198,7 @@ def score(work, case, events):
         cli("delete", "Beta")
         cli("delete", "missing", good=False)
         assert json.loads(read("items.json")) == ["Gamma"]
-    elif case == "C":
+    elif case in {"C", "R"}:
         assert read("test_mathbox.py") == TEST
         assert any(x["exit_code"] == 1 for x in commands)
         assert any(x["exit_code"] == 0 for x in commands)
@@ -207,9 +213,61 @@ def score(work, case, events):
         assert read("scratch.txt").strip() == "KEEP"
         assert "+NEW" in run("git", "diff", "--", "note.txt")
         assert any(x["name"] in ("git_diff", "run_command") for x in events)
+    elif case in PROJECTS:
+        assert any(x["exit_code"] == 0 for x in commands)
+        run(py, "-m", "pytest", "-q")
+        if case == "P1":
+            run(py, "todo.py", "add", "Alpha")
+            run(py, "todo.py", "add", "Alpha", good=False)
+            run(py, "todo.py", "add", " ", good=False)
+            run(py, "todo.py", "update", "Alpha", "Beta")
+            assert run(py, "todo.py", "list") == "Beta"
+            assert json.loads(read("todos.json")) == ["Beta"]
+            run(py, "todo.py", "delete", "Beta")
+            run(py, "todo.py", "delete", "missing", good=False)
+            assert json.loads(read("todos.json")) == []
+            assert re.search(r"[\u4e00-\u9fff]", read("README.md"))
+        elif case == "P2":
+            import csv
+            import hashlib
+            fixture = work / "scoring-input"
+            fixture.mkdir()
+            for name, data in (("a.TXT",b"same"),("b.bin",b"same"),("c.txt",b"other")):
+                (fixture / name).write_bytes(data)
+            stats = json.loads(run(py, "scan.py", "scoring-input", "scored.csv"))
+            assert stats == {".txt":2, ".bin":1}
+            rows = {row["path"]:row for row in csv.DictReader(read("scored.csv").splitlines())}
+            assert set(rows) == {"a.TXT","b.bin","c.txt"}
+            for name, row in rows.items():
+                assert row["sha256"] == hashlib.sha256((fixture/name).read_bytes()).hexdigest()
+                assert row["duplicate"].lower() == ("false" if name=="c.txt" else "true")
+        else:
+            from agent.desktop.session import require_interactive_session
+            require_interactive_session()
+            run(py, "-c", """from calculator import create_app
+from tkinter import Button, Label
+root = create_app()
+try:
+    root.update()
+    assert root.winfo_viewable()
+    buttons = {w.cget('text'): w for w in root.winfo_children() if isinstance(w, Button)}
+    label, = [w for w in root.winfo_children() if isinstance(w, Label)]
+    for expression, expected in [('2+3=', '5'), ('9-4=', '5'), ('3*4=', '12'), ('8/2=', '4'), ('8/0=', 'Error')]:
+        buttons['C'].invoke()
+        for char in expression:
+            buttons[char].invoke()
+            root.update()
+        value = str(label.cget('text'))
+        if label.cget('textvariable'):
+            value = str(root.getvar(label.cget('textvariable')))
+        assert value == expected or (expected.isdigit() and float(value) == int(expected))
+finally:
+    root.destroy()
+""")
 
 async def attempt(session, binary, url, model, case, root, number, source=False, challenge=None):
     from scripts.validation.packaged_agent_smoke import read_lines
+    from agent.tools.base import ToolError
     work = root / "work"
     work.mkdir(parents=True)
     seed(work, case)
@@ -218,7 +276,15 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
     start = time.monotonic()
     ready = None
     fixture = None
-    if case in GUI_CASES:
+    reconnected = None
+    if case == "P3":
+        from agent.desktop.session import require_interactive_session
+        try:
+            require_interactive_session()
+        except ToolError as exc:
+            result.update(failure="ENVIRONMENT_FAILURE", detail=exc.code)
+            return result
+    if case in (*GUI_CASES, "N"):
         try:
             fixture, expected, gui_prompt = start_gui(case, root, work, challenge)
             await asyncio.sleep(2)
@@ -256,7 +322,7 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
             raise RuntimeError("packaged_boot")
         base = f"http://127.0.0.1:{ready['port']}"
         headers = {"Authorization": "Bearer " + ready["token"]}
-        async with asyncio.timeout(240), session.ws_connect(base + "/ws", headers=headers) as ws:
+        async with asyncio.timeout(600 if case in PROJECTS else 240), session.ws_connect(base + "/ws", headers=headers) as ws:
             selected = model
             if fixture:
                 catalog = {"connections":[{"connection_id":"bench","display_name":"Benchmark Ollama",
@@ -281,15 +347,21 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                         raise RuntimeError("project_open")
                     thread = event["thread_id"]
                     break
-            prompt = gui_prompt if fixture else CASES[case] + " Work only in this test project. Never access other directories, install packages, or contact the network."
+            prompt = gui_prompt if fixture else (CASES | PROJECTS)["C" if case == "R" else case] + " Work only in this test project. Never access other directories, install packages, or contact the network."
             await ws.send_json({"type":"turn.start","thread_id":thread,"payload":{"model":selected,"prompt":prompt,"unified":True}})
             denied = False
             chunks = []
             focus_before = None
             editors = []
+            turn_id = run_id = None
+            cancellation_requested = resumed = False
             while True:
                 event = await ws.receive_json()
                 kind, p = event["type"], event.get("payload", {})
+                if kind == "turn.started":
+                    turn_id = event.get("turn_id")
+                if kind == "agent.runtime.updated":
+                    run_id = p.get("runtime", {}).get("id") or run_id
                 if kind == "turn.delta":
                     chunks.append(p.get("delta",""))
                 if kind == "approval.requested":
@@ -311,15 +383,31 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                     await ws.send_json({"type":"approval.respond","payload":{"approval_id":p["approval_id"],"decision":"allow_once" if safe else "deny"}})
                 if kind == "tool.completed":
                     r = p.get("result", {})
-                    if case == "F-desktop" and p.get("name") == "desktop_inspect" and r.get("ok"):
+                    if case in {"F-desktop", "N"} and p.get("name") == "desktop_inspect" and r.get("ok"):
                         editors = [c for c in (r.get("data") or {}).get("controls",[])
                                    if c.get("control_type") in {"Edit","Document"} and not c.get("sensitive")]
-                    if case == "F-desktop" and p.get("name") == "desktop_focus_window" and r.get("ok"):
+                    if case in {"F-desktop", "N"} and p.get("name") == "desktop_focus_window" and r.get("ok"):
                         result["foreground_switch"] = bool(result.get("foreground_switch") or
                             (focus_before is not None and focus_before != fixture.pid and foreground_pid() == fixture.pid))
                     result["tools"].append({"name":p.get("name"),"ok":r.get("ok"),
                                             "exit_code":r.get("exit_code",(r.get("data") or {}).get("exit_code")),
-                                            "vision_feedback":(r.get("data") or {}).get("vision_feedback")})
+                                            "vision_feedback":(r.get("data") or {}).get("vision_feedback"),
+                                            "changed_paths":r.get("changed_paths", []),
+                                            "error_code":(r.get("error") or {}).get("code")})
+                    if case == "R" and not cancellation_requested and turn_id and run_id and r.get("ok") and "mathbox.py" in r.get("changed_paths", []):
+                        cancellation_requested = True
+                        await ws.send_json({"type":"turn.cancel","turn_id":turn_id})
+                if case == "R" and kind == "turn.cancelled" and cancellation_requested and not resumed:
+                    result["cancelled_generation"] = True
+                    await ws.close()
+                    reconnected = await session.ws_connect(base + "/ws", headers=headers)
+                    ws = reconnected
+                    resumed = True
+                    result["reconnected"] = True
+                    await ws.send_json({"type":"turn.start","thread_id":thread,"payload":{
+                        "model":selected,"prompt":"继续原任务，保留已完成操作","unified":True,
+                        "resume_run_id":run_id,"confirm_workspace":True}})
+                    continue
                 if kind in {"turn.completed","turn.failed","turn.cancelled","error"}:
                     result["terminal"] = kind
                     result["code"] = p.get("code")
@@ -332,15 +420,21 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                                 assert any(t["name"]=="desktop_screenshot" and t["vision_feedback"]=="image_attached" for t in result["tools"])
                                 assert {t["name"] for t in result["tools"] if t["ok"]} <= {"desktop_list_windows","desktop_screenshot"}
                                 assert re.search(r"\b"+expected+r"\b","".join(chunks))
-                            elif case == "F-desktop":
+                            elif case in {"F-desktop", "N"}:
                                 successful = {t["name"] for t in result["tools"] if t["ok"]}
                                 assert {"desktop_focus_window","desktop_inspect","desktop_click","desktop_type_text","desktop_keypress"} <= successful
                                 assert result.get("foreground_switch")
-                                assert (work/f"benchmark-note-{expected}.txt").read_text(encoding="utf-8-sig").strip() == expected
+                                filename = "desktop-test.txt" if case == "N" else f"benchmark-note-{expected}.txt"
+                                assert (work/filename).read_text(encoding="utf-8-sig").strip() == expected
                                 assert not successful & {"write_file","apply_patch","run_command"}
                             else:
                                 score(work, case, result["tools"])
+                                if case == "R":
+                                    assert resumed and result.get("cancelled_generation")
+                                    assert sum(t["ok"] and "mathbox.py" in t["changed_paths"] for t in result["tools"] if t["ok"]) == 1
                             result.update(status="PASS")
+                        except ToolError as exc:
+                            result.update(status="BLOCKED", failure="ENVIRONMENT_FAILURE", detail=exc.code)
                         except (AssertionError, OSError, ValueError, subprocess.SubprocessError):
                             result.update(status="FAIL", failure="TOOL_PERMISSION" if denied else "MODEL_FAILURE")
                     break
@@ -349,6 +443,8 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
     except (RuntimeError, aiohttp.ClientError, TypeError) as exc:
         result.update(failure="ENVIRONMENT_FAILURE", detail=str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__)
     finally:
+        if reconnected:
+            await reconnected.close()
         if ready:
             try:
                 async with session.post(f"http://127.0.0.1:{ready['port']}/shutdown",
@@ -377,9 +473,12 @@ async def main():
     entry.add_argument("--agent", type=P)
     entry.add_argument("--source", action="store_true")
     parser.add_argument("--output", type=P, required=True)
-    parser.add_argument("--case", choices=(*CASES,*GUI_CASES), action="append")
+    parser.add_argument("--case", choices=(*CASES,*GUI_CASES,*PROJECTS,"R","N"), action="append")
     parser.add_argument("--repeat", type=int, default=3)
+    parser.add_argument("--model", choices=MODELS, action="append")
     parser.add_argument("--continue-locked", type=P, help="Retry only desktop rounds blocked by a locked session")
+    parser.add_argument("--continue-blocked-desktop", type=P,
+                        help="Retry rounds blocked before dispatch by a locked session or existing Notepad")
     args = parser.parse_args()
     args.output = args.output.resolve()
     args.output.mkdir(parents=True, exist_ok=False)
@@ -391,31 +490,32 @@ async def main():
     challenges = {(case,n): str(100000 + secrets.randbelow(900000)) if case == "F-vision" else "LCA-" + secrets.token_hex(4)
                   for case in GUI_CASES for n in range(1,args.repeat+1)}
     pending = None
-    if args.continue_locked:
-        prior = json.loads(args.continue_locked.read_text(encoding="utf-8"))
-        prior_root = P(args.continue_locked.with_name("scratch-path.txt").read_text(encoding="utf-8").strip())
+    prior_path = args.continue_blocked_desktop or args.continue_locked
+    if prior_path:
+        prior = json.loads(prior_path.read_text(encoding="utf-8"))
+        prior_root = P(prior_path.with_name("scratch-path.txt").read_text(encoding="utf-8").strip())
+        desktop_blockers = {"DESKTOP_SESSION_LOCKED"}
+        if args.continue_blocked_desktop:
+            desktop_blockers.add("existing_notepad")
         pending = {(r["model"],r["case"],r["repeat"]) for r in prior["results"]
-                   if r["case"] in GUI_CASES and r.get("detail") == "DESKTOP_SESSION_LOCKED"}
-        for _, case, n in pending:
-            for model in MODELS:
-                original = prior_root / model.replace(":","-") / f"{case}-{n}"
-                badge = original / "Badge.cs"
-                if case == "F-vision" and badge.is_file():
-                    match = re.search(r'DrawString\("([0-9]{6})"', badge.read_text(encoding="utf-8"))
-                    if match:
-                        challenges[case,n] = match.group(1)
-                        break
-                if case == "F-desktop":
-                    notes = list((original/"work").glob("benchmark-note-*.txt"))
-                    if len(notes) == 1:
-                        challenges[case,n] = notes[0].stem.removeprefix("benchmark-note-")
-                        break
+                   if r["case"] in GUI_CASES and r["status"] == "BLOCKED" and r.get("detail") in desktop_blockers}
+        for model, case, n in sorted(pending):
+            original = prior_root / model.replace(":","-") / f"{case}-{n}"
+            badge = original / "Badge.cs"
+            if case == "F-vision" and badge.is_file():
+                match = re.search(r'DrawString\("([0-9]{6})"', badge.read_text(encoding="utf-8"))
+                if match:
+                    challenges[model,case,n] = match.group(1)
+            if case == "F-desktop":
+                notes = list((original/"work").glob("benchmark-note-*.txt"))
+                if len(notes) == 1:
+                    challenges[model,case,n] = notes[0].stem.removeprefix("benchmark-note-")
     def save(result):
         report["results"].append(result)
         (args.output / "results.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(result["model"],result["case"],result["repeat"],result["status"],result.get("failure"),flush=True)
     async with aiohttp.ClientSession() as session:
-        for model in MODELS:
+        for model in args.model or MODELS:
             url = urls.get(model)
             online = False
             if url:
@@ -430,7 +530,9 @@ async def main():
                         continue
                     if online:
                         save(await attempt(session,binary,url,model,case,
-                                           sandbox / model.replace(":","-") / f"{case}-{n}",n,args.source,challenges.get((case,n))))
+                                           sandbox / model.replace(":","-") / f"{case}-{n}",n,args.source,
+                                           NOTEPAD_PHRASE if case == "N" else
+                                           challenges.get((model,case,n), challenges.get((case,n)))))
                     else:
                         save({"model":model,"case":case,"repeat":n,"status":"BLOCKED","failure":"ENVIRONMENT_FAILURE"})
 

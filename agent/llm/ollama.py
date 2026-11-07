@@ -264,7 +264,7 @@ class OllamaProvider:
                         payload = await self._read_json_response(response)
                         raise OllamaProviderError(
                             "OLLAMA_CHAT_FAILED",
-                            f"Ollama returned HTTP {response.status}; inspect the selected connection and model.",
+                            f"Ollama 生成请求返回 HTTP {response.status}。请检查所选连接和模型。",
                         )
 
                     async for raw_line in response.content:
@@ -277,18 +277,20 @@ class OllamaProvider:
                         except json.JSONDecodeError as exc:
                             raise OllamaProviderError(
                                 "OLLAMA_INVALID_STREAM",
-                                "Ollama returned invalid streaming JSON.",
+                                "Ollama 返回的流式记录不是有效 JSON。",
                             ) from exc
 
                         if payload.get("error"):
                             raise OllamaProviderError(
                                 "OLLAMA_CHAT_FAILED",
-                                "Ollama reported a generation error; inspect the selected connection and model.",
+                                "Ollama 报告生成失败，请检查所选连接和模型。",
                             )
                         self.response_metadata["parse_success"] = True
                         if not observed:
                             observe_request(self,'response.streaming');observed=True
 
+                        done = bool(payload.get("done"))
+                        finish_reason = _optional_string(payload.get("done_reason"))
                         message = payload.get("message")
                         content = ""
                         tool_calls: tuple[ToolCall, ...] = ()
@@ -296,9 +298,9 @@ class OllamaProvider:
                             raw_content = message.get("content")
                             if isinstance(raw_content, str):
                                 content = raw_content
-                            tool_calls = _parse_tool_calls(message)
+                            if not (done and finish_reason in {"length", "max_tokens"}):
+                                tool_calls = _parse_tool_calls(message)
 
-                        done = bool(payload.get("done"))
                         if done:
                             self.response_metadata.update(response_complete=True,finish_reason=payload.get('done_reason'),reported_usage={
                                 'input_tokens':_optional_int(payload.get('prompt_eval_count')),'output_tokens':_optional_int(payload.get('eval_count'))})
@@ -307,9 +309,7 @@ class OllamaProvider:
                             content=content,
                             tool_calls=tool_calls,
                             done=done,
-                            finish_reason=_optional_string(
-                                payload.get("done_reason")
-                            ),
+                            finish_reason=finish_reason,
                             prompt_eval_count=_optional_int(
                                 payload.get("prompt_eval_count")
                             ),
@@ -323,12 +323,15 @@ class OllamaProvider:
         except asyncio.CancelledError:
             if not done:observe_request(self,'request.interrupted',error_code='MODEL_INTERRUPTED')
             raise
-        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+        except asyncio.TimeoutError as exc:
+            observe_request(self,'request.failed',error_code='MODEL_REQUEST_TIMEOUT')
+            raise OllamaProviderError('MODEL_REQUEST_TIMEOUT','Ollama 请求超时，未执行该响应中的工具。') from exc
+        except aiohttp.ClientError as exc:
             if isinstance(exc,aiohttp.ClientConnectorError):self.response_metadata['request_sent']=False
             observe_request(self,'request.failed',error_code='OLLAMA_STREAM_FAILED')
             raise OllamaProviderError(
                 "OLLAMA_STREAM_FAILED",
-                "Ollama connection was interrupted while generating.",
+                "Ollama 生成期间连接中断，请检查服务与网络。",
             ) from exc
         finally:
             self.response_metadata["http_ended_at"] = time.time()

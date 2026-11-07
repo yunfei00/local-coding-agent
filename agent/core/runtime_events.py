@@ -33,6 +33,29 @@ TRACE_LABELS={'request.prepared':'请求已准备','request.dispatched':'正在�
     'followup.queued':'追加需求已排队','followup.applied':'追加需求已生效','task.transition':'Task 状态变化'}
 
 
+def failure_class(code):
+    code = str(code or "EXECUTION_FAILED")
+    if code in {"MODEL_TRUNCATED", "MODEL_OUTPUT_LIMIT", "MODEL_TOOL_ARGUMENTS_TRUNCATED"}:
+        return "OUTPUT_TRUNCATED"
+    if "CONTEXT" in code:
+        return "CONTEXT_LIMIT"
+    if "TIMEOUT" in code:
+        return "TIMEOUT"
+    if code in {"CANCELLED", "USER_CANCELLED", "TURN_CANCELLED"}:
+        return "USER_CANCELLED"
+    if any(word in code for word in ("PERMISSION", "APPROVAL", "READ_ONLY")):
+        return "TOOL_PERMISSION"
+    if code.startswith(("DESKTOP_SESSION_", "BLOCKED_RESOURCE", "DESKTOP_FOCUS_", "ENVIRONMENT_")):
+        return "ENVIRONMENT_FAILURE"
+    if code.startswith(("OLLAMA_", "OPENAI_", "PROVIDER_")):
+        return "PROVIDER_FAILURE"
+    if code.startswith("MODEL_"):
+        return "MODEL_FAILURE"
+    if code.startswith("TOOL_") or code == "NON_ZERO_EXIT":
+        return "TOOL_FAILURE"
+    return "AGENT_FAILURE"
+
+
 def failure_info(code):
     """固定中文说明，绝不把远端错误正文当作可公开诊断。"""
     code=str(code or 'EXECUTION_FAILED')
@@ -86,6 +109,8 @@ class RuntimeLedger:
                 value=re.sub(r'(?im)(\bcookie\s*[:=])[^\r\n]*',r'\1<REDACTED>',value)
             elif value is not None and not isinstance(value,(int,float,bool)):continue
             result[key]=value
+        if result.get('error_code'):
+            result['failure_class'] = failure_class(result['error_code'])
         return result
 
     def record(self, run_id, thread_id, kind, metadata=None, *, request_id=None, event_key=None, commit=True):
@@ -113,7 +138,8 @@ class RuntimeLedger:
         def observe(stage, metadata):
             owner=run_id() if callable(run_id) else run_id
             details={**identity,**metadata}
-            if details.get('error_code'):details.update(failure_info(details['error_code']))
+            if details.get('error_code'):
+                details.update(failure_info(details['error_code']))
             return self.record(owner,thread_id,stage,details,request_id=request_id,event_key=request_id+':'+stage)
         return observe
 

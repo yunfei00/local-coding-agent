@@ -1,5 +1,7 @@
 """v0.7 串行系统应用验收；仅作用于本次新建窗口。"""
 import argparse,asyncio,json,os,sys,time,uuid
+import re
+import subprocess
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT))
 from agent.desktop.resources import require_resources,MIB
@@ -29,10 +31,18 @@ async def run(args):
         return result.data
     try:
         report['memory_before']=require_resources(minimum_available=1024*MIB,minimum_commit=1024*MIB)
+        if getattr(args, 'gemma_notepad_fixture', False):
+            processes = subprocess.check_output(
+                ['tasklist', '/FI', 'IMAGENAME eq Notepad.exe', '/FO', 'CSV', '/NH'],
+                text=True, errors='replace')
+            if re.search(r'^"notepad\.exe"', processes, re.I | re.M):
+                from agent.tools.base import ToolError
+                raise ToolError('BLOCKED_RESOURCE', '已有记事本进程，无法确认独立窗口。')
         registry=ToolRegistry(Workspace(output));save()
         listed=await call('desktop_list_windows');before={w['window_id'] for w in listed['windows']}
         reusable={w['window_id'] for w in listed['windows'] if w['pid'] in previous_pids and any(w['title'].startswith(name+' - ') for name in known_notes)}
-        marker='v07-note-'+uuid.uuid4().hex[:8];note=output/(marker+'.txt');note.write_text('',encoding='utf-8')
+        marker='desktop-test' if getattr(args, 'gemma_notepad_fixture', False) else 'v07-note-'+uuid.uuid4().hex[:8]
+        note=output/(marker+'.txt');note.write_text('',encoding='utf-8')
         browser_title='v07-browser-'+uuid.uuid4().hex[:8]
         if args.scenario=='browser':
             page=output/'local.html';page.write_text('<!doctype html><title>'+browser_title+'</title><style>body{font:24px system-ui;padding:32px}button{font-size:24px;padding:16px}</style><h1>Local browser page</h1><button onclick="document.querySelector(\'p\').textContent=\'Local page verified\'">Verify local page</button><p role="status">Waiting</p>',encoding='utf-8')
@@ -57,7 +67,7 @@ async def run(args):
         elif args.scenario=='notepad':
             editors=[c for c in tree['controls'] if c['control_type'] in ('Edit','Document') and not c['sensitive']]
             if len(editors)!=1:raise RuntimeError('NO_UNIQUE_DOCUMENT')
-            text='V07 中文记事本 '+marker
+            text='Local Coding Agent Gemma 桌面自动化测试成功' if getattr(args, 'gemma_notepad_fixture', False) else 'V07 中文记事本 '+marker
             await call('desktop_type_text',selector={'runtime_id':editors[0]['runtime_id']},text=text,confirm_risk=True)
             await call('desktop_keypress',keys='CTRL+S',confirm_risk=True)
             for _ in range(30):
@@ -122,6 +132,10 @@ async def run(args):
     return 0 if report['result'] in ('PASS','PROBED') else 1
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--scenario',choices=['notepad','calculator','explorer','browser'],required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--probe-only',action='store_true');a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--scenario',choices=['notepad','calculator','explorer','browser'],required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--probe-only',action='store_true')
+    p.add_argument('--gemma-notepad-fixture', action='store_true')
+    a=p.parse_args()
+    if a.gemma_notepad_fixture and a.scenario != 'notepad':
+        p.error('--gemma-notepad-fixture requires --scenario notepad')
     return asyncio.run(run(a))
 if __name__=='__main__':raise SystemExit(main())
