@@ -15,6 +15,8 @@ import urllib.parse
 
 import aiohttp
 
+from agent.core.version import APP_VERSION
+
 P = pathlib.Path
 MODELS = ("gemma4:31b", "qwen3.5:9b")
 CASES = {
@@ -292,6 +294,7 @@ def score(work, case, events):
             rows = {row["path"]:row for row in csv.DictReader(read("scored.csv").splitlines())}
             assert set(rows) == {"a.TXT","b.bin","c.txt"}
             for name, row in rows.items():
+                assert {"sha256", "duplicate"} <= row.keys(), "csv_required_columns_missing"
                 assert row["sha256"] == hashlib.sha256((fixture/name).read_bytes()).hexdigest()
                 assert row["duplicate"].lower() == ("false" if name=="c.txt" else "true")
         else:
@@ -380,7 +383,7 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
             if line.startswith("LCA_AGENT_READY "):
                 ready = json.loads(line.split(" ", 1)[1])
                 break
-        if not ready or ready.get("version") != "1.0.0":
+        if not ready or ready.get("version") not in ({APP_VERSION} if source else {"1.0.0", APP_VERSION}):
             raise RuntimeError("packaged_boot")
         base = f"http://127.0.0.1:{ready['port']}"
         headers = {"Authorization": "Bearer " + ready["token"]}
@@ -589,7 +592,7 @@ async def main():
     args.output.mkdir(parents=True, exist_ok=False)
     sandbox = P(tempfile.mkdtemp(prefix="lca-real-benchmark-")).resolve()
     binary = args.agent.resolve() if args.agent else P(sys.executable).resolve()
-    report = {"version":"1.0.0","entrypoint":"source" if args.source else "installed_backend","results":[]}
+    report = {"version":APP_VERSION if args.source else None,"entrypoint":"source" if args.source else "installed_backend","results":[]}
     (args.output / "scratch-path.txt").write_text(str(sandbox), encoding="utf-8")
     models = discover(profiles=True)
     challenges = {(case,n): str(100000 + secrets.randbelow(900000)) if case == "F-vision" else "LCA-" + secrets.token_hex(4)
