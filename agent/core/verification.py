@@ -91,7 +91,7 @@ def delivery_requirements(goal: str) -> dict:
     # arbitrary strings extracted from a natural-language instruction.
     commands = []
     for command in ('python -m unittest -q', 'npm test', 'npm run build'):
-        if re.search(r'(?:执行(?:的)?|运行|run)\s*[`"]?' + re.escape(command) + r'(?=[`"。；，、]|\s*$)', goal, re.I):
+        if re.search(r'(?:执行(?:且最终通过)?(?:的)?|运行|run)\s*[`"]?' + re.escape(command) + r'(?=[`"。；，、（(]|\s*$)', goal, re.I):
             commands.append(command)
     return {'readme':readme, 'commands':commands}
 

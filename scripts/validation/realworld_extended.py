@@ -117,7 +117,7 @@ r=subprocess.run([sys.executable,'-m','unittest','discover'],capture_output=True
 assert r.returncode==0 and 'Ran 0 tests' not in r.stderr
 """),
     pipeline("28","delivery","多模块兼容重构",PIPELINE+"把解析和聚合分别保留在 parser.py 与 totals.py，domain.py 负责串联，保留公开接口。"),
-    py("29","delivery","修复并提供可验证报告","修复 handle 的华氏到摄氏转换。提交 report.json，包含 checks 数组，每项具有 argv（字符串数组）和 exit_code，记录实际执行的 python -m unittest -q。",
+    py("29","delivery","修复并提供可验证报告","修复 handle 的华氏到摄氏转换。提交 report.json，包含 checks 数组，每项具有 argv（字符串数组）和 exit_code，记录实际执行且最终通过的 python -m unittest -q（不加文件名），失败的历史尝试可另列。",
        "def operation(f): return (f-32)*9/5",
        """import json,sys,subprocess
 from pathlib import Path

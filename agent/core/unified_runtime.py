@@ -85,7 +85,8 @@ def requested_intent(prompt):
     ))
     change=not readonly and (chinese_edit or repair_file or inspect_and_repair or bool(re.search(r'实现|开发|修复|修改|重构|新增|增加|改成|改为|改中文|编写|创建|\b(?:implement|develop|refactor|create|fix|add|change|update)\b',text,re.I))) and (not question or direct)
     listed=len(re.findall(r'(?m)^\s*(?:\d+[.)、]|[-*])\s*\S',prompt))
-    kind='question' if question and not direct else 'complex' if change and (listed>=3 or len(paths)>=3) else 'change' if change else 'analysis' if readonly or re.search(r'分析|诊断|检查|inspect|analy[sz]e|diagnos',text,re.I) else 'question'
+    stages=bool(re.search(r'多阶段计划|分阶段计划|先.{1,100}(?:再|然后).{1,100}最后',text))
+    kind='question' if question and not direct else 'complex' if change and (listed>=3 or len(paths)>=3 or stages) else 'change' if change else 'analysis' if readonly or re.search(r'分析|诊断|检查|inspect|analy[sz]e|diagnos',text,re.I) else 'question'
     positive=re.sub(r'(?:不是|并非|不属于)(?:一项|一个)?(?:代码)?开发(?:任务|工作)?','',text)
     positive=re.sub(r'(?:禁止|不要|不得|不允许|不(?:修改|改动|编辑))[^。；;\n]*','',positive)
     code_request=chinese_edit or bool(re.search(r'开发|实现|编写|重构|修复|源码|代码|组件|函数|模块|\b(?:develop|implement|refactor|fix|function|component)\b',positive,re.I)) or (change and bool(re.search(r'\bFILE\b',positive)))

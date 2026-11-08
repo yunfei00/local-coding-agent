@@ -125,6 +125,29 @@ class RuntimeIntegrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.server.store.task_plans.active_step(plan_id)['state'],'pending')
             await ws.close()
 
+    async def test_confirmed_resume_refreshes_blocked_step_before_dispatch(self):
+        from agent.core.execution import ExecutionBudget
+        plans = self.server.store.task_plans
+        plan_id = plans.create(self.thread.id, "修复 calculator.py",
+                               [{"description":"完成验证","verification":""}])
+        step = plans.active_step(plan_id)
+        plans.update_step(plan_id, step["id"], "in_progress")
+        plans.update_step(plan_id, step["id"], "blocked")
+        run = ExecutionBudget(self.server.store.connection, plan_id, self.thread.id,
+                              self.server.continuation_policy)
+        run.data.update(unified={"id":plan_id,"phase":"cancelled"}, unified_goal="修复 calculator.py")
+        run.save()
+        self.server.ensure_model_available = AsyncMock(return_value=True)
+        self.server.run_tool_turn = AsyncMock()
+        ws = FakeWebSocket()
+        await self.server.handle_message(ws, {"type":"turn.start","thread_id":self.thread.id,
+            "payload":{"prompt":"继续","model":"mock","unified":True,
+                       "resume_run_id":plan_id,"confirm_workspace":True}}, set())
+        await asyncio.gather(*list(self.server.active_turns.values()))
+        self.assertEqual(self.server.run_tool_turn.await_args.kwargs["execution_id"], plan_id)
+        self.assertEqual(plans.active_step(plan_id)["state"], "in_progress")
+        self.assertFalse(any(e["payload"].get("code") == "PLAN_BLOCKED" for e in ws.messages))
+
     async def test_completed_plan_with_reviewed_interruption_resumes_same_owner(self):
         plans=self.server.store.task_plans
         plan_id=plans.create(self.thread.id,'修复加法',[{'description':'修复并验证'}]);step=plans.active_step(plan_id)

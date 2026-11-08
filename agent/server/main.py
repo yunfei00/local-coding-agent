@@ -1665,6 +1665,9 @@ class AgentServer:
                             await self.recover_plan(ws,project,plan['id'],thread_id)
                             checkpoint=self.store.task_plans.latest_checkpoint(plan['id'])
                             self.confirmed_plan_resumes.add((thread_id,checkpoint['id']))
+                            next_step = self.store.task_plans.active_step(plan['id'])
+                            if next_step is None:
+                                continue
                         except ValueError as exc:
                             await self.send_error(ws,'PLAN_RECOVERY_FAILED',str(exc),request_id=request_id,thread_id=thread_id)
                             return
@@ -2671,6 +2674,10 @@ class AgentServer:
                     execution.data['unified_provider_snapshot']=snapshot
         if unified:
             messages.append({'role':'system','content':UNIFIED_INSTRUCTIONS})
+            if requested['kind']=='complex' and not active_plan:
+                messages.append({'role':'system','content':
+                    'The original request has multiple dependent stages. Establish an executable plan before the first mutation. '
+                    'Check each stage against its own requirements; a partial edit or a syntactic check does not finish the entire goal.'})
             if (not requested['read_only'] and requested['kind'] in {'change','complex'}
                     and re.search(r'退出码|非零退出|exit (?:code|status)|nonzero exit', execution.data.get('unified_goal', prompt), re.I)):
                 messages.append({'role':'system','content':
