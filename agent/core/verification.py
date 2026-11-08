@@ -55,7 +55,18 @@ def acceptance_changes(root: Path, baseline: dict) -> list[str]:
 
 def preserve_acceptance_requested(goal: str) -> bool:
     text=re.sub(r'不(?:需要|用|必|要)保留原测试','',goal)
-    return bool(re.search(r'(?:保留|保持).{0,10}(?:原|现有|已有).{0,6}(?:测试|tests)|(?:不要|不得|禁止).{0,8}修改.{0,8}测试|原测试.{0,8}不变|(?:preserve|keep).{0,30}(?:original|existing).{0,10}tests',text,re.I))
+    if re.search(r'(?:保留|保持).{0,10}(?:原|现有|已有).{0,6}(?:测试|tests)|(?:不要|不得|禁止).{0,8}修改.{0,8}测试|原测试.{0,8}不变|(?:preserve|keep).{0,30}(?:original|existing).{0,10}tests',text,re.I):
+        return True
+    # A reproduce–repair–retest request treats existing tests as the baseline
+    # unless the user also asks to change those tests.
+    if re.search(r'(?:修改|更新|重写|删除)(?:原有|已有|现有|原)?(?:单元)?测试(?!报告|结果|日志)|\b(?:modify|update|rewrite|delete) (?:the )?(?:existing |original )?(?:unit )?tests?\b',text,re.I):
+        return False
+    initial = re.search(r'(?:运行|执行|\brun\b)[^。；;\n]{0,55}?(?:\b(?:pytest|unittest|tests?)\b|测试)',text,re.I)
+    if not initial:
+        return False
+    repair = re.search(r'修复|纠正|\b(?:repair|fix)\b',text[initial.end():],re.I)
+    return bool(repair and re.search(r'复测|重跑|(?:再次|重新)运行|\brerun\b|\brun\b[^.\n]{0,75}\bagain\b',
+                                    text[initial.end()+repair.end():],re.I))
 
 
 def protected_edit(root: Path, baseline: dict, tool: str, arguments: dict) -> str | None:

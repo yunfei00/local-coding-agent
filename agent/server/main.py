@@ -2863,6 +2863,10 @@ class AgentServer:
                 if preserve_acceptance_requested(authorization_prompt or prompt):
                     execution.data['workflow_acceptance_baseline']=acceptance_snapshot(workspace.root)
                     execution.save()
+            if unified and execution.data.get('workflow_acceptance_baseline'):
+                messages.append({'role':'system','content':
+                    'Existing acceptance tests and verification configuration are the baseline. '
+                    'Keep them unchanged, repair the implementation, and put any additional tests in new files.'})
             for step in range(1, self.max_model_steps * (1 + execution.data['limits']['max_continuations']) + 1):
                 if turn_id in self.cancelling_turns:raise asyncio.CancelledError()
                 contract = verification_contract() if unified else {}

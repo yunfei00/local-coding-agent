@@ -196,6 +196,27 @@ class RuntimeQueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(run['error_code'],'ACCEPTANCE_CONTRACT_CHANGED')
         self.assertNotEqual(run['outcome'],'completed_verified')
 
+    async def test_reproduce_fix_and_retest_freezes_existing_test_bytes(self):
+        from agent.core.verification import preserve_acceptance_requested
+
+        self.assertTrue(preserve_acceptance_requested('Run pytest, fix the pricing function, then run the tests again.'))
+        self.assertFalse(preserve_acceptance_requested('运行 pytest，再修复实现并更新现有测试。最后重新运行测试。'))
+        self.assertFalse(preserve_acceptance_requested('修改实现并运行现有测试。'))
+        test = self.repo/'tests/test_calc.py'
+        original = test.read_bytes()
+        provider = fixture.ScriptedProvider([
+            fixture.tool_step('write_file', {'path':'tests/test_calc.py','content':'# changed to hide failure'}),
+            fixture.tool_step('write_file', {'path':'calculator.py','content':'def add(a,b): return a+b\n'}),
+            fixture.final_step('修复并复测完成'),
+        ])
+        await self.server.run_tool_turn(self.ws, thread_id=self.thread.id, turn_id='reproduce-retest',
+            prompt='运行 pytest，再修复 calculator.py 的加法实现。最后再次运行测试。',
+            model='mock', provider=provider, unified=True)
+        self.assertEqual(test.read_bytes(), original)
+        self.assertTrue(any(e['type']=='tool.completed' and
+            e['payload']['result'].get('error',{}).get('code')=='ACCEPTANCE_FILE_PROTECTED'
+            for e in self.ws.messages))
+
     async def test_queued_pause_and_resume_preserve_original_settings(self):
         first,second,other=await self.setup_queue()
         original=self.run_data(second)['unified_config']['budget']['api_calls']
