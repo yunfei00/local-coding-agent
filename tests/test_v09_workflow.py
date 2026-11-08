@@ -33,6 +33,21 @@ class WorkflowTests(unittest.TestCase):
         evidence.append({"ok":True,"step_id":step,"tool_call_id":"positive","tool":"run_command","exit_code":0})
         self.assertTrue(self.store.advance_verified(pid, step, evidence, True))
 
+    def test_missing_test_repair_is_bounded_without_forging_failure_evidence(self):
+        pid = self.store.create("thread","verify", [{"task_id":"verify","description":"verify",
+            "assigned_role":"tester","acceptance_criteria":["run tests"]}])
+        original = self.store.active_step(pid)
+        self.assertTrue(self.store.prepare_missing_test_handoff(pid,original["id"]))
+        developer = self.store.active_step(pid)
+        self.assertEqual(developer["workflow"]["assigned_role"], "developer")
+        self.assertEqual(developer["workflow"]["handoff_for"], original["id"])
+        self.assertEqual(self.store.executions(pid), [])
+        self.store.record_execution(pid,developer["id"],"write","turn","write_file",{"ok":True})
+        self.store.update_step(pid,developer["id"],"completed",
+                              [{"tool_call_id":"write","step_id":developer["id"],"ok":True}])
+        self.assertFalse(self.store.prepare_missing_test_handoff(pid,original["id"]))
+        self.assertEqual(self.store.active_step(pid)["state"], "blocked")
+
     def test_ready_respects_forward_dependency_and_evidence(self):
         pid = self.create()
         first = self.store.active_step(pid)

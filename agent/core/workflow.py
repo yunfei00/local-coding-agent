@@ -40,6 +40,33 @@ ADJUST_TOOL={'type':'function','function':{'name':'workflow_adjust','description
         'dependencies':{'type':'array','items':{'type':'string'}},'acceptance_criteria':{'type':'array','items':{'type':'string'}},'required_capabilities':{'type':'array','items':{'type':'string'}}}}}}}}}
 REVIEW_TOOL = {'type':'function','function':{'name':'workflow_review','description':'Reviewer only: submit an independent evidence-backed review. Request changes adds a bounded Developer repair before re-review.',
     'parameters':{'type':'object','required':['decision','summary'],'properties':{'decision':{'type':'string','enum':['approved','request_changes']},'summary':{'type':'string','minLength':1,'maxLength':2000}}}}}
+TEST_HANDOFF_TOOL = {"type":"function","function":{
+    "name":"workflow_test_handoff",
+    "description":"Developer only on a missing-test repair step. Declare a real root-level unittest script, its exact command, cwd '.', expected [0], and isolated_cwd true. Does not run commands or grant permission.",
+    "parameters":{"type":"object","additionalProperties":False,
+        "required":["script","command","cwd","expected_exit_codes","isolated_cwd"],"properties":{
+            "script":{"type":"string"},"command":{"type":"string"},"cwd":{"type":"string"},
+            "expected_exit_codes":{"type":"array","items":{"type":"integer"}},"isolated_cwd":{"type":"boolean"}}}}}
+
+
+def test_handoff(root, arguments):
+    script = arguments.get("script")
+    if not isinstance(script,str) or not re.fullmatch(r"test_[A-Za-z0-9_]{1,80}\.py",script):
+        raise ValueError("声明项目根目录下的 test_*.py unittest 脚本")
+    command = f"python -m unittest discover -s . -p {script} -v"
+    codes = arguments.get("expected_exit_codes")
+    if (arguments.get("command") != command or arguments.get("cwd") != "."
+            or arguments.get("isolated_cwd") is not True or codes != [0]
+            or type(codes[0]) is not int):
+        raise ValueError("必须声明精确命令、工作目录 .、预期退出码 [0] 和隔离工作目录")
+    path = root / script
+    if (not path.is_file() or path.is_symlink() or not path.resolve().is_relative_to(root.resolve())
+            or path.stat().st_size > 262144):
+        raise ValueError("已声明的测试脚本不存在或超出工作区")
+    return {"script":script,"command":command,"cwd":".","expected_exit_codes":[0],
+            "isolated_cwd":True,"data_scope":"owned_scratch","script_sha256":hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
 ROLE_INSTRUCTIONS = {
     'planner': '你是 Planner。使用 read_file、list_directory、search_files、knowledge_search、git_status/git_diff 读取工程、检查约束和依赖；必要时用 workflow_adjust 细化尚未执行步骤的描述、依赖和验收要求。不修改代码。不要运行故障基线测试，也不要运行任意终端脚本；测试属于 Tester。每步包含可验证验收标准。',
     'developer': '你是 Developer。只完成当前步骤的实现或修复，复用已完成操作和真实证据。禁止宣布其他角色已通过。',

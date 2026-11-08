@@ -323,6 +323,43 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(delivery['steps']),3)
         self.assertEqual(delivery['reviews'][-1]['decision'],'approved')
 
+    async def test_missing_test_hands_back_to_developer_before_tester(self):
+        (self.repo / 'tests' / 'test_calc.py').unlink()
+        self.server.store.set_setting('orchestration.config',json.dumps(validate_config({})))
+        fixture = self.repo / "validation-state.json"
+        fixture.write_text('{"original":true}', encoding='utf-8')
+        command = "python -m unittest discover -s . -p test_delivery.py -v"
+        _, result = await self.run_steps([
+            tool_step('agent_plan', {'steps':[
+                {'task_id':'build','description':'修复计算器','assigned_role':'developer','dependencies':[]},
+                {'task_id':'verify','description':'验证交付','assigned_role':'tester','dependencies':['build'],
+                 'verification':'运行真实测试'},
+            ]}),
+            tool_step('write_file', {'path':'calculator.py','content':'def add(a,b): return a+b\n'}),
+            final_step('实现完成'),
+            tool_step('write_file', {'path':'test_delivery.py','content':
+                'import unittest\nfrom pathlib import Path\nfrom calculator import add\nclass Check(unittest.TestCase):\n'
+                ' def test_add(self):\n'
+                '  state = Path("validation-state.json")\n'
+                '  state.write_text(str(add(2,3)))\n'
+                '  self.assertEqual(state.read_text(), "5")\n'}),
+            tool_step('workflow_test_handoff', {'script':'test_delivery.py','command':command,
+                'cwd':'.','expected_exit_codes':[0],'isolated_cwd':True}),
+            final_step('已声明隔离验收'),
+            tool_step('run_command', {'command':command,'isolated_cwd':True,'expected_exit_codes':[0]}),
+            final_step('真实测试通过'),
+        ])
+        self.assertEqual(result['outcome'], 'completed_verified', str(result))
+        self.assertEqual([row['role'] for row in result['role_handoffs']], ['developer','developer','tester'])
+        plan = self.server.store.task_plans.get(result['plan_id'])
+        tester = next(step for step in plan['steps'] if step['workflow']['assigned_role']=='tester')
+        self.assertEqual(tester['state'], 'completed')
+        self.assertTrue(any(row['tool']=='run_command' and row['exit_code']==0 for row in tester['executions']))
+        self.assertEqual(result['test_handoff']['status'], 'PASS')
+        self.assertEqual(fixture.read_text(encoding='utf-8'), '{"original":true}')
+        commands = [row for row in tester['executions'] if row['tool']=='run_command']
+        self.assertTrue(any(row['metadata'].get('command_outcome',{}).get('isolated') is True for row in commands))
+
     async def test_reviewer_cannot_write_even_if_provider_forges_hidden_tool(self):
         _,r=await self.run_steps([
             tool_step('agent_plan',{'steps':[{'task_id':'review','description':'审查','assigned_role':'reviewer','dependencies':[]}]}),

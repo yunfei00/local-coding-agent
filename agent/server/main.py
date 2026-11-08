@@ -2855,8 +2855,31 @@ class AgentServer:
                     execution.data['workflow_acceptance_baseline']=acceptance_snapshot(workspace.root)
                     execution.save()
             for step in range(1, self.max_model_steps * (1 + execution.data['limits']['max_continuations']) + 1):
-                select_workflow_model()
                 if turn_id in self.cancelling_turns:raise asyncio.CancelledError()
+                if unified and active_plan and not requested['read_only'] and workflow_role() == 'tester':
+                    from agent.core.verification import discover_commands
+                    tester_step = self.store.task_plans.active_step(active_plan['id'])
+                    tester_meta = tester_step.get('workflow', {})
+                    handoff = execution.data.get('workflow_test_handoffs', {}).get(tester_step['id'])
+                    commands = discover_commands(workspace.root, verification_options.get('verification_commands',[]))
+                    existing = any(re.search(r'\b(?:pytest|unittest|test)\b', command) for command in commands)
+                    if not handoff and (tester_meta.get('handoff_requested') or not existing):
+                        blocker = {'status':'BLOCKED','code':'WORKFLOW_TEST_HANDOFF_MISSING','step_id':tester_step['id']}
+                        execution.data.setdefault('workflow_handoff_blockers', {})[tester_step['id']] = blocker
+                        if not self.store.task_plans.prepare_missing_test_handoff(active_plan['id'],tester_step['id']):
+                            await publish_runtime('blocked', test_handoff=blocker)
+                            raise ProviderError(blocker['code'], '没有可执行测试交接；已保留原计划和权限。')
+                        active_step_id = self.store.task_plans.active_step(active_plan['id'])['id']
+                        plan_tool_evidence.clear()
+                        plan_commands_run.clear()
+                        execution.save()
+                        await publish_runtime('repairing', test_handoff=blocker)
+                        messages.append({'role':'system','content':
+                            'Tester preflight BLOCKED: WORKFLOW_TEST_HANDOFF_MISSING. The current Developer step owns test creation. '
+                            'Create a root test_*.py unittest file, use one disposable dataset across child processes, '
+                            'and declare python -m unittest discover -s . -p <script> -v via workflow_test_handoff. '
+                            'The Tester cannot write files and the workflow requires a real test execution.'})
+                select_workflow_model()
                 if unified and recovery_error:raise ProviderError('RECOVERY_LIMIT',recovery_error)
                 if self.runtime_ledger.pending(execution.key):
                     def apply_followups(rows):
@@ -2976,6 +2999,12 @@ class AgentServer:
                                 from agent.core.workflow import ROLE_INSTRUCTIONS
                                 role = workflow_role()
                                 runtime_suffix += '\n\n'+ROLE_INSTRUCTIONS[role]+'\n当前子任务：'+json.dumps(role_step['workflow'],ensure_ascii=False)
+                                if role == 'tester':
+                                    declared = execution.data.get('workflow_test_handoffs', {}).get(role_step['id'])
+                                    if declared:
+                                        runtime_suffix += ('\nRun the declared isolated command now with run_command. '
+                                                           'Do not write files or run other shell commands. Handoff: '
+                                                           + json.dumps(declared,ensure_ascii=False))
                                 handoffs=execution.data.setdefault('role_handoffs',[])
                                 if not handoffs or handoffs[-1]['step_id']!=role_step['id']:
                                     handoff={'step_id':role_step['id'],'role':role,'model':model,'provider':provider.provider_name,
@@ -3008,6 +3037,10 @@ class AgentServer:
                             role=workflow_role()
                             if role=='reviewer':schemas=[*schemas,REVIEW_TOOL]
                             if role in {'planner','developer'} and any(s.get('workflow') for s in active_plan['steps']):schemas=[*schemas,ADJUST_TOOL]
+                            current_node = self.store.task_plans.active_step(active_plan['id'])
+                            if role == 'developer' and (current_node or {}).get('workflow', {}).get('handoff_for'):
+                                from agent.core.workflow import TEST_HANDOFF_TOOL
+                                schemas = [*schemas, TEST_HANDOFF_TOOL]
                             if role!='developer':
                                 schemas=[s for s in schemas if role_allows(role,s['function']['name'],
                                     {'command':'uv run python -m unittest'} if s['function']['name']=='run_command' and role=='tester' else {'command':'git diff'},
@@ -3347,7 +3380,8 @@ class AgentServer:
                                 policy = {'level':'manual','commands':[],'reason':'验证配置无法解析，未运行验证'}
                             await publish_runtime('verifying', level=policy['level'], reason=policy['reason'])
                             async def verify_execute(name, arguments, on_raw_output=None, environment=None):
-                                if (execution.data.get('protected_workspace_files') and name=='run_command'
+                                if ((execution.data.get('protected_workspace_files') or
+                                        execution.data.get('workflow_test_handoffs',{}).get(active_step_id)) and name=='run_command'
                                         and arguments.get('command') != 'git diff --check'):
                                     arguments = {**arguments, 'isolated_cwd': True}
                                 execution.reserve_tool()
@@ -3467,6 +3501,10 @@ class AgentServer:
                             active_step_id, requirement, evidence,
                             loop_complete=not gaps or bool(plan_id) or (unified and (runtime['intent']=='complex' or (requested['kind']=='interaction' and bool(execution.data.get('unified_interaction_evidence'))) or (not requirement.strip() and verification_options.get('verification_level')=='none'))) or (not requirement.strip() and
                                 active_plan["steps"][-1]["id"] != active_step_id))
+                        declared = execution.data.get('workflow_test_handoffs',{}).get(active_step_id) if unified else None
+                        if declared and workflow_role() == 'tester':
+                            handoff_result = runtime.get('test_handoff', {})
+                            verified = verified and handoff_result.get('step_id') == active_step_id and handoff_result.get('status') == 'PASS'
                         advanced=self.store.task_plans.advance_verified(
                             active_plan["id"], active_step_id, evidence, verified)
                         if advanced and unified and execution.data.get('role_handoffs') and execution.data['role_handoffs'][-1]['step_id']==active_step_id:
@@ -3630,6 +3668,38 @@ class AgentServer:
                         raise ProviderError('COMPUTER_TOOL_SCOPE','用户仅授权界面操作；没有执行源码、终端或其他越界工具。')
                     if unified and requested['kind']=='interaction' and call.name in INTERACTION_CODE_TOOLS:
                         raise ProviderError('COMPUTER_TOOL_SCOPE','界面任务不允许修改代码或运行代码测试/终端修复；没有执行该工具。')
+                    if unified and active_plan and call.name=='workflow_test_handoff':
+                        from agent.core.workflow import test_handoff
+                        node = self.store.task_plans.active_step(active_plan['id'])
+                        target = (node or {}).get('workflow',{}).get('handoff_for')
+                        try:
+                            if requested['read_only'] or workflow_role() != 'developer' or not target:
+                                raise ValueError('只有负责补充测试的 Developer 可声明交接')
+                            declared = test_handoff(workspace.root,call.arguments)
+                            declared['workspace_version'] = snapshot_fingerprint(workspace_snapshot(workspace.root))
+                            execution.data.setdefault('workflow_test_handoffs',{})[target] = declared
+                            execution.save()
+                            await publish_runtime('executing', test_handoff={**declared,'status':'READY'})
+                            result = {'ok':True,'handoff':declared}
+                        except (ValueError,OSError) as exc:
+                            result = {'ok':False,'error':'WORKFLOW_TEST_HANDOFF_INVALID','message':str(exc)}
+                        messages.append({'role':'tool','tool_call_id':call.id,'name':call.name,
+                                         'content':json.dumps(result,ensure_ascii=False)})
+                        continue
+                    if unified and active_plan and workflow_role()=='tester' and call.name=='run_command':
+                        declared = execution.data.get('workflow_test_handoffs',{}).get(active_step_id)
+                        if declared:
+                            from agent.core.workflow import test_handoff
+                            try:
+                                current = test_handoff(workspace.root, declared)
+                            except (ValueError,OSError):
+                                raise ProviderError('WORKFLOW_TEST_HANDOFF_CHANGED','交接脚本已丢失或无法验证。') from None
+                            if current['script_sha256'] != declared['script_sha256']:
+                                raise ProviderError('WORKFLOW_TEST_HANDOFF_CHANGED','交接脚本已变化；未执行命令。')
+                            if str(call.arguments.get('command','')).strip() != declared['command']:
+                                raise ProviderError('WORKFLOW_TEST_HANDOFF_COMMAND','Tester 只能运行已声明的隔离命令。')
+                            call = ToolCall(name='run_command', id=call.id, arguments={
+                                'command':declared['command'],'cwd':'.','isolated_cwd':True,'expected_exit_codes':[0]})
                     if unified and active_plan and call.name=='workflow_adjust':
                         if len(tool_calls)!=1:raise ProviderError('WORKFLOW_ADJUST_BATCH','调整计划须单独调用，不执行同批其他操作')
                         if execution.data.get('workflow_adjustments',0)>=3:raise ProviderError('WORKFLOW_ADJUST_LIMIT','计划调整达到有界上限，保留原计划与证据')
@@ -3858,6 +3928,17 @@ class AgentServer:
                             uncertain=bool(uncertain),
                         )
 
+                    if unified and call.name=='run_command' and workflow_role()=='tester':
+                        declared = execution.data.get('workflow_test_handoffs',{}).get(active_step_id)
+                        if declared:
+                            from agent.core.verification import classify
+                            category = classify(payload)
+                            handoff_status = 'PASS' if category=='passed' else 'FAIL' if category in {'assertion','code'} else 'BLOCKED'
+                            if category != 'passed' and payload.get('ok'):
+                                payload.update(ok=False, error={'code':'WORKFLOW_TEST_HANDOFF_NO_VALID_RESULT',
+                                    'message':'隔离命令没有产生有效测试结果。'})
+                            await publish_runtime('executing',test_handoff={**declared,'status':handoff_status,
+                                'exit_code':payload.get('exit_code'),'category':category,'call_id':call_id,'step_id':active_step_id})
                     payload['duration_ms'] = round((perf_counter() - tool_started) * 1000)
                     metrics.record_tool(payload['duration_ms'], ok=bool(payload.get("ok")))
                     if unified and payload.get('ok') and call.name in {'desktop_click','desktop_type_text','desktop_keypress','desktop_scroll'}:

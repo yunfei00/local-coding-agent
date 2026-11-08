@@ -489,6 +489,32 @@ class TaskPlanStore:
             self.checkpoint(plan_id,'independent_review')
         return verdict
 
+    def prepare_missing_test_handoff(self, plan_id, step_id):
+        """One bounded Developer handoff, without inventing a test failure."""
+        step = self.active_step(plan_id)
+        if not step or step['id'] != step_id or step['workflow'].get('assigned_role') != 'tester':
+            raise ValueError('只能退回当前 Tester 步骤')
+        meta = step['workflow']
+        steps = self.get(plan_id)['steps']
+        with self.db:
+            if meta.get('handoff_requested') or len(steps) >= 30:
+                self.update_step(plan_id,step_id,'blocked')
+                self.checkpoint(plan_id,'missing_test_handoff_blocked')
+                return False
+            ident = str(uuid.uuid4())
+            local = 'tests-' + ident[:12]
+            title = '为已实现的交付创建一个隔离验证脚本并提交 workflow_test_handoff'
+            node = {'task_id':local,'title':title,'dependencies':meta['dependencies'],
+                    'assigned_role':'developer','acceptance_criteria':[title],
+                    'required_capabilities':['tool_calling'],'retry_count':0,'handoff_for':step_id}
+            self.db.execute(
+                'INSERT INTO task_plan_steps(id,plan_id,position,description,verification,workflow_json) VALUES(?,?,?,?,?,?)',
+                (ident,plan_id,len(steps),title,'',json.dumps(node)))
+            self.db.execute("UPDATE task_plan_steps SET state='pending',workflow_json=? WHERE id=? AND plan_id=?",
+                (json.dumps({**meta,'dependencies':[local],'handoff_requested':True}),step_id,plan_id))
+            self.checkpoint(plan_id,'tester_missing_test_returned_to_developer')
+        return True
+
     def repair_test_failure(self, plan_id, step_id, summary, *, max_repairs=3):
         """Route real failing tests back through Developer and a fresh Reviewer."""
         step=self.active_step(plan_id)
