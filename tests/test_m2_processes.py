@@ -65,6 +65,17 @@ class ProcessTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ToolError):
             await self.tools.execute("run_command", {**args, "isolated_cwd": False}, owner_id="negative-check")
 
+    async def test_exit_contract_distinguishes_environment_and_process_exit(self):
+        args = {"isolated_cwd": True, "expected_exit_codes": [0]}
+        zero = await self.tools.execute("run_command", {**args, "command": "python -V"}, owner_id="exit-contract")
+        self.assertEqual(zero.data["command_outcome"]["status"], "expected_exit")
+        self.assertEqual(zero.data["command_outcome"]["actual_exit_code"], 0)
+        missing = await self.tools.execute("run_command", {
+            **args, "expected_exit_codes": [1, 127], "command": "lca_no_such_test_executable_8f0e"},
+            owner_id="exit-contract")
+        self.assertFalse(missing.ok)
+        self.assertEqual(missing.data["command_outcome"]["status"], "environment_error")
+
     async def test_isolated_command_state_is_owned_and_never_changes_delivery(self):
         fixture = self.root / "state.txt"
         fixture.write_text("original")

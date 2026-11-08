@@ -309,6 +309,7 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
             tool_step('agent_plan',{'steps':nodes}),
             tool_step('write_file',{'path':'calculator.py','content':'def add(a,b): return a+b\n'}),final_step('实现完成'),
             tool_step('read_file',{'path':'calculator.py'}),tool_step('workflow_review',{'decision':'approved','summary':'重新读取后确认加法正确'}),final_step('独立审查通过'),
+            tool_step('write_file',{'path':'calculator.py','content':'tester must never write'}),
             tool_step('run_command',{'command':'uv run --no-project python -m unittest discover -s tests -v'}),final_step('测试通过，中文交付'),
         ])
         self.assertEqual(r['outcome'],'completed_verified')

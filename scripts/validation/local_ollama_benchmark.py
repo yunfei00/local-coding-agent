@@ -321,7 +321,7 @@ finally:
     root.destroy()
 """)
 
-async def attempt(session, binary, url, model, case, root, number, source=False, challenge=None, *, profile, options, scenario=None):
+async def attempt(session, binary, url, model, case, root, number, source=False, challenge=None, *, profile, options, scenario=None, api_key=None):
     from agent.core.diagnostics import redact_text
     from scripts.validation.packaged_agent_smoke import read_lines
     from agent.tools.base import ToolError
@@ -394,14 +394,24 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
         headers = {"Authorization": "Bearer " + ready["token"]}
         async with asyncio.timeout(options["case_seconds"]), session.ws_connect(base + "/ws", headers=headers) as ws:
             if profile:
-                catalog = {"connections":[{"connection_id":"bench","display_name":"Benchmark Ollama",
-                    "provider_type":"ollama","base_url":url,"credential_reference":None,"enabled":True}],
+                if api_key:
+                    await ws.send_json({"type":"task.credentials.update","request_id":"bench-credentials",
+                        "payload":{"credentials":{"connection-bench":api_key}}})
+                    while True:
+                        msg = await ws.receive_json()
+                        if msg.get("request_id") == "bench-credentials":
+                            if msg["type"] != "task.loaded":
+                                raise RuntimeError("isolated_credentials_update")
+                            break
+                catalog = {"connections":[{"connection_id":"bench","display_name":"Benchmark API" if api_key else "Benchmark Ollama",
+                    "provider_type":"openai_compatible" if api_key else "ollama","base_url":url,
+                    "credential_reference":"connection-bench" if api_key else None,"enabled":True}],
                     "profiles":[{**profile,"model_profile_id":"bench","connection_id":"bench",
                                  "supports_vision": True if fixture else profile.get("supports_vision", False)}]}
                 await ws.send_json({"type":"task.catalog.update","request_id":"bench-catalog",
                                     "payload":{"catalog":catalog,"chat_default":"bench",
                                                "config":{"strategy":"single-agent","roles":{"executor":{"model_profile_id":"bench"}},
-                                                         "budget":{"request_seconds":options["request_seconds"]}}}})
+                                                         "budget":{"request_seconds":options["request_seconds"], **options.get("api_budget", {})}}}})
                 while True:
                     msg = await ws.receive_json()
                     if msg.get("request_id") == "bench-catalog":
@@ -433,7 +443,7 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                 if kind in {"turn.delta", "turn.status", "tool.started", "tool.completed",
                             "turn.failed", "turn.cancelled", "turn.completed", "error"} and trace_bytes < 32 * 1024 * 1024:
                     content = redact_text(json.dumps(p, ensure_ascii=False),
-                                          exact_secrets=(ready["token"],), max_chars=32000)
+                                          exact_secrets=(ready["token"], api_key) if api_key else (ready["token"],), max_chars=32000)
                     row = json.dumps({"type": kind, "payload": content}, ensure_ascii=False) + "\n"
                     trace.write(row)
                     trace.flush()

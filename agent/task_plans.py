@@ -128,7 +128,7 @@ class TaskPlanStore:
         """Store only execution metadata, never arguments, output, or model reasoning."""
         with self.db:
             data = (result or {}).get("data") or {}
-            metadata = {k: data[k] for k in ("process_id", "pid", "shell", "state", "log_path", "metadata_path", "log_truncated", "artifact_id", "path", "width", "height", "dpi", "vision_feedback", "window_id", "window_generation", "sha256", "captured_at") if k in data}
+            metadata = {k: data[k] for k in ("process_id", "pid", "shell", "state", "log_path", "metadata_path", "log_truncated", "artifact_id", "path", "width", "height", "dpi", "vision_feedback", "window_id", "window_generation", "sha256", "captured_at", "command_outcome") if k in data}
             if result:
                 metadata.update(duration_ms=result.get("duration_ms"), error_code=(result.get("error") or {}).get("code") or data.get("error_code"))
                 if not result.get('ok'):
@@ -532,6 +532,26 @@ class TaskPlanStore:
             return False
         if not all(item.get("ok") is True for item in evidence):
             return False
+        if current.get('workflow'):
+            # Expected nonzero probes remain in the execution journal. Do not
+            # let them invalidate independent zero-exit step evidence.
+            accepted = []
+            for item in evidence:
+                if item.get("exit_code") in (None, 0):
+                    accepted.append(item)
+                    continue
+                row = self.db.execute(
+                    "SELECT exit_code, status, metadata_json FROM task_plan_executions "
+                    "WHERE plan_id=? AND step_id=? AND call_id=? AND tool='run_command'",
+                    (plan_id, step_id, item.get("tool_call_id")),
+                ).fetchone()
+                if (not row or row["status"] != "succeeded" or row["exit_code"] != item["exit_code"]
+                        or json.loads(row["metadata_json"]).get("command_outcome", {}).get("status") != "expected_exit"):
+                    return False
+            evidence = accepted
+            from agent.plan_verification import verification_passed as step_verified
+            if not step_verified(step_id, current["verification"], evidence, loop_complete=True):
+                return False
         try:
             self.update_step(plan_id, step_id, "completed", evidence)
         except ValueError:

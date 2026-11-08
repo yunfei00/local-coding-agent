@@ -21,6 +21,18 @@ class WorkflowTests(unittest.TestCase):
             {'task_id':'tests','description':'测试','assigned_role':'tester','dependencies':['review'],'verification':'uv run python -m unittest'},
         ])
 
+    def test_negative_assertion_does_not_poison_positive_step_evidence(self):
+        pid = self.store.create("thread", "verify CLI", [{"task_id":"verify", "description":"verify",
+            "assigned_role":"tester", "acceptance_criteria":["run tests"]}])
+        step = self.store.active_step(pid)["id"]
+        negative = {"ok": True, "exit_code": 2, "data": {"command_outcome":{"status":"expected_exit"}}}
+        self.store.record_execution(pid, step, "negative", "turn", "run_command", negative)
+        evidence = [{"ok":True,"step_id":step,"tool_call_id":"negative","tool":"run_command","exit_code":2}]
+        self.assertFalse(self.store.advance_verified(pid, step, evidence, True))
+        self.store.record_execution(pid, step, "positive", "turn", "run_command", {"ok":True,"exit_code":0})
+        evidence.append({"ok":True,"step_id":step,"tool_call_id":"positive","tool":"run_command","exit_code":0})
+        self.assertTrue(self.store.advance_verified(pid, step, evidence, True))
+
     def test_ready_respects_forward_dependency_and_evidence(self):
         pid = self.create()
         first = self.store.active_step(pid)

@@ -2679,12 +2679,17 @@ class AgentServer:
                     'The original request has multiple dependent stages. Establish an executable plan before the first mutation. '
                     'Check each stage against its own requirements; a partial edit or a syntactic check does not finish the entire goal.'})
             if (not requested['read_only'] and requested['kind'] in {'change','complex'}
-                    and re.search(r'退出码|非零退出|exit (?:code|status)|nonzero exit', execution.data.get('unified_goal', prompt), re.I)):
+                    and re.search(r'退出码|非零退出|返回\s*[1-9][0-9]*\b|exit (?:code|status)|nonzero exit', execution.data.get('unified_goal', prompt), re.I)):
                 messages.append({'role':'system','content':
                     'For a CLI smoke test whose expected actual exit code is nonzero, call run_command '
                     'with isolated_cwd=true and expected_exit_codes containing only the required code. '
                     'Keep assertions exact and inspect actual stdout/stderr. Do not treat unexpected failures as success.'})
 
+            if (not requested['read_only'] and re.search(
+                    r'持久化|跨进程|persist|stateful', execution.data.get('unified_goal', prompt), re.I)):
+                messages.append({'role':'system','content':
+                    'Keep stateful smoke tests in isolated_cwd. Use one test script with assertions across child invocations '
+                    'to observe state before and after changes; never seed test records in the delivery workspace.'})
             if requested['kind']=='interaction':
                 messages.append({'role':'system','content':'当前用户只要求界面操作。可读取所需结果文件，但不得修改源码或运行代码测试/终端修复；使用 start_process/read_process/stop_process 管理本次窗口进程。界面保存产生的数据文件不是开发任务。'})
             if self._permission_policy(project,execution).continuous:
@@ -3609,12 +3614,16 @@ class AgentServer:
                         if not role_allows(workflow_role(),call.name,call.arguments,
                             read_only=call.name in READ_ONLY_TOOLS or bool(metadata.get('trusted') and metadata.get('read_only')),allowed_test_hashes=execution.data.get('workflow_test_hashes',())):
                             runtime['role_denial']={'role':workflow_role(),'tool':call.name,'command':redact_text(str(call.arguments.get('command','')),exact_secrets=self._exact_secrets(),max_chars=400)}
-                            if call.name=='run_command' and workflow_role() in {'planner','reviewer'}:
+                            role = workflow_role()
+                            tester_write = role == 'tester' and call.name in {'write_file','apply_patch','delete_file'}
+                            if tester_write or (call.name=='run_command' and role in {'planner','reviewer'}):
                                 corrections=execution.data.setdefault('workflow_role_corrections',{})
                                 count=corrections.get(active_step_id,0)
                                 if count<1:
                                     corrections[active_step_id]=count+1;execution.save()
-                                    messages.append({'role':'tool','tool_call_id':call.id,'name':call.name,'content':json.dumps({'ok':False,'error':'WORKFLOW_ROLE_PERMISSION','message':'没有执行命令。当前角色仅使用 read_file/list_directory/search_files/git_status/git_diff；测试由 Tester 执行。不得修改文件。'},ensure_ascii=False)})
+                                    hint = ('文件操作未执行。Tester 请运行已存在的真实测试并报告结果；真实测试失败会走现有修复流程。'
+                                            if tester_write else '没有执行命令。当前角色仅使用 read_file/list_directory/search_files/git_status/git_diff；测试由 Tester 执行。不得修改文件。')
+                                    messages.append({'role':'tool','tool_call_id':call.id,'name':call.name,'content':json.dumps({'ok':False,'error':'WORKFLOW_ROLE_PERMISSION','message':hint},ensure_ascii=False)})
                                     continue
                             raise ProviderError('WORKFLOW_ROLE_PERMISSION','当前角色 '+workflow_role()+' 不允许执行 '+call.name+'；既有权限和审批未被扩大。')
                     if unified and computer_only(authorization_prompt if authorization_prompt is not None else prompt) and call.name not in COMPUTER_TOOLS:
@@ -3787,6 +3796,10 @@ class AgentServer:
                     if replay:
                         payload = {"ok": False, "summary": "This plan already applied this operation. Inspect the workspace instead of replaying it.",
                             "error": {"code": "PLAN_OPERATION_ALREADY_APPLIED", "message": "A successful persisted operation cannot be automatically replayed."}, "changed_paths": []}
+                        if call.name == "run_command":
+                            payload["data"] = {"command_outcome":{"status":"replay_blocked",
+                                "actual_exit_code":None,
+                                "hint":"Inspect current state; for a stateful smoke test, use one isolated test script with before/after assertions."}}
                         if unfinished:
                             # A different unfinished step still needs an explicit
                             # blocker, without forging a second tool execution.
@@ -3890,6 +3903,16 @@ class AgentServer:
                     plan_files_changed.update(str(p) for p in (payload.get("changed_paths") or []))
                     if deletion and payload.get('ok'):
                         execution.data.setdefault('deleted_file_generations', {})[deletion[0]] = deletion[1]
+                    if call.name == 'run_command' and not (payload.get('data') or {}).get('command_outcome'):
+                        from agent.core.verification import classify
+                        code = str((payload.get('error') or {}).get('code') or '')
+                        category = classify(payload)
+                        status = ('cancelled' if 'CANCEL' in code else
+                                  'permission_denied' if category == 'permission' or 'PROTECTED' in code else
+                                  'environment_error' if category == 'environment' or code in {'PROCESS_START_FAILED','WORKING_DIRECTORY_UNAVAILABLE'} else
+                                  'timeout' if category == 'timeout' else 'execution_error')
+                        payload.setdefault('data', {})['command_outcome'] = {
+                            'status':status, 'actual_exit_code':payload.get('exit_code'), 'error_code':code or None}
                     # A failed tool is repair evidence while this turn is still
                     # running. Persist blocked only when execution actually stops;
                     # otherwise a real fail -> fix -> retest could never recover.

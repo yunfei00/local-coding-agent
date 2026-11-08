@@ -148,7 +148,7 @@ def compact_tool_payload(
 
     if data:
         if isinstance(data, dict):
-            minimal["data"] = {k: compacted["data"][k] for k in ("process_id", "pid", "next_cursor", "state", "log_path", "log_truncated", "action_state") if k in data}
+            minimal["data"] = {k: compacted["data"][k] for k in ("process_id", "pid", "next_cursor", "state", "log_path", "log_truncated", "action_state", "command_outcome") if k in data}
         data_text = json.dumps(data, ensure_ascii=False, default=str)
         minimal["data_excerpt"] = data_text[-6_000:]
 
