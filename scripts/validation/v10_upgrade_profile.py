@@ -19,6 +19,7 @@ def main():
     parser.add_argument('operation',choices=['seed','verify'])
     parser.add_argument('--source',type=Path,required=True)
     parser.add_argument('--data',type=Path,required=True)
+    parser.add_argument('--previous-schema',type=int,default=6)
     args=parser.parse_args()
     source=args.source.resolve();data=args.data.resolve()
     if not source.is_relative_to(ROOT) or not data.is_relative_to(ROOT/'build'):
@@ -28,7 +29,7 @@ def main():
     from agent.server.projects import ProjectRegistry
     snapshot=data/'upgrade-contract.json'
     if args.operation=='seed':
-        if SCHEMA_VERSION!=6:parser.error('必须使用真实 v0.9 schema 6 源码建立旧数据')
+        if SCHEMA_VERSION!=args.previous_schema:parser.error('旧版 schema 不匹配')
         store=SQLiteStore(data)
         try:
             folder=data/'保留用户工程';folder.mkdir()
@@ -40,15 +41,16 @@ def main():
             project.knowledge().save('升级约定','保留原工程、历史、凭据和待执行步骤',trust='user')
             store.set_setting('v10.upgrade.canary','retained')
             store.set_setting('permission_mode','workspace')
+            store.set_setting('v11.upgrade.model-fixture','gemma4:31b')
             snapshot.write_text(json.dumps({'project':project.id,'thread':thread.id,'plan':plan,'checkpoint':checkpoint,
                 'original':str(folder/'original.txt'),'digest':digest(folder/'original.txt'),
                 'encrypted_files':{p.name:digest(p) for p in (data/'desktop').glob('*-secrets.json')}}),encoding='utf-8')
         finally:store.close()
-        print(json.dumps({'seeded':True,'schema':6,'task_state':'pending'},ensure_ascii=False))
+        print(json.dumps({'seeded':True,'schema':SCHEMA_VERSION,'task_state':'pending'},ensure_ascii=False))
         return
     # Verify that the installed application already migrated it, before opening a source store.
     with closing(sqlite3.connect((data/'local-coding-agent.sqlite3').as_uri()+'?mode=ro',uri=True)) as db:
-        assert db.execute('PRAGMA user_version').fetchone()[0]==7,'安装版尚未迁移，禁止由验收脚本代替迁移'
+        assert db.execute('PRAGMA user_version').fetchone()[0]==SCHEMA_VERSION,'安装版尚未迁移，禁止由验收脚本代替迁移'
     contract=json.loads(snapshot.read_text(encoding='utf-8'));store=SQLiteStore(data)
     try:
         assert store.get_setting('v10.upgrade.canary')=='retained'
@@ -59,10 +61,12 @@ def main():
         assert store.connection.execute('SELECT COUNT(*) FROM project_memories WHERE project_id=?',(contract['project'],)).fetchone()[0]==1
         assert digest(Path(contract['original']))==contract['digest']
         assert all(digest(data/'desktop'/name)==value for name,value in contract['encrypted_files'].items())
-        assert any((data/'backups').iterdir())
+        assert store.get_setting('v11.upgrade.model-fixture')=='gemma4:31b'
+        if args.previous_schema != SCHEMA_VERSION:
+            assert any((data/'backups').iterdir())
     finally:store.close()
-    print(json.dumps({'result':'PASS','schema':7,'history':True,'pending_task':True,'checkpoint':True,'memory':True,
-        'original_file':True,'encrypted_files':True,'migration_backup':True},ensure_ascii=False))
+    print(json.dumps({'result':'PASS','schema':SCHEMA_VERSION,'history':True,'pending_task':True,'checkpoint':True,'memory':True,
+        'original_file':True,'encrypted_files':True,'migration_backup_required':args.previous_schema != SCHEMA_VERSION},ensure_ascii=False))
 
 
 if __name__=='__main__':main()
