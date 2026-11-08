@@ -1,0 +1,4068 @@
+{
+  "latest_product_sha": "658ce95954b35db60c334bb49760581d5a32dcd6",
+  "stable_across_revision_runs": [
+    "01",
+    "02",
+    "03",
+    "06",
+    "07",
+    "08",
+    "09",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18",
+    "19",
+    "22",
+    "23",
+    "25",
+    "26",
+    "27",
+    "28",
+    "29"
+  ],
+  "runs": {
+    "phase1_target": {
+      "counts": {
+        "PASS": 5,
+        "FAIL": 1,
+        "BLOCKED": 2
+      },
+      "results": [
+        {
+          "case": "02",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 58.98,
+          "model_calls": 6,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 37828,
+            "output": 1575,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "04",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 48.34,
+          "model_calls": 4,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 28324,
+            "output": 1668,
+            "reported_calls": 4
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "11",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 23.09,
+          "model_calls": 4,
+          "tool_calls": 3,
+          "tokens": {
+            "input": 23772,
+            "output": 462,
+            "reported_calls": 4
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "14",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "AGENT_INTENT_CLASSIFICATION",
+          "code": "UNIFIED_READ_ONLY_INTENT",
+          "terminal": "turn.failed",
+          "seconds": 11.72,
+          "model_calls": 2,
+          "tool_calls": 1,
+          "tokens": {
+            "input": 7993,
+            "output": 310,
+            "reported_calls": 2
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "25",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 72.94,
+          "model_calls": 10,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 77410,
+            "output": 1974,
+            "reported_calls": 10
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "28",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 76.75,
+          "model_calls": 8,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 57423,
+            "output": 2615,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "29",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "BLOCKED",
+          "failure": "ENVIRONMENT_FAILURE",
+          "detail": "packaged_boot",
+          "seconds": 2.0,
+          "model_calls": 0,
+          "tool_calls": 0,
+          "tokens": null,
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "30",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "BLOCKED",
+          "failure": "ENVIRONMENT_FAILURE",
+          "detail": "packaged_boot",
+          "seconds": 2.03,
+          "model_calls": 0,
+          "tool_calls": 0,
+          "tokens": null,
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        }
+      ],
+      "manifest": {
+        "commit": "92ecfd66726e65fd3c7904049b89bd0ff377aa9d",
+        "driver": "36ef65dd24388d190d5959d724e1895450e6a626bda5e969f5385206eecacd45",
+        "model": "gemma4:31b",
+        "config": {
+          "context_window": 32768,
+          "max_output_tokens": null,
+          "model_steps": 50,
+          "request_seconds": 120,
+          "case_seconds": 300
+        },
+        "planned": [
+          [
+            "02",
+            1
+          ],
+          [
+            "04",
+            1
+          ],
+          [
+            "11",
+            1
+          ],
+          [
+            "14",
+            1
+          ],
+          [
+            "25",
+            1
+          ],
+          [
+            "28",
+            1
+          ],
+          [
+            "29",
+            1
+          ],
+          [
+            "30",
+            1
+          ]
+        ]
+      }
+    },
+    "pre_recovery_round": {
+      "counts": {
+        "PASS": 26,
+        "FAIL": 3,
+        "BLOCKED": 1
+      },
+      "results": [
+        {
+          "case": "01",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 53.09,
+          "model_calls": 6,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 41528,
+            "output": 1698,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "02",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 58.16,
+          "model_calls": 7,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 47894,
+            "output": 1785,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "03",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 108.78,
+          "model_calls": 11,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 102167,
+            "output": 3456,
+            "reported_calls": 11
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "04",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 44.77,
+          "model_calls": 4,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 28295,
+            "output": 1479,
+            "reported_calls": 4
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "05",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 61.7,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 34401,
+            "output": 2343,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "06",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 81.98,
+          "model_calls": 8,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 61897,
+            "output": 2720,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "07",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 71.7,
+          "model_calls": 9,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 66823,
+            "output": 2039,
+            "reported_calls": 9
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "08",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 76.66,
+          "model_calls": 8,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 55231,
+            "output": 2576,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "09",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 65.41,
+          "model_calls": 8,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 55779,
+            "output": 1940,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "10",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 73.45,
+          "model_calls": 10,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 73208,
+            "output": 1891,
+            "reported_calls": 10
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "11",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 22.89,
+          "model_calls": 4,
+          "tool_calls": 3,
+          "tokens": {
+            "input": 23758,
+            "output": 426,
+            "reported_calls": 4
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "12",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 46.61,
+          "model_calls": 6,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 39931,
+            "output": 1410,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "13",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 59.67,
+          "model_calls": 9,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 56744,
+            "output": 1698,
+            "reported_calls": 9
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "14",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 41.62,
+          "model_calls": 5,
+          "tool_calls": 4,
+          "tokens": {
+            "input": 30576,
+            "output": 1456,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "15",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 72.42,
+          "model_calls": 8,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 53353,
+            "output": 2548,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "16",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 54.0,
+          "model_calls": 6,
+          "tool_calls": 6,
+          "tokens": {
+            "input": 46025,
+            "output": 1821,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "17",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 40.11,
+          "model_calls": 5,
+          "tool_calls": 5,
+          "tokens": {
+            "input": 35954,
+            "output": 1150,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "18",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 43.55,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 35172,
+            "output": 1069,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "19",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 57.06,
+          "model_calls": 6,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 46530,
+            "output": 1720,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "20",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 79.84,
+          "model_calls": 8,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 50995,
+            "output": 2917,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "21",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "DELIVERY_ASSERTION",
+          "code": null,
+          "terminal": "turn.completed",
+          "assertion_failure": "external_command_exit_1",
+          "seconds": 81.0,
+          "model_calls": 7,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 54948,
+            "output": 2832,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "22",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 109.67,
+          "model_calls": 10,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 95720,
+            "output": 3518,
+            "reported_calls": 10
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "23",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "AGENT_FAILURE",
+          "code": "PLAN_BLOCKED",
+          "terminal": "error",
+          "seconds": 49.05,
+          "model_calls": 9,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 63644,
+            "output": 943,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0,
+          "control": "resume",
+          "cancelled_generation": true,
+          "reconnected": true
+        },
+        {
+          "case": "24",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "BLOCKED",
+          "failure": "PRODUCT_RESUME_CONFIRMATION",
+          "code": "PLAN_RESUME_CONFIRMATION_REQUIRED",
+          "terminal": "turn.failed",
+          "seconds": 73.59,
+          "model_calls": 8,
+          "tool_calls": 13,
+          "tokens": {
+            "input": 45108,
+            "output": 2786,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0,
+          "control": "restart",
+          "cancelled_generation": true,
+          "reconnected": true
+        },
+        {
+          "case": "25",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 85.56,
+          "model_calls": 10,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 77488,
+            "output": 2515,
+            "reported_calls": 10
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "26",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 54.28,
+          "model_calls": 7,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 53472,
+            "output": 1423,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "27",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 73.73,
+          "model_calls": 7,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 47884,
+            "output": 2827,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "28",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 50.69,
+          "model_calls": 5,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 34644,
+            "output": 1742,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "29",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "DELIVERY_ASSERTION",
+          "code": null,
+          "terminal": "turn.completed",
+          "assertion_failure": "external_command_exit_1",
+          "seconds": 111.09,
+          "model_calls": 10,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 89582,
+            "output": 3880,
+            "reported_calls": 10
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "30",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 88.58,
+          "model_calls": 8,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 58798,
+            "output": 3068,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        }
+      ],
+      "manifest": {
+        "commit": "55e13f7cdd4c63436102672d0bea85028b286d37",
+        "driver": "36ef65dd24388d190d5959d724e1895450e6a626bda5e969f5385206eecacd45",
+        "model": "gemma4:31b",
+        "config": {
+          "context_window": 32768,
+          "max_output_tokens": null,
+          "model_steps": 100,
+          "request_seconds": 180,
+          "case_seconds": 600
+        },
+        "planned": [
+          [
+            "01",
+            1
+          ],
+          [
+            "02",
+            1
+          ],
+          [
+            "03",
+            1
+          ],
+          [
+            "04",
+            1
+          ],
+          [
+            "05",
+            1
+          ],
+          [
+            "06",
+            1
+          ],
+          [
+            "07",
+            1
+          ],
+          [
+            "08",
+            1
+          ],
+          [
+            "09",
+            1
+          ],
+          [
+            "10",
+            1
+          ],
+          [
+            "11",
+            1
+          ],
+          [
+            "12",
+            1
+          ],
+          [
+            "13",
+            1
+          ],
+          [
+            "14",
+            1
+          ],
+          [
+            "15",
+            1
+          ],
+          [
+            "16",
+            1
+          ],
+          [
+            "17",
+            1
+          ],
+          [
+            "18",
+            1
+          ],
+          [
+            "19",
+            1
+          ],
+          [
+            "20",
+            1
+          ],
+          [
+            "21",
+            1
+          ],
+          [
+            "22",
+            1
+          ],
+          [
+            "23",
+            1
+          ],
+          [
+            "24",
+            1
+          ],
+          [
+            "25",
+            1
+          ],
+          [
+            "26",
+            1
+          ],
+          [
+            "27",
+            1
+          ],
+          [
+            "28",
+            1
+          ],
+          [
+            "29",
+            1
+          ],
+          [
+            "30",
+            1
+          ]
+        ]
+      }
+    },
+    "recovery_target": {
+      "counts": {
+        "PASS": 3
+      },
+      "results": [
+        {
+          "case": "21",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 166.83,
+          "model_calls": 14,
+          "tool_calls": 20,
+          "tokens": {
+            "input": 146836,
+            "output": 5208,
+            "reported_calls": 14
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "23",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 157.17,
+          "model_calls": 17,
+          "tool_calls": 16,
+          "tokens": {
+            "input": 138189,
+            "output": 4861,
+            "reported_calls": 16
+          },
+          "recovery_count": 1,
+          "completion_repair_count": 0,
+          "control": "resume",
+          "cancelled_generation": true,
+          "reconnected": true
+        },
+        {
+          "case": "29",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 65.59,
+          "model_calls": 7,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 55391,
+            "output": 2006,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        }
+      ],
+      "manifest": {
+        "commit": "b933b7d070f2d178eaa071beb66d3983f9369ca2",
+        "driver": "0482b410abe06a05f2822884c6978aeda879db79eb4e65839a85c890e55118c1",
+        "model": "gemma4:31b",
+        "config": {
+          "context_window": 32768,
+          "max_output_tokens": null,
+          "model_steps": 100,
+          "request_seconds": 180,
+          "case_seconds": 600
+        },
+        "planned": [
+          [
+            "21",
+            1
+          ],
+          [
+            "23",
+            1
+          ],
+          [
+            "29",
+            1
+          ]
+        ]
+      }
+    },
+    "round1": {
+      "counts": {
+        "PASS": 25,
+        "FAIL": 4,
+        "BLOCKED": 1
+      },
+      "results": [
+        {
+          "case": "01",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 42.5,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 32556,
+            "output": 1326,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "02",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 58.83,
+          "model_calls": 6,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 38126,
+            "output": 2091,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "03",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 97.09,
+          "model_calls": 10,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 87519,
+            "output": 3101,
+            "reported_calls": 10
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "04",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "TOOL_FAILURE",
+          "code": "TOOL_FAILURE_LIMIT",
+          "terminal": "turn.failed",
+          "seconds": 50.06,
+          "model_calls": 4,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 31280,
+            "output": 1666,
+            "reported_calls": 4
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "05",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "DELIVERY_ASSERTION",
+          "code": null,
+          "terminal": "turn.completed",
+          "assertion_failure": "external_command_exit_1",
+          "seconds": 76.28,
+          "model_calls": 5,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 39474,
+            "output": 3032,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "06",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 83.5,
+          "model_calls": 8,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 58620,
+            "output": 2831,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "07",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 93.48,
+          "model_calls": 11,
+          "tool_calls": 12,
+          "tokens": {
+            "input": 79814,
+            "output": 2982,
+            "reported_calls": 11
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "08",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 94.06,
+          "model_calls": 9,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 68627,
+            "output": 3229,
+            "reported_calls": 9
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "09",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 74.99,
+          "model_calls": 8,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 58211,
+            "output": 2427,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "10",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 62.91,
+          "model_calls": 6,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 44653,
+            "output": 2071,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "11",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 22.81,
+          "model_calls": 4,
+          "tool_calls": 3,
+          "tokens": {
+            "input": 23780,
+            "output": 452,
+            "reported_calls": 4
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "12",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 50.88,
+          "model_calls": 7,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 46675,
+            "output": 1534,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "13",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 63.45,
+          "model_calls": 9,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 57749,
+            "output": 1902,
+            "reported_calls": 9
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "14",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 39.78,
+          "model_calls": 5,
+          "tool_calls": 4,
+          "tokens": {
+            "input": 30576,
+            "output": 1365,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "15",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 74.61,
+          "model_calls": 9,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 59623,
+            "output": 2479,
+            "reported_calls": 9
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "16",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 53.72,
+          "model_calls": 6,
+          "tool_calls": 6,
+          "tokens": {
+            "input": 46017,
+            "output": 1801,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "17",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 43.44,
+          "model_calls": 6,
+          "tool_calls": 6,
+          "tokens": {
+            "input": 45771,
+            "output": 1115,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "18",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 39.03,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 35164,
+            "output": 953,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "19",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 38.7,
+          "model_calls": 4,
+          "tool_calls": 5,
+          "tokens": {
+            "input": 25733,
+            "output": 1322,
+            "reported_calls": 4
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "20",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 65.58,
+          "model_calls": 7,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 44937,
+            "output": 2301,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "21",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "AGENT_FAILURE",
+          "code": "PLAN_TOOLS_UNRESOLVED",
+          "terminal": "turn.failed",
+          "seconds": 90.2,
+          "model_calls": 10,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 84258,
+            "output": 2982,
+            "reported_calls": 10
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 1
+        },
+        {
+          "case": "22",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 94.0,
+          "model_calls": 11,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 94111,
+            "output": 2543,
+            "reported_calls": 11
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "23",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 99.49,
+          "model_calls": 12,
+          "tool_calls": 16,
+          "tokens": {
+            "input": 75491,
+            "output": 3389,
+            "reported_calls": 11
+          },
+          "recovery_count": 1,
+          "completion_repair_count": 0,
+          "control": "resume",
+          "cancelled_generation": true,
+          "reconnected": true
+        },
+        {
+          "case": "24",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "BLOCKED",
+          "failure": "PRODUCT_RESUME_CONFIRMATION",
+          "code": "PLAN_RESUME_CONFIRMATION_REQUIRED",
+          "terminal": "turn.failed",
+          "seconds": 88.98,
+          "model_calls": 9,
+          "tool_calls": 13,
+          "tokens": {
+            "input": 51789,
+            "output": 3480,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0,
+          "control": "restart",
+          "cancelled_generation": true,
+          "reconnected": true
+        },
+        {
+          "case": "25",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 69.75,
+          "model_calls": 9,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 67858,
+            "output": 2056,
+            "reported_calls": 9
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "26",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 53.17,
+          "model_calls": 7,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 54366,
+            "output": 1393,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "27",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 92.0,
+          "model_calls": 9,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 66924,
+            "output": 3322,
+            "reported_calls": 9
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "28",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 169.8,
+          "model_calls": 15,
+          "tool_calls": 21,
+          "tokens": {
+            "input": 157838,
+            "output": 5077,
+            "reported_calls": 15
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "29",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 71.7,
+          "model_calls": 7,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 53537,
+            "output": 2315,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "30",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "DELIVERY_ASSERTION",
+          "code": null,
+          "terminal": "turn.completed",
+          "assertion_failure": "external_command_exit_1",
+          "seconds": 185.55,
+          "model_calls": 14,
+          "tool_calls": 25,
+          "tokens": {
+            "input": 161254,
+            "output": 5447,
+            "reported_calls": 14
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        }
+      ],
+      "manifest": {
+        "commit": "b933b7d070f2d178eaa071beb66d3983f9369ca2",
+        "driver": "0482b410abe06a05f2822884c6978aeda879db79eb4e65839a85c890e55118c1",
+        "model": "gemma4:31b",
+        "config": {
+          "context_window": 32768,
+          "max_output_tokens": null,
+          "model_steps": 100,
+          "request_seconds": 180,
+          "case_seconds": 600
+        },
+        "planned": [
+          [
+            "01",
+            1
+          ],
+          [
+            "02",
+            1
+          ],
+          [
+            "03",
+            1
+          ],
+          [
+            "04",
+            1
+          ],
+          [
+            "05",
+            1
+          ],
+          [
+            "06",
+            1
+          ],
+          [
+            "07",
+            1
+          ],
+          [
+            "08",
+            1
+          ],
+          [
+            "09",
+            1
+          ],
+          [
+            "10",
+            1
+          ],
+          [
+            "11",
+            1
+          ],
+          [
+            "12",
+            1
+          ],
+          [
+            "13",
+            1
+          ],
+          [
+            "14",
+            1
+          ],
+          [
+            "15",
+            1
+          ],
+          [
+            "16",
+            1
+          ],
+          [
+            "17",
+            1
+          ],
+          [
+            "18",
+            1
+          ],
+          [
+            "19",
+            1
+          ],
+          [
+            "20",
+            1
+          ],
+          [
+            "21",
+            1
+          ],
+          [
+            "22",
+            1
+          ],
+          [
+            "23",
+            1
+          ],
+          [
+            "24",
+            1
+          ],
+          [
+            "25",
+            1
+          ],
+          [
+            "26",
+            1
+          ],
+          [
+            "27",
+            1
+          ],
+          [
+            "28",
+            1
+          ],
+          [
+            "29",
+            1
+          ],
+          [
+            "30",
+            1
+          ]
+        ]
+      }
+    },
+    "round2": {
+      "counts": {
+        "PASS": 25,
+        "FAIL": 4,
+        "BLOCKED": 1
+      },
+      "results": [
+        {
+          "case": "01",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 42.58,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 32502,
+            "output": 1340,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "02",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 60.95,
+          "model_calls": 6,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 41437,
+            "output": 2106,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "03",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 98.49,
+          "model_calls": 9,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 70609,
+            "output": 3622,
+            "reported_calls": 9
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "04",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "TOOL_FAILURE",
+          "code": "TOOL_FAILURE_LIMIT",
+          "terminal": "turn.failed",
+          "seconds": 59.98,
+          "model_calls": 4,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 31282,
+            "output": 2242,
+            "reported_calls": 4
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "05",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "DELIVERY_ASSERTION",
+          "code": null,
+          "terminal": "turn.completed",
+          "assertion_failure": "external_command_exit_1",
+          "seconds": 54.84,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 34109,
+            "output": 1995,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "06",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 90.67,
+          "model_calls": 9,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 69199,
+            "output": 3096,
+            "reported_calls": 9
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "07",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 83.27,
+          "model_calls": 10,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 73871,
+            "output": 2552,
+            "reported_calls": 10
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "08",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 83.86,
+          "model_calls": 8,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 56586,
+            "output": 2979,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "09",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 67.38,
+          "model_calls": 8,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 55685,
+            "output": 2082,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "10",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 51.55,
+          "model_calls": 5,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 34146,
+            "output": 1683,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "11",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 23.02,
+          "model_calls": 4,
+          "tool_calls": 3,
+          "tokens": {
+            "input": 23756,
+            "output": 456,
+            "reported_calls": 4
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "12",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 49.86,
+          "model_calls": 8,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 53329,
+            "output": 1284,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "13",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 63.19,
+          "model_calls": 9,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 57343,
+            "output": 1916,
+            "reported_calls": 9
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "14",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 34.34,
+          "model_calls": 5,
+          "tool_calls": 4,
+          "tokens": {
+            "input": 30575,
+            "output": 1067,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "15",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 89.83,
+          "model_calls": 9,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 57696,
+            "output": 3415,
+            "reported_calls": 9
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "16",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 56.91,
+          "model_calls": 6,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 51988,
+            "output": 1960,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "17",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 37.84,
+          "model_calls": 5,
+          "tool_calls": 5,
+          "tokens": {
+            "input": 36012,
+            "output": 1028,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "18",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 46.83,
+          "model_calls": 6,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 44680,
+            "output": 1164,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "19",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 60.11,
+          "model_calls": 6,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 46138,
+            "output": 1903,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "20",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "DELIVERY_ASSERTION",
+          "code": null,
+          "terminal": "turn.completed",
+          "assertion_failure": "FileNotFoundError",
+          "seconds": 82.19,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 31947,
+            "output": 3617,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "21",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 137.38,
+          "model_calls": 14,
+          "tool_calls": 18,
+          "tokens": {
+            "input": 145976,
+            "output": 3721,
+            "reported_calls": 14
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "22",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 83.55,
+          "model_calls": 11,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 85387,
+            "output": 2271,
+            "reported_calls": 11
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "23",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 158.59,
+          "model_calls": 17,
+          "tool_calls": 16,
+          "tokens": {
+            "input": 137510,
+            "output": 4960,
+            "reported_calls": 16
+          },
+          "recovery_count": 1,
+          "completion_repair_count": 0,
+          "control": "resume",
+          "cancelled_generation": true,
+          "reconnected": true
+        },
+        {
+          "case": "24",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "BLOCKED",
+          "failure": "PRODUCT_RESUME_CONFIRMATION",
+          "code": "PLAN_RESUME_CONFIRMATION_REQUIRED",
+          "terminal": "turn.failed",
+          "seconds": 66.34,
+          "model_calls": 7,
+          "tool_calls": 13,
+          "tokens": {
+            "input": 36614,
+            "output": 2645,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0,
+          "control": "restart",
+          "cancelled_generation": true,
+          "reconnected": true
+        },
+        {
+          "case": "25",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 70.58,
+          "model_calls": 9,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 68141,
+            "output": 2105,
+            "reported_calls": 9
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "26",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 54.08,
+          "model_calls": 7,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 53727,
+            "output": 1474,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "27",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 74.16,
+          "model_calls": 7,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 50241,
+            "output": 2797,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "28",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 150.05,
+          "model_calls": 15,
+          "tool_calls": 21,
+          "tokens": {
+            "input": 154151,
+            "output": 4150,
+            "reported_calls": 15
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "29",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 66.05,
+          "model_calls": 7,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 55507,
+            "output": 2061,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "30",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "TOOL_PERMISSION",
+          "code": "WORKFLOW_ROLE_PERMISSION",
+          "terminal": "turn.failed",
+          "seconds": 152.09,
+          "model_calls": 13,
+          "tool_calls": 15,
+          "tokens": {
+            "input": 123128,
+            "output": 5079,
+            "reported_calls": 13
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        }
+      ],
+      "manifest": {
+        "commit": "b933b7d070f2d178eaa071beb66d3983f9369ca2",
+        "driver": "0482b410abe06a05f2822884c6978aeda879db79eb4e65839a85c890e55118c1",
+        "model": "gemma4:31b",
+        "config": {
+          "context_window": 32768,
+          "max_output_tokens": null,
+          "model_steps": 100,
+          "request_seconds": 180,
+          "case_seconds": 600
+        },
+        "planned": [
+          [
+            "01",
+            1
+          ],
+          [
+            "02",
+            1
+          ],
+          [
+            "03",
+            1
+          ],
+          [
+            "04",
+            1
+          ],
+          [
+            "05",
+            1
+          ],
+          [
+            "06",
+            1
+          ],
+          [
+            "07",
+            1
+          ],
+          [
+            "08",
+            1
+          ],
+          [
+            "09",
+            1
+          ],
+          [
+            "10",
+            1
+          ],
+          [
+            "11",
+            1
+          ],
+          [
+            "12",
+            1
+          ],
+          [
+            "13",
+            1
+          ],
+          [
+            "14",
+            1
+          ],
+          [
+            "15",
+            1
+          ],
+          [
+            "16",
+            1
+          ],
+          [
+            "17",
+            1
+          ],
+          [
+            "18",
+            1
+          ],
+          [
+            "19",
+            1
+          ],
+          [
+            "20",
+            1
+          ],
+          [
+            "21",
+            1
+          ],
+          [
+            "22",
+            1
+          ],
+          [
+            "23",
+            1
+          ],
+          [
+            "24",
+            1
+          ],
+          [
+            "25",
+            1
+          ],
+          [
+            "26",
+            1
+          ],
+          [
+            "27",
+            1
+          ],
+          [
+            "28",
+            1
+          ],
+          [
+            "29",
+            1
+          ],
+          [
+            "30",
+            1
+          ]
+        ]
+      }
+    },
+    "interrupted_round3": {
+      "counts": {
+        "PASS": 3,
+        "FAIL": 1,
+        "NOT_RUN": 26
+      },
+      "results": [
+        {
+          "case": "01",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 44.92,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 32636,
+            "output": 1465,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "02",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 55.78,
+          "model_calls": 6,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 37841,
+            "output": 1965,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "03",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 100.55,
+          "model_calls": 10,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 87374,
+            "output": 3318,
+            "reported_calls": 10
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "04",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "TOOL_FAILURE",
+          "code": "TOOL_FAILURE_LIMIT",
+          "terminal": "turn.failed",
+          "seconds": 47.17,
+          "model_calls": 4,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 31248,
+            "output": 1514,
+            "reported_calls": 4
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "05",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "06",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "07",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "08",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "09",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "10",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "11",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "12",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "13",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "14",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "15",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "16",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "17",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "18",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "19",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "20",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "21",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "22",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "23",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "24",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "25",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "26",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "27",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "28",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "29",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        },
+        {
+          "case": "30",
+          "repeat": 1,
+          "status": "NOT_RUN"
+        }
+      ],
+      "manifest": {
+        "commit": "b933b7d070f2d178eaa071beb66d3983f9369ca2",
+        "driver": "0482b410abe06a05f2822884c6978aeda879db79eb4e65839a85c890e55118c1",
+        "model": "gemma4:31b",
+        "config": {
+          "context_window": 32768,
+          "max_output_tokens": null,
+          "model_steps": 100,
+          "request_seconds": 180,
+          "case_seconds": 600
+        },
+        "planned": [
+          [
+            "01",
+            1
+          ],
+          [
+            "02",
+            1
+          ],
+          [
+            "03",
+            1
+          ],
+          [
+            "04",
+            1
+          ],
+          [
+            "05",
+            1
+          ],
+          [
+            "06",
+            1
+          ],
+          [
+            "07",
+            1
+          ],
+          [
+            "08",
+            1
+          ],
+          [
+            "09",
+            1
+          ],
+          [
+            "10",
+            1
+          ],
+          [
+            "11",
+            1
+          ],
+          [
+            "12",
+            1
+          ],
+          [
+            "13",
+            1
+          ],
+          [
+            "14",
+            1
+          ],
+          [
+            "15",
+            1
+          ],
+          [
+            "16",
+            1
+          ],
+          [
+            "17",
+            1
+          ],
+          [
+            "18",
+            1
+          ],
+          [
+            "19",
+            1
+          ],
+          [
+            "20",
+            1
+          ],
+          [
+            "21",
+            1
+          ],
+          [
+            "22",
+            1
+          ],
+          [
+            "23",
+            1
+          ],
+          [
+            "24",
+            1
+          ],
+          [
+            "25",
+            1
+          ],
+          [
+            "26",
+            1
+          ],
+          [
+            "27",
+            1
+          ],
+          [
+            "28",
+            1
+          ],
+          [
+            "29",
+            1
+          ],
+          [
+            "30",
+            1
+          ]
+        ]
+      }
+    },
+    "round3": {
+      "counts": {
+        "PASS": 27,
+        "FAIL": 2,
+        "BLOCKED": 1
+      },
+      "results": [
+        {
+          "case": "01",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 43.53,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 32532,
+            "output": 1394,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "02",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 64.28,
+          "model_calls": 7,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 47846,
+            "output": 2156,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "03",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 114.22,
+          "model_calls": 11,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 98702,
+            "output": 3787,
+            "reported_calls": 11
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "04",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "TOOL_FAILURE",
+          "code": "TOOL_FAILURE_LIMIT",
+          "terminal": "turn.failed",
+          "seconds": 42.84,
+          "model_calls": 4,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 31176,
+            "output": 1313,
+            "reported_calls": 4
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "05",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 63.83,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 34279,
+            "output": 2529,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "06",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 94.19,
+          "model_calls": 9,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 69203,
+            "output": 3252,
+            "reported_calls": 9
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "07",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 76.47,
+          "model_calls": 9,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 64084,
+            "output": 2342,
+            "reported_calls": 9
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "08",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 92.83,
+          "model_calls": 10,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 71103,
+            "output": 3171,
+            "reported_calls": 10
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "09",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 71.66,
+          "model_calls": 8,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 57544,
+            "output": 2334,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "10",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 62.44,
+          "model_calls": 6,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 44712,
+            "output": 2048,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "11",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 22.78,
+          "model_calls": 4,
+          "tool_calls": 3,
+          "tokens": {
+            "input": 23778,
+            "output": 447,
+            "reported_calls": 4
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "12",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 49.92,
+          "model_calls": 7,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 47336,
+            "output": 1419,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "13",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 54.64,
+          "model_calls": 8,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 50103,
+            "output": 1630,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "14",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 39.58,
+          "model_calls": 5,
+          "tool_calls": 4,
+          "tokens": {
+            "input": 30583,
+            "output": 1360,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "15",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 86.33,
+          "model_calls": 10,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 65609,
+            "output": 2980,
+            "reported_calls": 10
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "16",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 52.48,
+          "model_calls": 6,
+          "tool_calls": 6,
+          "tokens": {
+            "input": 46081,
+            "output": 1726,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "17",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 40.99,
+          "model_calls": 5,
+          "tool_calls": 5,
+          "tokens": {
+            "input": 36006,
+            "output": 1208,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "18",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 37.77,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 35154,
+            "output": 927,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "19",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 77.41,
+          "model_calls": 8,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 62489,
+            "output": 2544,
+            "reported_calls": 8
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "20",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 100.38,
+          "model_calls": 11,
+          "tool_calls": 12,
+          "tokens": {
+            "input": 77776,
+            "output": 3383,
+            "reported_calls": 11
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "21",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 168.69,
+          "model_calls": 16,
+          "tool_calls": 16,
+          "tokens": {
+            "input": 147328,
+            "output": 5414,
+            "reported_calls": 16
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "22",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 91.67,
+          "model_calls": 12,
+          "tool_calls": 12,
+          "tokens": {
+            "input": 94535,
+            "output": 2472,
+            "reported_calls": 12
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "23",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 84.17,
+          "model_calls": 8,
+          "tool_calls": 16,
+          "tokens": {
+            "input": 49790,
+            "output": 3231,
+            "reported_calls": 7
+          },
+          "recovery_count": 1,
+          "completion_repair_count": 0,
+          "control": "resume",
+          "cancelled_generation": true,
+          "reconnected": true
+        },
+        {
+          "case": "24",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "BLOCKED",
+          "failure": "PRODUCT_RESUME_CONFIRMATION",
+          "code": "PLAN_RESUME_CONFIRMATION_REQUIRED",
+          "terminal": "turn.failed",
+          "seconds": 75.59,
+          "model_calls": 8,
+          "tool_calls": 13,
+          "tokens": {
+            "input": 45598,
+            "output": 2935,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0,
+          "control": "restart",
+          "cancelled_generation": true,
+          "reconnected": true
+        },
+        {
+          "case": "25",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 73.45,
+          "model_calls": 9,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 68416,
+            "output": 2254,
+            "reported_calls": 9
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "26",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 53.08,
+          "model_calls": 7,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 50436,
+            "output": 1452,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "27",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 62.94,
+          "model_calls": 6,
+          "tool_calls": 6,
+          "tokens": {
+            "input": 40503,
+            "output": 2418,
+            "reported_calls": 6
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "28",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 171.45,
+          "model_calls": 16,
+          "tool_calls": 22,
+          "tokens": {
+            "input": 170133,
+            "output": 4900,
+            "reported_calls": 16
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "29",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 66.31,
+          "model_calls": 7,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 55433,
+            "output": 2081,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        },
+        {
+          "case": "30",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "TOOL_FAILURE",
+          "code": "TOOL_FAILURE_LIMIT",
+          "terminal": "turn.failed",
+          "seconds": 95.78,
+          "model_calls": 9,
+          "tool_calls": 14,
+          "tokens": {
+            "input": 80615,
+            "output": 2987,
+            "reported_calls": 9
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0
+        }
+      ],
+      "manifest": {
+        "commit": "658ce95954b35db60c334bb49760581d5a32dcd6",
+        "driver": "0482b410abe06a05f2822884c6978aeda879db79eb4e65839a85c890e55118c1",
+        "model": "gemma4:31b",
+        "config": {
+          "context_window": 32768,
+          "max_output_tokens": null,
+          "model_steps": 100,
+          "request_seconds": 180,
+          "case_seconds": 600
+        },
+        "planned": [
+          [
+            "01",
+            1
+          ],
+          [
+            "02",
+            1
+          ],
+          [
+            "03",
+            1
+          ],
+          [
+            "04",
+            1
+          ],
+          [
+            "05",
+            1
+          ],
+          [
+            "06",
+            1
+          ],
+          [
+            "07",
+            1
+          ],
+          [
+            "08",
+            1
+          ],
+          [
+            "09",
+            1
+          ],
+          [
+            "10",
+            1
+          ],
+          [
+            "11",
+            1
+          ],
+          [
+            "12",
+            1
+          ],
+          [
+            "13",
+            1
+          ],
+          [
+            "14",
+            1
+          ],
+          [
+            "15",
+            1
+          ],
+          [
+            "16",
+            1
+          ],
+          [
+            "17",
+            1
+          ],
+          [
+            "18",
+            1
+          ],
+          [
+            "19",
+            1
+          ],
+          [
+            "20",
+            1
+          ],
+          [
+            "21",
+            1
+          ],
+          [
+            "22",
+            1
+          ],
+          [
+            "23",
+            1
+          ],
+          [
+            "24",
+            1
+          ],
+          [
+            "25",
+            1
+          ],
+          [
+            "26",
+            1
+          ],
+          [
+            "27",
+            1
+          ],
+          [
+            "28",
+            1
+          ],
+          [
+            "29",
+            1
+          ],
+          [
+            "30",
+            1
+          ]
+        ]
+      }
+    },
+    "legacy21": {
+      "counts": {
+        "PASS": 21
+      },
+      "results": [
+        {
+          "case": "A",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 85.28,
+          "tool_calls": 10,
+          "tokens": null
+        },
+        {
+          "case": "A",
+          "repeat": 2,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 59.89,
+          "tool_calls": 9,
+          "tokens": null
+        },
+        {
+          "case": "A",
+          "repeat": 3,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 63.23,
+          "tool_calls": 9,
+          "tokens": null
+        },
+        {
+          "case": "B",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 187.42,
+          "tool_calls": 13,
+          "tokens": null
+        },
+        {
+          "case": "B",
+          "repeat": 2,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 117.33,
+          "tool_calls": 11,
+          "tokens": null
+        },
+        {
+          "case": "B",
+          "repeat": 3,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 214.94,
+          "tool_calls": 14,
+          "tokens": null
+        },
+        {
+          "case": "C",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 42.3,
+          "tool_calls": 6,
+          "tokens": null
+        },
+        {
+          "case": "C",
+          "repeat": 2,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 42.03,
+          "tool_calls": 6,
+          "tokens": null
+        },
+        {
+          "case": "C",
+          "repeat": 3,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 39.89,
+          "tool_calls": 6,
+          "tokens": null
+        },
+        {
+          "case": "D",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 56.22,
+          "tool_calls": 6,
+          "tokens": null
+        },
+        {
+          "case": "D",
+          "repeat": 2,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 39.14,
+          "tool_calls": 5,
+          "tokens": null
+        },
+        {
+          "case": "D",
+          "repeat": 3,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 48.02,
+          "tool_calls": 5,
+          "tokens": null
+        },
+        {
+          "case": "E",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 108.97,
+          "tool_calls": 15,
+          "tokens": null
+        },
+        {
+          "case": "E",
+          "repeat": 2,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 116.36,
+          "tool_calls": 16,
+          "tokens": null
+        },
+        {
+          "case": "E",
+          "repeat": 3,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 207.92,
+          "tool_calls": 26,
+          "tokens": null
+        },
+        {
+          "case": "F-vision",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 24.81,
+          "tool_calls": 2,
+          "tokens": null
+        },
+        {
+          "case": "F-vision",
+          "repeat": 2,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 24.41,
+          "tool_calls": 2,
+          "tokens": null
+        },
+        {
+          "case": "F-vision",
+          "repeat": 3,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 25.39,
+          "tool_calls": 2,
+          "tokens": null
+        },
+        {
+          "case": "F-desktop",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 73.02,
+          "tool_calls": 6,
+          "tokens": null,
+          "foreground_switch": true,
+          "saved_text_verified": true
+        },
+        {
+          "case": "F-desktop",
+          "repeat": 2,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 113.88,
+          "tool_calls": 9,
+          "tokens": null,
+          "foreground_switch": true,
+          "saved_text_verified": true
+        },
+        {
+          "case": "F-desktop",
+          "repeat": 3,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 76.83,
+          "tool_calls": 6,
+          "tokens": null,
+          "foreground_switch": true,
+          "saved_text_verified": true
+        }
+      ]
+    },
+    "projects": {
+      "counts": {
+        "FAIL": 1,
+        "PASS": 2
+      },
+      "results": [
+        {
+          "case": "P1",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "AGENT_FAILURE",
+          "code": "PLAN_STEP_NO_EVIDENCE",
+          "terminal": "turn.failed",
+          "seconds": 259.59,
+          "tool_calls": 21,
+          "tokens": null
+        },
+        {
+          "case": "P2",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 109.34,
+          "tool_calls": 9,
+          "tokens": null
+        },
+        {
+          "case": "P3",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 117.59,
+          "tool_calls": 9,
+          "tokens": null
+        }
+      ]
+    },
+    "project_retry": {
+      "counts": {
+        "FAIL": 1
+      },
+      "results": [
+        {
+          "case": "P1",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "AGENT_FAILURE",
+          "code": "PLAN_STEP_NO_EVIDENCE",
+          "terminal": "turn.failed",
+          "seconds": 240.34,
+          "tool_calls": 22,
+          "tokens": null
+        }
+      ]
+    },
+    "first_protection_attempt": {
+      "counts": {
+        "PASS": 2,
+        "FAIL": 1
+      },
+      "results": [
+        {
+          "case": "20",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 58.23,
+          "model_calls": 4,
+          "tool_calls": 5,
+          "tokens": {
+            "input": 25327,
+            "output": 2462,
+            "reported_calls": 4
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0,
+          "preserved_file_bytes": true
+        },
+        {
+          "case": "20",
+          "repeat": 2,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 66.73,
+          "model_calls": 7,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 49177,
+            "output": 2262,
+            "reported_calls": 7
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0,
+          "preserved_file_bytes": true
+        },
+        {
+          "case": "20",
+          "repeat": 3,
+          "model": "gemma4:31b",
+          "status": "FAIL",
+          "failure": "DELIVERY_ASSERTION",
+          "code": null,
+          "terminal": "turn.completed",
+          "assertion_failure": "FileNotFoundError",
+          "seconds": 81.7,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 31905,
+            "output": 3580,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0,
+          "preserved_file_bytes": false
+        }
+      ],
+      "manifest": {
+        "commit": "9de44a5a1c6487a16dbafdecb49191197d814725",
+        "driver": "0482b410abe06a05f2822884c6978aeda879db79eb4e65839a85c890e55118c1",
+        "model": "gemma4:31b",
+        "config": {
+          "context_window": 32768,
+          "max_output_tokens": null,
+          "model_steps": 100,
+          "request_seconds": 180,
+          "case_seconds": 600
+        },
+        "planned": [
+          [
+            "20",
+            1
+          ],
+          [
+            "20",
+            2
+          ],
+          [
+            "20",
+            3
+          ]
+        ]
+      }
+    },
+    "final_protection_attempt": {
+      "counts": {
+        "PASS": 3
+      },
+      "results": [
+        {
+          "case": "20",
+          "repeat": 1,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 108.09,
+          "model_calls": 10,
+          "tool_calls": 12,
+          "tokens": {
+            "input": 71409,
+            "output": 4036,
+            "reported_calls": 10
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0,
+          "preserved_file_bytes": true
+        },
+        {
+          "case": "20",
+          "repeat": 2,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 73.86,
+          "model_calls": 4,
+          "tool_calls": 5,
+          "tokens": {
+            "input": 25324,
+            "output": 3329,
+            "reported_calls": 4
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0,
+          "preserved_file_bytes": true
+        },
+        {
+          "case": "20",
+          "repeat": 3,
+          "model": "gemma4:31b",
+          "status": "PASS",
+          "failure": null,
+          "code": null,
+          "terminal": "turn.completed",
+          "seconds": 58.59,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 32255,
+            "output": 2265,
+            "reported_calls": 5
+          },
+          "recovery_count": 0,
+          "completion_repair_count": 0,
+          "preserved_file_bytes": true
+        }
+      ],
+      "manifest": {
+        "commit": "658ce95954b35db60c334bb49760581d5a32dcd6",
+        "driver": "0482b410abe06a05f2822884c6978aeda879db79eb4e65839a85c890e55118c1",
+        "model": "gemma4:31b",
+        "config": {
+          "context_window": 32768,
+          "max_output_tokens": null,
+          "model_steps": 100,
+          "request_seconds": 180,
+          "case_seconds": 600
+        },
+        "planned": [
+          [
+            "20",
+            1
+          ],
+          [
+            "20",
+            2
+          ],
+          [
+            "20",
+            3
+          ]
+        ]
+      }
+    }
+  }
+}
