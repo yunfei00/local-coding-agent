@@ -84,6 +84,48 @@ def protected_edit(root: Path, baseline: dict, tool: str, arguments: dict) -> st
     return None
 
 
+def protected_workspace_files(root: Path, goal: str) -> dict[str, str]:
+    """Fingerprint explicitly preserved existing files without storing their contents."""
+    name = r'([A-Z][A-Z0-9_-]{1,63}|[\w./\\-]+\.[A-Za-z0-9]+)'
+    paths = re.findall(r'(?:保持|保留)\s*[`"]?' + name + r'[`"]?\s*(?:原样|不变)', goal)
+    paths += re.findall(r'(?:不要|不得|禁止)修改\s*[`"]?' + name + r'[`"]?', goal)
+    result = {}
+    for raw in paths[:20]:
+        path = root / raw.replace('\\', '/')
+        if (path.is_file() and path.resolve().is_relative_to(root.resolve())
+                and path.stat().st_size <= 16 * 1024 * 1024):
+            result[path.resolve().relative_to(root.resolve()).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return result
+
+
+def protected_workspace_changes(root: Path, baseline: dict[str, str]) -> list[str]:
+    changed = []
+    for name, digest in baseline.items():
+        path = root / name
+        if (not path.is_file() or not path.resolve().is_relative_to(root.resolve())
+                or path.stat().st_size > 16 * 1024 * 1024 or hashlib.sha256(path.read_bytes()).hexdigest() != digest):
+            changed.append(name)
+    return changed
+
+
+def protected_workspace_tool(root: Path, baseline: dict[str, str], name: str, arguments: dict) -> str | None:
+    if not baseline:
+        return None
+    if name in {'write_file', 'apply_patch', 'delete_file'}:
+        path = (root / str(arguments.get('path', ''))).resolve()
+        if any(path == (root / protected).resolve() for protected in baseline):
+            return '用户要求保留该文件；没有执行写入或删除。'
+    if name == 'start_process':
+        return '当前任务有明确保留文件，不能在交付目录启动后台进程。请使用隔离验证。'
+    if name == 'run_command':
+        command = str(arguments.get('command', ''))
+        if command.strip() in {'git diff --check', 'git status', 'git diff'} and arguments.get('cwd') in (None,'','.'):
+            return None
+        if arguments.get('isolated_cwd') is not True or 'lca_project_root' in command.lower():
+            return '当前任务有明确保留文件。请用 isolated_cwd=true 在临时目录运行验证，不要引用原工程目录。'
+    return None
+
+
 def delivery_requirements(goal: str) -> dict:
     """Extract explicit, narrow requirements. Commands remain data for review."""
     readme = bool(re.search(r'(?:提供|新增|编写|创建|生成|include|write|add)\s*(?:中文\s*)?(?:a\s+)?README\b', goal, re.I))

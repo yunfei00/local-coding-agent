@@ -85,6 +85,22 @@ class UnifiedPolicyTests(unittest.TestCase):
             (root / "README.md").write_text("usage", encoding="utf-8")
             self.assertEqual(missing_deliverables(root, contract, [{"command":"python -m unittest -q","exit_code":0}]), [])
 
+    def test_explicit_preservation_requires_isolated_commands(self):
+        from agent.core.verification import protected_workspace_files, protected_workspace_tool, protected_workspace_changes
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            protected = root / "VERSION"
+            protected.write_text("original")
+            frozen = protected_workspace_files(root, "修复版本读取。保持 VERSION 原样，不要初始化 Git。")
+            self.assertEqual(set(frozen), {"VERSION"})
+            self.assertIsNotNone(protected_workspace_tool(root, frozen, "delete_file", {"path":"VERSION"}))
+            self.assertIsNotNone(protected_workspace_tool(root, frozen, "run_command", {"command":"python test_read.py"}))
+            self.assertIsNone(protected_workspace_tool(root, frozen, "run_command",
+                                                       {"command":"python test_read.py","isolated_cwd":True}))
+            self.assertEqual(protected_workspace_changes(root, frozen), [])
+            protected.unlink()
+            self.assertEqual(protected_workspace_changes(root, frozen), ["VERSION"])
+
     def test_intent_uses_model_plan_and_actual_evidence_not_words(self):
         self.assertEqual(infer_intent('question','read_file',read_only=True),'analysis')
         self.assertEqual(infer_intent('analysis','write_file',changed_paths=['x.py']),'change')

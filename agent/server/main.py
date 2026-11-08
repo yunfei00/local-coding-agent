@@ -2832,6 +2832,18 @@ class AgentServer:
         deadline = perf_counter() + max(.01, execution.data['limits']['seconds'] - execution.data['elapsed'])
 
         try:
+            if unified and not requested['read_only'] and requested['kind'] in {'change','complex'}:
+                from agent.core.verification import protected_workspace_files
+                if 'protected_workspace_files' not in execution.data:
+                    execution.data['protected_workspace_files'] = protected_workspace_files(
+                        workspace.root, execution.data.get('unified_goal', prompt))
+                if execution.data['protected_workspace_files']:
+                    messages.append({'role':'system','content':
+                        'The user explicitly preserves these project files: '
+                        + json.dumps(list(execution.data['protected_workspace_files']),ensure_ascii=False)
+                        + '. Use file tools only on other paths. Run checks with isolated_cwd=true; '
+                          'write disposable fixture data in that scratch directory, never into the delivery workspace.'})
+                    execution.save()
             if unified and execution.data['calls']==0 and requested['kind'] in {'change','complex'}:
                 from agent.core.verification import preserve_acceptance_requested,acceptance_snapshot
                 if preserve_acceptance_requested(authorization_prompt or prompt):
@@ -3330,6 +3342,9 @@ class AgentServer:
                                 policy = {'level':'manual','commands':[],'reason':'验证配置无法解析，未运行验证'}
                             await publish_runtime('verifying', level=policy['level'], reason=policy['reason'])
                             async def verify_execute(name, arguments, on_raw_output=None, environment=None):
+                                if (execution.data.get('protected_workspace_files') and name=='run_command'
+                                        and arguments.get('command') != 'git diff --check'):
+                                    arguments = {**arguments, 'isolated_cwd': True}
                                 execution.reserve_tool()
                                 identifier = new_id('verify')
                                 await publish_runtime('verifying',active_tool={'name':name,'command':arguments.get('command',''),'call_id':identifier})
@@ -3348,6 +3363,9 @@ class AgentServer:
                             runtime['verification_log_root']=str(log_root)
                             engine = VerificationEngine(log_root,verify_execute,min(verification_options.get('budget',{}).get('verification_seconds',120), max(1,int(deadline-perf_counter()))))
                             results = [discovery_error] if discovery_error else await engine.run(policy['commands']) if policy['commands'] else []
+                            from agent.core.verification import protected_workspace_changes
+                            if protected_workspace_changes(workspace.root, execution.data.get('protected_workspace_files', {})):
+                                raise ProviderError('PROTECTED_WORKSPACE_CHANGED','明确要求保留的工作区文件发生变化，已停止；请检查验证日志。')
                             runtime['verification'] = results
                             execution.data.setdefault('unified_verification_history',[]).append({'at':__import__('time').time(),'level':policy['level'],'results':results})
                             verification_sequence = change_version
@@ -3881,7 +3899,9 @@ class AgentServer:
                         await publish_runtime('executing',changed_paths=sorted(guard.changed_paths))
                     execution.remember_tool(call.name, call.arguments, payload, workspace,
                                             exact_secrets=self._exact_secrets())
-                    from agent.core.verification import classify
+                    from agent.core.verification import classify, protected_workspace_changes
+                    if protected_workspace_changes(workspace.root, execution.data.get('protected_workspace_files', {})):
+                        raise ProviderError('PROTECTED_WORKSPACE_CHANGED','明确要求保留的工作区文件发生变化，已停止；请检查工具日志。')
                     diagnostic_failure = (unified and requested['read_only'] and not guard.changed_paths
                         and repeatable_check(call.name,call.arguments) and payload.get('exit_code') not in (None,0)
                         and (payload.get('error') or {}).get('code') in (None,'NON_ZERO_EXIT')
@@ -4210,6 +4230,12 @@ class AgentServer:
     async def _authorize_tool(self, ws, *, project, call, call_id, thread_id, turn_id,
                               user_prompt, autonomous=False, on_raw_output=None, environment=None, supports_vision=False, desktop_destination=None, uncertain=False):
         execution=self.active_executions.get(turn_id)
+        if execution and execution.data.get('protected_workspace_files'):
+            from agent.core.verification import protected_workspace_tool
+            reason = protected_workspace_tool(project.workspace.root, execution.data['protected_workspace_files'],
+                                              call.name, call.arguments)
+            if reason:
+                return {'ok':False,'summary':reason,'error':{'code':'PROTECTED_WORKSPACE_SCOPE','message':reason},'changed_paths':[]}
         if execution and execution.data.get('workflow_acceptance_baseline') is not None:
             from agent.core.verification import protected_edit
             reason=protected_edit(project.workspace.root,execution.data['workflow_acceptance_baseline'],call.name,call.arguments)
