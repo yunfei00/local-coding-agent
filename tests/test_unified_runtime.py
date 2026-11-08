@@ -61,7 +61,7 @@ class UnifiedPolicyTests(unittest.TestCase):
         self.assertEqual(requested_intent('实现以下要求\n1. 创建核心模块\n2. 编写测试\n3. 生成交付报告')['kind'],'complex')
 
     def test_chinese_edits_and_read_only_constraints(self):
-        for goal in ("完善 cli.py 的错误处理", "追加一行，检查 Diff", "替换标题", "删除过期条目"):
+        for goal in ("完善 cli.py 的错误处理", "追加一行，检查 Diff", "在 feature.txt 追加一行，再检查 diff", "替换标题", "删除过期条目"):
             self.assertEqual(requested_intent(goal)["kind"], "change")
         self.assertTrue(requested_intent("完善 CLI 的方案，只分析，不修改任何文件")["read_only"])
 

@@ -505,6 +505,11 @@ async function main() {
     await page.getByLabel('Profile output limit',{exact:true}).fill('16384');
     await page.getByRole('button',{name:'Use coding output limit',exact:true}).click();
     assert.equal(await page.getByLabel('Profile output limit',{exact:true}).inputValue(),'16384');
+    const beforeInvalidLimit = modelRequests.length;
+    await page.getByLabel('Profile output limit',{exact:true}).fill('0');
+    await page.getByRole('button',{name:'Save model configuration',exact:true}).click();
+    await page.getByText(/单次输出上限必须是 64–32768 的整数/).waitFor();
+    assert.equal(modelRequests.length, beforeInvalidLimit);
     await page.getByLabel('Profile output limit',{exact:true}).fill('8192');
     for (const [role,name] of Object.entries(roleChoices)) await page.getByLabel(role + " profile", {exact:true}).selectOption(profileIds[name]);
     await page.getByLabel("Default api_calls",{exact:true}).fill("3");
@@ -522,6 +527,8 @@ async function main() {
     await screenshot("desktop-mixed-provider-settings.png");
     const persistedRouting = await page.evaluate(async () => (await window.localAgent.taskRequest("", "task.catalog.get")).payload);
     assert.equal(persistedRouting.catalog.profiles.find(p=>p.model_id==='api-escalation').max_output_tokens,8192);
+    assert.equal(persistedRouting.catalog.profiles.find(p=>p.model_id==='task-executor').max_output_tokens,null);
+    checks.push("Model Settings rejects invalid numeric output limits and saves Ollama blank as null");
     assert.equal(new Set(Object.values(persistedRouting.config.roles).map(p => p.model_profile_id)).size, 4);
     assert.equal(persistedRouting.config.budget.api_tokens,10000000);
     checks.push("Actual Settings long-task preset saves large budgets without changing role bindings or sending model requests");
