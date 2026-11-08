@@ -84,6 +84,30 @@ def protected_edit(root: Path, baseline: dict, tool: str, arguments: dict) -> st
     return None
 
 
+def delivery_requirements(goal: str) -> dict:
+    """Extract explicit, narrow requirements. Commands remain data for review."""
+    readme = bool(re.search(r'(?:提供|新增|编写|创建|生成|include|write|add)\s*(?:中文\s*)?(?:a\s+)?README\b', goal, re.I))
+    # Only recognize standalone, predictable test invocations. Never execute
+    # arbitrary strings extracted from a natural-language instruction.
+    commands = []
+    for command in ('python -m unittest -q', 'npm test', 'npm run build'):
+        if re.search(r'(?:执行(?:的)?|运行|run)\s*[`"]?' + re.escape(command) + r'(?=[`"。；，、]|\s*$)', goal, re.I):
+            commands.append(command)
+    return {'readme':readme, 'commands':commands}
+
+
+def missing_deliverables(root: Path, requirements: dict, commands: list[dict]) -> list[str]:
+    missing = []
+    if requirements['readme']:
+        names = ('README.md','README','README.rst','README.txt')
+        if not any((root / name).is_file() and (root / name).resolve().is_relative_to(root.resolve())
+                   and (root / name).stat().st_size > 0 for name in names):
+            missing.append('README')
+    succeeded = {row.get('command') for row in commands if row.get('exit_code') == 0}
+    missing.extend(command for command in requirements['commands'] if command not in succeeded)
+    return missing
+
+
 def discover_commands(root: Path, configured: list[str]) -> list[str]:
     if configured:
         return list(configured)
@@ -118,18 +142,33 @@ def discover_commands(root: Path, configured: list[str]) -> list[str]:
             raise ValueError("pyproject.toml exceeds bounded verification discovery size")
         pytest = has_uv and "pytest" in pyproject.read_text(encoding="utf-8")
         commands.append("uv run pytest" if pytest else ("uv run " if has_uv else "") + "python -m unittest discover -s tests -v")
+    elif any(path.is_file() and path.resolve().is_relative_to(root.resolve())
+             and path.stat().st_size <= 262144
+             and re.search(r'(?m)^\s*(?:import unittest\b|from unittest import\b)', path.read_text(encoding="utf-8-sig", errors="replace"))
+             for path in root.glob("test_*.py")):
+        # Root-level tests are also a standard unittest discovery layout.
+        # Prefer pytest only when the manifest declares it.
+        manifest = root / "pyproject.toml"
+        if manifest.is_file() and manifest.stat().st_size > 262144:
+            raise ValueError("pyproject.toml exceeds bounded verification discovery size")
+        if manifest.is_file() and "pytest" in manifest.read_text(encoding="utf-8"):
+            commands.append("uv run pytest")
+        else:
+            commands.append(("uv run " if manifest.is_file() else "") + "python -m unittest discover -v")
     if commands and (root / ".git").exists():
         commands.append("git diff --check")
     return commands
 
 
 def classify(result: dict) -> str:
-    if result.get("ok") and result.get("exit_code") == 0:
-        return "passed"
     code = str((result.get("error") or {}).get("code", ""))
     if 'CANCEL' in code:
         return 'cancelled'
     text = (str(result.get("stdout", "")) + "\n" + str(result.get("stderr", "")) + "\n" + str(result.get("summary", ""))).lower()
+    if any(t in text for t in ("no tests ran", "collected 0 items", "ran 0 tests")):
+        return "configuration"
+    if result.get("ok") and result.get("exit_code") == 0:
+        return "passed"
     if "PERMISSION" in code or "APPROVAL" in code or "access is denied" in text:
         return "permission"
     if "TIMEOUT" in code:

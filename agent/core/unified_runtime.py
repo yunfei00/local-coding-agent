@@ -77,12 +77,18 @@ def requested_intent(prompt):
     direct=bool(re.search(r'(?:请|帮我|直接|现在)(?:实现|开发|修复|修改|重构|新增)|can you (?:add|fix|implement|create|change)',text,re.I))
     repair_file = bool(re.search(r'(?:^\s*(?:please\s+|can you\s+)?|\b(?:and|then)\s+)repair\s+(?:the\s+)?FILE\b', text, re.I))
     inspect_and_repair = bool(re.search(r'^\s*(?:please\s+)?(?:inspect|diagnose)\s+and\s+repair\b', text, re.I))
-    change=not readonly and (repair_file or inspect_and_repair or bool(re.search(r'实现|开发|修复|修改|重构|新增|增加|改成|改为|改中文|编写|创建|\b(?:implement|develop|refactor|create|fix|add|change|update)\b',text,re.I))) and (not question or direct)
+    # A final inspection request does not turn an earlier edit into analysis.
+    # Preserve the explicit global read-only guard for destructive verbs.
+    chinese_edit = bool(re.search(
+        r'(?:^|[。；;，,]\s*)(?:请|帮我|然后|再)?\s*(?:完善|追加|替换|删除|移除|补上|更新)',
+        text,
+    ))
+    change=not readonly and (chinese_edit or repair_file or inspect_and_repair or bool(re.search(r'实现|开发|修复|修改|重构|新增|增加|改成|改为|改中文|编写|创建|\b(?:implement|develop|refactor|create|fix|add|change|update)\b',text,re.I))) and (not question or direct)
     listed=len(re.findall(r'(?m)^\s*(?:\d+[.)、]|[-*])\s*\S',prompt))
     kind='question' if question and not direct else 'complex' if change and (listed>=3 or len(paths)>=3) else 'change' if change else 'analysis' if readonly or re.search(r'分析|诊断|检查|inspect|analy[sz]e|diagnos',text,re.I) else 'question'
     positive=re.sub(r'(?:不是|并非|不属于)(?:一项|一个)?(?:代码)?开发(?:任务|工作)?','',text)
     positive=re.sub(r'(?:禁止|不要|不得|不允许|不(?:修改|改动|编辑))[^。；;\n]*','',positive)
-    code_request=bool(re.search(r'开发|实现|编写|重构|修复|源码|代码|组件|函数|模块|\b(?:develop|implement|refactor|fix|function|component)\b',positive,re.I)) or (change and bool(re.search(r'\bFILE\b',positive)))
+    code_request=chinese_edit or bool(re.search(r'开发|实现|编写|重构|修复|源码|代码|组件|函数|模块|\b(?:develop|implement|refactor|fix|function|component)\b',positive,re.I)) or (change and bool(re.search(r'\bFILE\b',positive)))
     analysis_only=bool(re.search(r'只分析|仅分析|只读|本轮只分析|analysis only|only analy[sz]e',text,re.I))
     interaction=not analysis_only and not question and not code_request and bool(re.search(r'(?:桌面|窗口|界面|Settings|Display name).*(?:输入|点击|键入|填写)|(?:click|type|enter).*(?:button|window|settings|field)',positive,re.I|re.S))
     if interaction:kind='interaction'
@@ -173,6 +179,18 @@ def initial_commit_restore_paths(goal):
     )
     return list(dict.fromkeys(path.replace("\\", "/") for path in matches
                               if not any(part in {"", ".", ".."} for part in path.replace("\\", "/").split("/"))))[:12]
+
+
+def requested_git_branch(goal):
+    # Only a named checkout qualifies as an independently verifiable Git-only goal.
+    match = re.search(
+        r'^\s*(?:请)?(?:创建并切换到|切换到|create and switch to|switch to)\s+'
+        r'[`"]?([A-Za-z0-9][A-Za-z0-9._/-]{0,127})[`"]?\s+(?:分支|branch)\b',
+        goal, re.IGNORECASE,
+    )
+    if not match or re.search(r'(?:\b(?:edit|modify|append|write)\b|修改|编辑|追加|替换|删除)', goal, re.I):
+        return None
+    return match.group(1)
 
 
 def literal_append_requirements(goal):

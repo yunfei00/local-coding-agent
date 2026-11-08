@@ -124,7 +124,7 @@ def snapshot(source, target):
         folders[:] = [name for name in folders if name not in ignored]
         for name in [*folders, *files]:
             path = folder / name
-            assert not (path.is_symlink() or path.is_junction()), "snapshot_link_rejected"
+            assert not (path.is_symlink() or getattr(path, "is_junction", lambda: bool(getattr(path.lstat(), "st_reparse_tag", 0)))()), "snapshot_link_rejected"
         for name in files:
             path = folder / name
             assert path.is_file(), "snapshot_special_file"
@@ -188,7 +188,7 @@ PYTHON = [
 FRONTEND = [
     js("06", "React 组件属性转换", "修复按钮组件的无障碍属性计算：忙碌或禁用均返回 disabled=true，保留其 label。",
        "export const operation = p => ({label:p.label,disabled:p.busy});",
-       "assert.deepEqual(handle({label:'保存',disabled:true}),{label:'保存',disabled:true}); assert.equal(!!handle({busy:false}).disabled,false);",
+       "assert.deepEqual(handle({label:'保存',disabled:true}),{label:'保存',disabled:true}); assert.equal(!!handle({busy:false}).disabled,false); assert.equal(handle({busy:true,disabled:false}).disabled,true);",
        **{"Button.jsx":"import React from 'react'; import {handle} from './page.mjs'; export default function Button(p){const s=handle(p);return <button disabled={s.disabled}>{s.label}</button>;}"}),
     js("07", "不可变状态更新", "handle({state,id}) 返回删除指定 ID 后的列表，保留顺序，且不能修改原数组。",
        "export const operation=({state,id})=>{state.splice(state.findIndex(x=>x.id===id),1);return state;};",

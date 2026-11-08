@@ -42,6 +42,12 @@ async def _git(
         await manager.close()
 
 
+async def current_worktree_branch(workspace):
+    code, branch, _ = await _git(workspace, "symbolic-ref", "--quiet", "--short", "HEAD",
+                                 timeout=5, private_output=True)
+    return branch.strip() if code == 0 else None
+
+
 async def missing_initial_commit_paths(workspace, paths):
     """An initial commit has no inherited tree, so restore sources must be staged."""
     code, _, _ = await _git(workspace, "rev-parse", "--is-inside-work-tree", private_output=True)

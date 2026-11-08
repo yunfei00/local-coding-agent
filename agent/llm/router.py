@@ -61,7 +61,8 @@ def validate_config(raw: dict | None = None) -> dict:
             raise ValueError("Invalid model name")
         for key, minimum, maximum in (("output_limit", 64, 32768), ("context_window", 1024, 262144)):
             value = profile[key]
-            if value is None and (key == "context_window" or profile["route"] == "local"):
+            if value is None and (key == "context_window" or profile["route"] == "local"
+                                  or bool(profile.get("model_profile_id"))):
                 continue
             if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
                 raise ValueError(f"Invalid {key}")

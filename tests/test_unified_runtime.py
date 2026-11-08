@@ -60,6 +60,31 @@ class UnifiedPolicyTests(unittest.TestCase):
         self.assertTrue(requested_intent('Inspect and repair. Do not modify any files.')['read_only'])
         self.assertEqual(requested_intent('实现以下要求\n1. 创建核心模块\n2. 编写测试\n3. 生成交付报告')['kind'],'complex')
 
+    def test_chinese_edits_and_read_only_constraints(self):
+        for goal in ("完善 cli.py 的错误处理", "追加一行，检查 Diff", "替换标题", "删除过期条目"):
+            self.assertEqual(requested_intent(goal)["kind"], "change")
+        self.assertTrue(requested_intent("完善 CLI 的方案，只分析，不修改任何文件")["read_only"])
+
+    def test_named_branch_contract_excludes_combined_edits(self):
+        from agent.core.unified_runtime import requested_git_branch
+        self.assertEqual(requested_git_branch("创建并切换到 fix/one 分支，保留文件。"), "fix/one")
+        self.assertIsNone(requested_git_branch("创建并切换到 fix/one 分支，再修改代码。"))
+
+    def test_local_output_can_be_unset_after_role_binding_change(self):
+        self.assertIsNone(validate_config({"roles":{"executor":{"route":"api",
+            "model_profile_id":"new-local", "output_limit":None}}})["roles"]["executor"]["output_limit"])
+        with self.assertRaises(ValueError):
+            validate_config({"roles":{"executor":{"route":"local","output_limit":0}}})
+
+    def test_delivery_contract_requires_actual_artifact_and_command(self):
+        from agent.core.verification import delivery_requirements, missing_deliverables
+        contract = delivery_requirements("修复程序，提供 README.md，运行 python -m unittest -q。")
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            self.assertEqual(missing_deliverables(root, contract, []), ["README", "python -m unittest -q"])
+            (root / "README.md").write_text("usage", encoding="utf-8")
+            self.assertEqual(missing_deliverables(root, contract, [{"command":"python -m unittest -q","exit_code":0}]), [])
+
     def test_intent_uses_model_plan_and_actual_evidence_not_words(self):
         self.assertEqual(infer_intent('question','read_file',read_only=True),'analysis')
         self.assertEqual(infer_intent('analysis','write_file',changed_paths=['x.py']),'change')

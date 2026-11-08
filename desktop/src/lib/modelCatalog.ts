@@ -6,6 +6,14 @@ export type ModelCatalog = {connections: Connection[]; profiles: ModelProfile[]}
 export function defaultModelOutput(providerType: Connection['provider_type']): number | null {
   return providerType === 'openai_compatible' ? 8192 : null;
 }
+export function validateModelOutputLimits(catalog: ModelCatalog): void {
+  for (const profile of catalog.profiles) {
+    const value = profile.max_output_tokens;
+    if (value != null && (!Number.isInteger(value) || value < 64 || value > 32768)) {
+      throw new Error(`${profile.display_name}：单次输出上限必须是 64–32768 的整数。Ollama 可留空使用服务端默认值。`);
+    }
+  }
+}
 export function codingOutputProfile(profile: ModelProfile): ModelProfile {
   return {...profile, max_output_tokens:Math.max(profile.max_output_tokens ?? 1024,8192)};
 }

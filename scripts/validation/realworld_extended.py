@@ -54,13 +54,29 @@ assert handle('missing-version')=='unknown'
 ]
 
 
+MODULE_CONTRACT = """
+import sys
+from pathlib import Path
+called = set()
+def observe(frame,event,arg):
+ if event=='call':
+  path=Path(frame.f_code.co_filename)
+  if path.name in ('parser.py','totals.py') and path.resolve().parent == Path.cwd():
+   called.add(path.name)
+sys.setprofile(observe)
+try: assert handle(['sku=7','sku=3'])=={'sku':10}
+finally: sys.setprofile(None)
+assert called=={'parser.py','totals.py'}, 'required module responsibilities not exercised'
+"""
+
+
 def pipeline(id, category, title, task, *, control=""):
     domain="def operation(value): return value\n"
     return py(id,category,title,task,domain,
               """assert handle(['a=3','b=4','a=2','c=-1','bad','d=0'])=={'a':5,'b':4}
 assert handle(['k=9','k=-10','z=bad'])=={}
 assert handle([])=={}
-""", extra={"parser.py":"def parse(line): return line.split('=',1)\n",
+"""+(MODULE_CONTRACT if id == "28" else ""), extra={"parser.py":"def parse(line): return line.split('=',1)\n",
             "totals.py":"def total(rows): return dict(rows)\n",
             "test_contract.py":"import unittest\nfrom service import handle\nclass Contract(unittest.TestCase):\n def test_positive(self): self.assertEqual(handle(['a=1','a=2','b=-1','broken']),{'a':3})\n"},
               preserve=("test_contract.py",), control=control)
@@ -110,7 +126,7 @@ checks=json.loads(Path('report.json').read_text())['checks']
 assert checks and all(c['argv']==['python','-m','unittest','-q'] for c in checks)
 assert all(c['exit_code']==subprocess.run([sys.executable,*c['argv'][1:]],timeout=10).returncode==0 for c in checks)
 """,extra={"test_temp.py":"import unittest\nfrom service import handle\nclass Temperature(unittest.TestCase):\n def test_f(self): self.assertEqual(handle(68),20)\n"},preserve=("test_temp.py",)),
-    Case("30","delivery","完整库存 CLI","在现有空壳上实现库存 CLI inventory.py：add SKU COUNT、list。重复 add 累加；数量必须为正整数。用 inventory.json 持久化。list 输出 JSON 字典。提供 unittest 与运行说明。",
+    Case("30","delivery","完整库存 CLI","在现有空壳上实现库存 CLI inventory.py：add SKU COUNT、list。重复 add 累加；数量必须为正整数。用 inventory.json 持久化。list 输出 JSON 字典。提供 unittest 与 README.md 运行说明。",
          {"inventory.py":"raise SystemExit('not implemented')\n","storage.py":"# Storage layer\n"},
          """import subprocess,sys,json
 from pathlib import Path

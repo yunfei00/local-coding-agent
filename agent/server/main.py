@@ -3250,17 +3250,48 @@ class AgentServer:
                             exact_git_diff_checked = bool(requirements)
                         if (not intermediate and not explicit_tool_denial and actual_changes and requested['kind'] in {'change', 'complex'}
                                 and not execution.data.get('input_contract_reviewed')
-                                and re.search(r'\b(?:reject|invalid input|input validation)\b|拒绝|输入校验', prompt, re.I)):
+                                and re.search(r'\b(?:reject|invalid input|input validation|backward compatible)\b|拒绝|输入校验|抛\s*ValueError|兼容|折扣', prompt, re.I)):
                             execution.data['input_contract_reviewed'] = True
                             execution.save()
                             messages.append({'role': 'system', 'content':
                                 'Before final delivery, independently exercise the explicit input validation requirements '
-                                'in the original goal. Include each requested invalid class, not just a success path. '
+                                'in the original goal. Verify positive behavior, explicit edge cases and compatibility independently. Include each requested invalid class, not just a success path. '
                                 'For blank text test whitespace-only input as well as an empty string. '
                                 'For stateful programs use isolated_cwd=true; verify failures preserve existing state. '
                                 'If a real assertion fails, repair the implementation and rerun that check.'})
                             continue
-                        if not actual_changes and not intermediate and requested['kind'] in {'change','complex'}:
+                        if (not intermediate and not explicit_tool_denial and not requested['read_only']
+                                and requested['kind'] in {'change', 'complex'}):
+                            from agent.core.verification import delivery_requirements, missing_deliverables
+                            goal = execution.data.get('unified_goal', prompt)
+                            requirements = delivery_requirements(goal)
+                            missing = missing_deliverables(workspace.root, requirements,
+                                execution.data.get('delivery_commands', []))
+                            if missing:
+                                if execution.data.get('delivery_reviewed'):
+                                    raise ProviderError('DELIVERY_CONTRACT_INCOMPLETE',
+                                                        '交付缺少独立证据：' + '、'.join(missing))
+                                execution.data['delivery_reviewed'] = True
+                                execution.save()
+                                messages.append({'role':'system','content':
+                                    'The requested deliverables are incomplete: ' + json.dumps(missing,ensure_ascii=False)
+                                    + '. Use approved tools to complete them. Record only observed commands and exit codes. '
+                                      'Preserve existing files, do not rerun successful mutations, and use an isolated working directory for stateful tests.'})
+                                continue
+                        git_branch_verified = False
+                        if not actual_changes and not intermediate and not requested['read_only'] and workspace_uses_git():
+                            from agent.core.unified_runtime import requested_git_branch
+                            from agent.tools.git import current_worktree_branch
+                            branch = requested_git_branch(execution.data.get('unified_goal', prompt))
+                            if branch:
+                                try:
+                                    git_branch_verified = await current_worktree_branch(workspace) == branch
+                                except ToolError:
+                                    pass
+                                if git_branch_verified:
+                                    execution.data['verified_git_branch'] = branch
+                                    execution.save()
+                        if not actual_changes and not git_branch_verified and not intermediate and requested['kind'] in {'change','complex'}:
                             if execution.data.get('no_change_repair',0)<1:
                                 execution.data['no_change_repair']=1;execution.save()
                                 messages.append({'role':'system','content':'The user requested real development, but no file change evidence exists. Use actual tools in this workspace, not a code-only prose answer. If the request is already satisfied, provide actual inspection/test evidence and explicitly state no change was necessary. Never fabricate completion.'})
@@ -3467,7 +3498,11 @@ class AgentServer:
                             delivery,markdown=build_delivery(execution.data.get('unified_goal',prompt),runtime,self.store.task_plans.get(active_plan['id']),reviews,call_events)
                             runtime['delivery']=write_delivery(self.store.data_dir/'workflow-deliveries',execution.key,delivery,markdown,exact_secrets=self._exact_secrets())
                             runtime['delivery']['summary']=delivery['status']
-                        if runtime['intent']=='interaction' and not runtime['changed_paths']:
+                        if execution.data.get('verified_git_branch') and not runtime['changed_paths']:
+                            branch = execution.data['verified_git_branch']
+                            await publish_runtime('completed', outcome='completed_verified', level='basic',
+                                                  reason='已独立核对当前 Git 分支：'+branch)
+                        elif runtime['intent']=='interaction' and not runtime['changed_paths']:
                             await publish_runtime('completed',outcome='completed_unverified',level='manual',reason='桌面动作已有真实工具证据；尚未附加独立 GUI 验收合约。')
                         else:
                             await publish_runtime('completed', outcome=result_view(changed=bool(runtime['changed_paths']),results=runtime['verification'],level=runtime['level'],pending=bool(active_plan and self.store.task_plans.active_step(active_plan['id']))))
@@ -3807,6 +3842,14 @@ class AgentServer:
                                 "changed_paths": list(payload.get("changed_paths") or []),
                             })
                     if call.name in ("shell", "shell_exec", "run_command", "run_shell"):
+                        if unified and call.name == 'run_command':
+                            from agent.core.verification import classify, delivery_requirements
+                            command = str(call.arguments.get('command', '')).strip()
+                            required = delivery_requirements(execution.data.get('unified_goal', prompt))['commands']
+                            if command in required and classify(payload) == 'passed':
+                                records = execution.data.setdefault('delivery_commands', [])
+                                if not any(row['command'] == command for row in records):
+                                    records.append({'command': command, 'exit_code': 0})
                         plan_commands_run.append({
                             "tool": call.name, "arguments": call.arguments,
                             "ok": bool(payload.get("ok")),
