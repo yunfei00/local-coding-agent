@@ -333,12 +333,15 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
             final_step('文档完成'),
             tool_step('write_file', {'path':'calculator.py','content':'must not write'}),
             tool_step('run_command', {'command':'python -m unittest discover -s tests -v'}),
-            final_step('独立功能测试通过'),
+            tool_step('run_command', {'command':"python -c \"open('unauthorized.txt', 'w').write('changed')\""}),
         ], '修复持久化程序，提供 unittest 功能测试。')
         self.assertEqual(result['outcome'], 'completed_verified', str(result))
         self.assertEqual([row['role'] for row in result['role_handoffs']], ['developer','developer','tester'])
         self.assertEqual(result['test_handoff']['status'], 'PASS')
         self.assertEqual((self.repo / 'calculator.py').read_text(), 'def add(a,b): return a+b\n')
+        self.assertFalse((self.repo / 'unauthorized.txt').exists())
+        self.assertTrue(any(event['kind']=='workflow.tester.redundant_tool_blocked'
+                            for event in self.server.runtime_ledger.events(run_id=result['id'])))
 
     async def test_developer_stateful_commands_share_only_scratch_data(self):
         state = self.repo / 'records.json'

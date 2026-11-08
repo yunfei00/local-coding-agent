@@ -2735,6 +2735,13 @@ class AgentServer:
                 return execution.data['role_handoffs'][-1]['role']
             return (step or {}).get('workflow',{}).get('assigned_role','developer')
 
+        def workflow_allows(call):
+            from agent.core.workflow import role_allows
+            metadata = tools.permission_metadata(call.name) or {}
+            return role_allows(workflow_role(), call.name, call.arguments,
+                read_only=call.name in READ_ONLY_TOOLS or bool(metadata.get('trusted') and metadata.get('read_only')),
+                allowed_test_hashes=execution.data.get('workflow_test_hashes', ()))
+
         def freeze_workflow_models():
             if 'workflow_test_hashes' not in execution.data:
                 from agent.core.verification import discover_commands
@@ -3254,6 +3261,25 @@ class AgentServer:
                 if not assistant_text.strip() and not tool_calls:
                     raise ProviderError("MODEL_EMPTY_RESPONSE", "Model returned no text or tool calls; completion was not accepted")
 
+                if tool_calls and contract.get('independent') and workflow_role() == 'tester':
+                    handoff = runtime.get('test_handoff', {})
+                    if (handoff.get('status') == 'PASS' and handoff.get('step_id') == active_step_id
+                            and any(row.get('step_id') == active_step_id
+                                    and row.get('tool_call_id') == handoff.get('call_id')
+                                    and row.get('tool') == 'run_command' and row.get('ok')
+                                    and row.get('exit_code') == 0 for row in plan_tool_evidence)):
+                        allowed = [call for call in tool_calls if workflow_allows(call)]
+                        if len(allowed) != len(tool_calls):
+                            self.runtime_ledger.record(execution.key, thread_id, 'workflow.tester.redundant_tool_blocked',
+                                {'step_id':active_step_id, 'evidence_call_id':handoff['call_id'],
+                                 'blocked_count':len(tool_calls)-len(allowed)})
+                            tool_calls = allowed
+                            if not tool_calls:
+                                # Reuse the real step evidence. The normal
+                                # finalization below still runs delivery checks.
+                                assistant_text = '独立 Tester 的测试已通过，额外的未授权工具未执行。'
+                                finish_reason = 'stop'
+
                 if tool_calls and instructions.discover(instructions.tool_paths(tool_calls)):
                     instruction_suffix = '\n\n' + instructions.render()
                     execution.data['repository_instructions'] = [
@@ -3673,10 +3699,7 @@ class AgentServer:
                     execution.reserve_tool()
                     total_tool_calls += 1
                     if unified and active_plan:
-                        from agent.core.workflow import role_allows
-                        metadata=tools.permission_metadata(call.name) or {}
-                        if not role_allows(workflow_role(),call.name,call.arguments,
-                            read_only=call.name in READ_ONLY_TOOLS or bool(metadata.get('trusted') and metadata.get('read_only')),allowed_test_hashes=execution.data.get('workflow_test_hashes',())):
+                        if not workflow_allows(call):
                             runtime['role_denial']={'role':workflow_role(),'tool':call.name,'command':redact_text(str(call.arguments.get('command','')),exact_secrets=self._exact_secrets(),max_chars=400)}
                             role = workflow_role()
                             tester_write = role == 'tester' and call.name in {'write_file','apply_patch','delete_file'}
