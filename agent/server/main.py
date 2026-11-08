@@ -2832,7 +2832,7 @@ class AgentServer:
         deadline = perf_counter() + max(.01, execution.data['limits']['seconds'] - execution.data['elapsed'])
 
         try:
-            if unified and not requested['read_only'] and requested['kind'] in {'change','complex'}:
+            if unified:
                 from agent.core.verification import protected_workspace_files
                 if 'protected_workspace_files' not in execution.data:
                     execution.data['protected_workspace_files'] = protected_workspace_files(
