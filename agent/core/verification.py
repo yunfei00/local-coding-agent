@@ -138,6 +138,19 @@ def delivery_requirements(goal: str) -> dict:
     return {'readme':readme, 'commands':commands}
 
 
+def workflow_verification_contract(goal: str, intent: dict) -> dict:
+    """Derive obligations from the user's goal, independently of the model DAG."""
+    development = not intent['read_only'] and intent['kind'] in {'change', 'complex'}
+    stateful = development and bool(re.search(r'持久化|跨进程|\bpersist\w*\b|\bstateful\b', goal, re.I))
+    explicit_tests = bool(re.search(r'单元测试|功能测试|测试用例|\bunittest\b|\bpytest\b|\b(?:unit|functional|integration) tests?\b', goal, re.I))
+    independent = development and (
+        bool(re.search(r'独立(?:功能)?(?:测试|验证|验收)|independent (?:functional )?(?:tests?|verification|validation)', goal, re.I))
+        or (explicit_tests and (stateful or intent['kind']=='complex'))
+        or any(command != 'npm run build' for command in delivery_requirements(goal)['commands'])
+    )
+    return {'independent': independent, 'stateful': stateful}
+
+
 def missing_deliverables(root: Path, requirements: dict, commands: list[dict]) -> list[str]:
     missing = []
     if requirements['readme']:

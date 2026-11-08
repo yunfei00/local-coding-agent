@@ -186,7 +186,8 @@ Remove-BuildArtifact "build\agent-dist"
 Remove-BuildArtifact "build\pyinstaller"
 New-Item -ItemType Directory -Path "build\pyinstaller" -Force | Out-Null
 $WorkflowTemplates = Join-Path $RepoRoot 'agent\core\workflow_templates.json'
-Invoke-Checked uv run --no-sync pyinstaller --noconfirm --clean --paths $RepoRoot --hidden-import win32timezone --add-data "$WorkflowTemplates;agent/core" --name lca-agent --distpath build\agent-dist --workpath build\pyinstaller\work --specpath build\pyinstaller agent\launcher.py
+$VerificationGuard = Join-Path $RepoRoot 'agent\tools\verification_guard.py'
+Invoke-Checked uv run --no-sync pyinstaller --noconfirm --clean --paths $RepoRoot --hidden-import win32timezone --add-data "$WorkflowTemplates;agent/core" --add-data "$VerificationGuard;agent/tools" --name lca-agent --distpath build\agent-dist --workpath build\pyinstaller\work --specpath build\pyinstaller agent\launcher.py
 
 $AgentExe = Join-Path $RepoRoot "build\agent-dist\lca-agent\lca-agent.exe"
 if (-not (Test-Path $AgentExe)) { throw "Packaged Agent executable was not created: $AgentExe" }

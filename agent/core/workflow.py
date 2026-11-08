@@ -100,6 +100,8 @@ def normalize_nodes(steps):
                        'dependencies':deps, 'assigned_role':role,
                        'required_capabilities':capabilities, 'acceptance_criteria':criteria,
                        'retry_count':0})
+        if node.get('source') == 'runtime_independent_verification':
+            result[-1]['source'] = node['source']
     ids = [n['task_id'] for n in result]
     if len(set(ids)) != len(ids):
         raise ValueError('子任务 ID 重复')
@@ -114,6 +116,41 @@ def normalize_nodes(steps):
         visited |= ready
         pending = {k:v for k,v in pending.items() if k not in ready}
     return result
+
+
+def independent_tester(steps):
+    """Return a repaired or new Tester when delivery lacks a full dependency path."""
+    nodes = normalize_nodes(steps)
+    developers = {n['task_id'] for n in nodes if n['assigned_role'] == 'developer'}
+    edges = {n['task_id']: n['dependencies'] for n in nodes}
+
+    def ancestors_of(ident):
+        ancestors = set()
+        remaining = list(edges[ident])
+        while remaining:
+            parent = remaining.pop()
+            if parent not in ancestors:
+                ancestors.add(parent)
+                remaining.extend(edges[parent])
+        return ancestors
+
+    testers = [(i, n['task_id']) for i, n in enumerate(nodes) if n['assigned_role']=='tester']
+    if any(developers <= ancestors_of(ident) for _, ident in testers):
+        return None
+    for i, ident in reversed(testers):
+        missing = developers - ancestors_of(ident)
+        if steps[i].get('state','pending') == 'pending' and not any(ident in ancestors_of(d) for d in missing):
+            return {**steps[i], 'task_id':ident, 'dependencies':[*edges[ident], *sorted(missing)],
+                    'source':'runtime_independent_verification'}
+    if len(nodes) == MAX_NODES:
+        raise ValueError('没有空间补充独立 Tester；请合并开发步骤并保留一个测试步骤')
+    ident = next(f'independent-test-{i}' for i in range(1, MAX_NODES + 1)
+                 if f'independent-test-{i}' not in edges)
+    return {'task_id': ident, 'assigned_role': 'tester', 'dependencies': list(edges),
+            'source': 'runtime_independent_verification',
+            'description': '独立 Tester 运行实际功能测试，核对退出码和隔离数据，禁止修改交付文件',
+            'verification': '运行真实项目功能测试',
+            'acceptance_criteria': ['在隔离数据目录运行实际测试，取得成功退出码和测试证据']}
 
 
 def ready_steps(steps):

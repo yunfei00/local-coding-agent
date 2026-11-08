@@ -233,6 +233,28 @@ class TaskPlanStore:
             self.db.execute('UPDATE task_plans SET updated_at=? WHERE id=?',(_now(),plan_id))
         if commit:self.checkpoint(plan_id,'complexity_upgraded')
 
+    def ensure_independent_tester(self, plan_id):
+        from agent.core.workflow import independent_tester, normalize_nodes
+        steps = self.get(plan_id)['steps']
+        nodes = [{**s['workflow'], 'description':s['description'], 'verification':s['verification'],
+                  'state':s['state']} for s in steps]
+        tester = independent_tester(nodes)
+        if tester is None:
+            return False
+        if any(node.get('task_id') == tester['task_id'] for node in nodes):
+            self.revise_workflow(plan_id, {tester['task_id']:{'dependencies':tester['dependencies']}},
+                                 '运行时补齐独立 Tester 的交付依赖')
+            return True
+        with self.db:
+            if not any(s['workflow'] for s in steps):
+                # Preserve legacy ordering, step IDs, states and execution evidence.
+                for step, metadata in zip(steps, normalize_nodes(nodes)):
+                    self.db.execute('UPDATE task_plan_steps SET workflow_json=? WHERE id=? AND plan_id=?',
+                                    (json.dumps(metadata),step['id'],plan_id))
+            self.append_steps(plan_id,[tester],commit=False)
+        self.checkpoint(plan_id,'independent_tester_required')
+        return True
+
     def get(self, plan_id: str) -> dict[str, Any]:
         self.db.row_factory = sqlite3.Row
         plan = self.db.execute("SELECT * FROM task_plans WHERE id=?", (plan_id,)).fetchone()

@@ -47,7 +47,12 @@ class RunCommandTool(BaseTool):
         state = result.data.get("state")
         category = classify(result.to_dict())
         actual = result.exit_code
-        if state not in {"exited", "failed"}:
+        if result.data.get('verification_isolation_violation'):
+            status = 'permission_error'
+            result.ok = False
+            result.data['error_code'] = 'VERIFICATION_ISOLATION_PERMISSION'
+            result.summary = '隔离验证阻止了越界访问或不受支持的子进程；请使用隔离目录内的相对路径和 Python 子进程。'
+        elif state not in {"exited", "failed"}:
             status = "cancelled" if state in {"user_cancelled", "user_stopped", "scope_finished"} else "execution_error"
             result.ok = False
         elif (actual != 0 and category in {"environment", "network", "configuration", "permission"}) or (actual == 127 and "not found" in result.stderr.lower()):
@@ -69,6 +74,8 @@ class RunCommandTool(BaseTool):
             result.data["command_outcome"]["hint"] = (
                 "If this was an intentionally negative smoke probe, assert only the exit code "
                 "specified by the user using isolated_cwd and expected_exit_codes. Otherwise diagnose the failure.")
+        if result.data.get('verification_isolation_violation'):
+            raise ToolError('VERIFICATION_ISOLATION_PERMISSION', result.summary, details=result.to_dict())
         return result
 
 
