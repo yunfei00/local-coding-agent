@@ -1,0 +1,1483 @@
+{
+  "product_sha": "62452fa14ea32dd3e66984084a8d4c365048bc99",
+  "model": "gemma4:31b",
+  "rc_gate": "NOT_MET",
+  "project_p1_retained_delivery_rescore": "PASS",
+  "lanes": {
+    "inventory": {
+      "case_seconds": 600,
+      "results": [
+        {
+          "case": "30",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 254.06,
+          "model_calls": 23,
+          "tool_calls": 26,
+          "tokens": {
+            "input": 271593,
+            "output": 6767,
+            "reported_calls": 23
+          }
+        },
+        {
+          "case": "30",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 224.8,
+          "model_calls": 20,
+          "tool_calls": 23,
+          "tokens": {
+            "input": 243525,
+            "output": 6102,
+            "reported_calls": 20
+          }
+        },
+        {
+          "case": "30",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 251.97,
+          "model_calls": 22,
+          "tool_calls": 28,
+          "tokens": {
+            "input": 256265,
+            "output": 7028,
+            "reported_calls": 22
+          }
+        }
+      ]
+    },
+    "realworld_30_three_rounds": {
+      "case_seconds": 600,
+      "results": [
+        {
+          "case": "01",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 58.38,
+          "model_calls": 7,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 49478,
+            "output": 1762,
+            "reported_calls": 7
+          }
+        },
+        {
+          "case": "01",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 53.11,
+          "model_calls": 6,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 41873,
+            "output": 1739,
+            "reported_calls": 6
+          }
+        },
+        {
+          "case": "01",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 43.0,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 32557,
+            "output": 1382,
+            "reported_calls": 5
+          }
+        },
+        {
+          "case": "02",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 52.51,
+          "model_calls": 6,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 37908,
+            "output": 1743,
+            "reported_calls": 6
+          }
+        },
+        {
+          "case": "02",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 46.98,
+          "model_calls": 6,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 37774,
+            "output": 1454,
+            "reported_calls": 6
+          }
+        },
+        {
+          "case": "02",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 55.56,
+          "model_calls": 6,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 37919,
+            "output": 1943,
+            "reported_calls": 6
+          }
+        },
+        {
+          "case": "03",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 143.5,
+          "model_calls": 12,
+          "tool_calls": 14,
+          "tokens": {
+            "input": 123594,
+            "output": 5015,
+            "reported_calls": 12
+          }
+        },
+        {
+          "case": "03",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 133.58,
+          "model_calls": 13,
+          "tool_calls": 13,
+          "tokens": {
+            "input": 127479,
+            "output": 4257,
+            "reported_calls": 13
+          }
+        },
+        {
+          "case": "03",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 101.73,
+          "model_calls": 10,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 89226,
+            "output": 3404,
+            "reported_calls": 10
+          }
+        },
+        {
+          "case": "04",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 57.69,
+          "model_calls": 5,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 43454,
+            "output": 1868,
+            "reported_calls": 5
+          }
+        },
+        {
+          "case": "04",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 61.22,
+          "model_calls": 5,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 43675,
+            "output": 2047,
+            "reported_calls": 5
+          }
+        },
+        {
+          "case": "04",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 74.92,
+          "model_calls": 5,
+          "tool_calls": 12,
+          "tokens": {
+            "input": 44135,
+            "output": 2793,
+            "reported_calls": 5
+          }
+        },
+        {
+          "case": "05",
+          "repeat": 1,
+          "status": "FAIL",
+          "seconds": 141.22,
+          "model_calls": 12,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 128290,
+            "output": 4801,
+            "reported_calls": 12
+          },
+          "failure": "AGENT_FAILURE",
+          "code": "PLAN_TOOLS_UNRESOLVED"
+        },
+        {
+          "case": "05",
+          "repeat": 2,
+          "status": "FAIL",
+          "seconds": 55.12,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 34555,
+            "output": 2054,
+            "reported_calls": 5
+          },
+          "failure": "DELIVERY_ASSERTION",
+          "assertion_failure": "external_command_exit_1"
+        },
+        {
+          "case": "05",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 69.2,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 35343,
+            "output": 2831,
+            "reported_calls": 5
+          }
+        },
+        {
+          "case": "06",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 93.58,
+          "model_calls": 9,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 75379,
+            "output": 2960,
+            "reported_calls": 9
+          }
+        },
+        {
+          "case": "06",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 89.47,
+          "model_calls": 9,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 67656,
+            "output": 3068,
+            "reported_calls": 9
+          }
+        },
+        {
+          "case": "06",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 81.56,
+          "model_calls": 8,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 61468,
+            "output": 2777,
+            "reported_calls": 8
+          }
+        },
+        {
+          "case": "07",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 67.44,
+          "model_calls": 9,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 66865,
+            "output": 1858,
+            "reported_calls": 9
+          }
+        },
+        {
+          "case": "07",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 81.05,
+          "model_calls": 10,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 71943,
+            "output": 2510,
+            "reported_calls": 10
+          }
+        },
+        {
+          "case": "07",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 93.47,
+          "model_calls": 11,
+          "tool_calls": 12,
+          "tokens": {
+            "input": 77985,
+            "output": 3014,
+            "reported_calls": 11
+          }
+        },
+        {
+          "case": "08",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 99.47,
+          "model_calls": 10,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 75927,
+            "output": 3377,
+            "reported_calls": 10
+          }
+        },
+        {
+          "case": "08",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 79.84,
+          "model_calls": 9,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 62992,
+            "output": 2615,
+            "reported_calls": 9
+          }
+        },
+        {
+          "case": "08",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 78.69,
+          "model_calls": 9,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 64385,
+            "output": 2543,
+            "reported_calls": 9
+          }
+        },
+        {
+          "case": "09",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 65.97,
+          "model_calls": 8,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 55611,
+            "output": 2016,
+            "reported_calls": 8
+          }
+        },
+        {
+          "case": "09",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 67.44,
+          "model_calls": 8,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 55774,
+            "output": 2108,
+            "reported_calls": 8
+          }
+        },
+        {
+          "case": "09",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 67.06,
+          "model_calls": 7,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 49698,
+            "output": 2247,
+            "reported_calls": 7
+          }
+        },
+        {
+          "case": "10",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 65.89,
+          "model_calls": 6,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 44825,
+            "output": 2235,
+            "reported_calls": 6
+          }
+        },
+        {
+          "case": "10",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 74.78,
+          "model_calls": 10,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 73515,
+            "output": 1953,
+            "reported_calls": 10
+          }
+        },
+        {
+          "case": "10",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 71.86,
+          "model_calls": 10,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 73395,
+            "output": 1863,
+            "reported_calls": 10
+          }
+        },
+        {
+          "case": "11",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 22.7,
+          "model_calls": 4,
+          "tool_calls": 3,
+          "tokens": {
+            "input": 23852,
+            "output": 449,
+            "reported_calls": 4
+          }
+        },
+        {
+          "case": "11",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 22.67,
+          "model_calls": 4,
+          "tool_calls": 3,
+          "tokens": {
+            "input": 23862,
+            "output": 447,
+            "reported_calls": 4
+          }
+        },
+        {
+          "case": "11",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 22.91,
+          "model_calls": 4,
+          "tool_calls": 3,
+          "tokens": {
+            "input": 23868,
+            "output": 466,
+            "reported_calls": 4
+          }
+        },
+        {
+          "case": "12",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 47.5,
+          "model_calls": 7,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 46666,
+            "output": 1362,
+            "reported_calls": 7
+          }
+        },
+        {
+          "case": "12",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 55.09,
+          "model_calls": 8,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 52161,
+            "output": 1630,
+            "reported_calls": 8
+          }
+        },
+        {
+          "case": "12",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 43.86,
+          "model_calls": 6,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 39953,
+            "output": 1304,
+            "reported_calls": 6
+          }
+        },
+        {
+          "case": "13",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 51.98,
+          "model_calls": 8,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 49586,
+            "output": 1474,
+            "reported_calls": 8
+          }
+        },
+        {
+          "case": "13",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 59.58,
+          "model_calls": 9,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 57271,
+            "output": 1703,
+            "reported_calls": 9
+          }
+        },
+        {
+          "case": "13",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 62.2,
+          "model_calls": 10,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 65120,
+            "output": 1668,
+            "reported_calls": 10
+          }
+        },
+        {
+          "case": "14",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 34.14,
+          "model_calls": 5,
+          "tool_calls": 4,
+          "tokens": {
+            "input": 30589,
+            "output": 1060,
+            "reported_calls": 5
+          }
+        },
+        {
+          "case": "14",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 34.97,
+          "model_calls": 5,
+          "tool_calls": 4,
+          "tokens": {
+            "input": 30572,
+            "output": 1117,
+            "reported_calls": 5
+          }
+        },
+        {
+          "case": "14",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 41.08,
+          "model_calls": 5,
+          "tool_calls": 4,
+          "tokens": {
+            "input": 30585,
+            "output": 1463,
+            "reported_calls": 5
+          }
+        },
+        {
+          "case": "15",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 67.7,
+          "model_calls": 8,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 52806,
+            "output": 2348,
+            "reported_calls": 8
+          }
+        },
+        {
+          "case": "15",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 99.41,
+          "model_calls": 10,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 66565,
+            "output": 3801,
+            "reported_calls": 10
+          }
+        },
+        {
+          "case": "15",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 94.34,
+          "model_calls": 10,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 65656,
+            "output": 3460,
+            "reported_calls": 10
+          }
+        },
+        {
+          "case": "16",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 63.14,
+          "model_calls": 7,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 55151,
+            "output": 2075,
+            "reported_calls": 7
+          }
+        },
+        {
+          "case": "16",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 44.47,
+          "model_calls": 6,
+          "tool_calls": 6,
+          "tokens": {
+            "input": 46045,
+            "output": 1310,
+            "reported_calls": 6
+          }
+        },
+        {
+          "case": "16",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 45.24,
+          "model_calls": 6,
+          "tool_calls": 6,
+          "tokens": {
+            "input": 46017,
+            "output": 1363,
+            "reported_calls": 6
+          }
+        },
+        {
+          "case": "17",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 38.49,
+          "model_calls": 5,
+          "tool_calls": 5,
+          "tokens": {
+            "input": 36106,
+            "output": 1050,
+            "reported_calls": 5
+          }
+        },
+        {
+          "case": "17",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 37.55,
+          "model_calls": 5,
+          "tool_calls": 5,
+          "tokens": {
+            "input": 36087,
+            "output": 1027,
+            "reported_calls": 5
+          }
+        },
+        {
+          "case": "17",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 37.36,
+          "model_calls": 5,
+          "tool_calls": 5,
+          "tokens": {
+            "input": 36081,
+            "output": 1029,
+            "reported_calls": 5
+          }
+        },
+        {
+          "case": "18",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 39.48,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 35260,
+            "output": 1000,
+            "reported_calls": 5
+          }
+        },
+        {
+          "case": "18",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 37.78,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 35207,
+            "output": 930,
+            "reported_calls": 5
+          }
+        },
+        {
+          "case": "18",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 39.95,
+          "model_calls": 5,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 35255,
+            "output": 1014,
+            "reported_calls": 5
+          }
+        },
+        {
+          "case": "19",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 89.2,
+          "model_calls": 10,
+          "tool_calls": 12,
+          "tokens": {
+            "input": 74381,
+            "output": 2861,
+            "reported_calls": 10
+          }
+        },
+        {
+          "case": "19",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 62.94,
+          "model_calls": 6,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 46012,
+            "output": 2096,
+            "reported_calls": 6
+          }
+        },
+        {
+          "case": "19",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 40.31,
+          "model_calls": 4,
+          "tool_calls": 5,
+          "tokens": {
+            "input": 26077,
+            "output": 1415,
+            "reported_calls": 4
+          }
+        },
+        {
+          "case": "20",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 91.17,
+          "model_calls": 9,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 61560,
+            "output": 3387,
+            "reported_calls": 9
+          }
+        },
+        {
+          "case": "20",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 60.95,
+          "model_calls": 4,
+          "tool_calls": 5,
+          "tokens": {
+            "input": 25430,
+            "output": 2624,
+            "reported_calls": 4
+          }
+        },
+        {
+          "case": "20",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 66.08,
+          "model_calls": 7,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 45079,
+            "output": 2373,
+            "reported_calls": 7
+          }
+        },
+        {
+          "case": "21",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 148.91,
+          "model_calls": 9,
+          "tool_calls": 14,
+          "tokens": {
+            "input": 76563,
+            "output": 6166,
+            "reported_calls": 9
+          }
+        },
+        {
+          "case": "21",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 140.64,
+          "model_calls": 14,
+          "tool_calls": 20,
+          "tokens": {
+            "input": 150326,
+            "output": 3746,
+            "reported_calls": 14
+          }
+        },
+        {
+          "case": "21",
+          "repeat": 3,
+          "status": "FAIL",
+          "seconds": 105.74,
+          "model_calls": 10,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 85633,
+            "output": 3882,
+            "reported_calls": 10
+          },
+          "failure": "AGENT_FAILURE",
+          "code": "PLAN_TOOLS_UNRESOLVED"
+        },
+        {
+          "case": "22",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 86.39,
+          "model_calls": 11,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 86700,
+            "output": 2398,
+            "reported_calls": 11
+          }
+        },
+        {
+          "case": "22",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 93.02,
+          "model_calls": 11,
+          "tool_calls": 11,
+          "tokens": {
+            "input": 95855,
+            "output": 2517,
+            "reported_calls": 11
+          }
+        },
+        {
+          "case": "22",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 97.08,
+          "model_calls": 12,
+          "tool_calls": 12,
+          "tokens": {
+            "input": 106339,
+            "output": 2520,
+            "reported_calls": 12
+          }
+        },
+        {
+          "case": "23",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 93.47,
+          "model_calls": 7,
+          "tool_calls": 16,
+          "tokens": {
+            "input": 42226,
+            "output": 3935,
+            "reported_calls": 6
+          }
+        },
+        {
+          "case": "23",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 96.0,
+          "model_calls": 9,
+          "tool_calls": 16,
+          "tokens": {
+            "input": 58212,
+            "output": 3720,
+            "reported_calls": 8
+          }
+        },
+        {
+          "case": "23",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 89.19,
+          "model_calls": 9,
+          "tool_calls": 16,
+          "tokens": {
+            "input": 58096,
+            "output": 3352,
+            "reported_calls": 8
+          }
+        },
+        {
+          "case": "24",
+          "repeat": 1,
+          "status": "BLOCKED",
+          "seconds": 83.78,
+          "model_calls": 12,
+          "tool_calls": 13,
+          "tokens": {
+            "input": 70072,
+            "output": 2751,
+            "reported_calls": 11
+          },
+          "failure": "PRODUCT_RESUME_CONFIRMATION",
+          "code": "PLAN_RESUME_CONFIRMATION_REQUIRED"
+        },
+        {
+          "case": "24",
+          "repeat": 2,
+          "status": "BLOCKED",
+          "seconds": 83.69,
+          "model_calls": 7,
+          "tool_calls": 13,
+          "tokens": {
+            "input": 36066,
+            "output": 3647,
+            "reported_calls": 6
+          },
+          "failure": "PRODUCT_RESUME_CONFIRMATION",
+          "code": "PLAN_RESUME_CONFIRMATION_REQUIRED"
+        },
+        {
+          "case": "24",
+          "repeat": 3,
+          "status": "FAIL",
+          "seconds": 72.0,
+          "model_calls": 5,
+          "tool_calls": 6,
+          "tokens": {
+            "input": 32185,
+            "output": 3386,
+            "reported_calls": 5
+          },
+          "failure": "MODEL_FAILURE",
+          "code": "MODEL_EMPTY_RESPONSE"
+        },
+        {
+          "case": "25",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 98.66,
+          "model_calls": 11,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 88711,
+            "output": 3089,
+            "reported_calls": 11
+          }
+        },
+        {
+          "case": "25",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 136.72,
+          "model_calls": 15,
+          "tool_calls": 13,
+          "tokens": {
+            "input": 154828,
+            "output": 3751,
+            "reported_calls": 15
+          }
+        },
+        {
+          "case": "25",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 99.31,
+          "model_calls": 12,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 98127,
+            "output": 2914,
+            "reported_calls": 12
+          }
+        },
+        {
+          "case": "26",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 47.14,
+          "model_calls": 6,
+          "tool_calls": 8,
+          "tokens": {
+            "input": 43477,
+            "output": 1371,
+            "reported_calls": 6
+          }
+        },
+        {
+          "case": "26",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 49.8,
+          "model_calls": 7,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 50051,
+            "output": 1307,
+            "reported_calls": 7
+          }
+        },
+        {
+          "case": "26",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 48.12,
+          "model_calls": 7,
+          "tool_calls": 9,
+          "tokens": {
+            "input": 49932,
+            "output": 1203,
+            "reported_calls": 7
+          }
+        },
+        {
+          "case": "27",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 72.59,
+          "model_calls": 7,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 50333,
+            "output": 2719,
+            "reported_calls": 7
+          }
+        },
+        {
+          "case": "27",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 174.3,
+          "model_calls": 17,
+          "tool_calls": 16,
+          "tokens": {
+            "input": 198371,
+            "output": 4796,
+            "reported_calls": 17
+          }
+        },
+        {
+          "case": "27",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 69.34,
+          "model_calls": 7,
+          "tool_calls": 7,
+          "tokens": {
+            "input": 50022,
+            "output": 2499,
+            "reported_calls": 7
+          }
+        },
+        {
+          "case": "28",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 193.78,
+          "model_calls": 17,
+          "tool_calls": 22,
+          "tokens": {
+            "input": 191192,
+            "output": 5703,
+            "reported_calls": 17
+          }
+        },
+        {
+          "case": "28",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 236.25,
+          "model_calls": 23,
+          "tool_calls": 28,
+          "tokens": {
+            "input": 286650,
+            "output": 5847,
+            "reported_calls": 23
+          }
+        },
+        {
+          "case": "28",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 178.97,
+          "model_calls": 19,
+          "tool_calls": 24,
+          "tokens": {
+            "input": 216764,
+            "output": 4306,
+            "reported_calls": 19
+          }
+        },
+        {
+          "case": "29",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 76.22,
+          "model_calls": 9,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 76890,
+            "output": 2101,
+            "reported_calls": 9
+          }
+        },
+        {
+          "case": "29",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 83.17,
+          "model_calls": 9,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 76778,
+            "output": 2464,
+            "reported_calls": 9
+          }
+        },
+        {
+          "case": "29",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 80.33,
+          "model_calls": 9,
+          "tool_calls": 10,
+          "tokens": {
+            "input": 76979,
+            "output": 2305,
+            "reported_calls": 9
+          }
+        },
+        {
+          "case": "30",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 257.2,
+          "model_calls": 21,
+          "tool_calls": 25,
+          "tokens": {
+            "input": 282790,
+            "output": 6881,
+            "reported_calls": 21
+          }
+        },
+        {
+          "case": "30",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 248.67,
+          "model_calls": 22,
+          "tool_calls": 28,
+          "tokens": {
+            "input": 253427,
+            "output": 7047,
+            "reported_calls": 22
+          }
+        },
+        {
+          "case": "30",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 246.5,
+          "model_calls": 21,
+          "tool_calls": 29,
+          "tokens": {
+            "input": 247351,
+            "output": 7161,
+            "reported_calls": 21
+          }
+        }
+      ]
+    },
+    "legacy21": {
+      "case_seconds": 600,
+      "results": [
+        {
+          "case": "A",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 64.94,
+          "tool_calls": 8,
+          "tokens": null
+        },
+        {
+          "case": "A",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 87.33,
+          "tool_calls": 10,
+          "tokens": null
+        },
+        {
+          "case": "A",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 58.05,
+          "tool_calls": 8,
+          "tokens": null
+        },
+        {
+          "case": "B",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 184.53,
+          "tool_calls": 12,
+          "tokens": null
+        },
+        {
+          "case": "B",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 188.06,
+          "tool_calls": 14,
+          "tokens": null
+        },
+        {
+          "case": "B",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 169.45,
+          "tool_calls": 11,
+          "tokens": null
+        },
+        {
+          "case": "C",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 38.61,
+          "tool_calls": 6,
+          "tokens": null
+        },
+        {
+          "case": "C",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 38.52,
+          "tool_calls": 6,
+          "tokens": null
+        },
+        {
+          "case": "C",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 38.53,
+          "tool_calls": 6,
+          "tokens": null
+        },
+        {
+          "case": "D",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 51.84,
+          "tool_calls": 5,
+          "tokens": null
+        },
+        {
+          "case": "D",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 51.55,
+          "tool_calls": 7,
+          "tokens": null
+        },
+        {
+          "case": "D",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 44.48,
+          "tool_calls": 5,
+          "tokens": null
+        },
+        {
+          "case": "E",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 201.59,
+          "tool_calls": 24,
+          "tokens": null
+        },
+        {
+          "case": "E",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 123.52,
+          "tool_calls": 16,
+          "tokens": null
+        },
+        {
+          "case": "E",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 110.59,
+          "tool_calls": 16,
+          "tokens": null
+        },
+        {
+          "case": "F-vision",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 26.08,
+          "tool_calls": 2,
+          "tokens": null
+        },
+        {
+          "case": "F-vision",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 23.11,
+          "tool_calls": 2,
+          "tokens": null
+        },
+        {
+          "case": "F-vision",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 22.78,
+          "tool_calls": 2,
+          "tokens": null
+        },
+        {
+          "case": "F-desktop",
+          "repeat": 1,
+          "status": "FAIL",
+          "seconds": 102.08,
+          "tool_calls": 9,
+          "tokens": null,
+          "failure": "TOOL_PERMISSION",
+          "code": "TOOL_LOOP_DETECTED"
+        },
+        {
+          "case": "F-desktop",
+          "repeat": 2,
+          "status": "PASS",
+          "seconds": 252.02,
+          "tool_calls": 17,
+          "tokens": null
+        },
+        {
+          "case": "F-desktop",
+          "repeat": 3,
+          "status": "PASS",
+          "seconds": 76.94,
+          "tool_calls": 6,
+          "tokens": null
+        }
+      ]
+    },
+    "projects": {
+      "case_seconds": 600,
+      "results": [
+        {
+          "case": "P1",
+          "repeat": 1,
+          "status": "FAIL",
+          "seconds": 601.94,
+          "tool_calls": 17,
+          "tokens": null,
+          "failure": "TIMEOUT"
+        },
+        {
+          "case": "P2",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 69.24,
+          "tool_calls": 6,
+          "tokens": null
+        },
+        {
+          "case": "P3",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 116.09,
+          "tool_calls": 9,
+          "tokens": null
+        }
+      ]
+    },
+    "packaged_live": {
+      "case_seconds": 600,
+      "results": [
+        {
+          "case": "A",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 52.89,
+          "tool_calls": 8,
+          "tokens": null
+        }
+      ]
+    },
+    "todo_independent_retry": {
+      "case_seconds": 900,
+      "results": [
+        {
+          "case": "P1",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 383.14,
+          "tool_calls": 18,
+          "tokens": null
+        }
+      ]
+    },
+    "desktop_independent_retry": {
+      "case_seconds": 600,
+      "results": [
+        {
+          "case": "F-desktop",
+          "repeat": 1,
+          "status": "PASS",
+          "seconds": 107.95,
+          "tool_calls": 9,
+          "tokens": null
+        }
+      ]
+    }
+  }
+}
