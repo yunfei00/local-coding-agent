@@ -53,6 +53,17 @@ async def wait_file(path):
 
 
 class ProcessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_guarded_verification_accepts_pytest_alias_and_null_device(self):
+        from agent.tools.processes import guarded_python_arguments
+
+        result = await self.tools.processes.run({
+            'command':'python -c "import os; open(os.path.abspath(os.devnull), chr(119)).write(chr(120))"',
+            'isolated_cwd':True, '_verification_scope':'tester',
+        }, owner='null-device')
+        self.assertEqual(result.exit_code, 0, result.stderr)
+        self.assertFalse(result.data['verification_isolation_violation'])
+        self.assertEqual(guarded_python_arguments('pytest test_suite.py -q'), ['-m','pytest','test_suite.py','-q'])
+
     async def test_negative_isolated_assertion_preserves_real_exit_code(self):
         args = {"command": 'python -c "raise SystemExit(4)"', "isolated_cwd": True,
                 "expected_exit_codes": [4]}

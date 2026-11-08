@@ -38,15 +38,18 @@ def guarded_python_arguments(command):
         args = []
     if args[:3] == ['uv', 'run', '--no-project']:
         args = args[3:]
-    if (len(args) >= 2 and not any(re.fullmatch(r'[;&|<>]+', arg) for arg in args)
-        and args[0].lower() in {'python', 'python3', 'python.exe'} and (
+    if any(re.fullmatch(r'[;&|<>]+', arg) for arg in args):
+        args = []
+    if args and args[0].lower() in {'pytest', 'pytest.exe'}:
+        return ['-m', 'pytest', *args[1:]]
+    if (len(args) >= 2 and args[0].lower() in {'python', 'python3', 'python.exe'} and (
         (args[1] in {'-m', '-c'} and len(args) >= 3)
         or re.fullmatch(r'[\w./ -]+\.py', args[1], re.I) and not args[1].startswith('/')
         and '..' not in Path(args[1]).parts
     )):
         return args[1:]
     raise ToolError('VERIFICATION_ISOLATION_UNAVAILABLE',
-                    '无法安全隔离此验证命令。请在工程根目录运行单条 Python 脚本或 unittest，拆分 shell 命令，避免引用交付目录。')
+                    '无法安全隔离此验证命令。请在工程根目录运行单条 Python、unittest 或 pytest 命令，拆分 shell 命令，避免引用交付目录。')
 
 
 def shell_command(shell="auto"):
@@ -509,6 +512,9 @@ class ProcessManager:
                         "import sys; "
                         "getattr(sys, '_lca_verification_guard', False) or sys.exit('verification guard unavailable'); "
                         "import runpy; mode, target, *rest = sys.argv[1:]; sys.argv = [target, *rest]; "
+                        # pytest optionally imports Colorama on Windows even
+                        # on a pipe; leave native terminal access disabled.
+                        "sys.modules.__setitem__('colorama', None) if mode == '-m' and target == 'pytest' and sys.platform == 'win32' else None; "
                         "exec(compile(target, '<verification>', 'exec'), {'__name__': '__main__'}) if mode == '-c' "
                         "else runpy.run_module(target, run_name='__main__', alter_sys=True) if mode == '-m' "
                         "else runpy.run_path(target, run_name='__main__')"

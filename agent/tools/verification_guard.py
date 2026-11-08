@@ -14,7 +14,27 @@ import sys
 def install():
     root = Path(os.environ["LCA_VERIFICATION_ROOT"]).resolve()
     guard = Path(__file__).resolve().parent
-    runtime = {Path(p).resolve() for p in (sys.prefix, sys.base_prefix, sys.exec_prefix)}
+    prefix = Path(sys.prefix).resolve()
+    runtime = {prefix, Path(sys.base_prefix).resolve(), Path(sys.exec_prefix).resolve()}
+    # uv's ephemeral interpreter can load locked libraries from its cache
+    # through a startup .pth. Only allow reads of active package directories.
+    if prefix.parent.name == "builds-v0":
+        archive = prefix.parent.parent / "archive-v0"
+        for entry in sys.path:
+            if not entry:
+                continue
+            path = Path(entry).resolve()
+            if path.name != "site-packages":
+                continue
+            if path.is_relative_to(archive):
+                runtime.add(path)
+                continue
+            for parent in path.parents:
+                if (parent.name == ".venv" and not parent.is_relative_to(root.parent.parent)
+                        and (parent / "pyvenv.cfg").is_file()):
+                    runtime.add(parent)
+                    break
+    null_paths = {os.path.normcase(os.devnull), os.path.normcase(os.path.abspath(os.devnull))}
     executable = Path(sys.executable).resolve()
     violations = (guard / "violations").open("a", encoding="utf-8")
 
@@ -45,6 +65,8 @@ def install():
     def audit(event, args):
         if event == "open":
             path, _, flags = args
+            if not isinstance(path, int) and os.path.normcase(os.fsdecode(path)) in null_paths:
+                return
             within(path, event, write=bool(flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND)))
         elif event in {"os.listdir", "os.scandir", "os.chdir", "os.fwalk"}:
             if args[0] is not None:
