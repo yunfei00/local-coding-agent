@@ -2671,6 +2671,13 @@ class AgentServer:
                     execution.data['unified_provider_snapshot']=snapshot
         if unified:
             messages.append({'role':'system','content':UNIFIED_INSTRUCTIONS})
+            if (not requested['read_only'] and requested['kind'] in {'change','complex'}
+                    and re.search(r'退出码|非零退出|exit (?:code|status)|nonzero exit', execution.data.get('unified_goal', prompt), re.I)):
+                messages.append({'role':'system','content':
+                    'For a CLI smoke test whose expected actual exit code is nonzero, call run_command '
+                    'with isolated_cwd=true and expected_exit_codes containing only the required code. '
+                    'Keep assertions exact and inspect actual stdout/stderr. Do not treat unexpected failures as success.'})
+
             if requested['kind']=='interaction':
                 messages.append({'role':'system','content':'当前用户只要求界面操作。可读取所需结果文件，但不得修改源码或运行代码测试/终端修复；使用 start_process/read_process/stop_process 管理本次窗口进程。界面保存产生的数据文件不是开发任务。'})
             if self._permission_policy(project,execution).continuous:

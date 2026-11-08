@@ -70,8 +70,8 @@ def explicit_memory_rules(prompt):
 
 def requested_intent(prompt):
     """Conservative request-shape fallback; model plans and tool evidence refine it."""
-    paths=set(re.findall(r'[\w./\\-]+\.(?:py|tsx?|jsx?|json|toml|ya?ml|md|txt)\b',prompt,re.I))
-    text=re.sub(r'[\w./\\-]+\.(?:py|tsx?|jsx?|json|toml|ya?ml|md|txt)\b',' FILE ',prompt,flags=re.I)
+    paths=set(re.findall(r'[\w./\\-]+\.(?:py|tsx?|jsx?|json|toml|ya?ml|md)\b',prompt,re.I))
+    text=re.sub(r'[\w./\\-]+\.(?:py|tsx?|jsx?|json|toml|ya?ml|md)\b',' FILE ',prompt,flags=re.I)
     readonly=bool(re.search(r'只分析|仅分析|只读|(?:不|不要|禁止|不得)(?:修改|改动|编辑)(?:任何)?(?:代码|源码|文件|工程)|不(?:读取或)?修改工程|本轮只分析|analysis only|only analy[sz]e|do not (?:edit|modify) (?:any )?(?:files|code)',text,re.I))
     question=bool(re.search(r'^\s*(?:请)?(?:解释|讲解|如何|怎么|什么|只回答|仅回答|只返回|仅返回|what\b|how\b|why\b|explain\b)|是什么|什么意思',text,re.I))
     direct=bool(re.search(r'(?:请|帮我|直接|现在)(?:实现|开发|修复|修改|重构|新增)|can you (?:add|fix|implement|create|change)',text,re.I))
@@ -80,7 +80,7 @@ def requested_intent(prompt):
     # A final inspection request does not turn an earlier edit into analysis.
     # Preserve the explicit global read-only guard for destructive verbs.
     chinese_edit = bool(re.search(
-        r'(?:^|[。；;，,]\s*)(?:请|帮我|然后|再)?\s*(?:在\s+FILE\s+)?(?:完善|追加|替换|删除|移除|补上|更新)',
+        r'(?:^|[。；;，,]\s*)(?:请|帮我|然后|再)?\s*(?:在\s+(?:FILE|[\w./\\-]+\.\w+)\s+)?(?:完善|追加|替换|删除|移除|补上|更新)',
         text,
     ))
     change=not readonly and (chinese_edit or repair_file or inspect_and_repair or bool(re.search(r'实现|开发|修复|修改|重构|新增|增加|改成|改为|改中文|编写|创建|\b(?:implement|develop|refactor|create|fix|add|change|update)\b',text,re.I))) and (not question or direct)
