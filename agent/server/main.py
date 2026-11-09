@@ -951,6 +951,29 @@ class AgentServer:
             )
             return
 
+        if message_type == "browser.session":
+            from agent.browser.sessions import BrowserSessions
+            from agent.tools.browser import BrowserSessionTool
+            if self.projects.active is None:
+                await self.send_error(ws, "PROJECT_REQUIRED", "Open a project to use the browser.", request_id=request_id)
+                return
+            if not hasattr(self, "_browser_sessions"):
+                self._browser_sessions = BrowserSessions()
+            operation = str(payload.get("operation", ""))
+            if operation not in {"open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","close"}:
+                await self.send_error(ws, "BROWSER_OPERATION_INVALID", "Unsupported browser operation.", request_id=request_id)
+                return
+            if operation in {"click","press","check","uncheck","select"} and not payload.get("confirmed"):
+                await self.send_error(ws, "BROWSER_CONFIRM_REQUIRED", "Confirm interactive browser actions in the UI.", request_id=request_id)
+                return
+            try:
+                tool = BrowserSessionTool(self._browser_sessions)
+                result = await tool.execute(payload)
+                await ws.send_json(envelope("browser.result", result.to_dict(), request_id=request_id))
+            except Exception as exc:
+                await self.send_error(ws, "BROWSER_FAILED", str(exc), request_id=request_id)
+            return
+
         if message_type in {"skills.list", "skills.install", "skills.enable", "skills.disable", "skills.uninstall", "skills.read", "skills.backup", "skills.backups", "skills.rollback", "skills.update", "skills.audit"}:
             from agent.skills.manager import SkillManager
             from agent.skills.builtins import builtin_skill_workspace
