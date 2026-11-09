@@ -1,5 +1,6 @@
 import {UpdateSettings} from './UpdateSettings';
 import { MCPSettingsSection } from "./MCPSettingsSection";
+import { SkillsSettingsSection } from "./SkillsSettingsSection";
 import { ModelSettingsSection } from "./ModelSettingsSection";
 import { useEffect, useMemo, useState } from "react";
 
@@ -52,6 +53,7 @@ type Tab =
   | "agent"
   | "context"
   | "mcp"
+  | "skills"
   | "prompt_rules"
   | "safety";
 
@@ -73,6 +75,7 @@ const tabs: Array<{ id: Tab; label: string }> = [
   { id: "agent", label: "Agent" },
   { id: "context", label: "Context" },
   { id: "mcp", label: "MCP" },
+  { id: "skills", label: "Skills 技能" },
   { id: "prompt_rules", label: "Prompt Rules" },
   { id: "safety", label: "Safety" }
 ];
@@ -647,6 +650,7 @@ export function SettingsPanel({
           ) : null}
 
           {tab === "models" ? <ModelSettingsSection threadId={threadId} running={running} /> : null}
+          {tab === "skills" ? <SkillsSettingsSection running={running} /> : null}
           {tab === "mcp" ? (
             <MCPSettingsSection running={running} />
           ) : null}
@@ -708,7 +712,7 @@ export function SettingsPanel({
         </span>
         <button
           type="button"
-          disabled={busy || running || tab === "models"}
+          disabled={busy || running || tab === "models" || tab === "skills" || tab === "mcp"}
           onClick={() => void save()}
         >
           {busy ? "Applying…" : "Save settings"}
