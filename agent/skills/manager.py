@@ -90,7 +90,7 @@ class SkillManager:
         if len(files) > MAX_FILES or sum(p.stat().st_size for p in files if p.is_file()) > MAX_TOTAL:
             raise ValueError("Skill package too large")
         for p in files:
-            if p.is_symlink() or not p.resolve().is_relative_to(source):
+            if p.is_symlink() or not p.resolve().is_relative_to(source.resolve()):
                 raise ValueError("Symlinks and path escapes are forbidden")
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source, target, symlinks=False)
