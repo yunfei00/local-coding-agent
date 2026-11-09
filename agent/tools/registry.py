@@ -72,7 +72,7 @@ class ToolRegistry:
             GitWorktreeRemoveTool(workspace),
         ]
         self._tools: dict[str, BaseTool] = {}
-        for tool in [*tools, *skill_tools(workspace), *office_tools(workspace), *browser_tools(), *desktop_tools(self.desktop), *list(extra_tools)]:
+        for tool in [*tools, *skill_tools(workspace), *office_tools(workspace), *browser_tools(workspace=workspace), *desktop_tools(self.desktop), *list(extra_tools)]:
             self.register(tool)
 
     def register(
