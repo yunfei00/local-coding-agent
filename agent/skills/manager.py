@@ -97,7 +97,10 @@ class SkillManager:
         return name
 
     def install_local(self, source: str | Path) -> str:
-        source = Path(source).resolve(strict=True)
+        source = Path(source).expanduser()
+        if source.is_symlink():
+            raise ValueError("Symlink skill sources are forbidden")
+        source = source.resolve(strict=True)
         if source.is_dir():
             return self._install_directory(source)
         if source.suffix.lower() != ".zip":
@@ -186,6 +189,9 @@ class SkillManager:
         source = self._project_skill(name)
         if not source.is_dir() or source.is_symlink():
             raise ValueError("Project skill not installed")
+        new_source_path = Path(new_source).resolve(strict=True)
+        if new_source_path == source or source in new_source_path.parents:
+            raise ValueError("Cannot update a skill from itself")
         revision = self.backup_project(name)
         old = source.with_name(source.name + ".update-old")
         if old.exists():
