@@ -654,6 +654,7 @@ export function SettingsPanel({
 
           {tab === "models" ? <ModelSettingsSection threadId={threadId} running={running} /> : null}
           {tab === "skills" ? <SkillsSettingsSection running={running} /> : null}
+          {tab === "browser" ? <BrowserSettingsSection running={running} /> : null}
           {tab === "mcp" ? (
             <MCPSettingsSection running={running} />
           ) : null}
