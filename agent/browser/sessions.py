@@ -88,9 +88,18 @@ class BrowserSessions:
 
     async def action(self, session_id: str, operation: str, *, selector: str="", value: str="") -> dict:
         s = self._get(session_id)
-        if operation not in {"click","fill","select","check","uncheck","press","navigate","wait"}:
+        if operation not in {"click","fill","select","check","uncheck","press","navigate","wait","back","forward","scroll","tables"}:
             raise ValueError("Unsupported browser action")
-        if operation == "navigate":
+        if operation == "tables":
+            data=await s.page.locator("table").evaluate_all("""tables=>tables.slice(0,30).map(t=>Array.from(t.rows).slice(0,200).map(r=>Array.from(r.cells).map(c=>(c.innerText||'').slice(0,1000))))""")
+            return {"url":s.page.url,"tables":data}
+        if operation == "back":
+            await s.page.go_back(wait_until="domcontentloaded",timeout=15000)
+        elif operation == "forward":
+            await s.page.go_forward(wait_until="domcontentloaded",timeout=15000)
+        elif operation == "scroll":
+            await s.page.mouse.wheel(0,max(-2000,min(2000,int(value or "600"))))
+        elif operation == "navigate":
             validate_url(value)
             if urlparse(value).hostname != s.hostname:
                 raise ValueError("Cross-host navigation is blocked")
@@ -116,6 +125,16 @@ class BrowserSessions:
             elif operation == "press":
                 await locator.press(value,timeout=10000)
         return await self.snapshot(session_id)
+
+    async def screenshot(self, session_id: str, path: str) -> dict:
+        from pathlib import Path
+        s=self._get(session_id)
+        output=Path(path)
+        if output.suffix.lower()!=".png" or output.exists():
+            raise ValueError("Screenshot must be a new PNG file")
+        output.parent.mkdir(parents=True,exist_ok=True)
+        await s.page.screenshot(path=str(output),full_page=False,timeout=15000)
+        return {"path":str(output),"bytes":output.stat().st_size}
 
     async def close(self, session_id: str) -> dict:
         async with self._lock:
