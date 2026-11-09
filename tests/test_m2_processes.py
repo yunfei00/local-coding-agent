@@ -53,6 +53,17 @@ async def wait_file(path):
 
 
 class ProcessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_guarded_verification_accepts_pytest_alias_and_null_device(self):
+        from agent.tools.processes import guarded_python_arguments
+
+        result = await self.tools.processes.run({
+            'command':'python -c "import os; open(os.path.abspath(os.devnull), chr(119)).write(chr(120))"',
+            'isolated_cwd':True, '_verification_scope':'tester',
+        }, owner='null-device')
+        self.assertEqual(result.exit_code, 0, result.stderr)
+        self.assertFalse(result.data['verification_isolation_violation'])
+        self.assertEqual(guarded_python_arguments('pytest test_suite.py -q'), ['-m','pytest','test_suite.py','-q'])
+
     async def test_negative_isolated_assertion_preserves_real_exit_code(self):
         args = {"command": 'python -c "raise SystemExit(4)"', "isolated_cwd": True,
                 "expected_exit_codes": [4]}
@@ -64,6 +75,17 @@ class ProcessTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(wrong.exit_code, 4)
         with self.assertRaises(ToolError):
             await self.tools.execute("run_command", {**args, "isolated_cwd": False}, owner_id="negative-check")
+
+    async def test_exit_contract_distinguishes_environment_and_process_exit(self):
+        args = {"isolated_cwd": True, "expected_exit_codes": [0]}
+        zero = await self.tools.execute("run_command", {**args, "command": "python -V"}, owner_id="exit-contract")
+        self.assertEqual(zero.data["command_outcome"]["status"], "expected_exit")
+        self.assertEqual(zero.data["command_outcome"]["actual_exit_code"], 0)
+        missing = await self.tools.execute("run_command", {
+            **args, "expected_exit_codes": [1, 127], "command": "lca_no_such_test_executable_8f0e"},
+            owner_id="exit-contract")
+        self.assertFalse(missing.ok)
+        self.assertEqual(missing.data["command_outcome"]["status"], "environment_error")
 
     async def test_isolated_command_state_is_owned_and_never_changes_delivery(self):
         fixture = self.root / "state.txt"

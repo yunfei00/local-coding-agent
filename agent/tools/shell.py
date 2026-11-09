@@ -43,11 +43,39 @@ class RunCommandTool(BaseTool):
             raise ToolError("INVALID_EXPECTED_EXIT", "Expected exit codes require an isolated command and a bounded integer list")
         result = await self.manager.run(arguments, owner=owner_id, on_output=on_output,
                                         on_raw_output=on_raw_output, environment=environment)
-        if expected is not None and result.data.get("state") in {"completed", "failed"}:
-            result.ok = result.exit_code in expected
+        from agent.core.verification import classify
+        state = result.data.get("state")
+        category = classify(result.to_dict())
+        actual = result.exit_code
+        if result.data.get('verification_isolation_violation'):
+            status = 'permission_error'
+            result.ok = False
+            result.data['error_code'] = 'VERIFICATION_ISOLATION_PERMISSION'
+            result.summary = '隔离验证阻止了越界访问或不受支持的子进程；请使用隔离目录内的相对路径和 Python 子进程。'
+        elif state not in {"exited", "failed"}:
+            status = "cancelled" if state in {"user_cancelled", "user_stopped", "scope_finished"} else "execution_error"
+            result.ok = False
+        elif (actual != 0 and category in {"environment", "network", "configuration", "permission"}) or (actual == 127 and "not found" in result.stderr.lower()):
+            status = category + "_error" if category in {"network", "configuration", "permission"} else "environment_error"
+            result.ok = False
+        elif expected is not None:
+            result.ok = actual in expected
+            status = "expected_exit" if result.ok else "unexpected_exit"
             result.data["expected_exit_codes"] = expected
             result.data["error_code"] = None if result.ok else "UNEXPECTED_EXIT_STATUS"
-            result.summary = f"Actual exit code {result.exit_code}; expected {expected}; matched={result.ok}"
+            result.summary = f"Actual exit code {actual}; expected {expected}; matched={result.ok}"
+        else:
+            status = "success" if result.ok else "unexpected_exit"
+        result.data["command_outcome"] = {
+            "status": status, "actual_exit_code": actual, "expected_exit_codes": expected,
+            "isolated": arguments.get("isolated_cwd") is True,
+        }
+        if status == "unexpected_exit" and expected is None:
+            result.data["command_outcome"]["hint"] = (
+                "If this was an intentionally negative smoke probe, assert only the exit code "
+                "specified by the user using isolated_cwd and expected_exit_codes. Otherwise diagnose the failure.")
+        if result.data.get('verification_isolation_violation'):
+            raise ToolError('VERIFICATION_ISOLATION_PERMISSION', result.summary, details=result.to_dict())
         return result
 
 

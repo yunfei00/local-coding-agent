@@ -21,6 +21,33 @@ class WorkflowTests(unittest.TestCase):
             {'task_id':'tests','description':'测试','assigned_role':'tester','dependencies':['review'],'verification':'uv run python -m unittest'},
         ])
 
+    def test_negative_assertion_does_not_poison_positive_step_evidence(self):
+        pid = self.store.create("thread", "verify CLI", [{"task_id":"verify", "description":"verify",
+            "assigned_role":"tester", "acceptance_criteria":["run tests"]}])
+        step = self.store.active_step(pid)["id"]
+        negative = {"ok": True, "exit_code": 2, "data": {"command_outcome":{"status":"expected_exit"}}}
+        self.store.record_execution(pid, step, "negative", "turn", "run_command", negative)
+        evidence = [{"ok":True,"step_id":step,"tool_call_id":"negative","tool":"run_command","exit_code":2}]
+        self.assertFalse(self.store.advance_verified(pid, step, evidence, True))
+        self.store.record_execution(pid, step, "positive", "turn", "run_command", {"ok":True,"exit_code":0})
+        evidence.append({"ok":True,"step_id":step,"tool_call_id":"positive","tool":"run_command","exit_code":0})
+        self.assertTrue(self.store.advance_verified(pid, step, evidence, True))
+
+    def test_missing_test_repair_is_bounded_without_forging_failure_evidence(self):
+        pid = self.store.create("thread","verify", [{"task_id":"verify","description":"verify",
+            "assigned_role":"tester","acceptance_criteria":["run tests"]}])
+        original = self.store.active_step(pid)
+        self.assertTrue(self.store.prepare_missing_test_handoff(pid,original["id"]))
+        developer = self.store.active_step(pid)
+        self.assertEqual(developer["workflow"]["assigned_role"], "developer")
+        self.assertEqual(developer["workflow"]["handoff_for"], original["id"])
+        self.assertEqual(self.store.executions(pid), [])
+        self.store.record_execution(pid,developer["id"],"write","turn","write_file",{"ok":True})
+        self.store.update_step(pid,developer["id"],"completed",
+                              [{"tool_call_id":"write","step_id":developer["id"],"ok":True}])
+        self.assertFalse(self.store.prepare_missing_test_handoff(pid,original["id"]))
+        self.assertEqual(self.store.active_step(pid)["state"], "blocked")
+
     def test_ready_respects_forward_dependency_and_evidence(self):
         pid = self.create()
         first = self.store.active_step(pid)
@@ -112,6 +139,36 @@ class WorkflowTests(unittest.TestCase):
         TaskPlanStore(self.db)
         self.assertEqual(first['id'],self.store.active_step(pid)['id'])
         self.assertEqual(first['workflow'],{})
+
+    def test_required_tester_upgrade_preserves_completed_checkpoint(self):
+        plan_id = self.store.create('thread', '已有交付', [{'description':'实现程序'}])
+        developer = self.store.active_step(plan_id)
+        self.store.record_execution(plan_id, developer['id'], 'write', 'before-resume', 'write_file', {'ok':True})
+        evidence = [{'tool_call_id':'write','step_id':developer['id'],'tool':'write_file','ok':True}]
+        self.assertTrue(self.store.advance_verified(plan_id, developer['id'], evidence, True))
+        self.store.checkpoint(plan_id, 'interrupted')
+
+        reopened = TaskPlanStore(self.db)
+        self.assertTrue(reopened.ensure_independent_tester(plan_id))
+        self.assertFalse(reopened.ensure_independent_tester(plan_id))
+        steps = reopened.get(plan_id)['steps']
+        self.assertEqual([s['state'] for s in steps], ['completed','pending'])
+        self.assertEqual(steps[0]['id'], developer['id'])
+        self.assertEqual(len(steps[0]['executions']), 1)
+        self.assertEqual(reopened.active_step(plan_id)['workflow']['assigned_role'], 'tester')
+
+    def test_pending_tester_missing_a_delivery_dependency_is_reused(self):
+        plan_id = self.store.create('thread', '交付与测试', [
+            {'task_id':'code','description':'开发','assigned_role':'developer'},
+            {'task_id':'doc','description':'文档','assigned_role':'developer'},
+            {'task_id':'verify','description':'验证','assigned_role':'tester','dependencies':['code']},
+        ])
+        original = self.store.get(plan_id)['steps']
+        self.assertTrue(self.store.ensure_independent_tester(plan_id))
+        updated = self.store.get(plan_id)['steps']
+        self.assertEqual([s['id'] for s in original], [s['id'] for s in updated])
+        self.assertEqual(updated[-1]['workflow']['dependencies'], ['code','doc'])
+        self.assertFalse(self.store.ensure_independent_tester(plan_id))
 
     def test_templates_are_valid_data_and_parameters_do_not_grant_permission(self):
         templates=load_templates()

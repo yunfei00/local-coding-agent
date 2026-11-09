@@ -321,13 +321,13 @@ finally:
     root.destroy()
 """)
 
-async def attempt(session, binary, url, model, case, root, number, source=False, challenge=None, *, profile, options):
+async def attempt(session, binary, url, model, case, root, number, source=False, challenge=None, *, profile, options, scenario=None, api_key=None):
     from agent.core.diagnostics import redact_text
     from scripts.validation.packaged_agent_smoke import read_lines
     from agent.tools.base import ToolError
     work = root / "work"
     work.mkdir(parents=True)
-    seed(work, case)
+    scenario.seed(work) if scenario else seed(work, case)
     result = {"model": model, "case": case, "repeat": number, "tools": [],
               "status": "BLOCKED", "failure": None, "tokens": None, "repairs": None,
               "configuration": options}
@@ -362,6 +362,11 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
         cwd = P(__file__).resolve().parents[2]
     env = {**case_environment(root), "LCA_DATA_DIR": str(root / "data"), "LCA_PROVIDER": "ollama",
            "LCA_OLLAMA_URL": url, "LCA_OLLAMA_MODEL": model}
+    if scenario:
+        env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
+                   UV_OFFLINE="1", UV_NO_MANAGED_PYTHON="1", npm_config_offline="true",
+                   npm_config_ignore_scripts="true")
+        env.pop("VIRTUAL_ENV", None)
     if options["model_steps"] is not None:
         env["LCA_MAX_MODEL_STEPS"] = str(options["model_steps"])
     if options["context_window"] is not None:
@@ -389,14 +394,24 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
         headers = {"Authorization": "Bearer " + ready["token"]}
         async with asyncio.timeout(options["case_seconds"]), session.ws_connect(base + "/ws", headers=headers) as ws:
             if profile:
-                catalog = {"connections":[{"connection_id":"bench","display_name":"Benchmark Ollama",
-                    "provider_type":"ollama","base_url":url,"credential_reference":None,"enabled":True}],
+                if api_key:
+                    await ws.send_json({"type":"task.credentials.update","request_id":"bench-credentials",
+                        "payload":{"credentials":{"connection-bench":api_key}}})
+                    while True:
+                        msg = await ws.receive_json()
+                        if msg.get("request_id") == "bench-credentials":
+                            if msg["type"] != "task.loaded":
+                                raise RuntimeError("isolated_credentials_update")
+                            break
+                catalog = {"connections":[{"connection_id":"bench","display_name":"Benchmark API" if api_key else "Benchmark Ollama",
+                    "provider_type":"openai_compatible" if api_key else "ollama","base_url":url,
+                    "credential_reference":"connection-bench" if api_key else None,"enabled":True}],
                     "profiles":[{**profile,"model_profile_id":"bench","connection_id":"bench",
                                  "supports_vision": True if fixture else profile.get("supports_vision", False)}]}
                 await ws.send_json({"type":"task.catalog.update","request_id":"bench-catalog",
                                     "payload":{"catalog":catalog,"chat_default":"bench",
                                                "config":{"strategy":"single-agent","roles":{"executor":{"model_profile_id":"bench"}},
-                                                         "budget":{"request_seconds":options["request_seconds"]}}}})
+                                                         "budget":{"request_seconds":options["request_seconds"], **options.get("api_budget", {})}}}})
                 while True:
                     msg = await ws.receive_json()
                     if msg.get("request_id") == "bench-catalog":
@@ -412,10 +427,12 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                         raise RuntimeError("project_open")
                     thread = event["thread_id"]
                     break
-            prompt = gui_prompt if fixture else (CASES | PROJECTS)["C" if case == "R" else case] + " Work only in this test project. Never access other directories, install packages, or contact the network."
+            prompt = gui_prompt if fixture else (scenario.prompt if scenario else (CASES | PROJECTS)["C" if case == "R" else case]) + " Work only in this test project. Never access other directories, install packages, or contact the network."
             await ws.send_json({"type":"turn.start","thread_id":thread,"payload":{"model":selected,"prompt":prompt,"unified":True}})
+            control = scenario.control if scenario else "resume" if case == "R" else ""
             denied = False
             chunks = []
+            verification_commands = {}
             focus_before = None
             editors = []
             turn_id = run_id = None
@@ -426,7 +443,7 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                 if kind in {"turn.delta", "turn.status", "tool.started", "tool.completed",
                             "turn.failed", "turn.cancelled", "turn.completed", "error"} and trace_bytes < 32 * 1024 * 1024:
                     content = redact_text(json.dumps(p, ensure_ascii=False),
-                                          exact_secrets=(ready["token"],), max_chars=32000)
+                                          exact_secrets=(ready["token"], api_key) if api_key else (ready["token"],), max_chars=32000)
                     row = json.dumps({"type": kind, "payload": content}, ensure_ascii=False) + "\n"
                     trace.write(row)
                     trace.flush()
@@ -448,6 +465,10 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                             "git restore scratch.txt", "git switch -c benchmark-work",
                             'git commit -m "baseline"', 'git config user.name Benchmark',
                             'git config user.email benchmark@example.invalid'})
+                    if scenario:
+                        safe = scenario.approve(tool, args)
+                        if not safe:
+                            result.setdefault("harness_denials", []).append(tool)
                     if fixture:
                         safe = fixture.poll() is None and gui_approval(tool,args,fixture.pid,case,editors,expected,ready["token"])
                         if safe and tool == "desktop_focus_window":
@@ -465,6 +486,10 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                             focus_before = foreground_pid()
                     denied |= not safe
                     await ws.send_json({"type":"approval.respond","payload":{"approval_id":p["approval_id"],"decision":"allow_once" if safe else "deny"}})
+                if scenario and kind == "tool.started" and p.get("name") == "run_command":
+                    command = p.get("arguments", {}).get("command")
+                    if command in {"python -m unittest -q", "npm test", "npm run build"}:
+                        verification_commands[p.get("tool_call_id")] = command
                 if kind == "tool.completed":
                     r = p.get("result", {})
                     if case in {"F-desktop", "N"} and p.get("name") == "desktop_inspect" and r.get("ok"):
@@ -483,26 +508,34 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                                             "vision_feedback":(r.get("data") or {}).get("vision_feedback"),
                                             "changed_paths":r.get("changed_paths", []),
                                             "error_code":(r.get("error") or {}).get("code")})
-                    if case == "R" and not cancellation_requested and turn_id and run_id and r.get("ok") and "mathbox.py" in r.get("changed_paths", []):
+                    observed_command = verification_commands.pop(p.get("tool_call_id"), None)
+                    if observed_command:
+                        result["tools"][-1]["verification_command"] = observed_command
+                    if control and not cancellation_requested and turn_id and run_id and r.get("ok") and (r.get("changed_paths") if scenario else "mathbox.py" in r.get("changed_paths", [])):
                         cancellation_requested = True
                         await ws.send_json({"type":"turn.cancel","turn_id":turn_id})
-                if case == "R" and kind == "turn.cancelled" and cancellation_requested and not resumed:
+                if control and kind == "turn.cancelled" and cancellation_requested and not resumed:
                     result["cancelled_generation"] = True
                     await ws.close()
                     reconnected = await session.ws_connect(base + "/ws", headers=headers)
                     ws = reconnected
                     resumed = True
                     result["reconnected"] = True
-                    await ws.send_json({"type":"turn.start","thread_id":thread,"payload":{
-                        "model":selected,"prompt":"继续原任务，保留已完成操作","unified":True,
-                        "resume_run_id":run_id,"confirm_workspace":True}})
+                    result["control"] = control
+                    payload = {"model": selected, "prompt": prompt if control == "restart" else "继续原任务，保留已完成操作", "unified": True}
+                    if control == "resume":
+                        payload.update(resume_run_id=run_id, confirm_workspace=True)
+                    await ws.send_json({"type":"turn.start","thread_id":thread,"payload":payload})
                     continue
                 if kind in {"turn.completed","turn.failed","turn.cancelled","error"}:
                     result["terminal"] = kind
                     result["code"] = p.get("code")
+                    if scenario and kind != "turn.completed":
+                        from agent.core.runtime_events import failure_class
+                        result["failure"] = failure_class(result["code"])
                     result["outcome"] = p.get("outcome")
                     if kind != "turn.completed":
-                        result.update(status="FAIL", failure="TOOL_PERMISSION" if denied else "AGENT_FAILURE")
+                        result.update(status="FAIL", failure="TOOL_PERMISSION" if denied else result["failure"] or "AGENT_FAILURE")
                     else:
                         try:
                             if case == "F-vision":
@@ -518,7 +551,10 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                                 assert result["saved_text_verified"], "desktop_saved_text_mismatch"
                                 assert not successful & {"write_file","apply_patch","run_command"}
                             else:
-                                score(work, case, result["tools"])
+                                if scenario:
+                                    scenario.score(work, result)
+                                else:
+                                    score(work, case, result["tools"])
                                 if case == "R":
                                     assert resumed and result.get("cancelled_generation")
                                     assert sum(t["ok"] and "mathbox.py" in t["changed_paths"] for t in result["tools"] if t["ok"]) == 1
@@ -526,7 +562,7 @@ async def attempt(session, binary, url, model, case, root, number, source=False,
                         except ToolError as exc:
                             result.update(status="BLOCKED", failure="ENVIRONMENT_FAILURE", detail=exc.code)
                         except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as exc:
-                            result.update(status="FAIL", failure="TOOL_PERMISSION" if denied else "MODEL_FAILURE")
+                            result.update(status="FAIL", failure="TOOL_PERMISSION" if denied else "DELIVERY_ASSERTION" if scenario else "MODEL_FAILURE")
                             result["assertion_failure"] = (str(exc) or "assertion_failed") if isinstance(exc, AssertionError) else type(exc).__name__
                     break
     except TimeoutError:

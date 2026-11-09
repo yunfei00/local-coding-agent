@@ -128,17 +128,21 @@ class ProjectKnowledge:
         query=str(query).strip()
         if not 1<=len(query)<=500:raise ValueError('检索词必须为 1–500 字符')
         meta=self.index();terms=re.findall(r'[\w.-]+',query.lower())[:12];results=[];policy=ProjectFiles(self.root,self.exact_secrets)
+        references = set(re.findall(r'[\w.-]+(?:/[\w.-]+)+', query.lower().replace('\\', '/')))
         for row in self.db.execute('SELECT * FROM project_knowledge_files WHERE project_id=?',(self.project_id,)):
             # Re-read before emitting: persisted indexes never grant file access.
             path=self.root/row['path'];text=policy.read(path)
             if text is None:continue
             lines=text.splitlines();symbols=json.loads(row['symbols'])
-            filename=any(t in row['path'].lower() for t in terms)
+            exact_path = row['path'].lower() in references
+            filename=exact_path or any(t in row['path'].lower() for t in terms)
             symbol=[s for s in symbols if any(t in s['name'].lower() for t in terms)]
             matches=[i for i,line in enumerate(lines) if any(t in line.lower() for t in terms)]
             score=(8*filename if mode in {'all','filename'} else 0)+(6*bool(symbol) if mode in {'all','symbol'} else 0)+(min(len(matches),10) if mode in {'all','content'} else 0)
+            if exact_path and mode in {'all','filename'}:
+                score += 20
             if not score:continue
-            at=symbol[0]['line']-1 if symbol and mode=='symbol' else matches[0] if matches else 0
+            at=symbol[0]['line']-1 if symbol and (mode=='symbol' or exact_path) else matches[0] if matches else 0
             start=max(0,at-2);end=min(len(lines),at+5)
             results.append({'path':row['path'],'start_line':start+1 if lines else 0,'end_line':end,'snippet':'\n'.join(lines[start:end])[:2400],'reason':[n for n,v in [('文件名',filename),('符号',bool(symbol)),('内容',bool(matches))] if v],'index_version':meta['version'],'score':score})
         return {'results':sorted(results,key=lambda x:(-x['score'],x['path']))[:max(1,min(int(limit),20))],'index':meta}

@@ -46,6 +46,23 @@ jobs:
       - name: Build, install, restart and uninstall candidate
         shell: pwsh
         run: ./scripts/build/package-windows.ps1 -ReuseDependencies
+      - name: Verify isolated upgrade from v1.0.1
+        if: github.ref_name == 'feature/v1.1-release-candidate'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v1.0.1 --pattern '*-x64-Setup.exe' --pattern SHA256SUMS.txt --dir build/upgrade-baseline
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $previous = Get-Item build/upgrade-baseline/Local-Coding-Agent-1.0.1-x64-Setup.exe
+          $checksum = (Get-Content build/upgrade-baseline/SHA256SUMS.txt | Where-Object { $_.EndsWith($previous.Name) }).Split(' ')[0]
+          if ((Get-FileHash $previous.FullName).Hash -ne $checksum) { throw 'Previous installer SHA256 mismatch' }
+          git fetch origin tag v1.0.1
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          git worktree add --detach build/upgrade-source v1.0.1
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $candidate = Get-Item desktop/release/Local-Coding-Agent-1.1.0-x64-Setup.exe
+          ./scripts/validation/v10-upgrade.ps1 -PreviousInstaller $previous.FullName -PreviousSource build/upgrade-source -CandidateInstaller $candidate.FullName -PreviousVersion 1.0.1 -CandidateVersion 1.1.0 -PreviousSchema 7
       - name: Retain candidate and isolated acceptance evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -58,3 +75,4 @@ jobs:
             desktop/release/SHA256SUMS.txt
             build/packaged-*-smoke.json
             validation-reports/desktop-smoke.json
+            build/v10-upgrade-*/report.json

@@ -125,6 +125,54 @@ class RuntimeIntegrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.server.store.task_plans.active_step(plan_id)['state'],'pending')
             await ws.close()
 
+    async def test_generated_test_cannot_remove_preserved_workspace_file_by_relative_path(self):
+        from agent.core.execution import ExecutionBudget
+        from agent.core.verification import protected_workspace_files
+        from agent.llm.base import ToolCall
+        protected = self.repo / "VERSION"
+        protected.write_text("keep")
+        (self.repo / "test_fixture.py").write_text(
+            "from pathlib import Path\np=Path('VERSION')\np.write_text('scratch')\np.unlink()\n")
+        goal = "修复读取，保持 VERSION 原样。"
+        run = ExecutionBudget(self.server.store.connection, "preservation", self.thread.id,
+                              self.server.continuation_policy)
+        run.data["protected_workspace_files"] = protected_workspace_files(self.repo, goal)
+        self.server.active_executions["preservation"] = run
+        self.server.approvals.request = AsyncMock(return_value="allow_once")
+        project = self.server.projects.active
+        ws = FakeWebSocket()
+        async def execute(arguments):
+            return await self.server._authorize_tool(ws, project=project, call=ToolCall("run_command", arguments),
+                call_id="preservation-check", thread_id=self.thread.id, turn_id="preservation", user_prompt=goal)
+        denied = await execute({"command":"python test_fixture.py"})
+        self.assertEqual(denied["error"]["code"], "PROTECTED_WORKSPACE_SCOPE")
+        isolated = await execute({"command":"python test_fixture.py", "isolated_cwd":True})
+        self.assertTrue(isolated["ok"], str(isolated))
+        self.assertEqual(protected.read_text(), "keep")
+
+    async def test_confirmed_resume_refreshes_blocked_step_before_dispatch(self):
+        from agent.core.execution import ExecutionBudget
+        plans = self.server.store.task_plans
+        plan_id = plans.create(self.thread.id, "修复 calculator.py",
+                               [{"description":"完成验证","verification":""}])
+        step = plans.active_step(plan_id)
+        plans.update_step(plan_id, step["id"], "in_progress")
+        plans.update_step(plan_id, step["id"], "blocked")
+        run = ExecutionBudget(self.server.store.connection, plan_id, self.thread.id,
+                              self.server.continuation_policy)
+        run.data.update(unified={"id":plan_id,"phase":"cancelled"}, unified_goal="修复 calculator.py")
+        run.save()
+        self.server.ensure_model_available = AsyncMock(return_value=True)
+        self.server.run_tool_turn = AsyncMock()
+        ws = FakeWebSocket()
+        await self.server.handle_message(ws, {"type":"turn.start","thread_id":self.thread.id,
+            "payload":{"prompt":"继续","model":"mock","unified":True,
+                       "resume_run_id":plan_id,"confirm_workspace":True}}, set())
+        await asyncio.gather(*list(self.server.active_turns.values()))
+        self.assertEqual(self.server.run_tool_turn.await_args.kwargs["execution_id"], plan_id)
+        self.assertEqual(plans.active_step(plan_id)["state"], "in_progress")
+        self.assertFalse(any(e["payload"].get("code") == "PLAN_BLOCKED" for e in ws.messages))
+
     async def test_completed_plan_with_reviewed_interruption_resumes_same_owner(self):
         plans=self.server.store.task_plans
         plan_id=plans.create(self.thread.id,'修复加法',[{'description':'修复并验证'}]);step=plans.active_step(plan_id)

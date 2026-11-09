@@ -1,6 +1,6 @@
 [project]
 name = "local-coding-agent"
-version = "1.0.1"
+version = "1.1.0"
 description = "Local-first coding agent core"
 requires-python = ">=3.11"
 dependencies = [

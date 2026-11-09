@@ -17,6 +17,14 @@ class KnowledgeTests(unittest.TestCase):
     def tearDown(self):self.store.close();self.temp.cleanup()
     def write(self,name,text):
         p=self.root/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text,encoding='utf-8');return p
+    def test_explicit_nested_path_wins_over_common_basename(self):
+        self.write('backup/calculator.py','def total(): pass')
+        self.write('src/calculator.py','\n' * 8 + 'def total(): return 2')
+        results = self.k.search(r'检查 src\calculator.py 的 total')["results"]
+        self.assertEqual(results[0]["path"], "src/calculator.py")
+        self.assertLessEqual(results[0]["start_line"], 9)
+        self.assertGreaterEqual(results[0]["end_line"], 9)
+
     def test_memory_persists_new_thread_restart_and_project_isolation(self):
         self.k.save('约定','使用 uv 和 unittest','convention',trust='user')
         second=self.base/'other';second.mkdir();p,_,_=ProjectRegistry(self.store).open(second,active_model=None)

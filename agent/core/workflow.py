@@ -40,6 +40,33 @@ ADJUST_TOOL={'type':'function','function':{'name':'workflow_adjust','description
         'dependencies':{'type':'array','items':{'type':'string'}},'acceptance_criteria':{'type':'array','items':{'type':'string'}},'required_capabilities':{'type':'array','items':{'type':'string'}}}}}}}}}
 REVIEW_TOOL = {'type':'function','function':{'name':'workflow_review','description':'Reviewer only: submit an independent evidence-backed review. Request changes adds a bounded Developer repair before re-review.',
     'parameters':{'type':'object','required':['decision','summary'],'properties':{'decision':{'type':'string','enum':['approved','request_changes']},'summary':{'type':'string','minLength':1,'maxLength':2000}}}}}
+TEST_HANDOFF_TOOL = {"type":"function","function":{
+    "name":"workflow_test_handoff",
+    "description":"Developer only on a missing-test repair step. Declare a real root-level unittest script, its exact command, cwd '.', expected [0], and isolated_cwd true. Does not run commands or grant permission.",
+    "parameters":{"type":"object","additionalProperties":False,
+        "required":["script","command","cwd","expected_exit_codes","isolated_cwd"],"properties":{
+            "script":{"type":"string"},"command":{"type":"string"},"cwd":{"type":"string"},
+            "expected_exit_codes":{"type":"array","items":{"type":"integer"}},"isolated_cwd":{"type":"boolean"}}}}}
+
+
+def test_handoff(root, arguments):
+    script = arguments.get("script")
+    if not isinstance(script,str) or not re.fullmatch(r"test_[A-Za-z0-9_]{1,80}\.py",script):
+        raise ValueError("声明项目根目录下的 test_*.py unittest 脚本")
+    command = f"python -m unittest discover -s . -p {script} -v"
+    codes = arguments.get("expected_exit_codes")
+    if (arguments.get("command") != command or arguments.get("cwd") != "."
+            or arguments.get("isolated_cwd") is not True or codes != [0]
+            or type(codes[0]) is not int):
+        raise ValueError("必须声明精确命令、工作目录 .、预期退出码 [0] 和隔离工作目录")
+    path = root / script
+    if (not path.is_file() or path.is_symlink() or not path.resolve().is_relative_to(root.resolve())
+            or path.stat().st_size > 262144):
+        raise ValueError("已声明的测试脚本不存在或超出工作区")
+    return {"script":script,"command":command,"cwd":".","expected_exit_codes":[0],
+            "isolated_cwd":True,"data_scope":"owned_scratch","script_sha256":hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
 ROLE_INSTRUCTIONS = {
     'planner': '你是 Planner。使用 read_file、list_directory、search_files、knowledge_search、git_status/git_diff 读取工程、检查约束和依赖；必要时用 workflow_adjust 细化尚未执行步骤的描述、依赖和验收要求。不修改代码。不要运行故障基线测试，也不要运行任意终端脚本；测试属于 Tester。每步包含可验证验收标准。',
     'developer': '你是 Developer。只完成当前步骤的实现或修复，复用已完成操作和真实证据。禁止宣布其他角色已通过。',
@@ -73,6 +100,8 @@ def normalize_nodes(steps):
                        'dependencies':deps, 'assigned_role':role,
                        'required_capabilities':capabilities, 'acceptance_criteria':criteria,
                        'retry_count':0})
+        if node.get('source') == 'runtime_independent_verification':
+            result[-1]['source'] = node['source']
     ids = [n['task_id'] for n in result]
     if len(set(ids)) != len(ids):
         raise ValueError('子任务 ID 重复')
@@ -87,6 +116,41 @@ def normalize_nodes(steps):
         visited |= ready
         pending = {k:v for k,v in pending.items() if k not in ready}
     return result
+
+
+def independent_tester(steps):
+    """Return a repaired or new Tester when delivery lacks a full dependency path."""
+    nodes = normalize_nodes(steps)
+    developers = {n['task_id'] for n in nodes if n['assigned_role'] == 'developer'}
+    edges = {n['task_id']: n['dependencies'] for n in nodes}
+
+    def ancestors_of(ident):
+        ancestors = set()
+        remaining = list(edges[ident])
+        while remaining:
+            parent = remaining.pop()
+            if parent not in ancestors:
+                ancestors.add(parent)
+                remaining.extend(edges[parent])
+        return ancestors
+
+    testers = [(i, n['task_id']) for i, n in enumerate(nodes) if n['assigned_role']=='tester']
+    if any(developers <= ancestors_of(ident) for _, ident in testers):
+        return None
+    for i, ident in reversed(testers):
+        missing = developers - ancestors_of(ident)
+        if steps[i].get('state','pending') == 'pending' and not any(ident in ancestors_of(d) for d in missing):
+            return {**steps[i], 'task_id':ident, 'dependencies':[*edges[ident], *sorted(missing)],
+                    'source':'runtime_independent_verification'}
+    if len(nodes) == MAX_NODES:
+        raise ValueError('没有空间补充独立 Tester；请合并开发步骤并保留一个测试步骤')
+    ident = next(f'independent-test-{i}' for i in range(1, MAX_NODES + 1)
+                 if f'independent-test-{i}' not in edges)
+    return {'task_id': ident, 'assigned_role': 'tester', 'dependencies': list(edges),
+            'source': 'runtime_independent_verification',
+            'description': '独立 Tester 运行实际功能测试，核对退出码和隔离数据，禁止修改交付文件',
+            'verification': '运行真实项目功能测试',
+            'acceptance_criteria': ['在隔离数据目录运行实际测试，取得成功退出码和测试证据']}
 
 
 def ready_steps(steps):

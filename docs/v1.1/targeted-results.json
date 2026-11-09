@@ -1,0 +1,126 @@
+{
+  "baseline_commit": "809873d388802501d2151126f4bb3bb1f564bae2",
+  "decision": "C",
+  "gemma_runs": [
+    {
+      "case": "04",
+      "status": "FAIL",
+      "code": "TOOL_FAILURE_LIMIT",
+      "failure": "TOOL_FAILURE",
+      "seconds": 55.25,
+      "model_calls": 4,
+      "tool_calls": 11,
+      "tokens": {
+        "input": 31703,
+        "output": 1489,
+        "reported_calls": 4
+      },
+      "terminal": "turn.failed",
+      "model": "gemma4:31b",
+      "attempt": 1
+    },
+    {
+      "case": "30",
+      "status": "FAIL",
+      "code": "WORKFLOW_ROLE_PERMISSION",
+      "failure": "TOOL_PERMISSION",
+      "seconds": 218.95,
+      "model_calls": 19,
+      "tool_calls": 21,
+      "tokens": {
+        "input": 212086,
+        "output": 6430,
+        "reported_calls": 19
+      },
+      "terminal": "turn.failed",
+      "model": "gemma4:31b",
+      "attempt": 1
+    },
+    {
+      "case": "04",
+      "status": "PASS",
+      "code": null,
+      "failure": null,
+      "seconds": 70.98,
+      "model_calls": 5,
+      "tool_calls": 12,
+      "tokens": {
+        "input": 44094,
+        "output": 2505,
+        "reported_calls": 5
+      },
+      "terminal": "turn.completed",
+      "model": "gemma4:31b",
+      "attempt": 2
+    },
+    {
+      "case": "30",
+      "status": "FAIL",
+      "code": "WORKFLOW_ROLE_PERMISSION",
+      "failure": "TOOL_PERMISSION",
+      "seconds": 184.56,
+      "model_calls": 15,
+      "tool_calls": 16,
+      "tokens": {
+        "input": 148534,
+        "output": 6354,
+        "reported_calls": 15
+      },
+      "terminal": "turn.failed",
+      "model": "gemma4:31b",
+      "attempt": 2
+    },
+    {
+      "case": "P1",
+      "status": "PASS",
+      "code": null,
+      "failure": null,
+      "seconds": 174.08,
+      "tool_calls": 16,
+      "tokens": {
+        "input": 157815,
+        "output": 5111,
+        "reported_calls": 14
+      },
+      "terminal": "turn.completed",
+      "model": "gemma4:31b",
+      "attempt": 1,
+      "model_calls": 14,
+      "model_error_classes": {},
+      "recovery_count": 0,
+      "completion_repair_count": 0
+    }
+  ],
+  "counts": {
+    "FAIL": 3,
+    "PASS": 2
+  },
+  "online": {
+    "tool_calls": 0,
+    "token_usage": null,
+    "seconds": 2.33,
+    "reserved_reference_cap_cny": 10,
+    "actual_cost_cny": null,
+    "models": [
+      "kimi-k3"
+    ],
+    "code": "OPENAI_COMPATIBLE_REQUEST_FAILED",
+    "runs": 1,
+    "http_status": 400,
+    "case": "30",
+    "requests": 1,
+    "status": "BLOCKED"
+  },
+  "recovery24": {
+    "status": "EXPECTED_BLOCKED",
+    "code": "PLAN_RESUME_CONFIRMATION_REQUIRED",
+    "real_rerun": false
+  },
+  "deterministic": {
+    "new_exit_contract_before": "FAIL",
+    "new_exit_contract_after": "PASS",
+    "mixed_step_evidence_before": "FAIL",
+    "mixed_step_evidence_after": "PASS",
+    "tester_denied_then_existing_test_after": "PASS"
+  }
+}

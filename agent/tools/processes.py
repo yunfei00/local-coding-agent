@@ -8,9 +8,12 @@ from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
+import re
 import shutil
+import shlex
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -22,6 +25,31 @@ from agent.tools.windows_job import WindowsJob
 MAX_OUTPUT_CHARS = 200_000
 MAX_LOG_BYTES = 16 * 1024 * 1024
 MAX_SECONDS = 86400
+
+
+def guarded_python_arguments(command):
+    """Parse one Python invocation as argv, without shell expansion."""
+    try:
+        parser = shlex.shlex(command, posix=True, punctuation_chars=';&|<>')
+        parser.whitespace_split = True
+        parser.commenters = ''
+        args = list(parser)
+    except ValueError:
+        args = []
+    if args[:3] == ['uv', 'run', '--no-project']:
+        args = args[3:]
+    if any(re.fullmatch(r'[;&|<>]+', arg) for arg in args):
+        args = []
+    if args and args[0].lower() in {'pytest', 'pytest.exe'}:
+        return ['-m', 'pytest', *args[1:]]
+    if (len(args) >= 2 and args[0].lower() in {'python', 'python3', 'python.exe'} and (
+        (args[1] in {'-m', '-c'} and len(args) >= 3)
+        or re.fullmatch(r'[\w./ -]+\.py', args[1], re.I) and not args[1].startswith('/')
+        and '..' not in Path(args[1]).parts
+    )):
+        return args[1:]
+    raise ToolError('VERIFICATION_ISOLATION_UNAVAILABLE',
+                    '无法安全隔离此验证命令。请在工程根目录运行单条 Python、unittest 或 pytest 命令，拆分 shell 命令，避免引用交付目录。')
 
 
 def shell_command(shell="auto"):
@@ -174,10 +202,12 @@ class ProcessManager:
             self.scratch_sources[owner] = {}
         return self.scratch_workdirs[owner].name
 
-    def mirror_scratch_sources(self, owner, cwd):
+    def mirror_scratch_sources(self, owner, cwd, *, guarded=False):
         from agent.core.project_files import ProjectFiles
         policy = ProjectFiles(self.workspace.root)
         visible = list(policy.paths(maximum=129))
+        if guarded and len(visible) > 128:
+            raise ToolError('VERIFICATION_ISOLATION_UNAVAILABLE','工程超出隔离副本文件上限；请缩小验证工程。')
         mirrored = self.scratch_sources[owner]
         current = {}
         remaining = 4 * 1024 * 1024
@@ -190,12 +220,16 @@ class ProcessManager:
             content = source.encode("utf-8")
             remaining -= len(content)
             if remaining < 0:
+                if guarded:
+                    raise ToolError('VERIFICATION_ISOLATION_UNAVAILABLE','工程超出隔离副本大小上限。')
                 break
             target = cwd / path.relative_to(self.workspace.root)
             if not target.resolve().is_relative_to(cwd) or target.is_symlink():
                 continue
             if target.exists() and (target not in mirrored or target.stat().st_size != len(mirrored[target])
                                     or target.read_bytes() != mirrored[target]):
+                if guarded:
+                    raise ToolError('VERIFICATION_ISOLATION_UNAVAILABLE','隔离数据与工程源码路径冲突；请使用独立数据文件。')
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(content)
@@ -242,7 +276,7 @@ class ProcessManager:
             if not raw:
                 break
 
-    async def launch(self, arguments, *, owner="", on_output=None, on_raw_output=None, environment=None, argv=None, reuse_running=False):
+    async def launch(self, arguments, *, owner="", on_output=None, on_raw_output=None, environment=None, argv=None, reuse_running=False, verification_guard=None):
         command = arguments.get("command")
         if not isinstance(command, str) or not command.strip() or len(command) > 32768:
             raise ToolError("INVALID_COMMAND", "Provide a nonempty command of at most 32768 characters")
@@ -280,6 +314,12 @@ class ProcessManager:
             if set(environment) - {"PYTHONPYCACHEPREFIX", "PYTHONDONTWRITEBYTECODE"}:
                 raise ToolError("INVALID_COMMAND_ENVIRONMENT", "Only internal Python cache controls are supported")
             env.update(environment)
+        if verification_guard is not None:
+            required = {'PATH','SYSTEMROOT','SYSTEMDRIVE','WINDIR','PATHEXT','COMSPEC','LANG','LC_ALL'}
+            env = {key:value for key,value in env.items() if key.upper() in required}
+            env.update(PYTHONPATH=str(verification_guard), PYTHONSAFEPATH='1', PYTHONDONTWRITEBYTECODE='1',
+                       PYTHONNOUSERSITE='1', PYTHONUTF8='1', PYTHONUNBUFFERED='1', LCA_VERIFICATION_ROOT=str(cwd),
+                       TMP=str(cwd), TEMP=str(cwd), TMPDIR=str(cwd))
         wire = command
         if prefix and prefix[-1] == "-Command":
             wire = ("$ErrorActionPreference='Stop'; [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); "
@@ -431,9 +471,11 @@ class ProcessManager:
                     self.sessions.pop(ident, None)
         if errors:
             raise ToolError("PROCESS_CLEANUP_FAILED", "Process cleanup failed; inspect process logs: " + ", ".join(errors))
-        scratch = self.scratch_workdirs.pop(owner, None)
-        self.scratch_sources.pop(owner, None)
-        if scratch:
+        for key in list(self.scratch_workdirs):
+            if (key[0] if isinstance(key, tuple) else key) != owner:
+                continue
+            scratch = self.scratch_workdirs.pop(key)
+            self.scratch_sources.pop(key, None)
             try:
                 scratch.cleanup()
             except OSError as exc:
@@ -441,29 +483,65 @@ class ProcessManager:
         return results
 
     async def close(self):
-        for owner in {s.owner for s in self.sessions.values()} | self.scratch_workdirs.keys():
+        owners = {key[0] if isinstance(key, tuple) else key for key in self.scratch_workdirs}
+        for owner in {s.owner for s in self.sessions.values()} | owners:
             await self.close_owner(owner)
 
     async def run(self, arguments, *, owner="", **kwargs):
         isolated = arguments.get("isolated_cwd", False)
         if not isinstance(isolated, bool) or (isolated and arguments.get("cwd") not in (None, "", ".")):
             raise ToolError("INVALID_COMMAND_CWD", "Use isolated_cwd without a custom cwd")
+        scope = arguments.get('_verification_scope')
+        guard = None
         if isolated:
             try:
-                scratch = Path(self.scratch_cwd(owner))
-                self.mirror_scratch_sources(owner, scratch)
+                key = (owner, scope) if owner and scope else owner
+                scratch = Path(self.scratch_cwd(key)).resolve()
+                self.mirror_scratch_sources(key, scratch, guarded=bool(scope))
+                if scope:
+                    argv = guarded_python_arguments(arguments['command'])
+                    binary = shutil.which('python', path=os.pathsep.join([*self.project_path_prefix, os.environ.get('PATH', '')]))
+                    if not binary and not getattr(sys, 'frozen', False):
+                        binary = sys.executable
+                    if not binary:
+                        raise ToolError('VERIFICATION_ISOLATION_UNAVAILABLE','未找到可用于隔离验证的 Python。')
+                    guard = tempfile.TemporaryDirectory(prefix='guard-', dir=scratch.parent)
+                    source = Path(__file__).with_name('verification_guard.py')
+                    shutil.copyfile(source, Path(guard.name) / 'sitecustomize.py')
+                    bootstrap = (
+                        "import sys; "
+                        "getattr(sys, '_lca_verification_guard', False) or sys.exit('verification guard unavailable'); "
+                        "import runpy; mode, target, *rest = sys.argv[1:]; sys.argv = [target, *rest]; "
+                        # pytest optionally imports Colorama on Windows even
+                        # on a pipe; leave native terminal access disabled.
+                        "sys.modules.__setitem__('colorama', None) if mode == '-m' and target == 'pytest' and sys.platform == 'win32' else None; "
+                        "exec(compile(target, '<verification>', 'exec'), {'__name__': '__main__'}) if mode == '-c' "
+                        "else runpy.run_module(target, run_name='__main__', alter_sys=True) if mode == '-m' "
+                        "else runpy.run_path(target, run_name='__main__')"
+                    )
+                    kwargs.update(argv=[binary, '-c', bootstrap, *(argv if argv[0] in {'-c','-m'} else ['script', *argv])],
+                                  verification_guard=Path(guard.name))
             except OSError as exc:
+                if guard:
+                    guard.cleanup()
                 raise ToolError("INVALID_COMMAND_CWD", "Could not prepare the owned scratch directory") from exc
             arguments = {**arguments, "cwd": str(scratch)}
-        session = await self.launch(arguments, owner=owner, **kwargs)
         try:
-            await asyncio.shield(session.task)
-        except asyncio.CancelledError:
-            await self.stop(session.id, owner=owner, reason="user_cancelled")
-            raise
+            session = await self.launch(arguments, owner=owner, **kwargs)
+            try:
+                await asyncio.shield(session.task)
+            except asyncio.CancelledError:
+                await self.stop(session.id, owner=owner, reason="user_cancelled")
+                raise
+            finally:
+                self.sessions.pop(session.id, None)
+            result = session.result()
+            if guard:
+                violations = Path(guard.name) / 'violations'
+                result.data['verification_isolation_violation'] = not violations.is_file() or violations.stat().st_size > 0
         finally:
-            self.sessions.pop(session.id, None)
-        result = session.result()
+            if guard:
+                guard.cleanup()
         if session.state in {"timed_out", "output_error"}:
             raise ToolError("COMMAND_TIMEOUT" if session.state == "timed_out" else "COMMAND_OUTPUT_FAILED",
                             "Command timed out; its process tree was terminated" if session.state == "timed_out" else "Command output failed; process tree terminated",

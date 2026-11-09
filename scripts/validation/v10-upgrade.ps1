@@ -2,6 +2,9 @@ param(
     [Parameter(Mandatory=$true)][string]$PreviousInstaller,
     [Parameter(Mandatory=$true)][string]$PreviousSource,
     [Parameter(Mandatory=$true)][string]$CandidateInstaller,
+    [string]$PreviousVersion = '0.9.0',
+    [string]$CandidateVersion = '1.0.0',
+    [int]$PreviousSchema = 6,
     [switch]$KeepInstalled
 )
 $ErrorActionPreference='Stop'
@@ -17,11 +20,6 @@ $Output=Join-Path $Repo ('build\v10-upgrade-'+[guid]::NewGuid().ToString('N'))
 $Install=Join-Path $Output '安装目录 含空格'
 $Data=Join-Path $Output 'data'
 New-Item -ItemType Directory -Path (Join-Path $Data 'desktop') -Force | Out-Null
-$CredentialSource=Join-Path $env:APPDATA 'local-coding-agent-desktop'
-foreach ($Name in @('model-secrets.json','provider-secrets.json','mcp-secrets.json','Local State')) {
-    $Source=Join-Path $CredentialSource $Name
-    if (Test-Path -LiteralPath $Source) { Copy-Item -LiteralPath $Source -Destination (Join-Path $Data "desktop\$Name") }
-}
 $Saved=@{}
 foreach ($Key in @('LCA_DATA_DIR','LCA_DESKTOP_DATA_DIR','LCA_PACKAGED_SMOKE_FILE','LCA_HEADLESS_SMOKE','LCA_OLLAMA_URL','ELECTRON_RUN_AS_NODE')) { $Saved[$Key]=[Environment]::GetEnvironmentVariable($Key,'Process') }
 $env:LCA_DATA_DIR=$Data;$env:LCA_DESKTOP_DATA_DIR=Join-Path $Data 'desktop';$env:LCA_HEADLESS_SMOKE='1';$env:LCA_OLLAMA_URL='http://127.0.0.1:1'
@@ -39,13 +37,13 @@ function Invoke-Installed([string]$Label,[string]$Version) {
 try {
     $Old=Start-Process -FilePath $PreviousInstaller -ArgumentList @('/S',"/D=$Install") -Wait -PassThru -WindowStyle Hidden
     if ($Old.ExitCode -ne 0) { throw "Previous installer exit=$($Old.ExitCode)" }
-    Invoke-Installed 'v09-installed' '0.9.0'
-    & uv run --locked python scripts/validation/v10_upgrade_profile.py seed --source $PreviousSource --data $Data
+    Invoke-Installed 'previous-installed' $PreviousVersion
+    & uv run --locked python scripts/validation/v10_upgrade_profile.py seed --source $PreviousSource --data $Data --previous-schema $PreviousSchema
     if ($LASTEXITCODE -ne 0) { throw 'Old schema fixture failed; no upgrade PASS.' }
     $New=Start-Process -FilePath $CandidateInstaller -ArgumentList @('/S',"/D=$Install") -Wait -PassThru -WindowStyle Hidden
     if ($New.ExitCode -ne 0) { throw "Candidate installer exit=$($New.ExitCode)" }
-    Invoke-Installed 'v10-upgraded' '1.0.0'
-    $Verification=& uv run --locked python scripts/validation/v10_upgrade_profile.py verify --source $Repo --data $Data
+    Invoke-Installed 'candidate-upgraded' $CandidateVersion
+    $Verification=& uv run --locked python scripts/validation/v10_upgrade_profile.py verify --source $Repo --data $Data --previous-schema $PreviousSchema
     if ($LASTEXITCODE -ne 0) { throw 'Upgrade data contract failed.' }
     $Result=$Verification | ConvertFrom-Json
     if (-not $KeepInstalled) {
@@ -54,7 +52,7 @@ try {
         $Removed=Start-Process -FilePath $Uninstaller.FullName -ArgumentList '/S' -Wait -PassThru -WindowStyle Hidden
         if ($Removed.ExitCode -ne 0 -or -not (Test-Path (Join-Path $Data 'upgrade-contract.json'))) { throw 'Uninstall failed or isolated history was deleted.' }
     }
-    @{result='PASS';source_version='0.9.0';target_version='1.0.0';data=$Result;installed_executable=(Join-Path $Install 'LocalCodingAgent.exe');kept_installed=[bool]$KeepInstalled;candidate_sha256=(Get-FileHash $CandidateInstaller -Algorithm SHA256).Hash.ToLowerInvariant();clean_os=$false} | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $Output 'report.json')
+    @{result='PASS';source_version=$PreviousVersion;target_version=$CandidateVersion;data=$Result;installed_executable=(Join-Path $Install 'LocalCodingAgent.exe');kept_installed=[bool]$KeepInstalled;candidate_sha256=(Get-FileHash $CandidateInstaller -Algorithm SHA256).Hash.ToLowerInvariant();clean_os=$false} | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $Output 'report.json')
     Write-Host "Upgrade evidence: $Output"
 } finally {
     foreach ($Key in $Saved.Keys) {

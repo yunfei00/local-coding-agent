@@ -60,6 +60,57 @@ class UnifiedPolicyTests(unittest.TestCase):
         self.assertTrue(requested_intent('Inspect and repair. Do not modify any files.')['read_only'])
         self.assertEqual(requested_intent('实现以下要求\n1. 创建核心模块\n2. 编写测试\n3. 生成交付报告')['kind'],'complex')
 
+    def test_chinese_edits_and_read_only_constraints(self):
+        for goal in ("完善 cli.py 的错误处理", "追加一行，检查 Diff", "在 feature.txt 追加一行，再检查 diff", "替换标题", "删除过期条目"):
+            self.assertEqual(requested_intent(goal)["kind"], "change")
+        self.assertTrue(requested_intent("完善 CLI 的方案，只分析，不修改任何文件")["read_only"])
+
+    def test_named_branch_contract_excludes_combined_edits(self):
+        from agent.core.unified_runtime import requested_git_branch
+        self.assertEqual(requested_git_branch("创建并切换到 fix/one 分支，保留文件。"), "fix/one")
+        self.assertIsNone(requested_git_branch("创建并切换到 fix/one 分支，再修改代码。"))
+
+    def test_local_output_can_be_unset_after_role_binding_change(self):
+        self.assertIsNone(validate_config({"roles":{"executor":{"route":"api",
+            "model_profile_id":"new-local", "output_limit":None}}})["roles"]["executor"]["output_limit"])
+        with self.assertRaises(ValueError):
+            validate_config({"roles":{"executor":{"route":"local","output_limit":0}}})
+
+    def test_delivery_contract_requires_actual_artifact_and_command(self):
+        from agent.core.verification import delivery_requirements, missing_deliverables
+        contract = delivery_requirements("修复程序，提供 README.md，运行 python -m unittest -q。")
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            self.assertEqual(missing_deliverables(root, contract, []), ["README", "python -m unittest -q"])
+            (root / "README.md").write_text("usage", encoding="utf-8")
+            self.assertEqual(missing_deliverables(root, contract, [{"command":"python -m unittest -q","exit_code":0}]), [])
+
+    def test_independent_verification_respects_user_contract_and_read_only(self):
+        from agent.core.verification import workflow_verification_contract
+
+        for goal in ('只分析持久化模块和单元测试，不修改文件。', '修改按钮的颜色。'):
+            self.assertEqual(workflow_verification_contract(goal, requested_intent(goal)),
+                             {'independent':False,'stateful':False})
+        goal = '修复程序，运行 python -m unittest -q。'
+        self.assertEqual(workflow_verification_contract(goal, requested_intent(goal)),
+                         {'independent':True,'stateful':False})
+
+    def test_explicit_preservation_requires_isolated_commands(self):
+        from agent.core.verification import protected_workspace_files, protected_workspace_tool, protected_workspace_changes
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            protected = root / "VERSION"
+            protected.write_text("original")
+            frozen = protected_workspace_files(root, "修复版本读取。保持 VERSION 原样，不要初始化 Git。")
+            self.assertEqual(set(frozen), {"VERSION"})
+            self.assertIsNotNone(protected_workspace_tool(root, frozen, "delete_file", {"path":"VERSION"}))
+            self.assertIsNotNone(protected_workspace_tool(root, frozen, "run_command", {"command":"python test_read.py"}))
+            self.assertIsNone(protected_workspace_tool(root, frozen, "run_command",
+                                                       {"command":"python test_read.py","isolated_cwd":True}))
+            self.assertEqual(protected_workspace_changes(root, frozen), [])
+            protected.unlink()
+            self.assertEqual(protected_workspace_changes(root, frozen), ["VERSION"])
+
     def test_intent_uses_model_plan_and_actual_evidence_not_words(self):
         self.assertEqual(infer_intent('question','read_file',read_only=True),'analysis')
         self.assertEqual(infer_intent('analysis','write_file',changed_paths=['x.py']),'change')
@@ -230,11 +281,108 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.server.close_async();self.server.close();self.env.stop();self.temp.cleanup()
 
-    async def run_steps(self,steps):
+    async def run_steps(self,steps,prompt='按照实际需求完成工作'):
         provider=ScriptedProvider(steps)
-        await self.server.run_tool_turn(self.ws,thread_id=self.thread.id,turn_id='unified-test',prompt='按照实际需求完成工作',model='mock',provider=provider,unified=True)
+        try:
+            await self.server.run_tool_turn(self.ws,thread_id=self.thread.id,turn_id='unified-test',prompt=prompt,model='mock',provider=provider,unified=True)
+        except asyncio.CancelledError:
+            if not getattr(self, 'observed_test_boundary', False):
+                raise
         updates=[x['payload']['runtime'] for x in self.ws.messages if x['type']=='agent.runtime.updated']
         return provider,updates[-1]
+
+    def stop_after_events(self, event_type, count):
+        send = self.ws.send_json
+
+        async def observe(event):
+            await send(event)
+            if event['type'] == event_type and sum(row['type'] == event_type for row in self.ws.messages) >= count:
+                self.observed_test_boundary = True
+                self.server.cancelling_turns.add('unified-test')
+
+        self.ws.send_json = observe
+
+    async def test_stateful_plan_requires_independent_tester(self):
+        nodes = [{'task_id':f'work-{i}', 'description':f'实现阶段 {i}', 'assigned_role':'developer'}
+                 for i in range(4)]
+        self.server.store.set_setting('orchestration.config',json.dumps(validate_config({})))
+        self.stop_after_events('plan.loaded', 1)
+        provider, _ = await self.run_steps([
+            tool_step('agent_plan', {'steps':nodes}), tool_step('agent_plan', {'steps':nodes}),
+        ], '实现跨进程持久化工具，提供 unittest 功能测试。')
+        plans = [event['payload']['plans'][0] for event in self.ws.messages if event['type']=='plan.loaded']
+        self.assertTrue(plans)
+        tester = plans[0]['steps'][-1]['workflow']
+        self.assertEqual(tester['assigned_role'], 'tester')
+        self.assertEqual(tester['source'], 'runtime_independent_verification')
+        self.assertEqual(set(tester['dependencies']), {f'work-{i}' for i in range(4)})
+        self.assertEqual(provider.calls, 2)
+
+    async def test_required_tester_executes_before_final_verification(self):
+        self.server.store.set_setting('orchestration.config',json.dumps(validate_config({})))
+        nodes = [
+            {'task_id':'build','description':'修复计算模块','assigned_role':'developer'},
+            {'task_id':'docs','description':'写交付文档','assigned_role':'developer'},
+            {'description':'独立测试','assigned_role':'tester','dependencies':['build'],'verification':'运行真实测试'},
+        ]
+        _, result = await self.run_steps([
+            tool_step('agent_plan', {'steps':nodes}), tool_step('agent_plan', {'steps':nodes}),
+            tool_step('write_file', {'path':'calculator.py','content':'def add(a,b): return a+b\n'}),
+            final_step('实现完成'),
+            tool_step('write_file', {'path':'README.md','content':'运行 python -m unittest discover -s tests -v\n'}),
+            final_step('文档完成'),
+            tool_step('write_file', {'path':'calculator.py','content':'must not write'}),
+            tool_step('run_command', {'command':'python -m unittest discover -s tests -v'}),
+            tool_step('run_command', {'command':"python -c \"open('unauthorized.txt', 'w').write('changed')\""}),
+        ], '修复持久化程序，提供 unittest 功能测试。')
+        self.assertEqual(result['outcome'], 'completed_verified', str(result))
+        self.assertEqual([row['role'] for row in result['role_handoffs']], ['developer','developer','tester'])
+        self.assertEqual(result['test_handoff']['status'], 'PASS')
+        self.assertEqual((self.repo / 'calculator.py').read_text(), 'def add(a,b): return a+b\n')
+        self.assertFalse((self.repo / 'unauthorized.txt').exists())
+        self.assertTrue(any(event['kind']=='workflow.tester.redundant_tool_blocked'
+                            for event in self.server.runtime_ledger.events(run_id=result['id'])))
+
+    async def test_developer_stateful_commands_share_only_scratch_data(self):
+        state = self.repo / 'records.json'
+        state.write_text('{"original":true}', encoding='utf-8')
+        commands = [
+            """python -c "import json; from pathlib import Path; Path('records.json').write_text(json.dumps({'record': 2}))" """,
+            """python -c "import json; from pathlib import Path; p=Path('records.json'); v=json.loads(p.read_text()); assert v['record']==2; v['record']+=3; p.write_text(json.dumps(v))" """,
+            """python -c "import json,sys; from pathlib import Path; assert json.loads(Path('records.json').read_text())=={'record':5}; sys.exit(2)" """,
+            """python -c "import json; from pathlib import Path; assert json.loads(Path('records.json').read_text())=={'record':5}" """,
+        ]
+        self.stop_after_events('tool.completed', len(commands))
+        await self.run_steps([tool_step('run_command', {'command':command.strip(), **({'expected_exit_codes':[2]} if i==2 else {})})
+                              for i,command in enumerate(commands)], '实现带持久化的记录程序，提供 unittest 功能测试。')
+        self.assertEqual(state.read_text(encoding='utf-8'), '{"original":true}')
+        results = [event['payload']['result'] for event in self.ws.messages
+                   if event['type']=='tool.completed' and not event['payload'].get('independent_verification')]
+        self.assertEqual([r['exit_code'] for r in results], [0, 0, 2, 0])
+        self.assertTrue(all(r['ok'] and r['data']['command_outcome']['isolated'] for r in results))
+
+    async def test_stateful_python_child_cannot_write_absolute_delivery_path(self):
+        import base64
+        import shlex
+
+        state = self.repo / 'retained.json'
+        state.write_text('original', encoding='utf-8')
+        encoded = base64.b64encode(str(state).encode()).decode()
+        child = f"import base64,pathlib; pathlib.Path(base64.b64decode('{encoded}').decode()).write_text('changed')"
+        normal = "import pathlib; pathlib.Path('scratch-child.txt').write_text('child ok')"
+        commands = [
+            f'import subprocess,sys; subprocess.run([sys.executable, "-c", {normal!r}],check=True)',
+            f'import subprocess,sys; subprocess.run([sys.executable, "-c", {child!r}],capture_output=True)',
+        ]
+        self.stop_after_events('tool.completed', len(commands))
+        await self.run_steps([tool_step('run_command', {'command':'python -c '+shlex.quote(code)}) for code in commands],
+                             '实现带持久化的记录程序，提供 unittest 功能测试。')
+        results = [event['payload']['result'] for event in self.ws.messages if event['type']=='tool.completed']
+        self.assertTrue(results[0]['ok'], str(results[0]))
+        self.assertFalse(results[1]['ok'], str(results[1]))
+        self.assertEqual(results[1]['data']['error_code'], 'VERIFICATION_ISOLATION_PERMISSION')
+        self.assertEqual(state.read_text(encoding='utf-8'), 'original')
+        self.assertFalse((self.repo / 'scratch-child.txt').exists())
 
     async def test_truncated_batch_retries_without_dispatching_buffered_calls(self):
         self.server.model_retry_attempts = 2
@@ -268,6 +416,7 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
             tool_step('agent_plan',{'steps':nodes}),
             tool_step('write_file',{'path':'calculator.py','content':'def add(a,b): return a+b\n'}),final_step('实现完成'),
             tool_step('read_file',{'path':'calculator.py'}),tool_step('workflow_review',{'decision':'approved','summary':'重新读取后确认加法正确'}),final_step('独立审查通过'),
+            tool_step('write_file',{'path':'calculator.py','content':'tester must never write'}),
             tool_step('run_command',{'command':'uv run --no-project python -m unittest discover -s tests -v'}),final_step('测试通过，中文交付'),
         ])
         self.assertEqual(r['outcome'],'completed_verified')
@@ -280,6 +429,43 @@ class UnifiedLoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(delivery['status'],'已完成且验证通过')
         self.assertEqual(len(delivery['steps']),3)
         self.assertEqual(delivery['reviews'][-1]['decision'],'approved')
+
+    async def test_missing_test_hands_back_to_developer_before_tester(self):
+        (self.repo / 'tests' / 'test_calc.py').unlink()
+        self.server.store.set_setting('orchestration.config',json.dumps(validate_config({})))
+        fixture = self.repo / "validation-state.json"
+        fixture.write_text('{"original":true}', encoding='utf-8')
+        command = "python -m unittest discover -s . -p test_delivery.py -v"
+        _, result = await self.run_steps([
+            tool_step('agent_plan', {'steps':[
+                {'task_id':'build','description':'修复计算器','assigned_role':'developer','dependencies':[]},
+                {'task_id':'verify','description':'验证交付','assigned_role':'tester','dependencies':['build'],
+                 'verification':'运行真实测试'},
+            ]}),
+            tool_step('write_file', {'path':'calculator.py','content':'def add(a,b): return a+b\n'}),
+            final_step('实现完成'),
+            tool_step('write_file', {'path':'test_delivery.py','content':
+                'import unittest\nfrom pathlib import Path\nfrom calculator import add\nclass Check(unittest.TestCase):\n'
+                ' def test_add(self):\n'
+                '  state = Path("validation-state.json")\n'
+                '  state.write_text(str(add(2,3)))\n'
+                '  self.assertEqual(state.read_text(), "5")\n'}),
+            tool_step('workflow_test_handoff', {'script':'test_delivery.py','command':command,
+                'cwd':'.','expected_exit_codes':[0],'isolated_cwd':True}),
+            final_step('已声明隔离验收'),
+            tool_step('run_command', {'command':command,'isolated_cwd':True,'expected_exit_codes':[0]}),
+            final_step('真实测试通过'),
+        ])
+        self.assertEqual(result['outcome'], 'completed_verified', str(result))
+        self.assertEqual([row['role'] for row in result['role_handoffs']], ['developer','developer','tester'])
+        plan = self.server.store.task_plans.get(result['plan_id'])
+        tester = next(step for step in plan['steps'] if step['workflow']['assigned_role']=='tester')
+        self.assertEqual(tester['state'], 'completed')
+        self.assertTrue(any(row['tool']=='run_command' and row['exit_code']==0 for row in tester['executions']))
+        self.assertEqual(result['test_handoff']['status'], 'PASS')
+        self.assertEqual(fixture.read_text(encoding='utf-8'), '{"original":true}')
+        commands = [row for row in tester['executions'] if row['tool']=='run_command']
+        self.assertTrue(any(row['metadata'].get('command_outcome',{}).get('isolated') is True for row in commands))
 
     async def test_reviewer_cannot_write_even_if_provider_forges_hidden_tool(self):
         _,r=await self.run_steps([

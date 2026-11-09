@@ -1,0 +1,787 @@
+{
+  "manifest": {
+    "commit": "e343a4e7fa4ae5e078fd3624f2d4e4d28f6c4ea7",
+    "driver": "409e84fd37e1638cd889d69f745032a90caa6a7cd0f1c660bc0dfc3b6acf8607",
+    "model": "gemma4:31b",
+    "config": {
+      "context_window": 32768,
+      "max_output_tokens": null,
+      "model_steps": 50,
+      "request_seconds": 120,
+      "case_seconds": 300
+    },
+    "planned": [
+      [
+        "01",
+        1
+      ],
+      [
+        "02",
+        1
+      ],
+      [
+        "03",
+        1
+      ],
+      [
+        "04",
+        1
+      ],
+      [
+        "05",
+        1
+      ],
+      [
+        "06",
+        1
+      ],
+      [
+        "07",
+        1
+      ],
+      [
+        "08",
+        1
+      ],
+      [
+        "09",
+        1
+      ],
+      [
+        "10",
+        1
+      ],
+      [
+        "11",
+        1
+      ],
+      [
+        "12",
+        1
+      ],
+      [
+        "13",
+        1
+      ],
+      [
+        "14",
+        1
+      ],
+      [
+        "15",
+        1
+      ],
+      [
+        "16",
+        1
+      ],
+      [
+        "17",
+        1
+      ],
+      [
+        "18",
+        1
+      ],
+      [
+        "19",
+        1
+      ],
+      [
+        "20",
+        1
+      ],
+      [
+        "21",
+        1
+      ],
+      [
+        "22",
+        1
+      ],
+      [
+        "23",
+        1
+      ],
+      [
+        "24",
+        1
+      ],
+      [
+        "25",
+        1
+      ],
+      [
+        "26",
+        1
+      ],
+      [
+        "27",
+        1
+      ],
+      [
+        "28",
+        1
+      ],
+      [
+        "29",
+        1
+      ],
+      [
+        "30",
+        1
+      ]
+    ],
+    "derived_driver": "95b88b7997604c0c05906f2a897f78e1e357cc0941c2bc94836266bb2ca15f60"
+  },
+  "results": [
+    {
+      "case": "01",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 54.12,
+      "model_calls": 5,
+      "tool_calls": 7,
+      "tokens": {
+        "input": 32529,
+        "output": 1254,
+        "reported_calls": 5
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "02",
+      "repeat": 1,
+      "status": "FAIL",
+      "raw_status": "FAIL",
+      "failure": "DELIVERY_ASSERTION",
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": "external_command_exit_1",
+      "seconds": 49.08,
+      "model_calls": 5,
+      "tool_calls": 7,
+      "tokens": {
+        "input": 31752,
+        "output": 1688,
+        "reported_calls": 5
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "03",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 143.88,
+      "model_calls": 13,
+      "tool_calls": 14,
+      "tokens": {
+        "input": 126053,
+        "output": 4785,
+        "reported_calls": 13
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "04",
+      "repeat": 1,
+      "status": "FAIL",
+      "raw_status": "FAIL",
+      "failure": "AGENT_INTENT_CLASSIFICATION",
+      "code": "UNIFIED_READ_ONLY_INTENT",
+      "terminal": "turn.failed",
+      "assertion_failure": null,
+      "seconds": 24.5,
+      "model_calls": 2,
+      "tool_calls": 3,
+      "tokens": {
+        "input": 8884,
+        "output": 938,
+        "reported_calls": 2
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {
+        "TOOL_PERMISSION": 2
+      }
+    },
+    {
+      "case": "05",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 68.03,
+      "model_calls": 5,
+      "tool_calls": 7,
+      "tokens": {
+        "input": 34948,
+        "output": 2594,
+        "reported_calls": 5
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "06",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 77.49,
+      "model_calls": 7,
+      "tool_calls": 9,
+      "tokens": {
+        "input": 50774,
+        "output": 2681,
+        "reported_calls": 7
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "07",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 72.14,
+      "model_calls": 9,
+      "tool_calls": 10,
+      "tokens": {
+        "input": 69695,
+        "output": 1983,
+        "reported_calls": 9
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "08",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 103.08,
+      "model_calls": 12,
+      "tool_calls": 13,
+      "tokens": {
+        "input": 100569,
+        "output": 2761,
+        "reported_calls": 12
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "09",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 78.89,
+      "model_calls": 7,
+      "tool_calls": 9,
+      "tokens": {
+        "input": 46878,
+        "output": 2920,
+        "reported_calls": 7
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "10",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 64.41,
+      "model_calls": 7,
+      "tool_calls": 10,
+      "tokens": {
+        "input": 52615,
+        "output": 1886,
+        "reported_calls": 7
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "11",
+      "repeat": 1,
+      "status": "FAIL",
+      "raw_status": "FAIL",
+      "failure": "AGENT_FAILURE",
+      "code": "AGENT_NO_CHANGE_EVIDENCE",
+      "terminal": "turn.failed",
+      "assertion_failure": null,
+      "seconds": 27.89,
+      "model_calls": 5,
+      "tool_calls": 3,
+      "tokens": {
+        "input": 30413,
+        "output": 642,
+        "reported_calls": 5
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {
+        "AGENT_FAILURE": 2
+      }
+    },
+    {
+      "case": "12",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 58.98,
+      "model_calls": 8,
+      "tool_calls": 10,
+      "tokens": {
+        "input": 52206,
+        "output": 1801,
+        "reported_calls": 8
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "13",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 61.38,
+      "model_calls": 9,
+      "tool_calls": 8,
+      "tokens": {
+        "input": 57348,
+        "output": 1773,
+        "reported_calls": 9
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "14",
+      "repeat": 1,
+      "status": "FAIL",
+      "raw_status": "FAIL",
+      "failure": "AGENT_INTENT_CLASSIFICATION",
+      "code": "UNIFIED_READ_ONLY_INTENT",
+      "terminal": "turn.failed",
+      "assertion_failure": null,
+      "seconds": 13.78,
+      "model_calls": 2,
+      "tool_calls": 1,
+      "tokens": {
+        "input": 7991,
+        "output": 392,
+        "reported_calls": 2
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {
+        "TOOL_PERMISSION": 2
+      }
+    },
+    {
+      "case": "15",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 95.24,
+      "model_calls": 11,
+      "tool_calls": 10,
+      "tokens": {
+        "input": 76174,
+        "output": 3270,
+        "reported_calls": 11
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "16",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 43.78,
+      "model_calls": 5,
+      "tool_calls": 6,
+      "tokens": {
+        "input": 40515,
+        "output": 1312,
+        "reported_calls": 5
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "17",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 46.89,
+      "model_calls": 6,
+      "tool_calls": 6,
+      "tokens": {
+        "input": 45762,
+        "output": 1283,
+        "reported_calls": 6
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "18",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 39.61,
+      "model_calls": 5,
+      "tool_calls": 7,
+      "tokens": {
+        "input": 35179,
+        "output": 984,
+        "reported_calls": 5
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "19",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 44.58,
+      "model_calls": 5,
+      "tool_calls": 6,
+      "tokens": {
+        "input": 32134,
+        "output": 1438,
+        "reported_calls": 5
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "20",
+      "repeat": 1,
+      "status": "FAIL",
+      "raw_status": "FAIL",
+      "failure": "DELIVERY_ASSERTION",
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": "protected_fixture_changed",
+      "seconds": 50.94,
+      "model_calls": 6,
+      "tool_calls": 9,
+      "tokens": {
+        "input": 38801,
+        "output": 1566,
+        "reported_calls": 6
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "21",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 120.53,
+      "model_calls": 13,
+      "tool_calls": 14,
+      "tokens": {
+        "input": 114760,
+        "output": 3586,
+        "reported_calls": 13
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "22",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 87.55,
+      "model_calls": 12,
+      "tool_calls": 14,
+      "tokens": {
+        "input": 94484,
+        "output": 2193,
+        "reported_calls": 12
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "23",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 96.88,
+      "model_calls": 9,
+      "tool_calls": 18,
+      "tokens": {
+        "input": 58015,
+        "output": 3662,
+        "reported_calls": 8
+      },
+      "recovery_count": 1,
+      "completion_repair_count": 0,
+      "model_error_classes": {
+        "MODEL_FAILURE": 1,
+        "USER_CANCELLED": 1
+      }
+    },
+    {
+      "case": "24",
+      "repeat": 1,
+      "status": "BLOCKED",
+      "raw_status": "FAIL",
+      "failure": "PRODUCT_RESUME_CONFIRMATION",
+      "code": "PLAN_RESUME_CONFIRMATION_REQUIRED",
+      "terminal": "turn.failed",
+      "assertion_failure": null,
+      "seconds": 91.48,
+      "model_calls": 11,
+      "tool_calls": 13,
+      "tokens": {
+        "input": 61672,
+        "output": 3401,
+        "reported_calls": 10
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {
+        "MODEL_FAILURE": 1,
+        "USER_CANCELLED": 1,
+        "AGENT_FAILURE": 2
+      }
+    },
+    {
+      "case": "25",
+      "repeat": 1,
+      "status": "FAIL",
+      "raw_status": "FAIL",
+      "failure": "DELIVERY_ASSERTION",
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": "external_command_exit_1",
+      "seconds": 88.59,
+      "model_calls": 9,
+      "tool_calls": 8,
+      "tokens": {
+        "input": 68061,
+        "output": 3101,
+        "reported_calls": 9
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "26",
+      "repeat": 1,
+      "status": "FAIL",
+      "raw_status": "FAIL",
+      "failure": "DELIVERY_ASSERTION",
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": "external_command_exit_1",
+      "seconds": 51.97,
+      "model_calls": 8,
+      "tool_calls": 9,
+      "tokens": {
+        "input": 56660,
+        "output": 1224,
+        "reported_calls": 8
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "27",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 49.14,
+      "model_calls": 5,
+      "tool_calls": 7,
+      "tokens": {
+        "input": 32931,
+        "output": 1672,
+        "reported_calls": 5
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "28",
+      "repeat": 1,
+      "status": "PASS",
+      "raw_status": "PASS",
+      "failure": null,
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": null,
+      "seconds": 86.36,
+      "model_calls": 8,
+      "tool_calls": 13,
+      "tokens": {
+        "input": 57015,
+        "output": 3122,
+        "reported_calls": 8
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "29",
+      "repeat": 1,
+      "status": "FAIL",
+      "raw_status": "FAIL",
+      "failure": "DELIVERY_ASSERTION",
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": "external_command_exit_1",
+      "seconds": 54.72,
+      "model_calls": 7,
+      "tool_calls": 10,
+      "tokens": {
+        "input": 55422,
+        "output": 1401,
+        "reported_calls": 7
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    },
+    {
+      "case": "30",
+      "repeat": 1,
+      "status": "FAIL",
+      "raw_status": "FAIL",
+      "failure": "DELIVERY_ASSERTION",
+      "code": null,
+      "terminal": "turn.completed",
+      "assertion_failure": "external_command_exit_1",
+      "seconds": 74.06,
+      "model_calls": 6,
+      "tool_calls": 9,
+      "tokens": {
+        "input": 41923,
+        "output": 2701,
+        "reported_calls": 6
+      },
+      "recovery_count": 0,
+      "completion_repair_count": 0,
+      "model_error_classes": {}
+    }
+  ],
+  "counts": {
+    "PASS": 20,
+    "FAIL": 9,
+    "BLOCKED": 1
+  }
+}

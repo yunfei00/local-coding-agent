@@ -1,5 +1,5 @@
 import {useEffect, useState} from "react";
-import {Connection, ModelCatalog, ModelProfile, TaskConfig, modelLabel, longTaskBudget, defaultModelOutput, codingOutputProfile} from "../lib/modelCatalog";
+import {Connection, ModelCatalog, ModelProfile, TaskConfig, modelLabel, longTaskBudget, defaultModelOutput, codingOutputProfile, validateModelOutputLimits} from "../lib/modelCatalog";
 import {ModelDiagnosticResult} from "./ModelDiagnosticResult";
 import {ModelCapabilitySummary} from './ModelCapabilitySummary';
 import {WorkflowSettings} from './WorkflowSettings';
@@ -67,10 +67,11 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
         {connection.provider_type === "openai_compatible" ? <>
           <label className="settings-field">API key<input aria-label="Connection API key" type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} /></label>
           <p>Credential: {connection.credential_reference || "No key reference"}. Keys stay in OS protected storage, or session memory when unavailable.</p>
-          <button onClick={() => void action(async () => {const result = await request("task.credential.set", {connection_id:selected, api_key:key}); const next = {...catalog, connections:catalog.connections.map(c => c.connection_id === selected ? {...c, credential_reference:key ? "connection-" + selected : null} : c)}; await request("task.catalog.update", {catalog:next, config}); setCatalog(next); setKey(""); setMessage("Credential and connection reference saved: " + String(result.payload?.mode));})}>Save / clear connection key</button>
+          <button onClick={() => void action(async () => {validateModelOutputLimits(catalog); const result = await request("task.credential.set", {connection_id:selected, api_key:key}); const next = {...catalog, connections:catalog.connections.map(c => c.connection_id === selected ? {...c, credential_reference:key ? "connection-" + selected : null} : c)}; await request("task.catalog.update", {catalog:next, config}); setCatalog(next); setKey(""); setMessage("Credential and connection reference saved: " + String(result.payload?.mode));})}>Save / clear connection key</button>
         </> : null}
         <button onClick={() => void action(async () => {
           // Save first so the tested endpoint is exactly the one displayed.
+          validateModelOutputLimits(catalog);
           await request("task.catalog.update", {catalog, config});
           const result = await request("task.connection.test", {connection_id:selected});
           const payload = result.payload ?? {};
@@ -122,7 +123,7 @@ export function ModelSettingsSection({threadId = "", running}: {threadId?: strin
       <div className="model-settings-grid">{Object.entries(config.budget).map(([k,v]) => <label className="settings-field" key={k}>{k}<input aria-label={"Default " + k} type="number" min="0" value={v ?? ""} onChange={e => setConfig({...config, budget:{...config.budget, [k]:e.target.value ? Number(e.target.value) : null}})} /></label>)}
       </div>
       <p>Caps use conservative reservations and request output limits; provider tokenization and billing may differ. Failed requests retain reservations. Cost caps require configured prices.</p>
-      <div className="model-settings-save-bar"><span className="model-settings-save-note">Save changes for new tasks; running tasks keep their snapshot.</span><button onClick={() => void action(async () => {const result = await request("task.catalog.update", {catalog, config,chat_default:chatDefault,chat_vision:chatVision}); setCatalog(result.payload?.catalog as ModelCatalog); setConfig(result.payload?.config as TaskConfig); if(connection?.provider_type==='openai_compatible'&&connection.enabled){try{const tested=await request('task.connection.test',{connection_id:connection.connection_id});if(tested.payload?.online!==true)throw new Error('API连接当前不可用');setStatuses(previous=>({...previous,[connection.connection_id]:'PASS'}));setMessage('模型配置已保存，API连接验证完成；运行任务快照不变。');}catch(error){setMessage('配置已保存，但连接验证失败；原配置与任务已保留。');setError(String(error));}}else setMessage('模型配置已保存，运行任务快照不变；未自动探测本地服务。');})}>Save model configuration</button></div>
+      <div className="model-settings-save-bar"><span className="model-settings-save-note">Save changes for new tasks; running tasks keep their snapshot.</span><button onClick={() => void action(async () => {validateModelOutputLimits(catalog); const result = await request("task.catalog.update", {catalog, config,chat_default:chatDefault,chat_vision:chatVision}); setCatalog(result.payload?.catalog as ModelCatalog); setConfig(result.payload?.config as TaskConfig); if(connection?.provider_type==='openai_compatible'&&connection.enabled){try{const tested=await request('task.connection.test',{connection_id:connection.connection_id});if(tested.payload?.online!==true)throw new Error('API连接当前不可用');setStatuses(previous=>({...previous,[connection.connection_id]:'PASS'}));setMessage('模型配置已保存，API连接验证完成；运行任务快照不变。');}catch(error){setMessage('配置已保存，但连接验证失败；原配置与任务已保留。');setError(String(error));}}else setMessage('模型配置已保存，运行任务快照不变；未自动探测本地服务。');})}>Save model configuration</button></div>
     </fieldset>
     <section aria-label="Model connection diagnostics">
       <h3>Connection diagnostics</h3>

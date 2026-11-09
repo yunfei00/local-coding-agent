@@ -1665,6 +1665,9 @@ class AgentServer:
                             await self.recover_plan(ws,project,plan['id'],thread_id)
                             checkpoint=self.store.task_plans.latest_checkpoint(plan['id'])
                             self.confirmed_plan_resumes.add((thread_id,checkpoint['id']))
+                            next_step = self.store.task_plans.active_step(plan['id'])
+                            if next_step is None:
+                                continue
                         except ValueError as exc:
                             await self.send_error(ws,'PLAN_RECOVERY_FAILED',str(exc),request_id=request_id,thread_id=thread_id)
                             return
@@ -2671,6 +2674,25 @@ class AgentServer:
                     execution.data['unified_provider_snapshot']=snapshot
         if unified:
             messages.append({'role':'system','content':UNIFIED_INSTRUCTIONS})
+            if requested['kind']=='complex' and not active_plan:
+                messages.append({'role':'system','content':
+                    'The original request has multiple dependent stages. Establish an executable plan before the first mutation. '
+                    'Check each stage against its own requirements; a partial edit or a syntactic check does not finish the entire goal.'})
+            if (not requested['read_only'] and requested['kind'] in {'change','complex'}
+                    and re.search(r'退出码|非零退出|返回\s*[1-9][0-9]*\b|exit (?:code|status)|nonzero exit', execution.data.get('unified_goal', prompt), re.I)):
+                messages.append({'role':'system','content':
+                    'For a CLI smoke test whose expected actual exit code is nonzero, call run_command '
+                    'with isolated_cwd=true and expected_exit_codes containing only the required code. '
+                    'Keep assertions exact and inspect actual stdout/stderr. Do not treat unexpected failures as success.'})
+
+            if (not requested['read_only'] and re.search(
+                    r'持久化|跨进程|persist|stateful', execution.data.get('unified_goal', prompt), re.I)):
+                messages.append({'role':'system','content':
+                    'Stateful verification runs in a disposable copy. Use one root-relative Python invocation per run_command, '
+                    'without shell chains, and keep data paths relative. Commands in the same role flow share scratch data. '
+                    'Use one test script with assertions across Python child invocations to check state changes, and never seed delivery data. '
+                    'When the user requests functional tests, the plan must end with an independent Tester that depends on all Developer steps. '
+                    'Developer writes tests; Tester only runs them.'})
             if requested['kind']=='interaction':
                 messages.append({'role':'system','content':'当前用户只要求界面操作。可读取所需结果文件，但不得修改源码或运行代码测试/终端修复；使用 start_process/read_process/stop_process 管理本次窗口进程。界面保存产生的数据文件不是开发任务。'})
             if self._permission_policy(project,execution).continuous:
@@ -2713,6 +2735,13 @@ class AgentServer:
                 return execution.data['role_handoffs'][-1]['role']
             return (step or {}).get('workflow',{}).get('assigned_role','developer')
 
+        def workflow_allows(call):
+            from agent.core.workflow import role_allows
+            metadata = tools.permission_metadata(call.name) or {}
+            return role_allows(workflow_role(), call.name, call.arguments,
+                read_only=call.name in READ_ONLY_TOOLS or bool(metadata.get('trusted') and metadata.get('read_only')),
+                allowed_test_hashes=execution.data.get('workflow_test_hashes', ()))
+
         def freeze_workflow_models():
             if 'workflow_test_hashes' not in execution.data:
                 from agent.core.verification import discover_commands
@@ -2724,6 +2753,12 @@ class AgentServer:
             execution.save()
 
         workflow_default_provider,workflow_default_model=provider,model
+
+        def verification_contract():
+            from agent.core.verification import workflow_verification_contract
+            contract = workflow_verification_contract(execution.data.get('unified_goal', prompt), requested)
+            execution.data['verification_contract'] = contract
+            return contract
 
         def select_workflow_model():
             nonlocal provider,model,context_manager
@@ -2818,14 +2853,63 @@ class AgentServer:
         deadline = perf_counter() + max(.01, execution.data['limits']['seconds'] - execution.data['elapsed'])
 
         try:
+            if unified:
+                from agent.core.verification import protected_workspace_files
+                if 'protected_workspace_files' not in execution.data:
+                    execution.data['protected_workspace_files'] = protected_workspace_files(
+                        workspace.root, execution.data.get('unified_goal', prompt))
+                if execution.data['protected_workspace_files']:
+                    messages.append({'role':'system','content':
+                        'The user explicitly preserves these project files: '
+                        + json.dumps(list(execution.data['protected_workspace_files']),ensure_ascii=False)
+                        + '. Use file tools only on other paths. Run checks with isolated_cwd=true; '
+                          'write disposable fixture data in that scratch directory, never into the delivery workspace.'})
+                    execution.save()
             if unified and execution.data['calls']==0 and requested['kind'] in {'change','complex'}:
                 from agent.core.verification import preserve_acceptance_requested,acceptance_snapshot
                 if preserve_acceptance_requested(authorization_prompt or prompt):
                     execution.data['workflow_acceptance_baseline']=acceptance_snapshot(workspace.root)
                     execution.save()
+            if unified and execution.data.get('workflow_acceptance_baseline'):
+                messages.append({'role':'system','content':
+                    'Existing acceptance tests and verification configuration are the baseline. '
+                    'Keep them unchanged, repair the implementation, and put any additional tests in new files.'})
             for step in range(1, self.max_model_steps * (1 + execution.data['limits']['max_continuations']) + 1):
-                select_workflow_model()
                 if turn_id in self.cancelling_turns:raise asyncio.CancelledError()
+                contract = verification_contract() if unified else {}
+                if active_plan and contract.get('independent'):
+                    try:
+                        if self.store.task_plans.ensure_independent_tester(active_plan['id']):
+                            active_plan = self.store.task_plans.get(active_plan['id'])
+                            active_step_id = (self.store.task_plans.active_step(active_plan['id']) or {}).get('id')
+                            await ws.send_json(envelope('plan.loaded',{'plans':[active_plan]},thread_id=thread_id,turn_id=turn_id))
+                    except ValueError as exc:
+                        raise ProviderError('WORKFLOW_TESTER_REQUIRED',str(exc)) from exc
+                if unified and active_plan and not requested['read_only'] and workflow_role() == 'tester':
+                    from agent.core.verification import discover_commands
+                    tester_step = self.store.task_plans.active_step(active_plan['id'])
+                    tester_meta = tester_step.get('workflow', {})
+                    handoff = execution.data.get('workflow_test_handoffs', {}).get(tester_step['id'])
+                    commands = discover_commands(workspace.root, verification_options.get('verification_commands',[]))
+                    test_commands = [command for command in commands if re.search(r'\b(?:pytest|unittest|test)\b', command)]
+                    existing = bool(test_commands)
+                    if not handoff and (tester_meta.get('handoff_requested') or not existing):
+                        blocker = {'status':'BLOCKED','code':'WORKFLOW_TEST_HANDOFF_MISSING','step_id':tester_step['id']}
+                        execution.data.setdefault('workflow_handoff_blockers', {})[tester_step['id']] = blocker
+                        if not self.store.task_plans.prepare_missing_test_handoff(active_plan['id'],tester_step['id']):
+                            await publish_runtime('blocked', test_handoff=blocker)
+                            raise ProviderError(blocker['code'], '没有可执行测试交接；已保留原计划和权限。')
+                        active_step_id = self.store.task_plans.active_step(active_plan['id'])['id']
+                        plan_tool_evidence.clear()
+                        plan_commands_run.clear()
+                        execution.save()
+                        await publish_runtime('repairing', test_handoff=blocker)
+                        messages.append({'role':'system','content':
+                            'Tester preflight BLOCKED: WORKFLOW_TEST_HANDOFF_MISSING. The current Developer step owns test creation. '
+                            'Create a root test_*.py unittest file, use one disposable dataset across child processes, '
+                            'and declare python -m unittest discover -s . -p <script> -v via workflow_test_handoff. '
+                            'The Tester cannot write files and the workflow requires a real test execution.'})
+                select_workflow_model()
                 if unified and recovery_error:raise ProviderError('RECOVERY_LIMIT',recovery_error)
                 if self.runtime_ledger.pending(execution.key):
                     def apply_followups(rows):
@@ -2945,6 +3029,14 @@ class AgentServer:
                                 from agent.core.workflow import ROLE_INSTRUCTIONS
                                 role = workflow_role()
                                 runtime_suffix += '\n\n'+ROLE_INSTRUCTIONS[role]+'\n当前子任务：'+json.dumps(role_step['workflow'],ensure_ascii=False)
+                                if role == 'tester':
+                                    declared = execution.data.get('workflow_test_handoffs', {}).get(role_step['id'])
+                                    if declared:
+                                        runtime_suffix += ('\nRun the declared isolated command now with run_command. '
+                                                           'Do not write files or run other shell commands. Handoff: '
+                                                           + json.dumps(declared,ensure_ascii=False))
+                                    elif contract.get('independent'):
+                                        runtime_suffix += '\nRun an actual discovered test command: ' + json.dumps(test_commands,ensure_ascii=False)
                                 handoffs=execution.data.setdefault('role_handoffs',[])
                                 if not handoffs or handoffs[-1]['step_id']!=role_step['id']:
                                     handoff={'step_id':role_step['id'],'role':role,'model':model,'provider':provider.provider_name,
@@ -2977,6 +3069,10 @@ class AgentServer:
                             role=workflow_role()
                             if role=='reviewer':schemas=[*schemas,REVIEW_TOOL]
                             if role in {'planner','developer'} and any(s.get('workflow') for s in active_plan['steps']):schemas=[*schemas,ADJUST_TOOL]
+                            current_node = self.store.task_plans.active_step(active_plan['id'])
+                            if role == 'developer' and (current_node or {}).get('workflow', {}).get('handoff_for'):
+                                from agent.core.workflow import TEST_HANDOFF_TOOL
+                                schemas = [*schemas, TEST_HANDOFF_TOOL]
                             if role!='developer':
                                 schemas=[s for s in schemas if role_allows(role,s['function']['name'],
                                     {'command':'uv run python -m unittest'} if s['function']['name']=='run_command' and role=='tester' else {'command':'git diff'},
@@ -3165,6 +3261,25 @@ class AgentServer:
                 if not assistant_text.strip() and not tool_calls:
                     raise ProviderError("MODEL_EMPTY_RESPONSE", "Model returned no text or tool calls; completion was not accepted")
 
+                if tool_calls and contract.get('independent') and workflow_role() == 'tester':
+                    handoff = runtime.get('test_handoff', {})
+                    if (handoff.get('status') == 'PASS' and handoff.get('step_id') == active_step_id
+                            and any(row.get('step_id') == active_step_id
+                                    and row.get('tool_call_id') == handoff.get('call_id')
+                                    and row.get('tool') == 'run_command' and row.get('ok')
+                                    and row.get('exit_code') == 0 for row in plan_tool_evidence)):
+                        allowed = [call for call in tool_calls if workflow_allows(call)]
+                        if len(allowed) != len(tool_calls):
+                            self.runtime_ledger.record(execution.key, thread_id, 'workflow.tester.redundant_tool_blocked',
+                                {'step_id':active_step_id, 'evidence_call_id':handoff['call_id'],
+                                 'blocked_count':len(tool_calls)-len(allowed)})
+                            tool_calls = allowed
+                            if not tool_calls:
+                                # Reuse the real step evidence. The normal
+                                # finalization below still runs delivery checks.
+                                assistant_text = '独立 Tester 的测试已通过，额外的未授权工具未执行。'
+                                finish_reason = 'stop'
+
                 if tool_calls and instructions.discover(instructions.tool_paths(tool_calls)):
                     instruction_suffix = '\n\n' + instructions.render()
                     execution.data['repository_instructions'] = [
@@ -3250,17 +3365,48 @@ class AgentServer:
                             exact_git_diff_checked = bool(requirements)
                         if (not intermediate and not explicit_tool_denial and actual_changes and requested['kind'] in {'change', 'complex'}
                                 and not execution.data.get('input_contract_reviewed')
-                                and re.search(r'\b(?:reject|invalid input|input validation)\b|拒绝|输入校验', prompt, re.I)):
+                                and re.search(r'\b(?:reject|invalid input|input validation|backward compatible)\b|拒绝|输入校验|抛\s*ValueError|兼容|折扣', prompt, re.I)):
                             execution.data['input_contract_reviewed'] = True
                             execution.save()
                             messages.append({'role': 'system', 'content':
                                 'Before final delivery, independently exercise the explicit input validation requirements '
-                                'in the original goal. Include each requested invalid class, not just a success path. '
+                                'in the original goal. Verify positive behavior, explicit edge cases and compatibility independently. Include each requested invalid class, not just a success path. '
                                 'For blank text test whitespace-only input as well as an empty string. '
                                 'For stateful programs use isolated_cwd=true; verify failures preserve existing state. '
                                 'If a real assertion fails, repair the implementation and rerun that check.'})
                             continue
-                        if not actual_changes and not intermediate and requested['kind'] in {'change','complex'}:
+                        if (not intermediate and not explicit_tool_denial and not requested['read_only']
+                                and requested['kind'] in {'change', 'complex'}):
+                            from agent.core.verification import delivery_requirements, missing_deliverables
+                            goal = execution.data.get('unified_goal', prompt)
+                            requirements = delivery_requirements(goal)
+                            missing = missing_deliverables(workspace.root, requirements,
+                                execution.data.get('delivery_commands', []))
+                            if missing:
+                                if execution.data.get('delivery_reviewed'):
+                                    raise ProviderError('DELIVERY_CONTRACT_INCOMPLETE',
+                                                        '交付缺少独立证据：' + '、'.join(missing))
+                                execution.data['delivery_reviewed'] = True
+                                execution.save()
+                                messages.append({'role':'system','content':
+                                    'The requested deliverables are incomplete: ' + json.dumps(missing,ensure_ascii=False)
+                                    + '. Use approved tools to complete them. Record only observed commands and exit codes. '
+                                      'Preserve existing files, do not rerun successful mutations, and use an isolated working directory for stateful tests.'})
+                                continue
+                        git_branch_verified = False
+                        if not actual_changes and not intermediate and not requested['read_only'] and workspace_uses_git():
+                            from agent.core.unified_runtime import requested_git_branch
+                            from agent.tools.git import current_worktree_branch
+                            branch = requested_git_branch(execution.data.get('unified_goal', prompt))
+                            if branch:
+                                try:
+                                    git_branch_verified = await current_worktree_branch(workspace) == branch
+                                except ToolError:
+                                    pass
+                                if git_branch_verified:
+                                    execution.data['verified_git_branch'] = branch
+                                    execution.save()
+                        if not actual_changes and not git_branch_verified and not intermediate and requested['kind'] in {'change','complex'}:
                             if execution.data.get('no_change_repair',0)<1:
                                 execution.data['no_change_repair']=1;execution.save()
                                 messages.append({'role':'system','content':'The user requested real development, but no file change evidence exists. Use actual tools in this workspace, not a code-only prose answer. If the request is already satisfied, provide actual inspection/test evidence and explicitly state no change was necessary. Never fabricate completion.'})
@@ -3285,11 +3431,16 @@ class AgentServer:
                                 policy = {'level':'manual','commands':[],'reason':'验证配置无法解析，未运行验证'}
                             await publish_runtime('verifying', level=policy['level'], reason=policy['reason'])
                             async def verify_execute(name, arguments, on_raw_output=None, environment=None):
+                                if ((execution.data.get('protected_workspace_files') or
+                                        execution.data.get('workflow_test_handoffs',{}).get(active_step_id)) and name=='run_command'
+                                        and arguments.get('command') != 'git diff --check'):
+                                    arguments = {**arguments, 'isolated_cwd': True}
                                 execution.reserve_tool()
                                 identifier = new_id('verify')
                                 await publish_runtime('verifying',active_tool={'name':name,'command':arguments.get('command',''),'call_id':identifier})
                                 await ws.send_json(envelope('tool.started', {'tool_call_id':identifier,'name':name,'arguments':arguments,'independent_verification':True},thread_id=thread_id,turn_id=turn_id))
-                                result = await self._authorize_tool(ws, project=project, call=ToolCall(name=name,arguments=arguments),call_id=identifier,thread_id=thread_id,turn_id=turn_id,user_prompt=authorization_prompt or prompt,on_raw_output=on_raw_output,environment=environment)
+                                result = await self._authorize_tool(ws, project=project, call=ToolCall(name=name,arguments=arguments),call_id=identifier,thread_id=thread_id,turn_id=turn_id,user_prompt=authorization_prompt or prompt,on_raw_output=on_raw_output,environment=environment,
+                                    verification_scope=f'independent:{change_version}')
                                 if active_plan and active_step_id:
                                     self.store.task_plans.record_execution(active_plan['id'],active_step_id,identifier,turn_id,name,result)
                                     if result.get('ok'):
@@ -3303,6 +3454,9 @@ class AgentServer:
                             runtime['verification_log_root']=str(log_root)
                             engine = VerificationEngine(log_root,verify_execute,min(verification_options.get('budget',{}).get('verification_seconds',120), max(1,int(deadline-perf_counter()))))
                             results = [discovery_error] if discovery_error else await engine.run(policy['commands']) if policy['commands'] else []
+                            from agent.core.verification import protected_workspace_changes
+                            if protected_workspace_changes(workspace.root, execution.data.get('protected_workspace_files', {})):
+                                raise ProviderError('PROTECTED_WORKSPACE_CHANGED','明确要求保留的工作区文件发生变化，已停止；请检查验证日志。')
                             runtime['verification'] = results
                             execution.data.setdefault('unified_verification_history',[]).append({'at':__import__('time').time(),'level':policy['level'],'results':results})
                             verification_sequence = change_version
@@ -3399,6 +3553,10 @@ class AgentServer:
                             active_step_id, requirement, evidence,
                             loop_complete=not gaps or bool(plan_id) or (unified and (runtime['intent']=='complex' or (requested['kind']=='interaction' and bool(execution.data.get('unified_interaction_evidence'))) or (not requirement.strip() and verification_options.get('verification_level')=='none'))) or (not requirement.strip() and
                                 active_plan["steps"][-1]["id"] != active_step_id))
+                        declared = execution.data.get('workflow_test_handoffs',{}).get(active_step_id) if unified else None
+                        if workflow_role() == 'tester' and (declared or (unified and verification_contract()['independent'])):
+                            handoff_result = runtime.get('test_handoff', {})
+                            verified = verified and handoff_result.get('step_id') == active_step_id and handoff_result.get('status') == 'PASS'
                         advanced=self.store.task_plans.advance_verified(
                             active_plan["id"], active_step_id, evidence, verified)
                         if advanced and unified and execution.data.get('role_handoffs') and execution.data['role_handoffs'][-1]['step_id']==active_step_id:
@@ -3467,7 +3625,11 @@ class AgentServer:
                             delivery,markdown=build_delivery(execution.data.get('unified_goal',prompt),runtime,self.store.task_plans.get(active_plan['id']),reviews,call_events)
                             runtime['delivery']=write_delivery(self.store.data_dir/'workflow-deliveries',execution.key,delivery,markdown,exact_secrets=self._exact_secrets())
                             runtime['delivery']['summary']=delivery['status']
-                        if runtime['intent']=='interaction' and not runtime['changed_paths']:
+                        if execution.data.get('verified_git_branch') and not runtime['changed_paths']:
+                            branch = execution.data['verified_git_branch']
+                            await publish_runtime('completed', outcome='completed_verified', level='basic',
+                                                  reason='已独立核对当前 Git 分支：'+branch)
+                        elif runtime['intent']=='interaction' and not runtime['changed_paths']:
                             await publish_runtime('completed',outcome='completed_unverified',level='manual',reason='桌面动作已有真实工具证据；尚未附加独立 GUI 验收合约。')
                         else:
                             await publish_runtime('completed', outcome=result_view(changed=bool(runtime['changed_paths']),results=runtime['verification'],level=runtime['level'],pending=bool(active_plan and self.store.task_plans.active_step(active_plan['id']))))
@@ -3537,23 +3699,56 @@ class AgentServer:
                     execution.reserve_tool()
                     total_tool_calls += 1
                     if unified and active_plan:
-                        from agent.core.workflow import role_allows
-                        metadata=tools.permission_metadata(call.name) or {}
-                        if not role_allows(workflow_role(),call.name,call.arguments,
-                            read_only=call.name in READ_ONLY_TOOLS or bool(metadata.get('trusted') and metadata.get('read_only')),allowed_test_hashes=execution.data.get('workflow_test_hashes',())):
+                        if not workflow_allows(call):
                             runtime['role_denial']={'role':workflow_role(),'tool':call.name,'command':redact_text(str(call.arguments.get('command','')),exact_secrets=self._exact_secrets(),max_chars=400)}
-                            if call.name=='run_command' and workflow_role() in {'planner','reviewer'}:
+                            role = workflow_role()
+                            tester_write = role == 'tester' and call.name in {'write_file','apply_patch','delete_file'}
+                            if tester_write or (call.name=='run_command' and role in {'planner','reviewer'}):
                                 corrections=execution.data.setdefault('workflow_role_corrections',{})
                                 count=corrections.get(active_step_id,0)
                                 if count<1:
                                     corrections[active_step_id]=count+1;execution.save()
-                                    messages.append({'role':'tool','tool_call_id':call.id,'name':call.name,'content':json.dumps({'ok':False,'error':'WORKFLOW_ROLE_PERMISSION','message':'没有执行命令。当前角色仅使用 read_file/list_directory/search_files/git_status/git_diff；测试由 Tester 执行。不得修改文件。'},ensure_ascii=False)})
+                                    hint = ('文件操作未执行。Tester 请运行已存在的真实测试并报告结果；真实测试失败会走现有修复流程。'
+                                            if tester_write else '没有执行命令。当前角色仅使用 read_file/list_directory/search_files/git_status/git_diff；测试由 Tester 执行。不得修改文件。')
+                                    messages.append({'role':'tool','tool_call_id':call.id,'name':call.name,'content':json.dumps({'ok':False,'error':'WORKFLOW_ROLE_PERMISSION','message':hint},ensure_ascii=False)})
                                     continue
                             raise ProviderError('WORKFLOW_ROLE_PERMISSION','当前角色 '+workflow_role()+' 不允许执行 '+call.name+'；既有权限和审批未被扩大。')
                     if unified and computer_only(authorization_prompt if authorization_prompt is not None else prompt) and call.name not in COMPUTER_TOOLS:
                         raise ProviderError('COMPUTER_TOOL_SCOPE','用户仅授权界面操作；没有执行源码、终端或其他越界工具。')
                     if unified and requested['kind']=='interaction' and call.name in INTERACTION_CODE_TOOLS:
                         raise ProviderError('COMPUTER_TOOL_SCOPE','界面任务不允许修改代码或运行代码测试/终端修复；没有执行该工具。')
+                    if unified and active_plan and call.name=='workflow_test_handoff':
+                        from agent.core.workflow import test_handoff
+                        node = self.store.task_plans.active_step(active_plan['id'])
+                        target = (node or {}).get('workflow',{}).get('handoff_for')
+                        try:
+                            if requested['read_only'] or workflow_role() != 'developer' or not target:
+                                raise ValueError('只有负责补充测试的 Developer 可声明交接')
+                            declared = test_handoff(workspace.root,call.arguments)
+                            declared['workspace_version'] = snapshot_fingerprint(workspace_snapshot(workspace.root))
+                            execution.data.setdefault('workflow_test_handoffs',{})[target] = declared
+                            execution.save()
+                            await publish_runtime('executing', test_handoff={**declared,'status':'READY'})
+                            result = {'ok':True,'handoff':declared}
+                        except (ValueError,OSError) as exc:
+                            result = {'ok':False,'error':'WORKFLOW_TEST_HANDOFF_INVALID','message':str(exc)}
+                        messages.append({'role':'tool','tool_call_id':call.id,'name':call.name,
+                                         'content':json.dumps(result,ensure_ascii=False)})
+                        continue
+                    if unified and active_plan and workflow_role()=='tester' and call.name=='run_command':
+                        declared = execution.data.get('workflow_test_handoffs',{}).get(active_step_id)
+                        if declared:
+                            from agent.core.workflow import test_handoff
+                            try:
+                                current = test_handoff(workspace.root, declared)
+                            except (ValueError,OSError):
+                                raise ProviderError('WORKFLOW_TEST_HANDOFF_CHANGED','交接脚本已丢失或无法验证。') from None
+                            if current['script_sha256'] != declared['script_sha256']:
+                                raise ProviderError('WORKFLOW_TEST_HANDOFF_CHANGED','交接脚本已变化；未执行命令。')
+                            if str(call.arguments.get('command','')).strip() != declared['command']:
+                                raise ProviderError('WORKFLOW_TEST_HANDOFF_COMMAND','Tester 只能运行已声明的隔离命令。')
+                            call = ToolCall(name='run_command', id=call.id, arguments={
+                                'command':declared['command'],'cwd':'.','isolated_cwd':True,'expected_exit_codes':[0]})
                     if unified and active_plan and call.name=='workflow_adjust':
                         if len(tool_calls)!=1:raise ProviderError('WORKFLOW_ADJUST_BATCH','调整计划须单独调用，不执行同批其他操作')
                         if execution.data.get('workflow_adjustments',0)>=3:raise ProviderError('WORKFLOW_ADJUST_LIMIT','计划调整达到有界上限，保留原计划与证据')
@@ -3605,13 +3800,31 @@ class AgentServer:
                                 steps=plan_steps(template)
                                 runtime['workflow_template']={'id':template['id'],'name':template['name'],'failure_policy':template['failure_policy']}
                             else:
-                                steps = plan_steps(call.arguments)
+                                steps = [{key:value for key,value in step.items() if key!='source'}
+                                         for step in plan_steps(call.arguments)]
+                            if verification_contract()['independent']:
+                                from agent.core.workflow import independent_tester
+                                tester = independent_tester(steps)
+                                if tester and not execution.data.get('workflow_tester_correction'):
+                                    execution.data['workflow_tester_correction'] = True
+                                    execution.save()
+                                    raise ProviderError('WORKFLOW_TESTER_REQUIRED',
+                                        '重新提交一次计划，添加依赖全部 Developer 步骤的独立 Tester；Developer 先提供可执行测试。')
+                                if tester and not active_plan:
+                                    identifiers = [node.get('task_id', f'step-{i+1}') for i,node in enumerate(steps)]
+                                    if tester['task_id'] in identifiers:
+                                        steps = [tester if ident == tester['task_id'] else node
+                                                 for ident,node in zip(identifiers,steps)]
+                                    else:
+                                        steps = [*steps, tester]
                             if any('assigned_role' in s or 'task_id' in s or 'dependencies' in s for s in steps):
                                 freeze_workflow_models()
                             if runtime.get('plan_submitted'):
                                 raise ProviderError('PLAN_ALREADY_EXISTS','已有持久化计划；继续当前未完成步骤，禁止重置执行历史。')
                             if active_plan:
                                 self.store.task_plans.append_steps(active_plan['id'], steps)
+                                if contract.get('independent'):
+                                    self.store.task_plans.ensure_independent_tester(active_plan['id'])
                             else:
                                 created = self.store.task_plans.create(thread_id,prompt,steps)
                                 active_plan = self.store.task_plans.get(created)
@@ -3625,6 +3838,11 @@ class AgentServer:
                         messages.append({'role':'tool','tool_call_id':call.id,'name':call.name,'content':json.dumps(result,ensure_ascii=False)})
                         await publish_runtime('executing')
                         if not result['ok']:
+                            if result['error'] == 'WORKFLOW_TESTER_REQUIRED':
+                                for deferred in tool_calls[call_index:]:
+                                    messages.append({'role':'tool','tool_call_id':deferred.id,'name':deferred.name,
+                                                     'content':'计划缺少独立 Tester；同批操作未执行。'})
+                                break
                             runtime['invalid_plans'] = runtime.get('invalid_plans',0)+1
                             if runtime['invalid_plans'] >= 2:
                                 raise ProviderError('PLAN_INVALID_LIMIT','计划提交连续失败，已停止；原有计划与证据保留。')
@@ -3690,6 +3908,8 @@ class AgentServer:
                     tool_started = perf_counter()
                     if not active_plan and (not unified or (call.name not in READ_ONLY_TOOLS and not repeatable_check(call.name,call.arguments))):
                         created = self.store.task_plans.create(thread_id, prompt if unified else '工具任务：安全续跑与真实验收', (automatic_steps(prompt) or [{'description':'执行请求并使用真实工具验证结果'}]) if unified and runtime['intent']=='complex' else [{'description':'执行请求并使用真实工具验证结果'}])
+                        if contract.get('independent'):
+                            self.store.task_plans.ensure_independent_tester(created)
                         active_plan = self.store.task_plans.get(created)
                         active_step_id = active_plan['steps'][0]['id']
                         execution.bind_plan(created)
@@ -3720,6 +3940,10 @@ class AgentServer:
                     if replay:
                         payload = {"ok": False, "summary": "This plan already applied this operation. Inspect the workspace instead of replaying it.",
                             "error": {"code": "PLAN_OPERATION_ALREADY_APPLIED", "message": "A successful persisted operation cannot be automatically replayed."}, "changed_paths": []}
+                        if call.name == "run_command":
+                            payload["data"] = {"command_outcome":{"status":"replay_blocked",
+                                "actual_exit_code":None,
+                                "hint":"Inspect current state; for a stateful smoke test, use one isolated test script with before/after assertions."}}
                         if unfinished:
                             # A different unfinished step still needs an explicit
                             # blocker, without forging a second tool execution.
@@ -3778,6 +4002,19 @@ class AgentServer:
                             uncertain=bool(uncertain),
                         )
 
+                    if unified and call.name=='run_command' and workflow_role()=='tester':
+                        declared = execution.data.get('workflow_test_handoffs',{}).get(active_step_id)
+                        if declared or verification_contract()['independent']:
+                            from agent.core.verification import classify
+                            category = classify(payload)
+                            if not declared and not re.search(r'\b(?:pytest|unittest|test)\b', str(call.arguments.get('command',''))):
+                                category = 'configuration'
+                            handoff_status = 'PASS' if category=='passed' else 'FAIL' if category in {'assertion','code'} else 'BLOCKED'
+                            if category != 'passed' and payload.get('ok'):
+                                payload.update(ok=False, error={'code':'WORKFLOW_TEST_HANDOFF_NO_VALID_RESULT',
+                                    'message':'隔离命令没有产生有效测试结果。'})
+                            await publish_runtime('executing',test_handoff={**(declared or {}),'status':handoff_status,
+                                'exit_code':payload.get('exit_code'),'category':category,'call_id':call_id,'step_id':active_step_id})
                     payload['duration_ms'] = round((perf_counter() - tool_started) * 1000)
                     metrics.record_tool(payload['duration_ms'], ok=bool(payload.get("ok")))
                     if unified and payload.get('ok') and call.name in {'desktop_click','desktop_type_text','desktop_keypress','desktop_scroll'}:
@@ -3807,6 +4044,14 @@ class AgentServer:
                                 "changed_paths": list(payload.get("changed_paths") or []),
                             })
                     if call.name in ("shell", "shell_exec", "run_command", "run_shell"):
+                        if unified and call.name == 'run_command':
+                            from agent.core.verification import classify, delivery_requirements
+                            command = str(call.arguments.get('command', '')).strip()
+                            required = delivery_requirements(execution.data.get('unified_goal', prompt))['commands']
+                            if command in required and classify(payload) == 'passed':
+                                records = execution.data.setdefault('delivery_commands', [])
+                                if not any(row['command'] == command for row in records):
+                                    records.append({'command': command, 'exit_code': 0})
                         plan_commands_run.append({
                             "tool": call.name, "arguments": call.arguments,
                             "ok": bool(payload.get("ok")),
@@ -3815,6 +4060,16 @@ class AgentServer:
                     plan_files_changed.update(str(p) for p in (payload.get("changed_paths") or []))
                     if deletion and payload.get('ok'):
                         execution.data.setdefault('deleted_file_generations', {})[deletion[0]] = deletion[1]
+                    if call.name == 'run_command' and not (payload.get('data') or {}).get('command_outcome'):
+                        from agent.core.verification import classify
+                        code = str((payload.get('error') or {}).get('code') or '')
+                        category = classify(payload)
+                        status = ('cancelled' if 'CANCEL' in code else
+                                  'permission_denied' if category == 'permission' or 'PROTECTED' in code else
+                                  'environment_error' if category == 'environment' or code in {'PROCESS_START_FAILED','WORKING_DIRECTORY_UNAVAILABLE'} else
+                                  'timeout' if category == 'timeout' else 'execution_error')
+                        payload.setdefault('data', {})['command_outcome'] = {
+                            'status':status, 'actual_exit_code':payload.get('exit_code'), 'error_code':code or None}
                     # A failed tool is repair evidence while this turn is still
                     # running. Persist blocked only when execution actually stops;
                     # otherwise a real fail -> fix -> retest could never recover.
@@ -3824,7 +4079,11 @@ class AgentServer:
                         await publish_runtime('executing',changed_paths=sorted(guard.changed_paths))
                     execution.remember_tool(call.name, call.arguments, payload, workspace,
                                             exact_secrets=self._exact_secrets())
-                    from agent.core.verification import classify
+                    from agent.core.verification import classify, protected_workspace_changes
+                    if protected_workspace_changes(workspace.root, execution.data.get('protected_workspace_files', {})):
+                        raise ProviderError('PROTECTED_WORKSPACE_CHANGED','明确要求保留的工作区文件发生变化，已停止；请检查工具日志。')
+                    if (payload.get('error') or {}).get('code') == 'VERIFICATION_DELIVERY_PERMISSION':
+                        raise ProviderError('VERIFICATION_DELIVERY_PERMISSION',payload['summary'])
                     diagnostic_failure = (unified and requested['read_only'] and not guard.changed_paths
                         and repeatable_check(call.name,call.arguments) and payload.get('exit_code') not in (None,0)
                         and (payload.get('error') or {}).get('code') in (None,'NON_ZERO_EXIT')
@@ -4151,8 +4410,29 @@ class AgentServer:
                         thread_id=thread_id, turn_id=turn_id))
 
     async def _authorize_tool(self, ws, *, project, call, call_id, thread_id, turn_id,
-                              user_prompt, autonomous=False, on_raw_output=None, environment=None, supports_vision=False, desktop_destination=None, uncertain=False):
+                              user_prompt, autonomous=False, on_raw_output=None, environment=None, supports_vision=False, desktop_destination=None, uncertain=False, verification_scope=None):
         execution=self.active_executions.get(turn_id)
+        if '_verification_scope' in call.arguments:
+            call = ToolCall(call.name,{key:value for key,value in call.arguments.items() if key != '_verification_scope'},call.id)
+        guarded = (execution and execution.data.get('verification_contract', {}).get('stateful')
+                   and call.name in {'run_command','start_process'}
+                   and not (call.name == 'run_command' and re.fullmatch(r'git\s+(?:diff(?:\s+--check)?|status(?:\s+-sb)?)',
+                           str(call.arguments.get('command','')).strip(), re.I)))
+        if guarded:
+            from agent.core.unified_runtime import workspace_snapshot, changed_since_snapshot
+            if call.name == 'start_process' or call.arguments.get('cwd') not in (None, '', '.'):
+                message = '状态型验证只能在受控的工程根目录副本中执行；请使用 run_command 和工程相对路径。'
+                return {'ok':False,'summary':message,'error':{'code':'VERIFICATION_ISOLATION_UNAVAILABLE','message':message},'changed_paths':[]}
+            current = (execution.data.get('role_handoffs') or [{'role':'developer'}])[-1]
+            scope = 'tester:'+current['step_id'] if current['role']=='tester' else 'developer'
+            call = ToolCall(call.name,{**call.arguments,'isolated_cwd':True,
+                                      '_verification_scope':verification_scope or scope},call.id)
+        if execution and execution.data.get('protected_workspace_files'):
+            from agent.core.verification import protected_workspace_tool
+            reason = protected_workspace_tool(project.workspace.root, execution.data['protected_workspace_files'],
+                                              call.name, call.arguments)
+            if reason:
+                return {'ok':False,'summary':reason,'error':{'code':'PROTECTED_WORKSPACE_SCOPE','message':reason},'changed_paths':[]}
         if execution and execution.data.get('workflow_acceptance_baseline') is not None:
             from agent.core.verification import protected_edit
             reason=protected_edit(project.workspace.root,execution.data['workflow_acceptance_baseline'],call.name,call.arguments)
@@ -4228,9 +4508,20 @@ class AgentServer:
                                    + ', '.join(missing) + '. Verify and stage only the paths intended for that commit.')
                         return {'ok': False, 'summary': message,
                                 'error': {'code': 'GIT_RESTORE_SOURCE_NOT_STAGED', 'message': message}, 'changed_paths': []}
-            return await self._execute_tool_call(ws, tools=project.tools, call=call,
+            before = workspace_snapshot(project.workspace.root) if guarded else None
+            if before is not None and '.lca-snapshot-incomplete' in before:
+                message = '交付目录超过有界快照范围，无法安全核对状态型验证；未执行命令。'
+                return {'ok':False,'summary':message,'error':{'code':'VERIFICATION_ISOLATION_UNAVAILABLE','message':message},'changed_paths':[]}
+            result = await self._execute_tool_call(ws, tools=project.tools, call=call,
                 call_id=call_id, thread_id=thread_id, turn_id=turn_id, on_raw_output=on_raw_output, environment=environment,
                 desktop_authorized=call.name in DESKTOP_TOOLS, supports_vision=supports_vision)
+            if before is not None:
+                changed = sorted(changed_since_snapshot(before, workspace_snapshot(project.workspace.root)))
+                if changed:
+                    message = '隔离验证期间交付文件发生变化，已阻断；未删除或回滚任何文件。'
+                    result.update(ok=False,summary=message,changed_paths=changed,
+                                  error={'code':'VERIFICATION_DELIVERY_PERMISSION','message':message})
+            return result
         finally:
             project.workspace.set_full_access(self._permission_policy(project,execution,turn_id).mode == PermissionMode.FULL_ACCESS)
 

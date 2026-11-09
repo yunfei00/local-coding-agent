@@ -128,7 +128,7 @@ class TaskPlanStore:
         """Store only execution metadata, never arguments, output, or model reasoning."""
         with self.db:
             data = (result or {}).get("data") or {}
-            metadata = {k: data[k] for k in ("process_id", "pid", "shell", "state", "log_path", "metadata_path", "log_truncated", "artifact_id", "path", "width", "height", "dpi", "vision_feedback", "window_id", "window_generation", "sha256", "captured_at") if k in data}
+            metadata = {k: data[k] for k in ("process_id", "pid", "shell", "state", "log_path", "metadata_path", "log_truncated", "artifact_id", "path", "width", "height", "dpi", "vision_feedback", "window_id", "window_generation", "sha256", "captured_at", "command_outcome") if k in data}
             if result:
                 metadata.update(duration_ms=result.get("duration_ms"), error_code=(result.get("error") or {}).get("code") or data.get("error_code"))
                 if not result.get('ok'):
@@ -232,6 +232,28 @@ class TaskPlanStore:
                     (str(uuid.uuid4()),plan_id,index,step['description'],step.get('verification',''),json.dumps(new_metadata[index-len(plan['steps'])] if new_metadata else {})))
             self.db.execute('UPDATE task_plans SET updated_at=? WHERE id=?',(_now(),plan_id))
         if commit:self.checkpoint(plan_id,'complexity_upgraded')
+
+    def ensure_independent_tester(self, plan_id):
+        from agent.core.workflow import independent_tester, normalize_nodes
+        steps = self.get(plan_id)['steps']
+        nodes = [{**s['workflow'], 'description':s['description'], 'verification':s['verification'],
+                  'state':s['state']} for s in steps]
+        tester = independent_tester(nodes)
+        if tester is None:
+            return False
+        if any(node.get('task_id') == tester['task_id'] for node in nodes):
+            self.revise_workflow(plan_id, {tester['task_id']:{'dependencies':tester['dependencies']}},
+                                 '运行时补齐独立 Tester 的交付依赖')
+            return True
+        with self.db:
+            if not any(s['workflow'] for s in steps):
+                # Preserve legacy ordering, step IDs, states and execution evidence.
+                for step, metadata in zip(steps, normalize_nodes(nodes)):
+                    self.db.execute('UPDATE task_plan_steps SET workflow_json=? WHERE id=? AND plan_id=?',
+                                    (json.dumps(metadata),step['id'],plan_id))
+            self.append_steps(plan_id,[tester],commit=False)
+        self.checkpoint(plan_id,'independent_tester_required')
+        return True
 
     def get(self, plan_id: str) -> dict[str, Any]:
         self.db.row_factory = sqlite3.Row
@@ -489,6 +511,32 @@ class TaskPlanStore:
             self.checkpoint(plan_id,'independent_review')
         return verdict
 
+    def prepare_missing_test_handoff(self, plan_id, step_id):
+        """One bounded Developer handoff, without inventing a test failure."""
+        step = self.active_step(plan_id)
+        if not step or step['id'] != step_id or step['workflow'].get('assigned_role') != 'tester':
+            raise ValueError('只能退回当前 Tester 步骤')
+        meta = step['workflow']
+        steps = self.get(plan_id)['steps']
+        with self.db:
+            if meta.get('handoff_requested') or len(steps) >= 30:
+                self.update_step(plan_id,step_id,'blocked')
+                self.checkpoint(plan_id,'missing_test_handoff_blocked')
+                return False
+            ident = str(uuid.uuid4())
+            local = 'tests-' + ident[:12]
+            title = '为已实现的交付创建一个隔离验证脚本并提交 workflow_test_handoff'
+            node = {'task_id':local,'title':title,'dependencies':meta['dependencies'],
+                    'assigned_role':'developer','acceptance_criteria':[title],
+                    'required_capabilities':['tool_calling'],'retry_count':0,'handoff_for':step_id}
+            self.db.execute(
+                'INSERT INTO task_plan_steps(id,plan_id,position,description,verification,workflow_json) VALUES(?,?,?,?,?,?)',
+                (ident,plan_id,len(steps),title,'',json.dumps(node)))
+            self.db.execute("UPDATE task_plan_steps SET state='pending',workflow_json=? WHERE id=? AND plan_id=?",
+                (json.dumps({**meta,'dependencies':[local],'handoff_requested':True}),step_id,plan_id))
+            self.checkpoint(plan_id,'tester_missing_test_returned_to_developer')
+        return True
+
     def repair_test_failure(self, plan_id, step_id, summary, *, max_repairs=3):
         """Route real failing tests back through Developer and a fresh Reviewer."""
         step=self.active_step(plan_id)
@@ -532,6 +580,26 @@ class TaskPlanStore:
             return False
         if not all(item.get("ok") is True for item in evidence):
             return False
+        if current.get('workflow'):
+            # Expected nonzero probes remain in the execution journal. Do not
+            # let them invalidate independent zero-exit step evidence.
+            accepted = []
+            for item in evidence:
+                if item.get("exit_code") in (None, 0):
+                    accepted.append(item)
+                    continue
+                row = self.db.execute(
+                    "SELECT exit_code, status, metadata_json FROM task_plan_executions "
+                    "WHERE plan_id=? AND step_id=? AND call_id=? AND tool='run_command'",
+                    (plan_id, step_id, item.get("tool_call_id")),
+                ).fetchone()
+                if (not row or row["status"] != "succeeded" or row["exit_code"] != item["exit_code"]
+                        or json.loads(row["metadata_json"]).get("command_outcome", {}).get("status") != "expected_exit"):
+                    return False
+            evidence = accepted
+            from agent.plan_verification import verification_passed as step_verified
+            if not step_verified(step_id, current["verification"], evidence, loop_complete=True):
+                return False
         try:
             self.update_step(plan_id, step_id, "completed", evidence)
         except ValueError:

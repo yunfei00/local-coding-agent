@@ -25,11 +25,11 @@ const stepLabels:Record<string,string>={pending:'待执行',in_progress:'执行�
 export function useUnifiedProgress(thread:string,ready:boolean) {
   const [run,setRun]=useState<UnifiedRun>();
   useEffect(()=>{
-    let alive=true;setRun(undefined);
+    let alive=true, snapshot=0;setRun(undefined);
     if(!thread || !ready)return;
     const apply=(value:UnifiedRun|undefined)=>setRun(current=>current && value?.id===current.id && (current.revision || 0)>(value.revision || 0)?current:value);
-    const reload=()=>{void window.localAgent.taskRequest(thread,'task.runtime.list').then(event=>{
-      if(!alive)return;
+    const reload=()=>{const requested=++snapshot;void window.localAgent.taskRequest(thread,'task.runtime.list').then(event=>{
+      if(!alive || requested!==snapshot)return;
       const latest=(event.payload?.runtimes as UnifiedRun[]|undefined)?.[0];
       const queued=(event.payload?.background_jobs as Array<{id:string;state:string;revision:number}>|undefined)?.find(j=>j.state==='queued');
       apply(queued?{id:queued.id,intent:'complex',phase:'queued',revision:queued.revision,level:'none',changed_paths:[],verification:[],reason:'任务已排队；为避免文件、GUI 焦点和低内存资源冲突，默认串行执行。'}:latest);
@@ -38,7 +38,10 @@ export function useUnifiedProgress(thread:string,ready:boolean) {
     const unsubscribe=window.localAgent.onAgentEvent(event=>{
       if(event.type==='connection.restored')reload();
       if(event.thread_id===thread && ['plan.loaded','plan.step.completed','plan.completed','background.updated'].includes(event.type))reload();
-      if(event.thread_id===thread && event.type==='agent.runtime.updated' && alive)apply(event.payload?.runtime as UnifiedRun);
+      if(event.thread_id===thread && event.type==='agent.runtime.updated' && alive){
+        snapshot++;
+        apply(event.payload?.runtime as UnifiedRun);
+      }
       if(event.thread_id===thread && ['turn.completed','turn.failed','turn.cancelled'].includes(event.type))reload();
     });
     return()=>{alive=false;unsubscribe();};
@@ -52,6 +55,7 @@ export function UnifiedProgress({run,onResume,onDiagnostics,onExport,onPlan,onPa
   return <section className="context-section conversation-task" aria-label="Agent 执行结果">
     <strong>{run.phase==='completed' && run.intent==='interaction' && run.outcome==='completed_unverified' ? '桌面操作已结束 · 待独立验收' : run.phase==='completed' && !run.changed_paths.length ? '已完成 · 未修改文件，无需代码验证' : run.outcome ? labels[run.outcome] || run.outcome : `${labels[run.intent] || run.intent} · ${labels[run.phase] || run.phase}`}</strong>
     {run.reason?<p>{run.reason}</p>:null}
+    {run.error_code==='PLAN_RESUME_CONFIRMATION_REQUIRED'?<p>项目已有未完成计划。检查工作区后可继续原任务；新请求不会绕过未确认的修改。</p>:null}
     {run.pending_approval?<p>等待审批：{run.pending_approval.tool}。未获批准不会执行。</p>:null}
     {run.approval_reconfirmation_required?<p>重启前的审批已失效；恢复时需重新确认，不会自动沿用授权。</p>:null}
     {run.knowledge_warning?<p>{run.knowledge_warning}</p>:null}
