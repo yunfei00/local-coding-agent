@@ -20,6 +20,22 @@ class Session:
     page: object
     hostname: str
 
+def browser_diagnostics() -> dict:
+    import importlib.util
+    available=importlib.util.find_spec("playwright") is not None
+    result={"playwright_installed":available,"chromium_installed":False}
+    if not available:
+        result["next_step"]="Install playwright and run python -m playwright install chromium"
+        return result
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            from pathlib import Path
+            result["chromium_installed"]=Path(p.chromium.executable_path).is_file()
+    except Exception as exc:
+        result["error"]=str(exc)
+    return result
+
 class BrowserSessions:
     def __init__(self):
         self._sessions: dict[str,Session] = {}
