@@ -964,7 +964,7 @@ class AgentServer:
                 self._browser_sessions_by_project[project_key] = BrowserSessions()
             browser_sessions = self._browser_sessions_by_project[project_key]
             operation = str(payload.get("operation", ""))
-            if operation not in {"open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","back","forward","scroll","tables","screenshot","workflow","close"}:
+            if operation not in {"open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","back","forward","scroll","tables","screenshot","workflow","diagnose","close"}:
                 await self.send_error(ws, "BROWSER_OPERATION_INVALID", "Unsupported browser operation.", request_id=request_id)
                 return
             if operation in {"click","press","check","uncheck","select","workflow"} and not payload.get("confirmed"):
