@@ -27,6 +27,29 @@ class P3AcceptanceTests(unittest.TestCase):
             tool=DeliverableVerifyTool(Workspace(root))
             self.assertTrue(asyncio.run(tool.execute({"spec":spec})).ok)
 
+    def test_bounded_repair_and_reverify(self):
+        from agent.verification.repair import repair_and_verify
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            create_excel(root/"data.xlsx",{"Data":[["Name","Value"],["A",1]]})
+            spec={"files":[{"path":"data.xlsx","expect":{
+                "cells":[{"sheet":"Data","address":"B2","value":5}]}}]}
+            result=repair_and_verify(root,spec,max_rounds=2)
+            self.assertTrue(result["ok"],result)
+            self.assertEqual(result["rounds"],1)
+            self.assertEqual(len(result["history"]),2)
+            self.assertTrue(verify_deliverables(root,spec)["ok"])
+
+    def test_missing_files_reconstructed_only_from_explicit_source(self):
+        from agent.verification.repair import repair_and_verify
+        with tempfile.TemporaryDirectory() as d:
+            spec={"files":[{"path":"data.xlsx",
+                "create":{"sheets":{"Data":[["Item","Value"],["A",7]]}},
+                "expect":{"cells":[{"sheet":"Data","address":"B2","value":7}]}}]}
+            self.assertTrue(repair_and_verify(d,spec)["ok"])
+            with self.assertRaises(ValueError):
+                repair_and_verify(d,spec,max_rounds=4)
+
     def test_mismatch_and_workspace_escape(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d)
