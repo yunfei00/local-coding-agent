@@ -960,14 +960,14 @@ class AgentServer:
             if not hasattr(self, "_browser_sessions"):
                 self._browser_sessions = BrowserSessions()
             operation = str(payload.get("operation", ""))
-            if operation not in {"open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","close"}:
+            if operation not in {"open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","back","forward","scroll","tables","screenshot","close"}:
                 await self.send_error(ws, "BROWSER_OPERATION_INVALID", "Unsupported browser operation.", request_id=request_id)
                 return
             if operation in {"click","press","check","uncheck","select"} and not payload.get("confirmed"):
                 await self.send_error(ws, "BROWSER_CONFIRM_REQUIRED", "Confirm interactive browser actions in the UI.", request_id=request_id)
                 return
             try:
-                tool = BrowserSessionTool(self._browser_sessions)
+                tool = BrowserSessionTool(self._browser_sessions, self.projects.active.workspace)
                 result = await tool.execute(payload)
                 await ws.send_json(envelope("browser.result", result.to_dict(), request_id=request_id))
             except Exception as exc:
