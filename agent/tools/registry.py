@@ -32,6 +32,9 @@ from agent.desktop.runtime import DesktopRuntime, NAMES as DESKTOP_TOOLS
 from agent.tools.desktop import desktop_tools
 from agent.tools.workspace import Workspace
 from agent.tools.delete_file import DeleteFileTool
+from agent.tools.skills import skill_tools
+from agent.tools.office import office_tools
+from agent.tools.browser import browser_tools
 
 
 class ToolRegistry:
@@ -69,7 +72,7 @@ class ToolRegistry:
             GitWorktreeRemoveTool(workspace),
         ]
         self._tools: dict[str, BaseTool] = {}
-        for tool in [*tools, *desktop_tools(self.desktop), *list(extra_tools)]:
+        for tool in [*tools, *skill_tools(workspace), *office_tools(workspace), *browser_tools(), *desktop_tools(self.desktop), *list(extra_tools)]:
             self.register(tool)
 
     def register(
