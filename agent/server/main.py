@@ -960,10 +960,10 @@ class AgentServer:
             if not hasattr(self, "_browser_sessions"):
                 self._browser_sessions = BrowserSessions()
             operation = str(payload.get("operation", ""))
-            if operation not in {"open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","back","forward","scroll","tables","screenshot","close"}:
+            if operation not in {"open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","back","forward","scroll","tables","screenshot","workflow","close"}:
                 await self.send_error(ws, "BROWSER_OPERATION_INVALID", "Unsupported browser operation.", request_id=request_id)
                 return
-            if operation in {"click","press","check","uncheck","select"} and not payload.get("confirmed"):
+            if operation in {"click","press","check","uncheck","select","workflow"} and not payload.get("confirmed"):
                 await self.send_error(ws, "BROWSER_CONFIRM_REQUIRED", "Confirm interactive browser actions in the UI.", request_id=request_id)
                 return
             try:
