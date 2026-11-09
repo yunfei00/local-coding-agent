@@ -1180,9 +1180,14 @@ ipcMain.handle(
 );
 
 ipcMain.handle("agent:skills-request", async (_event, operation: string, payload: Record<string, unknown> = {}) => {
-  const allowed = new Set(["list", "read", "install", "enable", "disable", "uninstall"]);
+  const allowed = new Set(["list", "read", "install", "enable", "disable", "uninstall", "backup", "backups", "rollback", "update", "audit"]);
   if (!allowed.has(operation)) throw new Error("Unsupported skills operation");
   return sendRequest("skills." + operation, "skills.result", payload, {}, operation === "install" ? 90_000 : 15_000);
+});
+ipcMain.handle("agent:browser-request", async (_event, payload: Record<string, unknown>) => {
+  const allowed = new Set(["open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","close"]);
+  if (!allowed.has(String(payload.operation))) throw new Error("Unsupported browser operation");
+  return sendRequest("browser.session", "browser.result", payload, {}, 45000);
 });
 ipcMain.handle("agent:mcp-list", async () => {
   const event = await sendRequest("mcp.list", "mcp.listed");
