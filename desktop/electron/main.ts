@@ -1185,7 +1185,7 @@ ipcMain.handle("agent:skills-request", async (_event, operation: string, payload
   return sendRequest("skills." + operation, "skills.result", payload, {}, operation === "install" ? 90_000 : 15_000);
 });
 ipcMain.handle("agent:browser-request", async (_event, payload: Record<string, unknown>) => {
-  const allowed = new Set(["open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","close"]);
+  const allowed = new Set(["open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","back","forward","scroll","tables","screenshot","close"]);
   if (!allowed.has(String(payload.operation))) throw new Error("Unsupported browser operation");
   return sendRequest("browser.session", "browser.result", payload, {}, 45000);
 });
