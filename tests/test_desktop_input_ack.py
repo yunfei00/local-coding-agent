@@ -2,7 +2,7 @@
 import unittest
 from unittest.mock import patch
 
-from agent.desktop.worker import acknowledge_edit, DesktopError
+from agent.desktop.worker import acknowledge_edit, clear_document, DesktopError
 
 
 class InputAcknowledgementTests(unittest.TestCase):
@@ -42,6 +42,28 @@ class InputAcknowledgementTests(unittest.TestCase):
             acknowledge_edit(read,focus,'expected')
         self.assertEqual(caught.exception.code,'DESKTOP_FOCUS_FAILED')
         self.assertEqual(calls,['focus','read','focus'])
+
+    def test_async_selection_is_confirmed_before_backspace(self):
+        events=[]
+        def observe(values, label):
+            def read():
+                value=next(values)
+                events.append((label,value))
+                return value
+            return read
+        with patch('agent.desktop.worker.time.sleep'):
+            clear_document(observe(iter(['seed','','']), 'value'),
+                           observe(iter(['','seed','seed']), 'selection'),
+                           lambda:None, lambda keys: events.append(('key',keys[0][1])))
+        self.assertEqual(events, [('value','seed'),('key',17),('selection',''),
+            ('selection','seed'),('selection','seed'),('key',8),('value',''),('value','')])
+
+    def test_unconfirmed_selection_never_deletes(self):
+        keys=[]
+        with patch('agent.desktop.worker.time.monotonic', side_effect=[0,3]), self.assertRaises(DesktopError) as caught:
+            clear_document(lambda:'seed', lambda:'', lambda:None, keys.append)
+        self.assertIn('stage=select_all',caught.exception.message)
+        self.assertEqual([batch[0][1] for batch in keys],[17])
 
     def test_clear_requires_two_consecutive_empty_values_before_typing(self):
         values=iter(['old','','old','',''])

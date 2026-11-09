@@ -37,6 +37,7 @@ def acknowledge_edit(read_value, verify_focus, expected, *, timeout=3, stage='pr
     while True:
         verify_focus()
         observed=read_value()
+        verify_focus()
         matched=matched+1 if observed==expected else 0
         # Check the successful observation before the polling deadline. UIA RPCs
         # can finish late under load; two matching reads must not be reported as
@@ -48,6 +49,23 @@ def acknowledge_edit(read_value, verify_focus, expected, *, timeout=3, stage='pr
                 f'Edit acknowledgement failed: stage={stage}, expected_length={len(expected)}, '
                 f'observed_length={len(observed)}, matching_reads={matched}; no text logged or input replayed')
         time.sleep(.03)
+
+
+def clear_document(read_value, read_selection, verify_focus, send):
+    """Confirm selection in the bound editor before sending one destructive key."""
+    verify_focus()
+    original = read_value()
+    if not original:
+        acknowledge_edit(read_value, verify_focus, '', timeout=2, stage='clear')
+        return
+    if len(original) >= 4000:
+        fail('DESKTOP_INPUT_LIMIT', 'Document is too large to verify complete selection; no input sent')
+    verify_focus()
+    send([(1,17,0),(1,65,0),(1,65,2),(1,17,2)])
+    acknowledge_edit(read_selection, verify_focus, original, timeout=2, stage='select_all')
+    verify_focus()
+    send([(1,8,0),(1,8,2)])
+    acknowledge_edit(read_value, verify_focus, '', timeout=2, stage='clear')
 
 
 def require_session():
@@ -316,7 +334,7 @@ def private_editor(control):
             return False
 
 
-def document_reader(control):
+def document_reader(control, *, selection=False):
     """仅支持可识别 RichEdit Document，不把网页 Document 当作输入框。"""
     if control.element_info.control_type!='Document' or 'richedit' not in str(control.element_info.class_name).lower():
         fail('DESKTOP_EDIT_REQUIRED','仅支持精确 Edit 或 RichEdit Document；未输入。')
@@ -326,7 +344,16 @@ def document_reader(control):
         if readonly not in (False,0):
             fail('DESKTOP_CONTROL_UNAVAILABLE','Document 只读属性不允许输入。')
         def read():
-            value=pattern.DocumentRange.GetText(4001)
+            if selection:
+                ranges = pattern.GetSelection()
+                if ranges.Length != 1:
+                    return ''
+                selected = ranges.GetElement(0)
+                if selected.CompareEndpoints(0, pattern.DocumentRange, 0) != 0:
+                    return ''
+                value = selected.GetText(4001)
+            else:
+                value=pattern.DocumentRange.GetText(4001)
             if value.endswith('\r'):value=value[:-1]
             return value.replace('\r\n','\n').replace('\r','\n')
         read()
@@ -712,8 +739,11 @@ def execute(request):
                 focused=IUIA().iuia.GetFocusedElement()
                 if gui.GetForegroundWindow()!=hwnd or tuple(focused.GetRuntimeId())!=tuple(control.element_info.runtime_id):
                     fail('DESKTOP_FOCUS_FAILED','Edit lost focus while awaiting input acknowledgement; no further characters sent')
-            input_batch([(1,17,0),(1,65,0),(1,65,2),(1,17,2),(1,8,0),(1,8,2)])
-            acknowledge_edit(read_value,verify_edit_focus,'',timeout=2,stage='clear')
+            if document:
+                clear_document(read_value, document_reader(control, selection=True), verify_edit_focus, input_batch)
+            else:
+                input_batch([(1,17,0),(1,65,0),(1,65,2),(1,17,2),(1,8,0),(1,8,2)])
+                acknowledge_edit(read_value,verify_edit_focus,'',timeout=2,stage='clear')
             # A fixed pacing sleep still drops characters when Chromium/React
             # is busy. Require the actual Edit to acknowledge each prefix before
             # sending the next character. Each character is sent exactly once;
