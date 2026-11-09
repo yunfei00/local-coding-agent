@@ -4,13 +4,14 @@ import asyncio
 import json
 from agent.tools.base import BaseTool, ToolResult, ToolError
 from agent.office import engine
+from agent.office.edit import edit_excel, edit_word, edit_ppt
 from agent.verification.office import verify_office
 
 class OfficeTool(BaseTool):
     name = "office_document"
     description = "Read, create or structurally verify XLSX, DOCX or PPTX files in the workspace. Writes are not automatically approved."
     parameters = {"type":"object","properties":{
-        "operation":{"type":"string","enum":["inspect","create","verify"]},
+        "operation":{"type":"string","enum":["inspect","create","edit","verify"]},
         "path":{"type":"string"},
         "kind":{"type":"string","enum":["excel","word","ppt"]},
         "spec":{"type":"object","description":"Excel: sheets map; Word: title and sections; PPT: slides"}
@@ -19,10 +20,21 @@ class OfficeTool(BaseTool):
         self.workspace=workspace
     async def execute(self, arguments, *, on_output=None):
         op=arguments.get("operation")
-        if op not in {"inspect","create","verify"}:
+        if op not in {"inspect","create","edit","verify"}:
             raise ToolError("OFFICE_OPERATION_INVALID","Unsupported operation")
         try:
             path=self.workspace.resolve(arguments["path"])
+            if op=="edit":
+                spec=arguments.get("spec")
+                if not isinstance(spec,dict):
+                    raise ToolError("OFFICE_SPEC","Missing structured edit spec")
+                editors={".xlsx":edit_excel,".docx":edit_word,".pptx":edit_ppt}
+                editor=editors.get(path.suffix.lower())
+                if editor is None:
+                    raise ToolError("OFFICE_FORMAT","Unsupported file type")
+                output=await asyncio.to_thread(editor,path,spec)
+                check=await asyncio.to_thread(verify_office,path)
+                return ToolResult(ok=check["ok"],summary="Office document edited and verified",data={"result":output,"verification":check},changed_paths=[self.workspace.relative(path)])
             if op=="verify":
                 return ToolResult(ok=True,summary="Office structural verification",data=await asyncio.to_thread(verify_office,path))
             if op=="inspect":
