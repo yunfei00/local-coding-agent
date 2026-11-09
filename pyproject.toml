@@ -13,9 +13,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-office = ["openpyxl>=3.1,<4", "python-docx>=1.1,<2", "python-pptx>=1.0,<2"]
-office-windows = ["pywin32>=306; sys_platform == 'win32'"]
-browser = ["playwright>=1.50,<2"]
 packaging = [
     "pyinstaller==6.22.3"
 ]
