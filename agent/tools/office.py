@@ -20,7 +20,7 @@ class OfficeTool(BaseTool):
         "target":{"type":"string","description":"PDF destination for export_pdf"},
         "name":{"type":"string","description":"Bundle base filename"},
         "spec":{"type":"object","description":"Excel: sheets map; Word: title and sections; PPT: slides"}
-    },"required":["operation","path"],"additionalProperties":False}
+    },"required":["operation"],"additionalProperties":False}
     def __init__(self, workspace):
         self.workspace=workspace
     async def execute(self, arguments, *, on_output=None):
@@ -32,7 +32,10 @@ class OfficeTool(BaseTool):
                 return ToolResult(ok=True,summary="Office UIA window discovery",data=await asyncio.to_thread(list_office_windows))
             if op=="detect":
                 return ToolResult(ok=True,summary="Windows Office installation probe",data=await asyncio.to_thread(detect_office))
-            path=self.workspace.resolve(arguments["path"])
+            raw_path=arguments.get("path")
+            if not isinstance(raw_path,str) or not raw_path.strip():
+                raise ToolError("OFFICE_PATH","path is required for this operation")
+            path=self.workspace.resolve(raw_path)
             if op=="bundle":
                 spec=arguments.get("spec")
                 if not isinstance(spec,dict):
