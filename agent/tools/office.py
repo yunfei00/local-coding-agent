@@ -7,13 +7,14 @@ from agent.office import engine
 from agent.office.edit import edit_excel, edit_word, edit_ppt
 from agent.office.windows import detect_office, export_pdf
 from agent.office.bundle import create_bundle
+from agent.office.uia import list_office_windows
 from agent.verification.office import verify_office
 
 class OfficeTool(BaseTool):
     name = "office_document"
     description = "Inspect, create, edit or structurally verify XLSX, DOCX and PPTX files in the workspace. Editing existing files is destructive; user permissions still apply."
     parameters = {"type":"object","properties":{
-        "operation":{"type":"string","enum":["inspect","create","edit","verify","detect","export_pdf","bundle"]},
+        "operation":{"type":"string","enum":["inspect","create","edit","verify","detect","export_pdf","bundle","uia_list"]},
         "path":{"type":"string"},
         "kind":{"type":"string","enum":["excel","word","ppt"]},
         "target":{"type":"string","description":"PDF destination for export_pdf"},
@@ -24,9 +25,11 @@ class OfficeTool(BaseTool):
         self.workspace=workspace
     async def execute(self, arguments, *, on_output=None):
         op=arguments.get("operation")
-        if op not in {"inspect","create","edit","verify","detect","export_pdf","bundle"}:
+        if op not in {"inspect","create","edit","verify","detect","export_pdf","bundle","uia_list"}:
             raise ToolError("OFFICE_OPERATION_INVALID","Unsupported operation")
         try:
+            if op=="uia_list":
+                return ToolResult(ok=True,summary="Office UIA window discovery",data=await asyncio.to_thread(list_office_windows))
             if op=="detect":
                 return ToolResult(ok=True,summary="Windows Office installation probe",data=await asyncio.to_thread(detect_office))
             path=self.workspace.resolve(arguments["path"])
