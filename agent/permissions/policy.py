@@ -307,11 +307,11 @@ class PermissionPolicy:
             protected=project_command_risk(workspace,str(arguments.get('command','')),str(arguments.get('cwd') or '.'))
             if protected and protected[0]=='system_protection':
                 return PermissionVerdict(False,reason=protected[1],risk=protected[0])
-        if tool_name == "deliverable_verify" and arguments.get("report_path"):
+        if tool_name == "deliverable_verify" and (arguments.get("report_path") or arguments.get("repair")):
             if self.mode == PermissionMode.READ_ONLY:
                 return PermissionVerdict(allowed=False,reason="Report writing requires workspace mode.",risk="read_only")
             return PermissionVerdict(allowed=True,requires_approval=True,
-                reason="Create a new verification report inside the workspace.",
+                reason="Create a verification report or repair deliverable files inside the workspace.",
                 approval_key="verify_report:"+str(arguments.get("report_path")),risk="file_write")
         if tool_name in {"office_document", "browser_session"}:
             operation = str(arguments.get("operation", ""))
