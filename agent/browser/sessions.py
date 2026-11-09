@@ -19,6 +19,7 @@ class Session:
     context: object
     page: object
     hostname: str
+    driver: object
 
 def browser_diagnostics() -> dict:
     import importlib.util
@@ -69,8 +70,7 @@ class BrowserSessions:
                 await context.route("**/*", guard)
                 await page.goto(url, wait_until="domcontentloaded", timeout=15000)
                 session_id = secrets.token_hex(12)
-                session = Session(browser,context,page,hostname)
-                session.driver = driver
+                session = Session(browser,context,page,hostname,driver)
                 self._sessions[session_id] = session
                 return {"session_id":session_id, **await self.snapshot(session_id)}
             except BaseException:
