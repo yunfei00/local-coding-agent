@@ -95,7 +95,8 @@ declare global {
           mode: "os_protected" | "session_only" | "environment" | "none";
         };
       }>;
-      listMcpServers: () => Promise<{
+      skillsRequest: (operation: string, payload?: Record<string, unknown>) => Promise<AgentEnvelope>;
+    listMcpServers: () => Promise<{
         event: AgentEnvelope;
         secrets: Record<
           string,
