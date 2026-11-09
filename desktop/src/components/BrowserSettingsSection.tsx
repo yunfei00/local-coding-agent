@@ -12,6 +12,7 @@ export function BrowserSettingsSection({running}:{running:boolean}) {
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   const [history,setHistory]=useState<string[]>([]);
+  const [screenshotPath,setScreenshotPath]=useState("browser-screenshot.png");
   const request=async(op:string,extra:Record<string,unknown>={})=>{
     setBusy(true);setError("");
     try {
@@ -39,6 +40,10 @@ export function BrowserSettingsSection({running}:{running:boolean}) {
         <button type="button" disabled={disabled} onClick={()=>void request("open",{url})}>打开新会话</button>
         <button type="button" disabled={disabled||!session} onClick={()=>void request("navigate",{value:url})}>访问网址</button>
         <button type="button" disabled={disabled||!session} onClick={()=>void request("snapshot")}>刷新 DOM</button>
+        <button type="button" disabled={disabled||!session} onClick={()=>void request("back")}>后退</button>
+        <button type="button" disabled={disabled||!session} onClick={()=>void request("forward")}>前进</button>
+        <button type="button" disabled={disabled||!session} onClick={()=>void request("scroll",{value:"600"})}>向下滚动</button>
+        <button type="button" disabled={disabled||!session} onClick={()=>void request("tables")}>提取表格</button>
         <button type="button" disabled={disabled||!session} onClick={()=>void request("close")}>关闭会话</button>
       </div>
     </div>
@@ -52,6 +57,11 @@ export function BrowserSettingsSection({running}:{running:boolean}) {
         {["click","fill","select","check","uncheck","press","wait"].map(op=><option key={op} value={op}>{op}</option>)}
       </select>
       <button type="button" disabled={disabled||!session||(operation!=="wait"&&!selector)} onClick={()=>void request(operation,{selector,value})}>执行操作</button>
+    </div>
+    <div className="settings-field">
+      <label htmlFor="browser-screenshot">截图保存路径（工作区内，新文件）</label>
+      <input id="browser-screenshot" value={screenshotPath} onChange={e=>setScreenshotPath(e.target.value)} disabled={disabled||!session} />
+      <button type="button" disabled={disabled||!session||!screenshotPath} onClick={()=>void request("screenshot",{path:screenshotPath})}>保存 PNG 截图</button>
     </div>
     {error?<p role="alert">{error}</p>:null}
     {snapshot?<section className="settings-field">
