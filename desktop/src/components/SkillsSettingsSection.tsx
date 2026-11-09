@@ -6,6 +6,7 @@ type Result = {payload?:Record<string,unknown>};
 export function SkillsSettingsSection({running}:{running:boolean}) {
   const [items,setItems] = useState<Skill[]>([]);
   const [source,setSource] = useState("");
+  const [revisions,setRevisions] = useState<Record<string,string[]>>({});
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
   const [notice,setNotice] = useState("");
@@ -19,7 +20,9 @@ export function SkillsSettingsSection({running}:{running:boolean}) {
     setBusy(true);setError("");setNotice("");
     try {
       const result = await window.localAgent.skillsRequest(operation,payload);
-      if (operation==="read") {
+      if (operation==="backups") {
+        setRevisions(previous=>({...previous,[String(payload.name)]: (result.payload?.revisions as string[]|undefined)??[]}));
+      } else if (operation==="read") {
         setDetail({name:String(payload.name),instructions:String(result.payload?.instructions??"")});
       } else {
         await load();
@@ -46,8 +49,17 @@ export function SkillsSettingsSection({running}:{running:boolean}) {
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <button type="button" disabled={busy} onClick={()=>void run("read",{name:item.name})}>查看说明</button>
         <button type="button" disabled={busy||running} onClick={()=>void run(item.enabled?"disable":"enable",{name:item.name})}>{item.enabled?"禁用":"启用"}</button>
-        {item.source==="project"?<button type="button" disabled={busy||running} onClick={()=>{if(window.confirm("确认卸载项目技能 "+item.name+"？"))void run("uninstall",{name:item.name});}}>卸载</button>:null}
+        {item.source==="project"?<>
+          <button type="button" disabled={busy||running} onClick={()=>void run("backup",{name:item.name})}>创建备份</button>
+          <button type="button" disabled={busy||running} onClick={()=>void run("backups",{name:item.name})}>查看历史版本</button>
+          <button type="button" disabled={busy||running||!source.trim()||source.startsWith("https://")} onClick={()=>{if(window.confirm("确认使用来源路径更新 "+item.name+"？更新前将自动备份。"))void run("update",{name:item.name,source:source.trim()});}}>从本地更新</button>
+          <button type="button" disabled={busy||running} onClick={()=>{if(window.confirm("确认卸载项目技能 "+item.name+"？"))void run("uninstall",{name:item.name});}}>卸载</button>
+        </>:null}
       </div>
+      {revisions[item.name]?.length?<div aria-label={item.name+" 历史版本"}>{revisions[item.name].map(revision=><div key={revision}>
+        <code>{revision.slice(0,16)}</code>
+        <button type="button" disabled={busy||running} onClick={()=>{if(window.confirm("确认将 "+item.name+" 回滚到 "+revision.slice(0,12)+"？"))void run("rollback",{name:item.name,revision});}}>恢复此版本</button>
+      </div>)}</div>:null}
     </div>)}
     {detail?<section className="settings-field" aria-label="技能说明">
       <strong>{detail.name} — SKILL.md</strong>
