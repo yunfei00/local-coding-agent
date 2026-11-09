@@ -951,7 +951,7 @@ class AgentServer:
             )
             return
 
-        if message_type in {"skills.list", "skills.install", "skills.enable", "skills.disable", "skills.uninstall", "skills.read"}:
+        if message_type in {"skills.list", "skills.install", "skills.enable", "skills.disable", "skills.uninstall", "skills.read", "skills.backup", "skills.backups", "skills.rollback", "skills.update"}:
             from agent.skills.manager import SkillManager
             from agent.skills.builtins import builtin_skill_workspace
             from agent.skills.remote import install_github
@@ -965,10 +965,25 @@ class AgentServer:
                     result = {"skills": [asdict(item) for item in manager.catalog()]}
                 elif message_type == "skills.read":
                     result = {"instructions": manager.instructions(str(payload.get("name", "")))}
+                elif message_type == "skills.backups":
+                    result = {"revisions": manager.list_backups(str(payload.get("name", "")))}
                 else:
                     if any(not task.done() for task in self.active_turns.values()):
                         raise ValueError("Stop active tasks before changing skills")
-                    if message_type == "skills.install":
+                    if message_type == "skills.backup":
+                        name = str(payload.get("name", ""))
+                        result = {"name": name, "revision": await asyncio.to_thread(manager.backup_project, name)}
+                    elif message_type == "skills.rollback":
+                        name = str(payload.get("name", ""))
+                        revision = str(payload.get("revision", ""))
+                        await asyncio.to_thread(manager.rollback_project, name, revision)
+                        result = {"name": name, "restored": revision}
+                    elif message_type == "skills.update":
+                        name = str(payload.get("name", ""))
+                        source = project.workspace.resolve(str(payload.get("source", "")), must_exist=True)
+                        revision = await asyncio.to_thread(manager.update_local, name, source)
+                        result = {"name": name, "previous_revision": revision}
+                    elif message_type == "skills.install":
                         source = str(payload.get("source", "")).strip()
                         if source.startswith("https://github.com/"):
                             installed = await asyncio.to_thread(install_github, manager, source)
