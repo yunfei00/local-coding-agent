@@ -3,6 +3,8 @@ import argparse
 import json
 from pathlib import Path
 from agent.skills.manager import SkillManager
+from agent.skills.remote import install_github
+from agent.skills.builtins import builtin_skill_workspace
 from agent.office import engine
 from agent.verification.office import verify_office
 
@@ -14,13 +16,15 @@ def main():
     for action in ("skills-enable", "skills-disable", "skills-uninstall"):
         p = sub.add_parser(action); p.add_argument("name")
     p = sub.add_parser("skills-install"); p.add_argument("source")
+    p = sub.add_parser("skills-install-github"); p.add_argument("url"); p.add_argument("--skill-path", default=None)
+    p = sub.add_parser("skills-read"); p.add_argument("name")
     p = sub.add_parser("inspect"); p.add_argument("path")
     p = sub.add_parser("verify"); p.add_argument("path")
     p = sub.add_parser("create"); p.add_argument("kind", choices=["excel","word","ppt"]); p.add_argument("spec"); p.add_argument("output")
     p = sub.add_parser("export-pdf"); p.add_argument("source"); p.add_argument("output")
     args = parser.parse_args()
     root = Path(args.workspace).resolve()
-    manager = SkillManager(root)
+    manager = SkillManager(root, builtin=builtin_skill_workspace())
     def confined(value):
         p = (root / value).resolve()
         if not p.is_relative_to(root):
@@ -34,6 +38,10 @@ def main():
         manager.set_enabled(args.name, False); result = {"disabled": args.name}
     elif args.command == "skills-install":
         result = {"installed": manager.install_local(confined(args.source))}
+    elif args.command == "skills-read":
+        result = {"name": args.name, "instructions": manager.instructions(args.name)}
+    elif args.command == "skills-install-github":
+        result = {"installed": install_github(manager, args.url, skill_path=args.skill_path)}
     elif args.command == "skills-uninstall":
         manager.uninstall_project(args.name); result = {"uninstalled": args.name}
     elif args.command == "inspect":
