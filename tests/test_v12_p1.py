@@ -23,6 +23,28 @@ class P1Tests(unittest.TestCase):
         info = _frontmatter("---"+chr(13)+chr(10)+"name: example"+chr(13)+chr(10)+"description: >"+chr(13)+chr(10)+"  A useful skill"+chr(13)+chr(10)+"  for tasks"+chr(13)+chr(10)+"---"+chr(13)+chr(10)+"Body")
         self.assertEqual(info["description"], "A useful skill for tasks")
 
+    def test_skill_update_rollback(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            first=root/"first"
+            second=root/"second"
+            for folder, body in ((first,"Original"),(second,"Updated")):
+                folder.mkdir()
+                (folder/"SKILL.md").write_text("---\\nname: demo\\ndescription: Demo skill\\n---\\n"+body,encoding="utf-8")
+            manager=SkillManager(root)
+            self.assertEqual(manager.install_local(first),"demo")
+            revision=manager.update_local("demo",second)
+            self.assertIn("Updated",manager.instructions("demo"))
+            self.assertIn(revision,manager.list_backups("demo"))
+            manager.rollback_project("demo",revision)
+            self.assertIn("Original",manager.instructions("demo"))
+
+    def test_windows_office_detection_safe_on_other_platforms(self):
+        from agent.office.windows import detect_office
+        result=detect_office()
+        self.assertIn("available",result)
+        self.assertIn("platform",result)
+
     def test_excel_edit(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/"a.xlsx"
