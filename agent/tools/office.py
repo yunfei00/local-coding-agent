@@ -9,7 +9,7 @@ from agent.verification.office import verify_office
 
 class OfficeTool(BaseTool):
     name = "office_document"
-    description = "Read, create or structurally verify XLSX, DOCX or PPTX files in the workspace. Writes are not automatically approved."
+    description = "Inspect, create, edit or structurally verify XLSX, DOCX and PPTX files in the workspace. Editing existing files is destructive; user permissions still apply."
     parameters = {"type":"object","properties":{
         "operation":{"type":"string","enum":["inspect","create","edit","verify"]},
         "path":{"type":"string"},
@@ -36,7 +36,8 @@ class OfficeTool(BaseTool):
                 check=await asyncio.to_thread(verify_office,path)
                 return ToolResult(ok=check["ok"],summary="Office document edited and verified",data={"result":output,"verification":check},changed_paths=[self.workspace.relative(path)])
             if op=="verify":
-                return ToolResult(ok=True,summary="Office structural verification",data=await asyncio.to_thread(verify_office,path))
+                check=await asyncio.to_thread(verify_office,path)
+                return ToolResult(ok=check["ok"],summary="Office structural verification",data=check)
             if op=="inspect":
                 readers={".xlsx":engine.inspect_excel,".docx":engine.inspect_word,".pptx":engine.inspect_ppt}
                 reader=readers.get(path.suffix.lower())
@@ -60,7 +61,7 @@ class OfficeTool(BaseTool):
                 raise ToolError("OFFICE_KIND","Unsupported document kind")
             check=await asyncio.to_thread(verify_office,path)
             return ToolResult(ok=check["ok"],summary="Office document created and structurally checked",data={"verification":check},changed_paths=[self.workspace.relative(path)])
-        except (KeyError,TypeError,ValueError,ImportError,OSError) as exc:
+        except (KeyError,TypeError,ValueError,ImportError,OSError,engine.OfficeError) as exc:
             raise ToolError("OFFICE_FAILED",f"{type(exc).__name__}: {exc}") from exc
 
 def office_tools(workspace):
