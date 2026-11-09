@@ -1,10 +1,16 @@
-"""Local-only skill catalog with explicit trust boundaries."""
+"""Skill manager with standard manifests and safe local package installation."""
 from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import json
 import shutil
-from agent.skills import Skill, discover_skills
+import tempfile
+import zipfile
+import hashlib
+from agent.skills import Skill, discover_skills, _discover_root, _NAME
+
+MAX_TOTAL = 16 * 1024 * 1024
+MAX_FILES = 256
 
 @dataclass(frozen=True)
 class SkillInfo:
@@ -16,11 +22,16 @@ class SkillInfo:
 class SkillManager:
     def __init__(self, workspace: str | Path, *, builtin: str | Path | None = None, user: str | Path | None = None):
         self.workspace = Path(workspace).resolve()
-        self.roots = [("builtin", Path(builtin).resolve())] if builtin else []
+        self.roots = []
+        if builtin:
+            self.roots.append(("builtin", Path(builtin).resolve()))
         if user:
             self.roots.append(("user", Path(user).resolve()))
         self.roots.append(("project", self.workspace))
         self.disabled_file = self.workspace / ".agent" / "disabled-skills.json"
+
+    def _scan(self, root: Path) -> list[Skill]:
+        return discover_skills(root) + _discover_root(root / "skills")
 
     def _disabled(self) -> set[str]:
         try:
@@ -30,10 +41,10 @@ class SkillManager:
             return set()
 
     def catalog(self) -> list[SkillInfo]:
-        selected: dict[str, SkillInfo] = {}
+        selected = {}
         disabled = self._disabled()
         for source, root in self.roots:
-            for skill in discover_skills(root):
+            for skill in self._scan(root):
                 selected[skill.name] = SkillInfo(skill.name, skill.description, source, skill.name not in disabled)
         return sorted(selected.values(), key=lambda x: x.name)
 
@@ -41,7 +52,7 @@ class SkillManager:
         if name in self._disabled():
             return None
         for _, root in reversed(self.roots):
-            for skill in discover_skills(root):
+            for skill in self._scan(root):
                 if skill.name == name:
                     return skill
         return None
@@ -54,35 +65,72 @@ class SkillManager:
         self.disabled_file.parent.mkdir(parents=True, exist_ok=True)
         self.disabled_file.write_text(json.dumps(sorted(disabled)), encoding="utf-8")
 
-    def install_local(self, source: str | Path) -> str:
-        """Copy only declarative files; never install dependencies or execute hooks."""
-        source = Path(source).resolve(strict=True)
-        manifest = source / "skill.json"
-        data = json.loads(manifest.read_text(encoding="utf-8"))
-        name = data["name"]
-        if not isinstance(name, str) or not name.isascii() or not name.replace("-", "").replace("_", "").isalnum() or name.startswith(("-", "_")) or len(name) > 64:
-            raise ValueError("Invalid skill name")
-        target = self.workspace / ".agent" / "skills" / name
+    def _install_directory(self, source: Path) -> str:
+        if source.is_symlink() or not source.is_dir():
+            raise ValueError("Invalid skill source")
+        candidates = _discover_root(source.parent)
+        skill = next((s for s in candidates if s.directory == source), None)
+        if skill is None:
+            raise ValueError("Invalid SKILL.md or metadata")
+        target = self.workspace / ".agent" / "skills" / skill.name
         if target.exists():
-            raise FileExistsError(name)
-        if (source / "SKILL.md").is_symlink() or manifest.is_symlink():
-            raise ValueError("Symlink not permitted")
-        target.mkdir(parents=True)
-        try:
-            for filename in ("skill.json", "SKILL.md"):
-                file = source / filename
-                if not file.is_file() or file.stat().st_size > 262144:
-                    raise ValueError("Missing or oversized skill file")
-                shutil.copyfile(file, target / filename)
-            if not any(s.name == name for s in discover_skills(self.workspace)):
-                raise ValueError("Invalid skill")
-        except Exception:
-            shutil.rmtree(target)
-            raise
-        return name
+            raise FileExistsError(skill.name)
+        files = [p for p in source.rglob("*")]
+        if len(files) > MAX_FILES or sum(p.stat().st_size for p in files if p.is_file()) > MAX_TOTAL:
+            raise ValueError("Skill package too large")
+        for p in files:
+            if p.is_symlink() or not p.resolve().is_relative_to(source):
+                raise ValueError("Symlinks and path escapes are forbidden")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source, target, symlinks=False)
+        return skill.name
+
+    def install_local(self, source: str | Path) -> str:
+        source = Path(source).resolve(strict=True)
+        if source.is_dir():
+            return self._install_directory(source)
+        if source.suffix.lower() != ".zip":
+            raise ValueError("Only skill directories and ZIP files are supported")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with zipfile.ZipFile(source) as archive:
+                infos = archive.infolist()
+                if len(infos) > MAX_FILES or sum(x.file_size for x in infos) > MAX_TOTAL:
+                    raise ValueError("ZIP too large")
+                for info in infos:
+                    p = Path(info.filename.replace("\\", "/"))
+                    if p.is_absolute() or ".." in p.parts or not p.parts or (info.external_attr >> 16) & 0o170000 == 0o120000:
+                        raise ValueError("Unsafe ZIP entry")
+                    if not (root / p).resolve().is_relative_to(root):
+                        raise ValueError("ZIP path escape")
+                archive.extractall(root)
+            candidates = [p for p in root.rglob("SKILL.md") if p.parent != root]
+            if len(candidates) != 1:
+                raise ValueError("ZIP must contain exactly one skill")
+            return self._install_directory(candidates[0].parent)
 
     def uninstall_project(self, name: str) -> None:
-        skill = next((s for s in discover_skills(self.workspace) if s.name == name), None)
-        if skill is None:
+        if not _NAME.fullmatch(name):
+            raise ValueError("Invalid skill name")
+        target = self.workspace / ".agent" / "skills" / name
+        if not target.is_dir() or target.is_symlink():
             raise ValueError("Project skill not installed")
-        shutil.rmtree(skill.directory)
+        shutil.rmtree(target)
+
+    def instructions(self, name: str) -> str:
+        skill = self.resolve(name)
+        if skill is None:
+            raise ValueError("Skill not available")
+        return skill.instructions
+
+    def inventory_hash(self, name: str) -> str:
+        skill = self.resolve(name)
+        if skill is None:
+            raise ValueError("Skill not available")
+        digest = hashlib.sha256()
+        for file in sorted(p for p in skill.directory.rglob("*") if p.is_file()):
+            if file.is_symlink():
+                raise ValueError("Unsafe skill")
+            digest.update(file.relative_to(skill.directory).as_posix().encode())
+            digest.update(file.read_bytes())
+        return digest.hexdigest()
