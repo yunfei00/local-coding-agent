@@ -951,6 +951,24 @@ class AgentServer:
             )
             return
 
+        if message_type == "verification.run":
+            from agent.tools.verification import DeliverableVerifyTool
+            project = self.projects.active
+            if project is None:
+                await self.send_error(ws,"PROJECT_REQUIRED","Open a project to verify deliverables.",request_id=request_id)
+                return
+            spec=payload.get("spec")
+            report_path=payload.get("report_path")
+            if not isinstance(spec,dict) or not isinstance(report_path,str) or not report_path.endswith(".md"):
+                await self.send_error(ws,"VERIFY_SPEC","Provide a verification spec and a new Markdown report path.",request_id=request_id)
+                return
+            try:
+                result=await DeliverableVerifyTool(project.workspace).execute({"spec":spec,"report_path":report_path})
+                await ws.send_json(envelope("verification.result",result.to_dict(),request_id=request_id))
+            except Exception as exc:
+                await self.send_error(ws,"VERIFY_FAILED",str(exc),request_id=request_id)
+            return
+
         if message_type == "browser.session":
             from agent.browser.sessions import BrowserSessions
             from agent.tools.browser import BrowserSessionTool
