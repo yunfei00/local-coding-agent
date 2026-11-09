@@ -1,0 +1,504 @@
+{
+  "product_sha": "dba4ef42716b3ed99a6770e3746b6346e1323930",
+  "model": "gemma4:31b",
+  "rc": "NOT_MET",
+  "lanes": {
+    "desktop": [
+      {
+        "case": "F-desktop",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 96.08,
+        "tool_calls": 6
+      },
+      {
+        "case": "F-desktop",
+        "repeat": 2,
+        "status": "PASS",
+        "seconds": 88.53,
+        "tool_calls": 6
+      },
+      {
+        "case": "F-desktop",
+        "repeat": 3,
+        "status": "PASS",
+        "seconds": 83.33,
+        "tool_calls": 6
+      }
+    ],
+    "todo": [
+      {
+        "case": "P1",
+        "repeat": 1,
+        "status": "FAIL",
+        "failure": "AGENT_FAILURE",
+        "code": "WORKFLOW_TEST_HANDOFF_CHANGED",
+        "seconds": 522.55,
+        "tool_calls": 22
+      }
+    ],
+    "targeted": [
+      {
+        "case": "05",
+        "repeat": 1,
+        "status": "FAIL",
+        "failure": "DELIVERY_ASSERTION",
+        "seconds": 62.09,
+        "tool_calls": 7,
+        "model_calls": 5,
+        "assertion_failure": "external_command_exit_1"
+      },
+      {
+        "case": "21",
+        "repeat": 1,
+        "status": "FAIL",
+        "failure": "DELIVERY_ASSERTION",
+        "seconds": 83.69,
+        "tool_calls": 10,
+        "model_calls": 7,
+        "assertion_failure": "external_command_exit_1"
+      },
+      {
+        "case": "24",
+        "repeat": 1,
+        "status": "BLOCKED",
+        "failure": "PRODUCT_RESUME_CONFIRMATION",
+        "code": "PLAN_RESUME_CONFIRMATION_REQUIRED",
+        "seconds": 67.88,
+        "tool_calls": 13,
+        "model_calls": 7
+      }
+    ],
+    "legacy": [
+      {
+        "case": "A",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 78.36,
+        "tool_calls": 9
+      },
+      {
+        "case": "A",
+        "repeat": 2,
+        "status": "PASS",
+        "seconds": 77.64,
+        "tool_calls": 11
+      },
+      {
+        "case": "A",
+        "repeat": 3,
+        "status": "PASS",
+        "seconds": 78.23,
+        "tool_calls": 10
+      },
+      {
+        "case": "B",
+        "repeat": 1,
+        "status": "FAIL",
+        "failure": "AGENT_FAILURE",
+        "code": "TOOL_FAILURE_LIMIT",
+        "seconds": 184.62,
+        "tool_calls": 17
+      },
+      {
+        "case": "B",
+        "repeat": 2,
+        "status": "PASS",
+        "seconds": 181.55,
+        "tool_calls": 12
+      },
+      {
+        "case": "B",
+        "repeat": 3,
+        "status": "PASS",
+        "seconds": 158.48,
+        "tool_calls": 8
+      },
+      {
+        "case": "C",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 37.53,
+        "tool_calls": 6
+      },
+      {
+        "case": "C",
+        "repeat": 2,
+        "status": "PASS",
+        "seconds": 38.05,
+        "tool_calls": 6
+      },
+      {
+        "case": "C",
+        "repeat": 3,
+        "status": "PASS",
+        "seconds": 38.34,
+        "tool_calls": 6
+      },
+      {
+        "case": "D",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 41.67,
+        "tool_calls": 5
+      },
+      {
+        "case": "D",
+        "repeat": 2,
+        "status": "PASS",
+        "seconds": 43.94,
+        "tool_calls": 5
+      },
+      {
+        "case": "D",
+        "repeat": 3,
+        "status": "PASS",
+        "seconds": 54.78,
+        "tool_calls": 6
+      },
+      {
+        "case": "E",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 260.62,
+        "tool_calls": 29
+      },
+      {
+        "case": "E",
+        "repeat": 2,
+        "status": "PASS",
+        "seconds": 157.56,
+        "tool_calls": 21
+      },
+      {
+        "case": "E",
+        "repeat": 3,
+        "status": "PASS",
+        "seconds": 166.03,
+        "tool_calls": 20
+      },
+      {
+        "case": "F-vision",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 24.33,
+        "tool_calls": 2
+      },
+      {
+        "case": "F-vision",
+        "repeat": 2,
+        "status": "PASS",
+        "seconds": 25.98,
+        "tool_calls": 2
+      },
+      {
+        "case": "F-vision",
+        "repeat": 3,
+        "status": "PASS",
+        "seconds": 23.97,
+        "tool_calls": 2
+      },
+      {
+        "case": "F-desktop",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 84.53,
+        "tool_calls": 6
+      },
+      {
+        "case": "F-desktop",
+        "repeat": 2,
+        "status": "PASS",
+        "seconds": 74.42,
+        "tool_calls": 6
+      },
+      {
+        "case": "F-desktop",
+        "repeat": 3,
+        "status": "PASS",
+        "seconds": 79.73,
+        "tool_calls": 6
+      }
+    ],
+    "phase0": [
+      {
+        "case": "01",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 42.61,
+        "tool_calls": 6,
+        "model_calls": 5
+      },
+      {
+        "case": "02",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 49.19,
+        "tool_calls": 8,
+        "model_calls": 6
+      },
+      {
+        "case": "03",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 136.05,
+        "tool_calls": 13,
+        "model_calls": 13
+      },
+      {
+        "case": "04",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 61.42,
+        "tool_calls": 12,
+        "model_calls": 5
+      },
+      {
+        "case": "05",
+        "repeat": 1,
+        "status": "FAIL",
+        "failure": "DELIVERY_ASSERTION",
+        "seconds": 60.42,
+        "tool_calls": 7,
+        "model_calls": 5,
+        "assertion_failure": "external_command_exit_1"
+      },
+      {
+        "case": "06",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 84.31,
+        "tool_calls": 10,
+        "model_calls": 8
+      },
+      {
+        "case": "07",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 93.33,
+        "tool_calls": 12,
+        "model_calls": 11
+      },
+      {
+        "case": "08",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 99.59,
+        "tool_calls": 12,
+        "model_calls": 11
+      },
+      {
+        "case": "09",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 70.27,
+        "tool_calls": 10,
+        "model_calls": 8
+      },
+      {
+        "case": "10",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 52.03,
+        "tool_calls": 11,
+        "model_calls": 6
+      },
+      {
+        "case": "11",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 23.59,
+        "tool_calls": 3,
+        "model_calls": 4
+      },
+      {
+        "case": "12",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 47.59,
+        "tool_calls": 9,
+        "model_calls": 7
+      },
+      {
+        "case": "13",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 60.94,
+        "tool_calls": 8,
+        "model_calls": 9
+      },
+      {
+        "case": "14",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 31.99,
+        "tool_calls": 4,
+        "model_calls": 5
+      },
+      {
+        "case": "15",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 75.28,
+        "tool_calls": 8,
+        "model_calls": 9
+      },
+      {
+        "case": "16",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 49.89,
+        "tool_calls": 6,
+        "model_calls": 6
+      },
+      {
+        "case": "17",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 41.08,
+        "tool_calls": 5,
+        "model_calls": 5
+      },
+      {
+        "case": "18",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 43.61,
+        "tool_calls": 7,
+        "model_calls": 5
+      },
+      {
+        "case": "19",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 67.38,
+        "tool_calls": 9,
+        "model_calls": 7
+      },
+      {
+        "case": "20",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 83.45,
+        "tool_calls": 8,
+        "model_calls": 6
+      },
+      {
+        "case": "21",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 186.66,
+        "tool_calls": 16,
+        "model_calls": 16
+      },
+      {
+        "case": "22",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 81.69,
+        "tool_calls": 11,
+        "model_calls": 11
+      },
+      {
+        "case": "23",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 80.47,
+        "tool_calls": 16,
+        "model_calls": 8
+      },
+      {
+        "case": "24",
+        "repeat": 1,
+        "status": "BLOCKED",
+        "failure": "PRODUCT_RESUME_CONFIRMATION",
+        "code": "PLAN_RESUME_CONFIRMATION_REQUIRED",
+        "seconds": 75.95,
+        "tool_calls": 13,
+        "model_calls": 8
+      },
+      {
+        "case": "25",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 126.8,
+        "tool_calls": 12,
+        "model_calls": 14
+      },
+      {
+        "case": "26",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 49.19,
+        "tool_calls": 9,
+        "model_calls": 6
+      },
+      {
+        "case": "27",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 80.31,
+        "tool_calls": 7,
+        "model_calls": 7
+      },
+      {
+        "case": "28",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 176.09,
+        "tool_calls": 23,
+        "model_calls": 17
+      },
+      {
+        "case": "29",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 80.41,
+        "tool_calls": 10,
+        "model_calls": 9
+      },
+      {
+        "case": "30",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 247.23,
+        "tool_calls": 26,
+        "model_calls": 22
+      }
+    ],
+    "projects": [
+      {
+        "case": "P1",
+        "repeat": 1,
+        "status": "FAIL",
+        "failure": "TIMEOUT",
+        "seconds": 601.88,
+        "tool_calls": 15
+      },
+      {
+        "case": "P2",
+        "repeat": 1,
+        "status": "FAIL",
+        "failure": "AGENT_FAILURE",
+        "code": "WORKFLOW_ROLE_PERMISSION",
+        "seconds": 287.56,
+        "tool_calls": 15
+      },
+      {
+        "case": "P3",
+        "repeat": 1,
+        "status": "BLOCKED",
+        "failure": "ENVIRONMENT_FAILURE"
+      }
+    ],
+    "legacy-b-retry": [
+      {
+        "case": "B",
+        "repeat": 1,
+        "status": "PASS",
+        "seconds": 200.23,
+        "tool_calls": 12
+      }
+    ]
+  }
+}
