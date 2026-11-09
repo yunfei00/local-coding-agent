@@ -18,6 +18,11 @@ class P1Tests(unittest.TestCase):
             manager.set_enabled("excel",False)
             self.assertEqual(suggest_skills(manager,"编辑 Excel 文件"),[])
 
+    def test_folded_frontmatter(self):
+        from agent.skills import _frontmatter
+        info = _frontmatter("---\\r\\nname: example\\r\\ndescription: >\\r\\n  A useful skill\\r\\n  for tasks\\r\\n---\\r\\nBody")
+        self.assertEqual(info["description"], "A useful skill for tasks")
+
     def test_excel_edit(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/"a.xlsx"
