@@ -51,6 +51,12 @@ class P1Tests(unittest.TestCase):
             create_excel(p,{"Data":[["Name","Value"],["A",1]]})
             edit_excel(p,{"sheets":{"Data":{"cells":{"B2":"=2+2"},"styles":{"A1":{"bold":True,"fill":"FF0000"}}}}})
             self.assertEqual(inspect_excel(p)["sheets"][0]["rows"][1][1],"=2+2")
+            edit_excel(p,{"sheets":{"Data":{"column_widths":{"A":22},"charts":[{"type":"bar","end_row":2,"value_column":2}]}}})
+            from openpyxl import load_workbook
+            book=load_workbook(p)
+            self.assertEqual(len(book["Data"]._charts),1)
+            self.assertEqual(book["Data"].column_dimensions["A"].width,22)
+            book.close()
 
     def test_word_edit(self):
         with tempfile.TemporaryDirectory() as d:
@@ -59,6 +65,8 @@ class P1Tests(unittest.TestCase):
             edit_word(p,{"replace":[{"find":"Original","with":"Updated"}],"append":["Conclusion"]})
             self.assertIn("Updated text",inspect_word(p)["paragraphs"])
             self.assertIn("Conclusion",inspect_word(p)["paragraphs"])
+            edit_word(p,{"tables":[[["A","B"],["1","2"]]]})
+            self.assertEqual(inspect_word(p)["tables"][-1][1],["1","2"])
 
     def test_ppt_edit(self):
         with tempfile.TemporaryDirectory() as d:
