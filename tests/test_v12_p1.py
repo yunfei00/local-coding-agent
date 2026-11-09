@@ -45,6 +45,17 @@ class P1Tests(unittest.TestCase):
         self.assertIn("available",result)
         self.assertIn("platform",result)
 
+    def test_office_bundle(self):
+        from agent.office.bundle import create_bundle
+        with tempfile.TemporaryDirectory() as d:
+            result=create_bundle(d,"deliverable",{
+                "excel":{"sheets":{"Data":[["Name","Value"],["A",3]]}},
+                "word":{"title":"Report","sections":[{"text":"Analysis"}]},
+                "ppt":{"slides":[{"title":"Summary","body":"3 units"}]}
+            })
+            self.assertEqual(len(result["files"]),3)
+            self.assertTrue(all(check["ok"] for check in result["verification"].values()))
+
     def test_excel_edit(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/"a.xlsx"
