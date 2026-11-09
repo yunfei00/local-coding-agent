@@ -69,6 +69,14 @@ class P1Tests(unittest.TestCase):
             self.assertEqual(len(result["files"]),3)
             self.assertTrue(all(check["ok"] for check in result["verification"].values()))
 
+    def test_bundle_failure_removes_partial_outputs(self):
+        from agent.office.bundle import create_bundle
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(KeyError):
+                create_bundle(d,"broken",{"excel":{"sheets":{"Data":[["A"]]}},"word":{"title":"Missing sections"}})
+            self.assertFalse((Path(d)/"broken.xlsx").exists())
+            self.assertFalse((Path(d)/"broken.docx").exists())
+
     def test_excel_edit(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/"a.xlsx"
