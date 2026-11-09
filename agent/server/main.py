@@ -951,6 +951,43 @@ class AgentServer:
             )
             return
 
+        if message_type in {"skills.list", "skills.install", "skills.enable", "skills.disable", "skills.uninstall", "skills.read"}:
+            from agent.skills.manager import SkillManager
+            from agent.skills.builtins import builtin_skill_workspace
+            from agent.skills.remote import install_github
+            project = self.projects.active
+            if project is None:
+                await self.send_error(ws, "PROJECT_REQUIRED", "Open a project to manage skills.", request_id=request_id)
+                return
+            manager = SkillManager(project.workspace.root, builtin=builtin_skill_workspace())
+            try:
+                if message_type == "skills.list":
+                    result = {"skills": [asdict(item) for item in manager.catalog()]}
+                elif message_type == "skills.read":
+                    result = {"instructions": manager.instructions(str(payload.get("name", "")))}
+                else:
+                    if any(not task.done() for task in self.active_turns.values()):
+                        raise ValueError("Stop active tasks before changing skills")
+                    if message_type == "skills.install":
+                        source = str(payload.get("source", "")).strip()
+                        if source.startswith("https://github.com/"):
+                            installed = await asyncio.to_thread(install_github, manager, source)
+                        else:
+                            path = project.workspace.resolve(source, must_exist=True)
+                            installed = await asyncio.to_thread(manager.install_local, path)
+                        result = {"installed": installed}
+                    else:
+                        name = str(payload.get("name", ""))
+                        if message_type == "skills.uninstall":
+                            manager.uninstall_project(name)
+                        else:
+                            manager.set_enabled(name, message_type == "skills.enable")
+                        result = {"name": name}
+                await ws.send_json(envelope("skills.result", result, request_id=request_id))
+            except (ValueError, OSError, KeyError, RuntimeError, ImportError) as exc:
+                await self.send_error(ws, "SKILLS_FAILED", str(exc), request_id=request_id)
+            return
+
         if message_type == "mcp.list":
             await ws.send_json(
                 envelope(
