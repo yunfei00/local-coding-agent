@@ -1,6 +1,7 @@
 import {UpdateSettings} from './UpdateSettings';
 import { MCPSettingsSection } from "./MCPSettingsSection";
 import { SkillsSettingsSection } from "./SkillsSettingsSection";
+import { BrowserSettingsSection } from "./BrowserSettingsSection";
 import { ModelSettingsSection } from "./ModelSettingsSection";
 import { useEffect, useMemo, useState } from "react";
 
@@ -54,6 +55,7 @@ type Tab =
   | "context"
   | "mcp"
   | "skills"
+  | "browser"
   | "prompt_rules"
   | "safety";
 
@@ -76,6 +78,7 @@ const tabs: Array<{ id: Tab; label: string }> = [
   { id: "context", label: "Context" },
   { id: "mcp", label: "MCP" },
   { id: "skills", label: "Skills 技能" },
+  { id: "browser", label: "浏览器自动化" },
   { id: "prompt_rules", label: "Prompt Rules" },
   { id: "safety", label: "Safety" }
 ];
