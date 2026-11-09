@@ -6,28 +6,36 @@ from agent.tools.base import BaseTool, ToolResult, ToolError
 from agent.office import engine
 from agent.office.edit import edit_excel, edit_word, edit_ppt
 from agent.office.windows import detect_office, export_pdf
+from agent.office.bundle import create_bundle
 from agent.verification.office import verify_office
 
 class OfficeTool(BaseTool):
     name = "office_document"
     description = "Inspect, create, edit or structurally verify XLSX, DOCX and PPTX files in the workspace. Editing existing files is destructive; user permissions still apply."
     parameters = {"type":"object","properties":{
-        "operation":{"type":"string","enum":["inspect","create","edit","verify","detect","export_pdf"]},
+        "operation":{"type":"string","enum":["inspect","create","edit","verify","detect","export_pdf","bundle"]},
         "path":{"type":"string"},
         "kind":{"type":"string","enum":["excel","word","ppt"]},
         "target":{"type":"string","description":"PDF destination for export_pdf"},
+        "name":{"type":"string","description":"Bundle base filename"},
         "spec":{"type":"object","description":"Excel: sheets map; Word: title and sections; PPT: slides"}
     },"required":["operation","path"],"additionalProperties":False}
     def __init__(self, workspace):
         self.workspace=workspace
     async def execute(self, arguments, *, on_output=None):
         op=arguments.get("operation")
-        if op not in {"inspect","create","edit","verify","detect","export_pdf"}:
+        if op not in {"inspect","create","edit","verify","detect","export_pdf","bundle"}:
             raise ToolError("OFFICE_OPERATION_INVALID","Unsupported operation")
         try:
             if op=="detect":
                 return ToolResult(ok=True,summary="Windows Office installation probe",data=await asyncio.to_thread(detect_office))
             path=self.workspace.resolve(arguments["path"])
+            if op=="bundle":
+                spec=arguments.get("spec")
+                if not isinstance(spec,dict):
+                    raise ToolError("OFFICE_SPEC","Missing bundle spec")
+                result=await asyncio.to_thread(create_bundle,path,str(arguments["name"]),spec)
+                return ToolResult(ok=True,summary="Excel Word PPT bundle created and verified",data=result,changed_paths=[self.workspace.relative(x) for x in result["files"].values()])
             if op=="export_pdf":
                 target=self.workspace.resolve(arguments["target"])
                 result=await asyncio.to_thread(export_pdf,path,target)
