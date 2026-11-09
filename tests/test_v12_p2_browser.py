@@ -34,6 +34,19 @@ class BrowserP2Tests(unittest.TestCase):
                     await tool.execute({"operation":"screenshot","session_id":"test","path":"../escape.png"})
             asyncio.run(run())
 
+    def test_workflow_stops_on_failure(self):
+        sessions=BrowserSessions()
+        async def fake_action(session_id,operation,**kwargs):
+            if operation=="click":
+                raise ValueError("Element not found")
+            return {"url":"https://example.com"}
+        sessions.action=fake_action
+        result=asyncio.run(sessions.workflow("fake",[
+            {"operation":"wait"},{"operation":"click","selector":"#missing"},{"operation":"wait"}]))
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["failed_step"],1)
+        self.assertEqual(len(result["history"]),2)
+
     def test_browser_session_action_requires_unique_selector(self):
         class FakePage:
             locator=lambda self,selector:FakeLocator()
