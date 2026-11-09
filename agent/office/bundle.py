@@ -17,12 +17,12 @@ def create_bundle(root: str | Path, name: str, spec: dict) -> dict:
         raise FileExistsError("Bundle output already exists")
     created=[]
     try:
-        engine.create_excel(outputs["excel"],spec["excel"]["sheets"])
         created.append(outputs["excel"])
-        engine.create_word(outputs["word"],spec["word"]["title"],spec["word"]["sections"])
+        engine.create_excel(outputs["excel"],spec["excel"]["sheets"])
         created.append(outputs["word"])
-        engine.create_ppt(outputs["ppt"],spec["ppt"]["slides"])
+        engine.create_word(outputs["word"],spec["word"]["title"],spec["word"]["sections"])
         created.append(outputs["ppt"])
+        engine.create_ppt(outputs["ppt"],spec["ppt"]["slides"])
         checks={kind:verify_office(path) for kind,path in outputs.items()}
         if not all(check["ok"] for check in checks.values()):
             raise RuntimeError("Bundle verification failed")
