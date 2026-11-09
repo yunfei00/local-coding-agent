@@ -74,6 +74,8 @@ class BrowserSessions:
                 self._sessions[session_id] = session
                 return {"session_id":session_id, **await self.snapshot(session_id)}
             except BaseException:
+                if "session_id" in locals():
+                    self._sessions.pop(session_id,None)
                 if browser:
                     await browser.close()
                 await driver.stop()
