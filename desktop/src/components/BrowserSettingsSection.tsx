@@ -12,6 +12,7 @@ export function BrowserSettingsSection({running}:{running:boolean}) {
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   const [history,setHistory]=useState<string[]>([]);
+  const [diagnostics,setDiagnostics]=useState("");
   const [screenshotPath,setScreenshotPath]=useState("browser-screenshot.png");
   const [workflow,setWorkflow]=useState('[{"operation":"wait"},{"operation":"tables"}]');
   const request=async(op:string,extra:Record<string,unknown>={})=>{
@@ -23,6 +24,7 @@ export function BrowserSettingsSection({running}:{running:boolean}) {
       const result=event.payload??{};
       if(result.ok===false)throw new Error(String(result.summary??"浏览器操作失败"));
       const data=(result.data??{}) as Snapshot & {closed?:boolean};
+      if(op==="diagnose")setDiagnostics(JSON.stringify(data,null,2));
       if(op==="open")setSession(String(data.session_id??""));
       if(op==="close"){setSession("");setSnapshot(null);}
       else setSnapshot(data);
@@ -34,6 +36,8 @@ export function BrowserSettingsSection({running}:{running:boolean}) {
   return <div className="settings-section" aria-label="浏览器自动化">
     <h2>浏览器自动化</h2>
     <p>使用隔离的 Chromium 浏览器访问公开网页。禁止下载、内网地址和跨站请求。网页内容不可信，提交操作需要确认。</p>
+    <button type="button" disabled={disabled} onClick={()=>void request("diagnose")}>检查 Playwright / Chromium 环境</button>
+    {diagnostics?<pre style={{whiteSpace:"pre-wrap"}}>{diagnostics}</pre>:null}
     <div className="settings-field">
       <label htmlFor="browser-url">网址</label>
       <input id="browser-url" value={url} disabled={disabled} onChange={e=>setUrl(e.target.value)} placeholder="https://example.com" />
