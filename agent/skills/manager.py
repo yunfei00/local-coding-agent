@@ -85,7 +85,7 @@ class SkillManager:
             raise ValueError("Invalid skill metadata")
         target = self.workspace / ".agent" / "skills" / name
         if target.exists():
-            raise FileExistsError(skill.name)
+            raise FileExistsError(name)
         files = [p for p in source.rglob("*")]
         if len(files) > MAX_FILES or sum(p.stat().st_size for p in files if p.is_file()) > MAX_TOTAL:
             raise ValueError("Skill package too large")
