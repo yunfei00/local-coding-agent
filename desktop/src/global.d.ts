@@ -97,6 +97,7 @@ declare global {
       }>;
       skillsRequest: (operation: string, payload?: Record<string, unknown>) => Promise<AgentEnvelope>;
       browserRequest: (payload: Record<string, unknown>) => Promise<AgentEnvelope>;
+      verificationRequest: (payload: Record<string, unknown>) => Promise<AgentEnvelope>;
     listMcpServers: () => Promise<{
         event: AgentEnvelope;
         secrets: Record<
