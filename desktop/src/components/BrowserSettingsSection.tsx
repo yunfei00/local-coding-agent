@@ -13,10 +13,11 @@ export function BrowserSettingsSection({running}:{running:boolean}) {
   const [error,setError]=useState("");
   const [history,setHistory]=useState<string[]>([]);
   const [screenshotPath,setScreenshotPath]=useState("browser-screenshot.png");
+  const [workflow,setWorkflow]=useState('[{"operation":"wait"},{"operation":"tables"}]');
   const request=async(op:string,extra:Record<string,unknown>={})=>{
     setBusy(true);setError("");
     try {
-      const interactive=["click","press","check","uncheck","select"].includes(op);
+      const interactive=["click","press","check","uncheck","select","workflow"].includes(op);
       if(interactive&&!window.confirm("浏览器操作可能提交表单或改变网站数据。确认执行 "+op+"？"))return;
       const event=await window.localAgent.browserRequest({operation:op,session_id:session,...extra,confirmed:interactive});
       const result=event.payload??{};
@@ -62,6 +63,17 @@ export function BrowserSettingsSection({running}:{running:boolean}) {
       <label htmlFor="browser-screenshot">截图保存路径（工作区内，新文件）</label>
       <input id="browser-screenshot" value={screenshotPath} onChange={e=>setScreenshotPath(e.target.value)} disabled={disabled||!session} />
       <button type="button" disabled={disabled||!session||!screenshotPath} onClick={()=>void request("screenshot",{path:screenshotPath})}>保存 PNG 截图</button>
+    </div>
+    <div className="settings-field">
+      <label htmlFor="browser-workflow">自动化步骤（JSON 数组，最多 20 步，失败即停止）</label>
+      <textarea id="browser-workflow" rows={4} value={workflow} onChange={e=>setWorkflow(e.target.value)} disabled={disabled||!session} />
+      <button type="button" disabled={disabled||!session} onClick={()=>{
+        try {
+          const steps:unknown=JSON.parse(workflow);
+          if(!Array.isArray(steps)||steps.length<1||steps.length>20)throw new Error("步骤数量必须为 1-20");
+          void request("workflow",{steps});
+        }catch(e){setError(String(e));}
+      }}>执行自动化步骤</button>
     </div>
     {error?<p role="alert">{error}</p>:null}
     {snapshot?<section className="settings-field">
