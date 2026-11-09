@@ -35,6 +35,7 @@ from agent.tools.delete_file import DeleteFileTool
 from agent.tools.skills import skill_tools
 from agent.tools.office import office_tools
 from agent.tools.browser import browser_tools
+from agent.tools.verification import verification_tools
 
 
 class ToolRegistry:
@@ -72,7 +73,7 @@ class ToolRegistry:
             GitWorktreeRemoveTool(workspace),
         ]
         self._tools: dict[str, BaseTool] = {}
-        for tool in [*tools, *skill_tools(workspace), *office_tools(workspace), *browser_tools(workspace=workspace), *desktop_tools(self.desktop), *list(extra_tools)]:
+        for tool in [*tools, *skill_tools(workspace), *office_tools(workspace), *browser_tools(workspace=workspace), *verification_tools(workspace), *desktop_tools(self.desktop), *list(extra_tools)]:
             self.register(tool)
 
     def register(
