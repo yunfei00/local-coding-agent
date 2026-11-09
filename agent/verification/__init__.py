@@ -1,0 +1,1 @@
+"""Artifact validation for local office workflows."""
