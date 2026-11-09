@@ -7,7 +7,7 @@ import shutil
 import tempfile
 import zipfile
 import hashlib
-from agent.skills import Skill, discover_skills, _discover_root, _NAME
+from agent.skills import Skill, discover_skills, _discover_root, _NAME, _frontmatter
 
 MAX_TOTAL = 16 * 1024 * 1024
 MAX_FILES = 256
@@ -68,11 +68,22 @@ class SkillManager:
     def _install_directory(self, source: Path) -> str:
         if source.is_symlink() or not source.is_dir():
             raise ValueError("Invalid skill source")
-        candidates = _discover_root(source.parent)
-        skill = next((s for s in candidates if s.directory == source), None)
-        if skill is None:
-            raise ValueError("Invalid SKILL.md or metadata")
-        target = self.workspace / ".agent" / "skills" / skill.name
+        # Local source folder names need not match declared skill names.
+        instructions_file = source / "SKILL.md"
+        if not instructions_file.is_file() or instructions_file.is_symlink() or instructions_file.stat().st_size > 262144:
+            raise ValueError("Invalid SKILL.md")
+        instructions = instructions_file.read_text(encoding="utf-8")
+        info = _frontmatter(instructions)
+        if not info:
+            manifest = source / "skill.json"
+            if not manifest.is_file() or manifest.is_symlink() or manifest.stat().st_size > 65536:
+                raise ValueError("Missing skill metadata")
+            info = json.loads(manifest.read_text(encoding="utf-8"))
+        name = info.get("name")
+        description = info.get("description")
+        if not isinstance(name, str) or not _NAME.fullmatch(name) or not isinstance(description, str) or not description.strip():
+            raise ValueError("Invalid skill metadata")
+        target = self.workspace / ".agent" / "skills" / name
         if target.exists():
             raise FileExistsError(skill.name)
         files = [p for p in source.rglob("*")]
@@ -83,7 +94,7 @@ class SkillManager:
                 raise ValueError("Symlinks and path escapes are forbidden")
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source, target, symlinks=False)
-        return skill.name
+        return name
 
     def install_local(self, source: str | Path) -> str:
         source = Path(source).resolve(strict=True)
@@ -101,7 +112,7 @@ class SkillManager:
                     p = Path(info.filename.replace("\\", "/"))
                     if p.is_absolute() or ".." in p.parts or not p.parts or (info.external_attr >> 16) & 0o170000 == 0o120000:
                         raise ValueError("Unsafe ZIP entry")
-                    if not (root / p).resolve().is_relative_to(root):
+                    if not (root / p).resolve().is_relative_to(root.resolve()):
                         raise ValueError("ZIP path escape")
                 archive.extractall(root)
             candidates = [p for p in root.rglob("SKILL.md") if p.parent != root]
