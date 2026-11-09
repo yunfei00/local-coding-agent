@@ -19,12 +19,13 @@ class BrowserSessionTool(BaseTool):
     name = "browser_session"
     description = "Interact with a public website in an isolated headless browser. Click, fill, navigate and inspect; no downloads or private network access. Form submissions may have real effects."
     parameters = {"type":"object","properties":{
-        "operation":{"type":"string","enum":["open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","back","forward","scroll","tables","screenshot","close"]},
+        "operation":{"type":"string","enum":["open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","back","forward","scroll","tables","screenshot","workflow","close"]},
         "session_id":{"type":"string"},
         "url":{"type":"string"},
         "selector":{"type":"string"},
         "value":{"type":"string"},
-        "path":{"type":"string","description":"Workspace-relative PNG screenshot path"}
+        "path":{"type":"string","description":"Workspace-relative PNG screenshot path"},
+        "steps":{"type":"array","items":{"type":"object"},"maxItems":20}
     },"required":["operation"],"additionalProperties":False}
     def __init__(self,sessions,workspace=None):
         self.sessions=sessions
@@ -36,6 +37,9 @@ class BrowserSessionTool(BaseTool):
                 data=await self.sessions.open(arguments["url"])
             elif op=="close":
                 data=await self.sessions.close(arguments["session_id"])
+            elif op=="workflow":
+                data=await self.sessions.workflow(arguments["session_id"],arguments["steps"])
+                return ToolResult(ok=data["ok"],summary="Browser workflow",data=data)
             elif op=="screenshot":
                 if self.workspace is None:
                     raise ValueError("Screenshot requires a project workspace")
