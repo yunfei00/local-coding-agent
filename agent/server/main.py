@@ -951,10 +951,11 @@ class AgentServer:
             )
             return
 
-        if message_type in {"skills.list", "skills.install", "skills.enable", "skills.disable", "skills.uninstall", "skills.read", "skills.backup", "skills.backups", "skills.rollback", "skills.update"}:
+        if message_type in {"skills.list", "skills.install", "skills.enable", "skills.disable", "skills.uninstall", "skills.read", "skills.backup", "skills.backups", "skills.rollback", "skills.update", "skills.audit"}:
             from agent.skills.manager import SkillManager
             from agent.skills.builtins import builtin_skill_workspace
             from agent.skills.remote import install_github
+            from agent.skills.audit import audit_skill
             project = self.projects.active
             if project is None:
                 await self.send_error(ws, "PROJECT_REQUIRED", "Open a project to manage skills.", request_id=request_id)
@@ -965,6 +966,8 @@ class AgentServer:
                     result = {"skills": [asdict(item) for item in manager.catalog()]}
                 elif message_type == "skills.read":
                     result = {"instructions": manager.instructions(str(payload.get("name", "")))}
+                elif message_type == "skills.audit":
+                    result = await asyncio.to_thread(audit_skill, manager, str(payload.get("name", "")))
                 elif message_type == "skills.backups":
                     result = {"revisions": manager.list_backups(str(payload.get("name", "")))}
                 else:
