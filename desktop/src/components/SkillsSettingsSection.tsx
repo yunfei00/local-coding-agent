@@ -7,6 +7,7 @@ export function SkillsSettingsSection({running}:{running:boolean}) {
   const [items,setItems] = useState<Skill[]>([]);
   const [source,setSource] = useState("");
   const [revisions,setRevisions] = useState<Record<string,string[]>>({});
+  const [audits,setAudits] = useState<Record<string,{issues:{file:string;risk:string}[];requires_review:boolean}>>({});
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
   const [notice,setNotice] = useState("");
@@ -20,7 +21,9 @@ export function SkillsSettingsSection({running}:{running:boolean}) {
     setBusy(true);setError("");setNotice("");
     try {
       const result = await window.localAgent.skillsRequest(operation,payload);
-      if (operation==="backups") {
+      if (operation==="audit") {
+        setAudits(previous=>({...previous,[String(payload.name)]:result.payload as {issues:{file:string;risk:string}[];requires_review:boolean}}));
+      } else if (operation==="backups") {
         setRevisions(previous=>({...previous,[String(payload.name)]: (result.payload?.revisions as string[]|undefined)??[]}));
       } else if (operation==="read") {
         setDetail({name:String(payload.name),instructions:String(result.payload?.instructions??"")});
@@ -48,6 +51,7 @@ export function SkillsSettingsSection({running}:{running:boolean}) {
       <small>{item.description} · {item.source==="builtin"?"内置":item.source==="user"?"用户":"项目"} · {item.enabled?"已启用":"已禁用"}</small>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <button type="button" disabled={busy} onClick={()=>void run("read",{name:item.name})}>查看说明</button>
+        <button type="button" disabled={busy} onClick={()=>void run("audit",{name:item.name})}>安全扫描</button>
         <button type="button" disabled={busy||running} onClick={()=>void run(item.enabled?"disable":"enable",{name:item.name})}>{item.enabled?"禁用":"启用"}</button>
         {item.source==="project"?<>
           <button type="button" disabled={busy||running} onClick={()=>void run("backup",{name:item.name})}>创建备份</button>
@@ -56,6 +60,7 @@ export function SkillsSettingsSection({running}:{running:boolean}) {
           <button type="button" disabled={busy||running} onClick={()=>{if(window.confirm("确认卸载项目技能 "+item.name+"？"))void run("uninstall",{name:item.name});}}>卸载</button>
         </>:null}
       </div>
+      {audits[item.name]?<p role="status">{audits[item.name].requires_review?"发现需人工审查的内容：":"静态扫描未发现已知风险（不代表安全认证）"} {audits[item.name].issues.map(issue=>issue.file+"："+issue.risk).join("；")}</p>:null}
       {revisions[item.name]?.length?<div aria-label={item.name+" 历史版本"}>{revisions[item.name].map(revision=><div key={revision}>
         <code>{revision.slice(0,16)}</code>
         <button type="button" disabled={busy||running} onClick={()=>{if(window.confirm("确认将 "+item.name+" 回滚到 "+revision.slice(0,12)+"？"))void run("rollback",{name:item.name,revision});}}>恢复此版本</button>
