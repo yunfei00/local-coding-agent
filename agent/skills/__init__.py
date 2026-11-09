@@ -43,7 +43,7 @@ def _frontmatter(content: str) -> dict[str, str]:
                 i += 1
             result[key] = (" " if value.startswith(">") else "\n").join(pieces).strip()
         else:
-            result[key] = value.strip("'\\"")
+            result[key] = value.strip().strip(chr(39)).strip(chr(34))
     return result
 
 def _discover_root(skills_root: Path) -> list[Skill]:
