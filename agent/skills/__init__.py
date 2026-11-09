@@ -17,21 +17,33 @@ class Skill:
     directory: Path
 
 def _frontmatter(content: str) -> dict[str, str]:
+    """Read standard flat frontmatter including YAML folded descriptions."""
+    content = content.lstrip("\ufeff").replace("\r\n", "\n")
     if not content.startswith("---\n"):
         return {}
-    end = content.find("\n---", 4)
+    end = content.find("\n---\n", 4)
     if end < 0:
         return {}
-    result = {}
-    for line in content[4:end].splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        if ":" not in line:
+    lines = content[4:end].splitlines()
+    result: dict[str, str] = {}
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        i += 1
+        if not line or line.startswith((" ", "\t", "#")) or ":" not in line:
             continue
         key, value = line.split(":", 1)
         key, value = key.strip(), value.strip()
-        if key in {"name", "description"}:
-            result[key] = value.strip("'\"")
+        if key not in {"name", "description"}:
+            continue
+        if value in (">", ">-", "|", "|-"):
+            pieces = []
+            while i < len(lines) and (not lines[i].strip() or lines[i][0].isspace()):
+                pieces.append(lines[i].strip())
+                i += 1
+            result[key] = (" " if value.startswith(">") else "\n").join(pieces).strip()
+        else:
+            result[key] = value.strip("'\\"")
     return result
 
 def _discover_root(skills_root: Path) -> list[Skill]:
