@@ -8,13 +8,14 @@ from agent.office.edit import edit_excel, edit_word, edit_ppt
 from agent.office.windows import detect_office, export_pdf
 from agent.office.bundle import create_bundle
 from agent.office.uia import list_office_windows
+from agent.office.com_edit import com_edit_copy
 from agent.verification.office import verify_office
 
 class OfficeTool(BaseTool):
     name = "office_document"
     description = "Inspect, create, edit or structurally verify XLSX, DOCX and PPTX files in the workspace. Editing existing files is destructive; user permissions still apply."
     parameters = {"type":"object","properties":{
-        "operation":{"type":"string","enum":["inspect","create","edit","verify","detect","export_pdf","bundle","uia_list"]},
+        "operation":{"type":"string","enum":["inspect","create","edit","verify","detect","export_pdf","bundle","uia_list","com_edit_copy"]},
         "path":{"type":"string"},
         "kind":{"type":"string","enum":["excel","word","ppt"]},
         "target":{"type":"string","description":"PDF destination for export_pdf"},
@@ -25,7 +26,7 @@ class OfficeTool(BaseTool):
         self.workspace=workspace
     async def execute(self, arguments, *, on_output=None):
         op=arguments.get("operation")
-        if op not in {"inspect","create","edit","verify","detect","export_pdf","bundle","uia_list"}:
+        if op not in {"inspect","create","edit","verify","detect","export_pdf","bundle","uia_list","com_edit_copy"}:
             raise ToolError("OFFICE_OPERATION_INVALID","Unsupported operation")
         try:
             if op=="uia_list":
@@ -42,6 +43,14 @@ class OfficeTool(BaseTool):
                     raise ToolError("OFFICE_SPEC","Missing bundle spec")
                 result=await asyncio.to_thread(create_bundle,path,str(arguments["name"]),spec)
                 return ToolResult(ok=True,summary="Excel Word PPT bundle created and verified",data=result,changed_paths=[self.workspace.relative(x) for x in result["files"].values()])
+            if op=="com_edit_copy":
+                target=self.workspace.resolve(arguments["target"])
+                spec=arguments.get("spec")
+                if not isinstance(spec,dict):
+                    raise ToolError("OFFICE_SPEC","Missing COM edit spec")
+                result=await asyncio.to_thread(com_edit_copy,path,target,spec)
+                check=await asyncio.to_thread(verify_office,target)
+                return ToolResult(ok=check["ok"],summary="Native Office COM copy edited",data={"result":result,"verification":check},changed_paths=[self.workspace.relative(target)])
             if op=="export_pdf":
                 target=self.workspace.resolve(arguments["target"])
                 result=await asyncio.to_thread(export_pdf,path,target)
