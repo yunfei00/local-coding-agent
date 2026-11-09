@@ -120,6 +120,89 @@ class SkillManager:
                 raise ValueError("ZIP must contain exactly one skill")
             return self._install_directory(candidates[0].parent)
 
+    def _project_skill(self, name: str) -> Path:
+        if not isinstance(name, str) or not _NAME.fullmatch(name):
+            raise ValueError("Invalid skill name")
+        return self.workspace / ".agent" / "skills" / name
+
+    def backup_project(self, name: str) -> str:
+        """Snapshot an installed skill before replacement; never run its scripts."""
+        source = self._project_skill(name)
+        if not source.is_dir() or source.is_symlink():
+            raise ValueError("Project skill not installed")
+        for item in source.rglob("*"):
+            if item.is_symlink():
+                raise ValueError("Unsafe symlink")
+        backup_root = self.workspace / ".agent" / "skills-backups" / name
+        backup_root.mkdir(parents=True, exist_ok=True)
+        digest = self.inventory_hash(name)
+        target = backup_root / digest
+        if not target.exists():
+            shutil.copytree(source, target)
+        return digest
+
+    def rollback_project(self, name: str, revision: str) -> None:
+        """Restore an explicit local snapshot with an atomic directory swap."""
+        source = self._project_skill(name)
+        if not isinstance(revision, str) or len(revision) != 64 or any(c not in "0123456789abcdef" for c in revision):
+            raise ValueError("Invalid revision")
+        snapshot = self.workspace / ".agent" / "skills-backups" / name / revision
+        if not snapshot.is_dir() or snapshot.is_symlink():
+            raise ValueError("Backup not found")
+        for item in snapshot.rglob("*"):
+            if item.is_symlink():
+                raise ValueError("Unsafe backup")
+        staging = source.with_name(source.name + ".restore-staging")
+        if staging.exists():
+            raise ValueError("Restore already in progress")
+        shutil.copytree(snapshot, staging)
+        old = source.with_name(source.name + ".restore-old")
+        try:
+            if old.exists():
+                raise ValueError("Previous restore not cleaned")
+            if source.exists():
+                source.rename(old)
+            try:
+                staging.rename(source)
+            except Exception:
+                if old.exists():
+                    old.rename(source)
+                raise
+            if old.exists():
+                shutil.rmtree(old)
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging)
+
+    def list_backups(self, name: str) -> list[str]:
+        self._project_skill(name)
+        folder = self.workspace / ".agent" / "skills-backups" / name
+        if not folder.is_dir():
+            return []
+        return sorted(p.name for p in folder.iterdir() if p.is_dir() and len(p.name) == 64)
+
+    def update_local(self, name: str, new_source: str | Path) -> str:
+        """Replace a project skill, preserving a rollback snapshot on failure."""
+        source = self._project_skill(name)
+        if not source.is_dir() or source.is_symlink():
+            raise ValueError("Project skill not installed")
+        revision = self.backup_project(name)
+        old = source.with_name(source.name + ".update-old")
+        if old.exists():
+            raise ValueError("Previous update not cleaned")
+        source.rename(old)
+        try:
+            installed = self.install_local(new_source)
+            if installed != name:
+                raise ValueError("Updated skill name differs")
+        except Exception:
+            if source.exists():
+                shutil.rmtree(source)
+            old.rename(source)
+            raise
+        shutil.rmtree(old)
+        return revision
+
     def uninstall_project(self, name: str) -> None:
         if not _NAME.fullmatch(name):
             raise ValueError("Invalid skill name")
