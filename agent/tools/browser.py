@@ -2,7 +2,7 @@
 from __future__ import annotations
 from agent.tools.base import BaseTool, ToolResult, ToolError
 from agent.browser.engine import browser_snapshot
-from agent.browser.sessions import BrowserSessions
+from agent.browser.sessions import BrowserSessions, browser_diagnostics
 
 class BrowserSnapshotTool(BaseTool):
     name = "browser_snapshot"
@@ -19,7 +19,7 @@ class BrowserSessionTool(BaseTool):
     name = "browser_session"
     description = "Interact with a public website in an isolated headless browser. Click, fill, navigate and inspect; no downloads or private network access. Form submissions may have real effects."
     parameters = {"type":"object","properties":{
-        "operation":{"type":"string","enum":["open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","back","forward","scroll","tables","screenshot","workflow","close"]},
+        "operation":{"type":"string","enum":["open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","back","forward","scroll","tables","screenshot","workflow","diagnose","close"]},
         "session_id":{"type":"string"},
         "url":{"type":"string"},
         "selector":{"type":"string"},
@@ -33,7 +33,10 @@ class BrowserSessionTool(BaseTool):
     async def execute(self,arguments,*,on_output=None):
         op=arguments.get("operation")
         try:
-            if op=="open":
+            if op=="diagnose":
+                import asyncio
+                data=await asyncio.to_thread(browser_diagnostics)
+            elif op=="open":
                 data=await self.sessions.open(arguments["url"])
             elif op=="close":
                 data=await self.sessions.close(arguments["session_id"])
