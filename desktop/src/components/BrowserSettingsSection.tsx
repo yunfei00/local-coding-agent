@@ -13,6 +13,9 @@ export function BrowserSettingsSection({running}:{running:boolean}) {
   const [error,setError]=useState("");
   const [history,setHistory]=useState<string[]>([]);
   const [diagnostics,setDiagnostics]=useState("");
+  const [tableResult,setTableResult]=useState("");
+  const [workflowResult,setWorkflowResult]=useState("");
+  const [savedScreenshot,setSavedScreenshot]=useState("");
   const [screenshotPath,setScreenshotPath]=useState("browser-screenshot.png");
   const [workflow,setWorkflow]=useState('[{"operation":"wait"},{"operation":"tables"}]');
   const request=async(op:string,extra:Record<string,unknown>={})=>{
@@ -22,9 +25,15 @@ export function BrowserSettingsSection({running}:{running:boolean}) {
       if(interactive&&!window.confirm("浏览器操作可能提交表单或改变网站数据。确认执行 "+op+"？"))return;
       const event=await window.localAgent.browserRequest({operation:op,session_id:session,...extra,confirmed:interactive});
       const result=event.payload??{};
-      if(result.ok===false)throw new Error(String(result.summary??"浏览器操作失败"));
+      if(result.ok===false){
+        setWorkflowResult(JSON.stringify(result.data??{},null,2));
+        throw new Error(String(result.summary??"浏览器操作失败"));
+      }
       const data=(result.data??{}) as Snapshot & {closed?:boolean};
       if(op==="diagnose")setDiagnostics(JSON.stringify(data,null,2));
+      if(op==="tables")setTableResult(JSON.stringify(data,null,2));
+      if(op==="workflow")setWorkflowResult(JSON.stringify(data,null,2));
+      if(op==="screenshot")setSavedScreenshot(String((data as {path?:string}).path??""));
       if(op==="open")setSession(String(data.session_id??""));
       if(op==="close"){setSession("");setSnapshot(null);}
       else setSnapshot(data);
@@ -79,6 +88,9 @@ export function BrowserSettingsSection({running}:{running:boolean}) {
         }catch(e){setError(String(e));}
       }}>执行自动化步骤</button>
     </div>
+    {savedScreenshot?<p role="status">截图已保存：<code>{savedScreenshot}</code></p>:null}
+    {tableResult?<section><strong>表格提取结果</strong><pre style={{whiteSpace:"pre-wrap",maxHeight:240,overflow:"auto"}}>{tableResult}</pre></section>:null}
+    {workflowResult?<section><strong>工作流执行结果</strong><pre style={{whiteSpace:"pre-wrap",maxHeight:240,overflow:"auto"}}>{workflowResult}</pre></section>:null}
     {error?<p role="alert">{error}</p>:null}
     {snapshot?<section className="settings-field">
       <strong>{snapshot.title||"网页快照"}</strong>
