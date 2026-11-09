@@ -20,7 +20,7 @@ class P1Tests(unittest.TestCase):
 
     def test_folded_frontmatter(self):
         from agent.skills import _frontmatter
-        info = _frontmatter("---\r\nname: example\r\ndescription: >\r\n  A useful skill\r\n  for tasks\r\n---\r\nBody")
+        info = _frontmatter("---"+chr(13)+chr(10)+"name: example"+chr(13)+chr(10)+"description: >"+chr(13)+chr(10)+"  A useful skill"+chr(13)+chr(10)+"  for tasks"+chr(13)+chr(10)+"---"+chr(13)+chr(10)+"Body")
         self.assertEqual(info["description"], "A useful skill for tasks")
 
     def test_excel_edit(self):
