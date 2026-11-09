@@ -957,8 +957,12 @@ class AgentServer:
             if self.projects.active is None:
                 await self.send_error(ws, "PROJECT_REQUIRED", "Open a project to use the browser.", request_id=request_id)
                 return
-            if not hasattr(self, "_browser_sessions"):
-                self._browser_sessions = BrowserSessions()
+            if not hasattr(self, "_browser_sessions_by_project"):
+                self._browser_sessions_by_project = {}
+            project_key = str(self.projects.active.workspace.root)
+            if project_key not in self._browser_sessions_by_project:
+                self._browser_sessions_by_project[project_key] = BrowserSessions()
+            browser_sessions = self._browser_sessions_by_project[project_key]
             operation = str(payload.get("operation", ""))
             if operation not in {"open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","back","forward","scroll","tables","screenshot","workflow","close"}:
                 await self.send_error(ws, "BROWSER_OPERATION_INVALID", "Unsupported browser operation.", request_id=request_id)
@@ -967,7 +971,7 @@ class AgentServer:
                 await self.send_error(ws, "BROWSER_CONFIRM_REQUIRED", "Confirm interactive browser actions in the UI.", request_id=request_id)
                 return
             try:
-                tool = BrowserSessionTool(self._browser_sessions, self.projects.active.workspace)
+                tool = BrowserSessionTool(browser_sessions, self.projects.active.workspace)
                 result = await tool.execute(payload)
                 await ws.send_json(envelope("browser.result", result.to_dict(), request_id=request_id))
             except Exception as exc:
