@@ -136,6 +136,25 @@ class BrowserSessions:
         await s.page.screenshot(path=str(output),full_page=False,timeout=15000)
         return {"path":str(output),"bytes":output.stat().st_size}
 
+    async def workflow(self, session_id: str, steps: list[dict]) -> dict:
+        """Execute a bounded sequence; stop at the first failed step."""
+        if not isinstance(steps,list) or not 1 <= len(steps) <= 20:
+            raise ValueError("Workflow must have 1-20 steps")
+        history=[]
+        for index,step in enumerate(steps):
+            if not isinstance(step,dict):
+                raise ValueError("Invalid workflow step")
+            operation=step.get("operation")
+            if operation not in {"click","fill","select","check","uncheck","press","navigate","wait","back","forward","scroll","tables"}:
+                raise ValueError("Unsupported workflow action")
+            try:
+                result=await self.action(session_id,operation,selector=step.get("selector",""),value=step.get("value",""))
+                history.append({"index":index,"operation":operation,"ok":True,"url":result.get("url")})
+            except Exception as exc:
+                history.append({"index":index,"operation":operation,"ok":False,"error":str(exc)})
+                return {"ok":False,"history":history,"failed_step":index}
+        return {"ok":True,"history":history,"snapshot":await self.snapshot(session_id)}
+
     async def close(self, session_id: str) -> dict:
         async with self._lock:
             s = self._sessions.pop(session_id,None)
