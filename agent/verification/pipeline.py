@@ -72,5 +72,6 @@ def write_report(root: str|Path, spec: dict, report_path: str) -> dict:
         lines.extend(f"- {'通过' if a['ok'] else '失败'}：{a['check']}" for a in item["assertions"])
         lines.append("")
     target.parent.mkdir(parents=True,exist_ok=True)
-    target.write_text("\n".join(lines),encoding="utf-8")
+    with target.open("x",encoding="utf-8") as output:
+        output.write("\n".join(lines))
     return {"verification":result,"report":str(target)}
