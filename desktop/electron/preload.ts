@@ -39,6 +39,9 @@ contextBridge.exposeInMainWorld("localAgent", {
       secretUpdate
     ),
   resetSettings: () => ipcRenderer.invoke("agent:settings-reset"),
+  skillsRequest: (operation: string, payload: Record<string, unknown> = {}) => ipcRenderer.invoke("agent:skills-request", operation, payload),
+  browserRequest: (payload: Record<string, unknown>) => ipcRenderer.invoke("agent:browser-request", payload),
+  verificationRequest: (payload: Record<string, unknown>) => ipcRenderer.invoke("agent:verification-request", payload),
   listMcpServers: () => ipcRenderer.invoke("agent:mcp-list"),
   upsertMcpServer: (
     server: Record<string, unknown>,

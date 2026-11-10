@@ -951,6 +951,106 @@ class AgentServer:
             )
             return
 
+        if message_type == "verification.run":
+            from agent.tools.verification import DeliverableVerifyTool
+            project = self.projects.active
+            if project is None:
+                await self.send_error(ws,"PROJECT_REQUIRED","Open a project to verify deliverables.",request_id=request_id)
+                return
+            spec=payload.get("spec")
+            report_path=payload.get("report_path")
+            if not isinstance(spec,dict) or not isinstance(report_path,str) or not report_path.endswith(".md"):
+                await self.send_error(ws,"VERIFY_SPEC","Provide a verification spec and a new Markdown report path.",request_id=request_id)
+                return
+            try:
+                result=await DeliverableVerifyTool(project.workspace).execute({"spec":spec,"report_path":report_path})
+                await ws.send_json(envelope("verification.result",result.to_dict(),request_id=request_id))
+            except Exception as exc:
+                await self.send_error(ws,"VERIFY_FAILED",str(exc),request_id=request_id)
+            return
+
+        if message_type == "browser.session":
+            from agent.browser.sessions import BrowserSessions
+            from agent.tools.browser import BrowserSessionTool
+            if self.projects.active is None:
+                await self.send_error(ws, "PROJECT_REQUIRED", "Open a project to use the browser.", request_id=request_id)
+                return
+            if not hasattr(self, "_browser_sessions_by_project"):
+                self._browser_sessions_by_project = {}
+            project_key = str(self.projects.active.workspace.root)
+            if project_key not in self._browser_sessions_by_project:
+                self._browser_sessions_by_project[project_key] = BrowserSessions()
+            browser_sessions = self._browser_sessions_by_project[project_key]
+            operation = str(payload.get("operation", ""))
+            if operation not in {"open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","back","forward","scroll","tables","screenshot","workflow","diagnose","close"}:
+                await self.send_error(ws, "BROWSER_OPERATION_INVALID", "Unsupported browser operation.", request_id=request_id)
+                return
+            if operation in {"click","press","check","uncheck","select","workflow"} and not payload.get("confirmed"):
+                await self.send_error(ws, "BROWSER_CONFIRM_REQUIRED", "Confirm interactive browser actions in the UI.", request_id=request_id)
+                return
+            try:
+                tool = BrowserSessionTool(browser_sessions, self.projects.active.workspace)
+                result = await tool.execute(payload)
+                await ws.send_json(envelope("browser.result", result.to_dict(), request_id=request_id))
+            except Exception as exc:
+                await self.send_error(ws, "BROWSER_FAILED", str(exc), request_id=request_id)
+            return
+
+        if message_type in {"skills.list", "skills.install", "skills.enable", "skills.disable", "skills.uninstall", "skills.read", "skills.backup", "skills.backups", "skills.rollback", "skills.update", "skills.audit"}:
+            from agent.skills.manager import SkillManager
+            from agent.skills.builtins import builtin_skill_workspace
+            from agent.skills.remote import install_github
+            from agent.skills.audit import audit_skill
+            project = self.projects.active
+            if project is None:
+                await self.send_error(ws, "PROJECT_REQUIRED", "Open a project to manage skills.", request_id=request_id)
+                return
+            manager = SkillManager(project.workspace.root, builtin=builtin_skill_workspace())
+            try:
+                if message_type == "skills.list":
+                    result = {"skills": [asdict(item) for item in manager.catalog()]}
+                elif message_type == "skills.read":
+                    result = {"instructions": manager.instructions(str(payload.get("name", "")))}
+                elif message_type == "skills.audit":
+                    result = await asyncio.to_thread(audit_skill, manager, str(payload.get("name", "")))
+                elif message_type == "skills.backups":
+                    result = {"revisions": manager.list_backups(str(payload.get("name", "")))}
+                else:
+                    if any(not task.done() for task in self.active_turns.values()):
+                        raise ValueError("Stop active tasks before changing skills")
+                    if message_type == "skills.backup":
+                        name = str(payload.get("name", ""))
+                        result = {"name": name, "revision": await asyncio.to_thread(manager.backup_project, name)}
+                    elif message_type == "skills.rollback":
+                        name = str(payload.get("name", ""))
+                        revision = str(payload.get("revision", ""))
+                        await asyncio.to_thread(manager.rollback_project, name, revision)
+                        result = {"name": name, "restored": revision}
+                    elif message_type == "skills.update":
+                        name = str(payload.get("name", ""))
+                        source = project.workspace.resolve(str(payload.get("source", "")), must_exist=True)
+                        revision = await asyncio.to_thread(manager.update_local, name, source)
+                        result = {"name": name, "previous_revision": revision}
+                    elif message_type == "skills.install":
+                        source = str(payload.get("source", "")).strip()
+                        if source.startswith("https://github.com/"):
+                            installed = await asyncio.to_thread(install_github, manager, source)
+                        else:
+                            path = project.workspace.resolve(source, must_exist=True)
+                            installed = await asyncio.to_thread(manager.install_local, path)
+                        result = {"installed": installed}
+                    else:
+                        name = str(payload.get("name", ""))
+                        if message_type == "skills.uninstall":
+                            manager.uninstall_project(name)
+                        else:
+                            manager.set_enabled(name, message_type == "skills.enable")
+                        result = {"name": name}
+                await ws.send_json(envelope("skills.result", result, request_id=request_id))
+            except (ValueError, OSError, KeyError, RuntimeError, ImportError) as exc:
+                await self.send_error(ws, "SKILLS_FAILED", str(exc), request_id=request_id)
+            return
+
         if message_type == "mcp.list":
             await ws.send_json(
                 envelope(
@@ -2957,6 +3057,7 @@ class AgentServer:
                 finish_reason: str | None = None
                 observed_output = False
                 retry_capture=None
+                protocol_repairs_this_step = 0
 
                 attempt_limit=self.model_retry_attempts+(3 if (execution.data.get('model_routing') or {}).get('allow_fallback') else 0)
                 for attempt in range(1, attempt_limit + 1):
@@ -3163,6 +3264,17 @@ class AgentServer:
                                 "模型拒绝了响应，未接受完成状态。" if finish_reason == "content_filter" else
                                 f"模型响应被截断（finish_reason={finish_reason}, max_output_tokens={limit}）；未执行本批工具。请分段生成，或在 Models & Routing 调整该模型单次输出上限后新建任务。")
                         if not ''.join(assistant_parts).strip() and not tool_calls:
+                            raw_meta = getattr(getattr(provider,'provider',provider),'response_metadata',{})
+                            diagnostic = {key: raw_meta.get(key) for key in (
+                                'http_status','response_complete','finish_reason',
+                                'debug_done_reason','debug_content_chars','debug_thinking_chars',
+                                'debug_tool_calls','debug_stream_events','debug_message_present',
+                            )}
+                            diagnostic.update(model=model, attempt=attempt, attempt_limit=attempt_limit)
+                            diagnostic['classification'] = ('thinking_only' if (diagnostic.get('debug_thinking_chars') or 0) > 0 and not (diagnostic.get('debug_content_chars') or 0) and not (diagnostic.get('debug_tool_calls') or 0) else 'no_usable_output')
+                            execution.data['last_empty_response_diagnostic'] = diagnostic
+                            execution.save()
+                            self.runtime_ledger.record(execution.key,thread_id,'model.empty_response',diagnostic,request_id=model_request_id)
                             raise ProviderError('MODEL_EMPTY_RESPONSE','模型响应没有正文或工具调用，未接受完成状态。')
                         execution.finish_api(model_request_id,chunk=final_chunk,metadata=getattr(getattr(provider,'provider',provider),'response_metadata',{}))
                         if unified and execution.data.get('model_routing'):
@@ -3194,12 +3306,13 @@ class AgentServer:
                         if await switch_model(exc,sum(map(len,assistant_parts)),permit=attempt<attempt_limit):
                             retry_capture=capture or retry_capture;assistant_parts.clear();tool_calls.clear();step_tool_keys.clear();observed_output=False;continue
                         protocol_error = exc.code in {"MODEL_INVALID_TOOL_CALL", "MODEL_TOOL_ARGUMENTS_TRUNCATED", "MODEL_TRUNCATED", "MODEL_EMPTY_RESPONSE"}
-                        repairs = execution.data.get("tool_protocol_repairs", 0)
+                        repairs = protocol_repairs_this_step
                         if protocol_error and attempt < self.model_retry_attempts and repairs < self.model_retry_attempts - 1:
                             # The provider rejected the complete call batch before
                             # tool execution. Ask the SAME model to regenerate it;
                             # never guess/fix malformed arguments or replay tools.
-                            execution.data["tool_protocol_repairs"] = repairs + 1
+                            protocol_repairs_this_step += 1
+                            execution.data["tool_protocol_repairs"] = execution.data.get("tool_protocol_repairs", 0) + 1
                             execution.save()
                             self.runtime_ledger.record(execution.key, thread_id, 'request.retry_scheduled', {
                                 'retry': repairs + 1, 'error_code': exc.code,

@@ -1,0 +1,1 @@
+{"name":"excel","description":"读取、分析和创建 XLSX 工作簿；通过受控 Python CLI 执行，不执行宏。","version":"1.2.0","capabilities":["office.excel.read","office.excel.create","office.verify"]}

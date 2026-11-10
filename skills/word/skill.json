@@ -1,0 +1,1 @@
+{"name":"word","description":"读取、创建和检查 DOCX 文档；必要时使用 Office COM 导出 PDF。","version":"1.2.0","capabilities":["office.word.read","office.word.create","office.verify"]}

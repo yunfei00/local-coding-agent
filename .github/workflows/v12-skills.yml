@@ -1,0 +1,39 @@
+name: v1.2 Skills and Office smoke
+on:
+  pull_request:
+    paths:
+      - "agent/skills/**"
+      - "agent/office/**"
+      - "agent/browser/**"
+      - "agent/verification/**"
+      - "agent/tools/skills.py"
+      - "agent/tools/office.py"
+      - "agent/tools/browser.py"
+      - "agent/tools/registry.py"
+      - "skills/**"
+      - "tests/test_v12_*.py"
+      - "pyproject.toml"
+      - ".github/workflows/v12-skills.yml"
+  workflow_dispatch:
+jobs:
+  skills-office:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Office test dependencies
+        run: python -m pip install openpyxl python-docx python-pptx
+      - name: Install browser test dependencies
+        run: python -m pip install playwright
+      - name: Install Chromium
+        run: python -m playwright install chromium
+      - name: Run v1.2 foundation tests
+        run: python -m unittest discover -s tests -p "test_v12_*.py" -v
+      - name: Compile new modules
+        run: python -m compileall -q agent/skills agent/office agent/browser agent/verification agent/tools/skills.py agent/tools/office.py agent/tools/browser.py agent/tools/verification.py

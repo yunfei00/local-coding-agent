@@ -41,9 +41,8 @@ class AuthorizationSettings:
         elif scope == 'global':
             raise ValueError('全局权限不能继承')
         data = self.load()
-        if mode == 'full_access' and not data['full_access_confirmed']:
-            if confirmed is not True:
-                raise ValueError('FULL_ACCESS_CONFIRMATION_REQUIRED：首次完全访问须明确确认风险')
+        if mode == 'full_access':
+            # Saving this user-selected mode constitutes authorization; no second dialog.
             data['full_access_confirmed'] = True
         if scope == 'global':
             data['global'] = mode

@@ -28,43 +28,22 @@ class WorkspaceTests(unittest.TestCase):
     def test_registry_contains_phase3_tools(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             names = ToolRegistry(Workspace(root)).names
-            self.assertEqual(
-                names,
-                [
-                    "apply_patch",
-                    "delete_file",
-                    "desktop_click",
-                    "desktop_focus_window",
-                    "desktop_inspect",
-                    "desktop_keypress",
-                    "desktop_list_windows",
-                    "desktop_screenshot",
-                    "desktop_scroll",
-                    "desktop_type_text",
-                    "desktop_wait",
-                    "file_exists",
-                    "git_branches",
-                    "git_ci_status",
-                    "git_commit",
-                    "git_commit_prepare",
-                    "git_diff",
-                    "git_log",
-                    "git_stage",
-                    "git_status",
-                    "git_unstage",
-                    "git_worktree_create",
-                    "git_worktree_list",
-                    "git_worktree_remove",
-                    "list_directory",
-                    "read_file",
-                    "read_process",
-                    "run_command",
-                    "search_files",
-                    "start_process",
-                    "stop_process",
-                    "write_file",
-                ],
-            )
+            baseline = {
+                "apply_patch","delete_file","desktop_click","desktop_focus_window",
+                "desktop_inspect","desktop_keypress","desktop_list_windows",
+                "desktop_screenshot","desktop_scroll","desktop_type_text",
+                "desktop_wait","file_exists","git_branches","git_ci_status",
+                "git_commit","git_commit_prepare","git_diff","git_log",
+                "git_stage","git_status","git_unstage","git_worktree_create",
+                "git_worktree_list","git_worktree_remove","list_directory",
+                "read_file","read_process","run_command","search_files",
+                "start_process","stop_process","write_file"
+            }
+            self.assertTrue(baseline.issubset(set(names)),baseline-set(names))
+            self.assertTrue({"skills_list","skills_read","office_document",
+                             "browser_snapshot","browser_session",
+                             "deliverable_verify"}.issubset(set(names)))
+            self.assertEqual(names,sorted(set(names)))
 
 
 class FileToolTests(unittest.IsolatedAsyncioTestCase):

@@ -253,6 +253,12 @@ class OllamaProvider:
             observe_request(self,'request.failed',error_code='REQUEST_CONSTRUCTION_FAILED',request_sent=False)
             raise OllamaProviderError('REQUEST_CONSTRUCTION_FAILED','Ollama 请求构造失败；HTTP 请求未发出。') from exc
         observed=False;done=False
+        # Development diagnostics: metadata only; never retain model text or tool arguments.
+        self.response_metadata.update(
+            debug_content_chars=0, debug_thinking_chars=0,
+            debug_tool_calls=0, debug_stream_events=0,
+            debug_done_reason=None, debug_message_present=False,
+        )
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 self.response_metadata.update(request_sent=None,network_attempted=True,http_started_at=time.time())
@@ -305,7 +311,16 @@ class OllamaProvider:
                             if not (done and finish_reason in {"length", "max_tokens"}):
                                 tool_calls = _parse_tool_calls(message)
 
+                        self.response_metadata["debug_stream_events"] += 1
+                        self.response_metadata["debug_content_chars"] += len(content)
+                        if isinstance(message, dict):
+                            self.response_metadata["debug_message_present"] = True
+                            thinking = message.get("thinking")
+                            if isinstance(thinking, str):
+                                self.response_metadata["debug_thinking_chars"] += len(thinking)
+                            self.response_metadata["debug_tool_calls"] += len(tool_calls)
                         if done:
+                            self.response_metadata["debug_done_reason"] = finish_reason
                             self.response_metadata.update(response_complete=True,finish_reason=payload.get('done_reason'),reported_usage={
                                 'input_tokens':_optional_int(payload.get('prompt_eval_count')),'output_tokens':_optional_int(payload.get('eval_count'))})
                             observe_request(self,'response.completed')

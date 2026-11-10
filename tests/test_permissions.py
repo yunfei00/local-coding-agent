@@ -241,6 +241,31 @@ class PermissionPolicyTests(unittest.TestCase):
         self.assertFalse(denied.allowed)
         self.assertEqual(denied.risk, "git_publish_intent")
 
+    def test_confirmed_full_access_skips_ordinary_office_and_verification_approvals(self) -> None:
+        policy = PermissionPolicy(PermissionMode.FULL_ACCESS, continuous=True)
+        cases = [
+            ("office_document", {"operation": "create", "path": "report.xlsx", "kind": "excel"}),
+            ("office_document", {"operation": "edit", "path": "report.docx"}),
+            ("office_document", {"operation": "export_pdf", "path": "report.docx", "target": "report.pdf"}),
+            ("deliverable_verify", {"spec": {"files": []}, "report_path": "verification.md"}),
+            ("deliverable_verify", {"spec": {"files": []}, "repair": True}),
+            ("browser_session", {"operation": "click", "selector": "#ok"}),
+            ("desktop_list_windows", {}),
+        ]
+        for name, arguments in cases:
+            with self.subTest(tool=name, arguments=arguments):
+                verdict = policy.evaluate(tool_name=name, arguments=arguments, workspace=self.workspace)
+                self.assertTrue(verdict.allowed)
+                self.assertFalse(verdict.requires_approval)
+
+    def test_confirmed_full_access_preserves_high_risk_protection(self) -> None:
+        policy = PermissionPolicy(PermissionMode.FULL_ACCESS, continuous=True)
+        verdict = policy.evaluate(tool_name="run_command", arguments={"command": "git reset --hard HEAD"}, workspace=self.workspace)
+        self.assertTrue(verdict.allowed)
+        self.assertTrue(verdict.requires_approval)
+        blocked = policy.evaluate(tool_name="run_command", arguments={"command": "Set-MpPreference -DisableRealtimeMonitoring $true"}, workspace=self.workspace)
+        self.assertFalse(blocked.allowed)
+
     def test_safe_test_command_does_not_require_approval(self) -> None:
         policy = PermissionPolicy(PermissionMode.WORKSPACE)
         verdict = policy.evaluate(
