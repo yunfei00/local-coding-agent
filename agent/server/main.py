@@ -3057,6 +3057,7 @@ class AgentServer:
                 finish_reason: str | None = None
                 observed_output = False
                 retry_capture=None
+                protocol_repairs_this_step = 0
 
                 attempt_limit=self.model_retry_attempts+(3 if (execution.data.get('model_routing') or {}).get('allow_fallback') else 0)
                 for attempt in range(1, attempt_limit + 1):
@@ -3270,6 +3271,7 @@ class AgentServer:
                                 'debug_tool_calls','debug_stream_events','debug_message_present',
                             )}
                             diagnostic.update(model=model, attempt=attempt, attempt_limit=attempt_limit)
+                            diagnostic['classification'] = ('thinking_only' if (diagnostic.get('debug_thinking_chars') or 0) > 0 and not (diagnostic.get('debug_content_chars') or 0) and not (diagnostic.get('debug_tool_calls') or 0) else 'no_usable_output')
                             execution.data['last_empty_response_diagnostic'] = diagnostic
                             execution.save()
                             self.runtime_ledger.record(execution.key,thread_id,'model.empty_response',diagnostic,request_id=model_request_id)
@@ -3304,12 +3306,13 @@ class AgentServer:
                         if await switch_model(exc,sum(map(len,assistant_parts)),permit=attempt<attempt_limit):
                             retry_capture=capture or retry_capture;assistant_parts.clear();tool_calls.clear();step_tool_keys.clear();observed_output=False;continue
                         protocol_error = exc.code in {"MODEL_INVALID_TOOL_CALL", "MODEL_TOOL_ARGUMENTS_TRUNCATED", "MODEL_TRUNCATED", "MODEL_EMPTY_RESPONSE"}
-                        repairs = execution.data.get("tool_protocol_repairs", 0)
+                        repairs = protocol_repairs_this_step
                         if protocol_error and attempt < self.model_retry_attempts and repairs < self.model_retry_attempts - 1:
                             # The provider rejected the complete call batch before
                             # tool execution. Ask the SAME model to regenerate it;
                             # never guess/fix malformed arguments or replay tools.
-                            execution.data["tool_protocol_repairs"] = repairs + 1
+                            protocol_repairs_this_step += 1
+                            execution.data["tool_protocol_repairs"] = execution.data.get("tool_protocol_repairs", 0) + 1
                             execution.save()
                             self.runtime_ledger.record(execution.key, thread_id, 'request.retry_scheduled', {
                                 'retry': repairs + 1, 'error_code': exc.code,
