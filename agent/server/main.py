@@ -3263,6 +3263,16 @@ class AgentServer:
                                 "模型拒绝了响应，未接受完成状态。" if finish_reason == "content_filter" else
                                 f"模型响应被截断（finish_reason={finish_reason}, max_output_tokens={limit}）；未执行本批工具。请分段生成，或在 Models & Routing 调整该模型单次输出上限后新建任务。")
                         if not ''.join(assistant_parts).strip() and not tool_calls:
+                            raw_meta = getattr(getattr(provider,'provider',provider),'response_metadata',{})
+                            diagnostic = {key: raw_meta.get(key) for key in (
+                                'http_status','response_complete','finish_reason',
+                                'debug_done_reason','debug_content_chars','debug_thinking_chars',
+                                'debug_tool_calls','debug_stream_events','debug_message_present',
+                            )}
+                            diagnostic.update(model=model, attempt=attempt, attempt_limit=attempt_limit)
+                            execution.data['last_empty_response_diagnostic'] = diagnostic
+                            execution.save()
+                            self.runtime_ledger.record(execution.key,thread_id,'model.empty_response',diagnostic,request_id=model_request_id)
                             raise ProviderError('MODEL_EMPTY_RESPONSE','模型响应没有正文或工具调用，未接受完成状态。')
                         execution.finish_api(model_request_id,chunk=final_chunk,metadata=getattr(getattr(provider,'provider',provider),'response_metadata',{}))
                         if unified and execution.data.get('model_routing'):
