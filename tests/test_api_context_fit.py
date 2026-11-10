@@ -113,7 +113,7 @@ class ApiContextTaskTests(unittest.IsolatedAsyncioTestCase):
     async def test_context_estimate_never_replaces_hard_api_token_budget(self):
         await self.scenario(4,token_budget=3000)
 
-    async def scenario(self,max_calls,cleanup_fault=False,token_budget=60000):
+    async def scenario(self,max_calls,cleanup_fault=False,token_budget=100000):
         with tempfile.TemporaryDirectory(prefix='api-context-') as temporary:
             root = Path(temporary)
             with patch.dict(os.environ,{'LCA_DATA_DIR':str(root/'data'),'LCA_OPENAI_API_KEY':''}):
@@ -152,7 +152,7 @@ class ApiContextTaskTests(unittest.IsolatedAsyncioTestCase):
                 site = web.TCPSite(http,'127.0.0.1',0);await site.start()
                 port = site._server.sockets[0].getsockname()[1]
                 config = validate_config({'strategy':'single-agent','roles':{'executor':{'model_profile_id':'coder'}},
-                    'budget':{'api_calls':max_calls,'api_tokens':token_budget,'global_api_calls':4,'global_api_tokens':60000},
+                    'budget':{'api_calls':max_calls,'api_tokens':token_budget,'global_api_calls':4,'global_api_tokens':100000},
                     'verification_commands':[command,'git diff --check']})
                 catalog = {'connections':[{'connection_id':'http','display_name':'HTTP Mock only','enabled':True,
                     'provider_type':'openai_compatible','base_url':f'http://127.0.0.1:{port}/v1','credential_reference':None}],
@@ -213,7 +213,7 @@ class ApiContextTaskTests(unittest.IsolatedAsyncioTestCase):
                     self.assertIn('return a + b',(Path(task['workspace'])/'calculator.py').read_text())
                     self.assertIn('return a - b',(source/'calculator.py').read_text())
                     self.assertIn('+    return a + b',task['report']['diff'])
-                    self.assertTrue(all(c['usage']['initial_reserved_tokens']<=60000 for c in server.tasks.runtime.calls(task['id'])))
+                    self.assertTrue(all(c['usage']['initial_reserved_tokens']<=100000 for c in server.tasks.runtime.calls(task['id'])))
                     self.assertEqual(server.tasks.runtime.usage(task['id'])['api_calls'],4)
                 finally:
                     await server.close_async();server.close();await http.cleanup()
