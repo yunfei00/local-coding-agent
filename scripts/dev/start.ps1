@@ -18,14 +18,14 @@ elseif (-not (Test-Path "desktop\node_modules")) {
 }
 else {
     Write-Host "Syncing Python project dependencies into .venv..." -ForegroundColor Cyan
-    uv pip install --python $venvPython -e .
+    uv sync
     if ($LASTEXITCODE -ne 0) {
         throw "Unable to sync Python dependencies into .venv."
     }
 }
 
 Write-Host "Verifying Agent runtime dependencies..." -ForegroundColor Cyan
-& $venvPython -c "import sys; from importlib.metadata import version; import aiohttp, httpx2, mcp; from mcp.server import MCPServer; from mcp.types import ToolAnnotations; print('Agent Python:', sys.executable); print('mcp:', version('mcp')); print('httpx2:', version('httpx2')); print('Agent Python dependencies: OK')"
+& $venvPython -c "import sys; from importlib.metadata import version; import aiohttp, httpx2, mcp, openpyxl, docx, pptx; from mcp.server import MCPServer; from mcp.types import ToolAnnotations; print('Agent Python:', sys.executable); print('mcp:', version('mcp')); print('httpx2:', version('httpx2')); print('Agent Python dependencies: OK')"
 if ($LASTEXITCODE -ne 0) {
     throw "Agent Python dependency check failed. Run .\scripts\dev\bootstrap.ps1."
 }
