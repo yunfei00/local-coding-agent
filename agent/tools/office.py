@@ -7,6 +7,7 @@ from agent.office import engine
 from agent.office.edit import edit_excel, edit_word, edit_ppt
 from agent.office.windows import detect_office, export_pdf
 from agent.office.bundle import create_bundle
+from agent.office.validation import validate_office_spec
 from agent.office.uia import list_office_windows
 from agent.office.com_edit import com_edit_copy
 from agent.verification.office import verify_office
@@ -20,7 +21,7 @@ class OfficeTool(BaseTool):
         "kind":{"type":"string","enum":["excel","word","ppt"]},
         "target":{"type":"string","description":"PDF destination for export_pdf"},
         "name":{"type":"string","description":"Bundle base filename"},
-        "spec":{"type":"object","description":"Excel: sheets map; Word: title and sections; PPT: slides"}
+        "spec":{"type":"object","description":"For create excel: {sheets:{Sheet1:[[cell,cell],...]}}; word: {title:string,sections:[{heading:string,text:string,table:[[cell,...],...]}]}; ppt: {slides:[{title:string,body:string}]}. For bundle: {excel:{sheets:{...}},word:{title,sections},ppt:{slides}}. Use arrays, never JSON-encoded strings."}
     },"required":["operation"],"additionalProperties":False}
     def __init__(self, workspace):
         self.workspace=workspace
@@ -41,7 +42,10 @@ class OfficeTool(BaseTool):
                 spec=arguments.get("spec")
                 if not isinstance(spec,dict):
                     raise ToolError("OFFICE_SPEC","Missing bundle spec")
-                result=await asyncio.to_thread(create_bundle,path,str(arguments["name"]),spec)
+                validate_office_spec("bundle", None, spec)
+                if not isinstance(arguments.get("name"), str) or not arguments["name"]:
+                    raise ToolError("OFFICE_SPEC_INVALID", "name: required non-empty string")
+                result=await asyncio.to_thread(create_bundle,path,arguments["name"],spec)
                 return ToolResult(ok=True,summary="Excel Word PPT bundle created and verified",data=result,changed_paths=[self.workspace.relative(x) for x in result["files"].values()])
             if op=="com_edit_copy":
                 target=self.workspace.resolve(arguments["target"])
@@ -80,6 +84,7 @@ class OfficeTool(BaseTool):
             spec=arguments.get("spec")
             if not isinstance(spec,dict):
                 raise ToolError("OFFICE_SPEC","Missing structured spec")
+            validate_office_spec("create", kind, spec)
             if path.exists():
                 raise ToolError("OFFICE_EXISTS","Refusing to overwrite existing document")
             if kind=="excel":
