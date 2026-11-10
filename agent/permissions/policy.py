@@ -307,6 +307,11 @@ class PermissionPolicy:
             protected=project_command_risk(workspace,str(arguments.get('command','')),str(arguments.get('cwd') or '.'))
             if protected and protected[0]=='system_protection':
                 return PermissionVerdict(False,reason=protected[1],risk=protected[0])
+        # A user-selected FULL_ACCESS mode is the authorization for ordinary tools.
+        # Keep the separate high-risk/credential protections in continuous_verdict.
+        if self.mode == PermissionMode.FULL_ACCESS and self.continuous:
+            from agent.permissions.authorization import continuous_verdict
+            return continuous_verdict(self,tool_name,arguments,workspace,metadata,user_prompt)
         if tool_name == "deliverable_verify" and (arguments.get("report_path") or arguments.get("repair")):
             if self.mode == PermissionMode.READ_ONLY:
                 return PermissionVerdict(allowed=False,reason="Report writing requires workspace mode.",risk="read_only")
@@ -332,9 +337,6 @@ class PermissionPolicy:
                 approval_key="interactive:"+fingerprint,
                 risk="browser_interaction" if tool_name=="browser_session" else "office_write",
             )
-        if self.mode == PermissionMode.FULL_ACCESS and self.continuous:
-            from agent.permissions.authorization import continuous_verdict
-            return continuous_verdict(self,tool_name,arguments,workspace,metadata,user_prompt)
         if tool_name in DESKTOP_TOOLS:
             if self.mode == PermissionMode.READ_ONLY:
                 return PermissionVerdict(False, reason="Desktop tools require explicit desktop consent outside Read Only mode", risk="read_only")
