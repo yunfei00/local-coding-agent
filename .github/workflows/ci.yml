@@ -31,10 +31,7 @@ jobs:
           node-version: "22"
 
       - name: Install Python dependencies
-        run: uv sync --locked
-
-      - name: Install optional Office dependencies for full Python regression
-        run: uv pip install --python .venv openpyxl python-docx python-pptx
+        run: uv sync
 
       - name: Credential and private artifact scan
         run: uv run python scripts/validation/credential_scan.py
