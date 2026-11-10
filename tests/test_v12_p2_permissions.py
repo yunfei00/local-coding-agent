@@ -13,17 +13,21 @@ class P2PermissionTests(unittest.TestCase):
             self.assertIn("browser_session",workspace_visible)
             self.assertIn("office_document",workspace_visible)
 
-    def test_interactive_actions_require_fresh_approval(self):
+    def test_interactive_actions_respect_selected_permission_mode(self):
         with tempfile.TemporaryDirectory() as d:
             workspace=Workspace(d)
             policy=PermissionPolicy(PermissionMode.FULL_ACCESS,continuous=True)
+            workspace_policy=PermissionPolicy(PermissionMode.WORKSPACE)
             for tool,operation in [("browser_session","click"),("browser_session","workflow"),
                                    ("office_document","edit"),("office_document","export_pdf")]:
                 verdict=policy.evaluate(tool_name=tool,arguments={"operation":operation,"path":"report.xlsx"},
                                         workspace=workspace)
                 self.assertTrue(verdict.allowed)
-                self.assertTrue(verdict.requires_approval)
-                self.assertTrue(verdict.approval_key)
+                self.assertFalse(verdict.requires_approval)
+                workspace_verdict=workspace_policy.evaluate(tool_name=tool,arguments={"operation":operation,"path":"report.xlsx"},workspace=workspace)
+                self.assertTrue(workspace_verdict.allowed)
+                self.assertTrue(workspace_verdict.requires_approval)
+                self.assertTrue(workspace_verdict.approval_key)
 
     def test_read_only_tools_are_not_blocked(self):
         with tempfile.TemporaryDirectory() as d:
