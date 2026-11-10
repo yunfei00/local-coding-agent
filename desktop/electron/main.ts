@@ -1184,6 +1184,12 @@ ipcMain.handle("agent:skills-request", async (_event, operation: string, payload
   if (!allowed.has(operation)) throw new Error("Unsupported skills operation");
   return sendRequest("skills." + operation, "skills.result", payload, {}, operation === "install" ? 90_000 : 15_000);
 });
+ipcMain.handle("agent:verification-request", async (_event, payload: Record<string, unknown>) => {
+  if (!payload.spec || typeof payload.spec !== "object" || typeof payload.report_path !== "string") {
+    throw new Error("Verification requires a spec and report path");
+  }
+  return sendRequest("verification.run", "verification.result", payload, {}, 90_000);
+});
 ipcMain.handle("agent:browser-request", async (_event, payload: Record<string, unknown>) => {
   const allowed = new Set(["open","snapshot","click","fill","select","check","uncheck","press","navigate","wait","back","forward","scroll","tables","screenshot","workflow","diagnose","close"]);
   if (!allowed.has(String(payload.operation))) throw new Error("Unsupported browser operation");
