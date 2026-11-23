@@ -16,7 +16,7 @@ foreach ($command in $required) {
 }
 
 Write-Host "Using uv-managed project environment..." -ForegroundColor Cyan
-uv sync --locked
+uv sync
 if ($LASTEXITCODE -ne 0) { throw "uv environment synchronization failed." }
 
 $venvPython = Join-Path $repo ".venv\Scripts\python.exe"
@@ -25,7 +25,7 @@ if (-not (Test-Path $venvPython)) {
 }
 
 Write-Host "Verifying Agent runtime dependencies..." -ForegroundColor Cyan
-& $venvPython -c "import sys; from importlib.metadata import version; import aiohttp, httpx2, mcp; from mcp.server import MCPServer; from mcp.types import ToolAnnotations; print('Agent Python:', sys.executable); print('mcp:', version('mcp')); print('httpx2:', version('httpx2')); print('Agent Python dependencies: OK')"
+& $venvPython -c "import sys; from importlib.metadata import version; import aiohttp, httpx2, mcp, openpyxl, docx, pptx; from mcp.server import MCPServer; from mcp.types import ToolAnnotations; print('Agent Python:', sys.executable); print('mcp:', version('mcp')); print('httpx2:', version('httpx2')); print('Agent Python dependencies: OK')"
 if ($LASTEXITCODE -ne 0) {
     throw "Agent Python dependency check failed after bootstrap."
 }

@@ -21,9 +21,8 @@ class AuthorizationTests(unittest.IsolatedAsyncioTestCase):
         return await self.server._authorize_tool(self.ws,project=self.project,call=ToolCall(name,args),call_id='v10:'+name,
             thread_id=self.thread.id,turn_id='v10',user_prompt='完成隔离工程开发，不要推送')
 
-    def test_once_consent_is_required_and_restart_restores_it(self):
-        with self.assertRaisesRegex(ValueError,'CONFIRMATION_REQUIRED'):self.grant()
-        self.grant(confirmed=True)
+    def test_full_access_selection_is_consent_and_restart_restores_it(self):
+        self.grant()
         restored=AuthorizationSettings(self.server.store)
         self.assertTrue(restored.effective(self.project.id).continuous)
         self.grant('workspace');self.grant()

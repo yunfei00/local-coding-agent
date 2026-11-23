@@ -1,0 +1,1 @@
+{"name":"browser","description":"网页内容读取和受限浏览器自动化。","version":"1.2.0","capabilities":["browser.snapshot"]}

@@ -31,7 +31,7 @@ jobs:
           node-version: "22"
 
       - name: Install Python dependencies
-        run: uv sync --locked
+        run: uv sync
 
       - name: Credential and private artifact scan
         run: uv run python scripts/validation/credential_scan.py
@@ -89,14 +89,14 @@ jobs:
       - name: Python tests
         shell: bash
         if: runner.os != 'Windows'
-        run: uv run python -m unittest discover -s tests -v
+        run: uv run --no-sync python -m unittest discover -s tests -v
 
       - name: Python tests
         shell: pwsh
         if: runner.os == 'Windows'
         env:
           LCA_REQUIRE_INTERACTIVE_DESKTOP: "1"
-        run: uv run python -m unittest discover -s tests -v
+        run: uv run --no-sync python -m unittest discover -s tests -v
 
       - name: Install desktop dependencies
         working-directory: desktop

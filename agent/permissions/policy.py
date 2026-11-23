@@ -34,6 +34,11 @@ READ_ONLY_TOOLS = {
     "git_branches",
     "git_commit_prepare",
     "git_worktree_list",
+    "skills_list",
+    "skills_read",
+    "skills_suggest",
+    "browser_snapshot",
+    "deliverable_verify",
 }
 
 WORKSPACE_TOOLS = READ_ONLY_TOOLS | set(DESKTOP_TOOLS) | {
@@ -51,6 +56,8 @@ WORKSPACE_TOOLS = READ_ONLY_TOOLS | set(DESKTOP_TOOLS) | {
     "git_commit",
     "git_worktree_create",
     "git_worktree_remove",
+    "office_document",
+    "browser_session",
 }
 
 
@@ -300,9 +307,36 @@ class PermissionPolicy:
             protected=project_command_risk(workspace,str(arguments.get('command','')),str(arguments.get('cwd') or '.'))
             if protected and protected[0]=='system_protection':
                 return PermissionVerdict(False,reason=protected[1],risk=protected[0])
+        # A user-selected FULL_ACCESS mode is the authorization for ordinary tools.
+        # Keep the separate high-risk/credential protections in continuous_verdict.
         if self.mode == PermissionMode.FULL_ACCESS and self.continuous:
             from agent.permissions.authorization import continuous_verdict
             return continuous_verdict(self,tool_name,arguments,workspace,metadata,user_prompt)
+        if tool_name == "deliverable_verify" and (arguments.get("report_path") or arguments.get("repair")):
+            if self.mode == PermissionMode.READ_ONLY:
+                return PermissionVerdict(allowed=False,reason="Report writing requires workspace mode.",risk="read_only")
+            return PermissionVerdict(allowed=True,requires_approval=True,
+                reason="Create a verification report or repair deliverable files inside the workspace.",
+                approval_key="verify_report:"+str(arguments.get("report_path")),risk="file_write")
+        if tool_name in {"office_document", "browser_session"}:
+            operation = str(arguments.get("operation", ""))
+            read_only_ops = (
+                {"inspect","verify","detect","uia_list"} if tool_name == "office_document"
+                else {"diagnose","snapshot","tables","wait","back","forward","scroll","close"}
+            )
+            if operation in read_only_ops:
+                if self.mode == PermissionMode.READ_ONLY:
+                    return PermissionVerdict(allowed=False,reason="Interactive session tools require workspace mode.",risk="read_only")
+                return PermissionVerdict(allowed=True)
+            if self.mode == PermissionMode.READ_ONLY:
+                return PermissionVerdict(allowed=False,reason="Modification disabled in Read Only mode.",risk="read_only")
+            fingerprint = json.dumps({"tool":tool_name,"arguments":arguments},sort_keys=True,ensure_ascii=False,default=str)
+            return PermissionVerdict(
+                allowed=True,requires_approval=True,
+                reason="Office write or browser interaction may change files or external websites; confirm this operation.",
+                approval_key="interactive:"+fingerprint,
+                risk="browser_interaction" if tool_name=="browser_session" else "office_write",
+            )
         if tool_name in DESKTOP_TOOLS:
             if self.mode == PermissionMode.READ_ONLY:
                 return PermissionVerdict(False, reason="Desktop tools require explicit desktop consent outside Read Only mode", risk="read_only")

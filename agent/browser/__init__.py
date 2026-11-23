@@ -1,0 +1,1 @@
+"""Browser automation: optional Playwright, explicit navigation boundaries."""
