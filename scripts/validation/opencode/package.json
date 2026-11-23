@@ -1,0 +1,9 @@
+{
+  "name": "lca-opencode-p0-audit",
+  "private": true,
+  "version": "0.0.0",
+  "description": "固定版本 P0 审计依赖；尚未接入产品运行时",
+  "dependencies": {
+    "@opencode/sdk": "2.2.6"
+  }
+}
