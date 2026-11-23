@@ -9,7 +9,7 @@
 | SSE 与空闲中断 | PASS | SSE 200，接收首段 83 字节；空闲中断 200 且 `interrupted=false`。 |
 | POC 退出 | PASS（限定） | 回收本次启动的进程，根进程退出码为 1。本次采用定向终止，优雅退出和异常恢复尚待验收。 |
 | 端口冲突、断线重放、运行中取消与恢复 | NOT_RUN | 基础 POC 使用系统分配的空闲 loopback 端口。 |
-| 两个目标 Ollama 模型清单与任务 | BLOCKED | 已有配置的服务拒绝连接，无法判断模型是否存在；问答、文件、终端和失败恢复未执行。 |
+| 两个目标 Ollama 模型清单与任务 | BLOCKED | Gemma 配置指向本机回环地址，未找到可用的本机 Ollama 服务或已配置的 SSH 端口转发。模型是否存在及问答、文件、终端和失败恢复均待验证。 |
 | 内置工具约束、动态撤销、MCP 授权与取消 | NOT_RUN | 已核对接口，尚无实际执行轨迹证明约束。 |
 | 请求前预算硬闸 | BLOCKED | 找到请求发送前扩展点，各条路径的动态覆盖尚未验证。 |
 
@@ -21,7 +21,10 @@
 | `npm run desktop:typecheck` | PASS |
 | `npm run desktop:test` | 102 PASS |
 | `npm run desktop:build` | PASS |
+| `node scripts/validation/desktop-smoke.cjs` | Windows 56 PASS，0 跳过。含现有 Agent 路径，模型 HTTP 为模拟服务。 |
 
 Python 首轮在调用子进程时遇到主机注入的 Git 环境配置项缺失。表中数字来自只清除当次测试进程所继承 Git 配置变量后的完整重跑。失败记录仍保留，来源见 `build/opencode-p0/python-baseline-clean-env.log`。服务原始报告及生成的 OpenAPI 在 `build/opencode-p0/service-*/`，只读 Ollama 探测在 `build/opencode-p0/ollama-availability.json`。归档、源码快照、会话数据库及本机日志均在本地构建目录。
+
+两个本机 Electron 集成失败的工具记录都出现 `COMMAND_TIMEOUT`，随后启动的进程报告退出码 1。相同产品基线的 [main CI](https://github.com/yunfei00/local-coding-agent/actions/runs/45199993944) 通过。补充证据见 `validation-reports/desktop-smoke.json`、`validation-reports/m2-project-test_electron_real_main_node_python_descendants_stop_and_cancel.json` 和 `validation-reports/m5-debug-test_actual_electron_multiround_http_gui_stop_resume_restart.json`。
 
 P1–P5 尚未开始。继续阶段开发需要真实 Ollama 验收、工具权限和预算硬闸的动态证据，以及 Windows 与 Ubuntu CI 通过。
