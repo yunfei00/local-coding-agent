@@ -6,9 +6,9 @@
 | --- | --- | --- |
 | 启动与鉴权 | `serve --hostname 127.0.0.1 --port 0`，进程间随机密码，HTTP Basic 用户为 `opencode`。 `GET /api/info` 返回版本，无认证为 401。 | Windows 实测 |
 | 新建与回查 | `POST /api/session` 接收标题及 `permissions` 规则，返回 `data.id`。 `GET /api/session` 可再次查到该 ID。 | Windows 实测 |
-| 会话输入 | `POST /api/session/:sessionID/prompt` 是 v2 会话输入，协议区分入队及恢复选项。 | 源码核验，模型路径待测 |
-| 事件 | `GET /api/event` 提供 SSE，连接时收到初始事件。 | 连接实测，模型增量及重放待测 |
-| 取消与恢复 | `POST /api/session/:sessionID/interrupt` 接受可选 `resume`，回报 `interrupted`。对空闲会话为 `false`。运行中取消、重启恢复及副作用对账待实测。 | 空闲路径实测 |
+| 会话输入 | `POST /api/session/:sessionID/prompt` 是 v2 会话输入，协议区分入队及恢复选项。 | Gemma 真实会话实测 |
+| 事件 | `GET /api/event` 提供实时 SSE。服务默认关闭历史 payload 持久化，重连应以 `GET /api/session/:sessionID` 快照对账。 | 初始事件、模型增量、工具和完成事件实测 |
+| 取消与恢复 | `POST /api/session/:sessionID/interrupt` 接受可选 `resume`，回报 `interrupted`。对空闲会话为 `false`。取消活动请求后，重启仍可取得 `interrupted` 快照。 | 空闲、活动和重启实测，跨副作用恢复仍待证 |
 | 权限 | 会话规则以 `action/resource/effect` 表示。 `Permission.Service.assert` 强制校验，`permission.evaluate` 扩展判断，`Session.setPermissions` 写入会话规则并发布事件。拒绝可返回 `Permission.BlockedError` 或 `Permission.DeclinedError`。 | 源码核验，内置工具和动态撤销待测 |
 | MCP | `GET /api/mcp` 查询状态，`/api/experimental/mcp/:server` 提供管理接口。 | 源码核验，工具授权和取消待测 |
 | 模型与预算 | `model.request` 可调整模型端点，`http.request` 位于真正的 HTTP 发送前。WebSocket 使用另一路传输扩展点，HTTP 回退经过 HTTP 扩展点。 | 源码核验，全路径硬闸待测 |
