@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import time
+from agent.core.engine_lease import EngineLeaseOccupied
 
 
 def workspace_overlap(left, right):
@@ -93,14 +94,18 @@ class BackgroundJobs:
             async with self.condition:
                 await self.condition.wait_for(available)
                 self.running_claims[ident]=claims
-            self.update(ident,'running')
             from agent.core.engine_lease import engine_lease
             data_dir = os.environ.get("LCA_DATA_DIR")
             if data_dir:
                 with engine_lease(data_dir):
+                    self.update(ident,'running')
                     await operation()
             else:
+                self.update(ident,'running')
                 await operation()
+        except EngineLeaseOccupied:
+            self.update(ident,'paused','其他引擎占用执行权；未执行工具，请确认后手动恢复')
+            raise
         except asyncio.CancelledError:
             self.update(ident,'paused','任务中断；保留原执行账本和 Checkpoint')
             raise
