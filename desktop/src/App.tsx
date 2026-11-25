@@ -222,6 +222,22 @@ function resultObject(value: unknown): Record<string, unknown> {
 }
 
 function App() {
+  const [engineStatus, setEngineStatus] = useState<Awaited<ReturnType<NonNullable<Window["localAgent"]["getEngineStatus"]>>> | null>(null);
+  useEffect(() => {
+    let disposed = false;
+    const refresh = async () => {
+      try {
+        const result = await window.localAgent.getEngineStatus?.();
+        if (!disposed && result) setEngineStatus(result);
+      } catch {
+        if (!disposed) setEngineStatus(null);
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 5000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, []);
+
   const [status, setStatus] = useState<Status>(initialStatus);
   const [provider, setProvider] = useState<ProviderStatus | null>(null);
   const [permissionMode, setPermissionMode] =
@@ -1457,8 +1473,8 @@ function App() {
           </div>
           <nav className="app-menubar" role="menubar" aria-label="Application menu">
             <ActionMenu label="引擎" className="app-menu-button" menuBarItem actions={[
-              {label:"Local Coding Agent（当前）", disabled:true, onSelect:()=>{}},
-              {label:"OpenCode v2.2.6（待安全验收）", disabled:true, onSelect:()=>{}}
+              {label:engineStatus?.selected === "legacy" ? "Local Coding Agent（当前）" : "Local Coding Agent", disabled:true, onSelect:()=>{}},
+              {label:"OpenCode " + (engineStatus?.engines.find(engine=>engine.id==="opencode")?.version ?? "v2.2.6") + (engineStatus ? "（待安全验收）" : "（状态未确认）"), disabled:true, onSelect:()=>{}}
             ]}>引擎</ActionMenu>
             <ActionMenu label="文件" className="app-menu-button" menuBarItem actions={[
               {label:"添加现有文件夹…", disabled:status.state !== "ready" || Boolean(runningTurnId), onSelect:() => void openProject()},
