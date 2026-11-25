@@ -3,7 +3,20 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+from pathlib import Path
 import time
+
+
+def workspace_overlap(left, right):
+    if not left or not right:
+        return False
+    a = os.path.normcase(str(Path(left).resolve()))
+    b = os.path.normcase(str(Path(right).resolve()))
+    try:
+        return os.path.commonpath((a, b)) in (a, b)
+    except ValueError:
+        return False
 
 
 class BackgroundJobs:
@@ -73,7 +86,7 @@ class BackgroundJobs:
                 from agent.desktop.resources import require_resources,MIB
                 try:require_resources(minimum_available=2560*MIB,minimum_commit=2560*MIB)
                 except Exception:return False
-            return (len(self.running_claims)<maximum and all(c['maximum']>len(self.running_claims) and not scheduling_conflict(claims,c) for c in self.running_claims.values()))
+            return (len(self.running_claims)<maximum and all(c['maximum']>len(self.running_claims) and not scheduling_conflict(claims,c) and not workspace_overlap(claims.get('workspace'),c.get('workspace')) for c in self.running_claims.values()))
         try:
             async with self.condition:
                 await self.condition.wait_for(available)
