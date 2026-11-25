@@ -960,14 +960,19 @@ ipcMain.on("renderer:ready", () => {
 
 const migrationSidecar = new OpenCodeSupervisor();
 let migrationDiagnosticRunning = false;
+let migrationDiagnosticDone: Promise<void> = Promise.resolve();
 ipcMain.handle("agent:engine-diagnostic", async () => {
   if (migrationDiagnosticRunning || quitInProgress) throw new Error("Diagnostic unavailable");
   migrationDiagnosticRunning = true;
+  let finishDiagnostic!: () => void;
+  migrationDiagnosticDone = new Promise<void>(resolve=>{finishDiagnostic=resolve;});
   try {
     const picked = await dialog.showOpenDialog({properties:["openFile"],filters:[{name:"OpenCode executable",extensions:["exe"]}]});
     if (picked.canceled || !picked.filePaths[0] || quitInProgress) return {status:"cancelled"};
     const root = await mkdtemp(path.join(app.getPath("userData"),"opencode-diagnostic-"));
+    if (quitInProgress) return {status:"cancelled"};
     await migrationSidecar.start(picked.filePaths[0],root);
+    if (quitInProgress) return {status:"cancelled"};
     const adapter = new OpenCodeAdapter((route,method,body)=>migrationSidecar.request(route,method,body));
     const id = await adapter.create(root,"P1 isolated diagnostic");
     const store = new EngineSessionStore(path.join(root,"bindings.json"));
@@ -986,7 +991,7 @@ ipcMain.handle("agent:engine-diagnostic", async () => {
     const interrupt = await adapter.cancel(id);
     return {status:"passed",sessionId:id,interrupt};
   } finally {
-    try { await migrationSidecar.stop(); } finally { migrationDiagnosticRunning=false; }
+    try { await migrationSidecar.stop(); } finally { migrationDiagnosticRunning=false; finishDiagnostic(); }
   }
 });
 ipcMain.handle("agent:engine-status", () => ({
@@ -1597,7 +1602,7 @@ app.on("before-quit", (event) => {
   }
 
   quitInProgress = true;
-  void Promise.allSettled([stopAgent(), migrationSidecar.stop()]).finally(() => {
+  void Promise.allSettled([stopAgent(), migrationDiagnosticDone.then(()=>migrationSidecar.stop())]).finally(() => {
     quitReady = true;
     app.quit();
   });
