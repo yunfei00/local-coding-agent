@@ -446,12 +446,20 @@ class TaskService:
         # including managed worktree creation, verification and cleanup.
         async def execute():
             await self.run(ws, task["id"], project, turn_id)
-        running = asyncio.create_task(
-            self.server.background.run(turn_id, execute,
-                claims={"workspace": str(project.workspace.root.resolve()), "gui": True},
-                maximum=1),
-            name=turn_id,
-        )
+        async def scheduled():
+            from agent.core.engine_lease import EngineLeaseOccupied
+            try:
+                await self.server.background.run(turn_id, execute,
+                    claims={"workspace": str(project.workspace.root.resolve()), "gui": True},
+                    maximum=1)
+            except EngineLeaseOccupied:
+                reason = "其他引擎占用执行权；未执行工具，请确认后手动恢复"
+                self.runtime.transition(task["id"], "paused", reason)
+                self.running.pop(task["id"], None)
+                with suppress(ConnectionResetError, RuntimeError):
+                    await ws.send_json(envelope("task.updated", {"task": self.public(self.runtime.get(task["id"]))}, thread_id=task["thread_id"], turn_id=turn_id))
+                    await ws.send_json(envelope("turn.failed", {"code": "ENGINE_EXECUTION_BLOCKED", "message": reason, "recoverable": True}, thread_id=task["thread_id"], turn_id=turn_id))
+        running = asyncio.create_task(scheduled(), name=turn_id)
         self.server.active_turns[turn_id] = running
         self.server.active_turn_threads[turn_id] = task["thread_id"]
         running.add_done_callback(lambda _: self.server.forget_turn(turn_id))
