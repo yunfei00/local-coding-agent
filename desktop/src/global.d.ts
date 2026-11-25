@@ -14,6 +14,7 @@ declare global {
   interface Window {
     localAgent: {
       platform: string;
+      getEngineStatus?: () => Promise<{selected: "legacy" | "opencode"; engines: Array<{id: "legacy" | "opencode"; available: boolean; version?: string; reason?: string}>}>;
       setWindowTheme: (theme: "light" | "dark") => Promise<void>;
       menuAction: (action: string) => Promise<void>;
       openProjectFolder: (projectId?:string) => Promise<void>;
