@@ -1,3 +1,4 @@
+import { acquireEngineLease } from "./engineLease";
 import { EngineSessionStore } from "./engineSessionStore";
 import { EngineEventBridge } from "./engineEventBridge";
 import { OpenCodeAdapter } from "./engineAdapter";
@@ -964,12 +965,15 @@ let migrationDiagnosticDone: Promise<void> = Promise.resolve();
 ipcMain.handle("agent:engine-diagnostic", async () => {
   if (migrationDiagnosticRunning || quitInProgress) throw new Error("Diagnostic unavailable");
   migrationDiagnosticRunning = true;
+  let releaseLease: (()=>Promise<void>)|undefined;
   let finishDiagnostic!: () => void;
   migrationDiagnosticDone = new Promise<void>(resolve=>{finishDiagnostic=resolve;});
   try {
     const picked = await dialog.showOpenDialog({properties:["openFile"],filters:[{name:"OpenCode executable",extensions:["exe"]}]});
     if (picked.canceled || !picked.filePaths[0] || quitInProgress) return {status:"cancelled"};
     const root = await mkdtemp(path.join(app.getPath("userData"),"opencode-diagnostic-"));
+    if (quitInProgress) return {status:"cancelled"};
+    releaseLease = await acquireEngineLease(process.env.LCA_DATA_DIR || app.getPath("userData"));
     if (quitInProgress) return {status:"cancelled"};
     await migrationSidecar.start(picked.filePaths[0],root);
     if (quitInProgress) return {status:"cancelled"};
@@ -991,7 +995,7 @@ ipcMain.handle("agent:engine-diagnostic", async () => {
     const interrupt = await adapter.cancel(id);
     return {status:"passed",sessionId:id,interrupt};
   } finally {
-    try { await migrationSidecar.stop(); } finally { migrationDiagnosticRunning=false; finishDiagnostic(); }
+    try { await migrationSidecar.stop(); await releaseLease?.(); } finally { migrationDiagnosticRunning=false; finishDiagnostic(); }
   }
 });
 ipcMain.handle("agent:engine-status", () => ({
