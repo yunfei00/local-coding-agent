@@ -242,7 +242,7 @@ async function main() {
     assert.equal(await page.locator(".workspace > .topbar").count(), 0);
     assert.equal(await page.locator(".topbar").count(), 1);
     assert.deepEqual(await page.locator(".topbar button").evaluateAll(nodes => nodes.map(e => e.getAttribute("aria-label"))),
-      ["Go back","Go forward","Toggle sidebar","文件","编辑","视图","帮助"]);
+      ["Go back","Go forward","Toggle sidebar","引擎","文件","编辑","视图","帮助"]);
     assert.equal(await page.locator(".topbar .chat-header-actions, .topbar .chat-header-title").count(), 0);
     assert.equal(await page.locator(".workspace > .chat-header").count(), 1);
     assert(await page.locator(".chat-header").evaluate(e => Math.abs(e.getBoundingClientRect().top - document.querySelector(".topbar").getBoundingClientRect().bottom) <= 1));
@@ -269,7 +269,7 @@ async function main() {
     checks.push("Window row contains only Back/Forward, sidebar toggle and application menus; chat actions live below, navigation restores draft without model calls or extra threads");
     assert.equal(await page.locator(".topbar").evaluate(e => getComputedStyle(e).backgroundColor), "rgb(26, 34, 37)");
     const appMenus = page.getByRole("menubar",{name:"Application menu"});
-    assert.deepEqual(await appMenus.getByRole("menuitem").allTextContents(), ["文件","编辑","视图","帮助"]);
+    assert.deepEqual(await appMenus.getByRole("menuitem").allTextContents(), ["引擎","文件","编辑","视图","帮助"]);
     await appMenus.getByRole("menuitem",{name:"文件",exact:true}).click();
     await page.getByRole("menuitem",{name:"新建项目…",exact:true}).waitFor();
     await page.keyboard.press("Escape");
