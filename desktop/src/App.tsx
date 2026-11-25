@@ -1473,6 +1473,7 @@ function App() {
           </div>
           <nav className="app-menubar" role="menubar" aria-label="Application menu">
             <ActionMenu label="引擎" className="app-menu-button" menuBarItem actions={[
+              {label:"OpenCode 隔离诊断", disabled:!window.localAgent.runEngineDiagnostic, onSelect:()=>{void window.localAgent.runEngineDiagnostic?.().then(result=>window.alert("OpenCode 诊断："+result.status)).catch(error=>window.alert("OpenCode 诊断失败："+String(error)));}},
               {label:engineStatus?.selected === "legacy" ? "Local Coding Agent（当前）" : "Local Coding Agent", disabled:true, onSelect:()=>{}},
               {label:"OpenCode " + (engineStatus?.engines.find(engine=>engine.id==="opencode")?.version ?? "v2.2.6") + (engineStatus ? "（待安全验收）" : "（状态未确认）"), disabled:true, onSelect:()=>{}}
             ]}>引擎</ActionMenu>
