@@ -1863,20 +1863,26 @@ class AgentServer:
                             'code': 'AGENT_INTERNAL_ERROR', 'message': '执行发生内部错误，查看诊断与检查点。',
                             'recoverable': True,
                         }, thread_id=thread_id, turn_id=turn_id))
-            async def foreground_execution():
+            async def scheduled_execution():
+                from agent.core.engine_lease import EngineLeaseOccupied
                 try:
                     await self.background.run(turn_id, execute_turn,
-                        claims={'workspace': str(project.workspace.root.resolve()), 'gui': True},
-                        maximum=1)
-                except Exception:
+                        claims=claims if background else {'workspace': str(project.workspace.root.resolve()), 'gui': True},
+                        maximum=parallel if background else 1)
+                except EngineLeaseOccupied:
+                    if background:
+                        execution = self.queued_execution(turn_id)
+                        if execution:
+                            self.runtime_ledger.transition(execution,'paused',turn_id,reason='其他引擎占用执行权；未执行工具，请确认后手动恢复')
+                    output = self.background if background else ws
                     with suppress(ConnectionResetError, RuntimeError):
-                        await ws.send_json(envelope('turn.failed', {
+                        await output.send_json(envelope('turn.failed', {
                             'code': 'ENGINE_EXECUTION_BLOCKED',
                             'message': '执行权不可用，请确认其他引擎已停止后重试。',
                             'recoverable': True,
                         }, thread_id=thread_id, turn_id=turn_id))
             task = asyncio.create_task(
-                self.background.run(turn_id,execute_turn,claims=claims,maximum=parallel) if background else foreground_execution(),
+                scheduled_execution(),
                 name=turn_id,
             )
             self.active_turns[turn_id] = task
