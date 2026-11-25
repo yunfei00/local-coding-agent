@@ -1456,6 +1456,10 @@ function App() {
             <button type="button" aria-label="Toggle sidebar" title="Toggle sidebar" aria-controls="project-sidebar" aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed(value => !value)}><Icon name="sidebar" /></button>
           </div>
           <nav className="app-menubar" role="menubar" aria-label="Application menu">
+            <ActionMenu label="引擎" className="app-menu-button" menuBarItem actions={[
+              {label:"Local Coding Agent（当前）", disabled:true, onSelect:()=>{}},
+              {label:"OpenCode v2.2.6（待安全验收）", disabled:true, onSelect:()=>{}}
+            ]}>引擎</ActionMenu>
             <ActionMenu label="文件" className="app-menu-button" menuBarItem actions={[
               {label:"添加现有文件夹…", disabled:status.state !== "ready" || Boolean(runningTurnId), onSelect:() => void openProject()},
               {label:"新建项目…", disabled:status.state !== "ready" || Boolean(runningTurnId), onSelect:() => setNewProjectOpen(true)},
