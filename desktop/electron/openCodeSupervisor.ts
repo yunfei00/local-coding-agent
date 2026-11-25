@@ -55,7 +55,7 @@ export class OpenCodeSupervisor {
       await unauth.body?.cancel();
       if(unauth.status!==401) throw new Error("Sidecar authentication missing");
       const info=await this.request("/api/info") as {version?:string};
-      if(info.version!=="2.2.6") throw new Error("Sidecar version mismatch");
+      if(!["2.2.6","v2.2.6","opencode v2.2.6"].includes(info.version ?? "")) throw new Error("Sidecar version mismatch");
     } catch(error) { await this.stop(); throw error; }
     finally { this.starting=false; }
   }
