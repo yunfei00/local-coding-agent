@@ -1,3 +1,4 @@
+import { WorkspaceEngineLock } from "./workspaceEngineLock";
 // P1 contract. OpenCode execution stays fail-closed until P0/P3 gates pass.
 export type EngineId = "legacy" | "opencode";
 export type SessionBinding = { threadId: string; engine: EngineId; sessionId: string; projectRoot: string };
@@ -32,6 +33,7 @@ export class OpenCodeAdapter implements AgentEngine {
 }
 export class EngineRouter {
   private readonly active = new Set<string>();
+  private readonly workspaceLock = new WorkspaceEngineLock();
   constructor(private readonly legacy: AgentEngine, private readonly opencode: AgentEngine) {}
   engine(id: EngineId = "legacy"): AgentEngine {
     if (id === "legacy") return this.legacy;
@@ -42,7 +44,10 @@ export class EngineRouter {
     if (binding.engine !== "legacy") throw new Error("OpenCode execution disabled");
     if (this.active.has(binding.threadId)) throw new Error("Thread already active");
     this.active.add(binding.threadId);
-    try { await this.engine(binding.engine).send(binding.sessionId, prompt); }
-    finally { this.active.delete(binding.threadId); }
+    try {
+      const lease = await this.workspaceLock.acquire(binding.projectRoot, binding.engine, binding.threadId);
+      try { await this.engine(binding.engine).send(binding.sessionId, prompt); }
+      finally { lease.release(); }
+    } finally { this.active.delete(binding.threadId); }
   }
 }
