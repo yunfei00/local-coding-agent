@@ -80,6 +80,8 @@ class BackgroundJobs:
 
     async def run(self, ident, operation, *, claims=None, maximum=1):
         from agent.core.workflow import scheduling_conflict
+        if os.environ.get('LCA_DATA_DIR'):
+            maximum = 1  # Shared cross-process lease is intentionally exclusive.
         claims={**(claims or {}),'maximum':maximum}
         def available():
             if maximum>1 and self.running_claims:
@@ -92,7 +94,13 @@ class BackgroundJobs:
                 await self.condition.wait_for(available)
                 self.running_claims[ident]=claims
             self.update(ident,'running')
-            await operation()
+            from agent.core.engine_lease import engine_lease
+            data_dir = os.environ.get("LCA_DATA_DIR")
+            if data_dir:
+                with engine_lease(data_dir):
+                    await operation()
+            else:
+                await operation()
         except asyncio.CancelledError:
             self.update(ident,'paused','任务中断；保留原执行账本和 Checkpoint')
             raise
