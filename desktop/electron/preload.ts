@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from "electron";
 type AgentEventHandler = (event: unknown) => void;
 
 contextBridge.exposeInMainWorld("localAgent", {
+  getEngineStatus: () => ipcRenderer.invoke("agent:engine-status"),
   platform: process.platform,
   setWindowTheme: (theme: "light" | "dark") => ipcRenderer.invoke("window:theme", theme),
   menuAction: (action: string) => ipcRenderer.invoke("window:menu-action", action),
