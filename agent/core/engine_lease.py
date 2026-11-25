@@ -9,6 +9,10 @@ import uuid
 from contextlib import contextmanager
 
 
+class EngineLeaseOccupied(RuntimeError):
+    pass
+
+
 @contextmanager
 def engine_lease(data_dir):
     root = Path(data_dir).resolve()
@@ -18,7 +22,7 @@ def engine_lease(data_dir):
     try:
         lock.mkdir()
     except FileExistsError as exc:
-        raise RuntimeError("Engine execution lease occupied; verify previous execution stopped") from exc
+        raise EngineLeaseOccupied("Engine execution lease occupied; verify previous execution stopped") from exc
     owner = lock / "owner"
     try:
         owner.write_text(f"{os.getpid()}:{token}", encoding="ascii")
