@@ -14,9 +14,9 @@ describe("P1 engine contract", () => {
     const legacy = new LegacyAdapter({create:async()=>"l",status:async()=>null,send,cancel:async()=>null});
     const router = new EngineRouter(legacy,new OpenCodeAdapter(async()=>null));
     expect(router.engine()).toBe(legacy);
-    await expect(router.run({threadId:"t",engine:"opencode",sessionId:"s",projectRoot:"fixture"},"hello")).rejects.toThrow("disabled");
+    await expect(router.run({threadId:"t",engine:"opencode",sessionId:"s",projectRoot:process.cwd()},"hello")).rejects.toThrow("disabled");
     expect(send).not.toHaveBeenCalled();
-    await router.run({threadId:"t",engine:"legacy",sessionId:"l",projectRoot:"fixture"},"hello");
+    await router.run({threadId:"t",engine:"legacy",sessionId:"l",projectRoot:process.cwd()},"hello");
     expect(send).toHaveBeenCalledWith("l","hello");
   });
 });
