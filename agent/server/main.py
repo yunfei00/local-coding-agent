@@ -1863,8 +1863,20 @@ class AgentServer:
                             'code': 'AGENT_INTERNAL_ERROR', 'message': '执行发生内部错误，查看诊断与检查点。',
                             'recoverable': True,
                         }, thread_id=thread_id, turn_id=turn_id))
+            async def foreground_execution():
+                try:
+                    await self.background.run(turn_id, execute_turn,
+                        claims={'workspace': str(project.workspace.root.resolve()), 'gui': True},
+                        maximum=1)
+                except Exception:
+                    with suppress(ConnectionResetError, RuntimeError):
+                        await ws.send_json(envelope('turn.failed', {
+                            'code': 'ENGINE_EXECUTION_BLOCKED',
+                            'message': '执行权不可用，请确认其他引擎已停止后重试。',
+                            'recoverable': True,
+                        }, thread_id=thread_id, turn_id=turn_id))
             task = asyncio.create_task(
-                self.background.run(turn_id,execute_turn,claims=claims,maximum=parallel) if background else execute_turn(),
+                self.background.run(turn_id,execute_turn,claims=claims,maximum=parallel) if background else foreground_execution(),
                 name=turn_id,
             )
             self.active_turns[turn_id] = task
