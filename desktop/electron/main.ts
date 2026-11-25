@@ -1,3 +1,7 @@
+import { OpenCodeAdapter } from "./engineAdapter";
+import { EngineEventBridge } from "./engineEventBridge";
+import { EngineSessionStore } from "./engineSessionStore";
+import { mkdtemp } from "node:fs/promises";
 import { OpenCodeSupervisor } from "./openCodeSupervisor";
 import {
   app,
@@ -953,6 +957,24 @@ ipcMain.on("renderer:ready", () => {
 });
 
 const migrationSidecar = new OpenCodeSupervisor();
+let migrationDiagnosticRunning = false;
+ipcMain.handle("agent:engine-diagnostic", async () => {
+  if (migrationDiagnosticRunning || quitInProgress) throw new Error("Diagnostic unavailable");
+  migrationDiagnosticRunning = true;
+  try {
+    const picked = await dialog.showOpenDialog({properties:["openFile"],filters:[{name:"OpenCode executable",extensions:["exe"]}]});
+    if (picked.canceled || !picked.filePaths[0] || quitInProgress) return {status:"cancelled"};
+    const root = await mkdtemp(path.join(app.getPath("userData"),"opencode-diagnostic-"));
+    await migrationSidecar.start(picked.filePaths[0],root);
+    const adapter = new OpenCodeAdapter((route,method,body)=>migrationSidecar.request(route,method,body));
+    const id = await adapter.create(root,"P1 isolated diagnostic");
+    const snapshot = await adapter.status(id);
+    const interrupt = await adapter.cancel(id);
+    return {status:"passed",sessionId:id,snapshot,interrupt};
+  } finally {
+    try { await migrationSidecar.stop(); } finally { migrationDiagnosticRunning=false; }
+  }
+});
 ipcMain.handle("agent:engine-status", () => ({
   selected: "legacy", engines: [
     {id:"legacy", available:true},
