@@ -442,7 +442,16 @@ class TaskService:
         turn_id = new_id("turn")
         self.running[task["id"]] = turn_id
         owned_turns.add(turn_id)
-        running = asyncio.create_task(self.run(ws, task["id"], project, turn_id), name=turn_id)
+        # Hold the source workspace for the entire autonomous lifecycle,
+        # including managed worktree creation, verification and cleanup.
+        async def execute():
+            await self.run(ws, task["id"], project, turn_id)
+        running = asyncio.create_task(
+            self.server.background.run(turn_id, execute,
+                claims={"workspace": str(project.workspace.root.resolve()), "gui": True},
+                maximum=1),
+            name=turn_id,
+        )
         self.server.active_turns[turn_id] = running
         self.server.active_turn_threads[turn_id] = task["thread_id"]
         running.add_done_callback(lambda _: self.server.forget_turn(turn_id))
