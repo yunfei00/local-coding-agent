@@ -1,3 +1,5 @@
+import { EngineSessionStore } from "./engineSessionStore";
+import { EngineEventBridge } from "./engineEventBridge";
 import { OpenCodeAdapter } from "./engineAdapter";
 import { EngineEventBridge } from "./engineEventBridge";
 import { EngineSessionStore } from "./engineSessionStore";
@@ -968,9 +970,21 @@ ipcMain.handle("agent:engine-diagnostic", async () => {
     await migrationSidecar.start(picked.filePaths[0],root);
     const adapter = new OpenCodeAdapter((route,method,body)=>migrationSidecar.request(route,method,body));
     const id = await adapter.create(root,"P1 isolated diagnostic");
-    const snapshot = await adapter.status(id);
+    const store = new EngineSessionStore(path.join(root,"bindings.json"));
+    const threadId = randomUUID();
+    await store.bind({threadId,engine:"opencode",sessionId:id,projectRoot:root});
+    if ((await store.get(threadId))?.sessionId !== id) throw new Error("Session binding mismatch");
+    const controller = new AbortController();
+    const timeout = setTimeout(()=>controller.abort(),10000);
+    let reconciled = false;
+    try {
+      await new EngineEventBridge(migrationSidecar,0).follow(id,controller.signal,event=>{
+        if(event.kind==="snapshot"){reconciled=true;controller.abort();}
+      });
+    } finally {clearTimeout(timeout);controller.abort();}
+    if(!reconciled) throw new Error("Event connection or snapshot not verified");
     const interrupt = await adapter.cancel(id);
-    return {status:"passed",sessionId:id,snapshot,interrupt};
+    return {status:"passed",sessionId:id,interrupt};
   } finally {
     try { await migrationSidecar.stop(); } finally { migrationDiagnosticRunning=false; }
   }
