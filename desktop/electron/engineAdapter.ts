@@ -6,6 +6,7 @@ export interface AgentEngine {
   readonly id: EngineId;
   create(projectRoot: string, title: string): Promise<string>;
   status(sessionId: string): Promise<unknown>;
+  // Resolves only after execution reaches a confirmed terminal state, not admission.
   send(sessionId: string, prompt: string): Promise<void>;
   cancel(sessionId: string): Promise<unknown>;
 }
@@ -41,6 +42,7 @@ export class EngineRouter {
     throw new Error("Unknown engine");
   }
   async run(binding: SessionBinding, prompt: string): Promise<void> {
+    // Never wire an admission-only RPC to send(): its lease would release early.
     if (binding.engine !== "legacy") throw new Error("OpenCode execution disabled");
     if (this.active.has(binding.threadId)) throw new Error("Thread already active");
     this.active.add(binding.threadId);
