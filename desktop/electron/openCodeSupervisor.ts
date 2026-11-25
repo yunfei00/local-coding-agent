@@ -64,7 +64,15 @@ export class OpenCodeSupervisor {
     return {authorization:"Basic "+Buffer.from("opencode:"+this.password).toString("base64")};
   }
   async request(route:string,method="GET",body?:unknown):Promise<unknown>{
-    if(!/^\/api\/(info|session(?:\/[A-Za-z0-9_%.-]+(?:\/interrupt)?)?)$/.test(route)) throw new Error("Route not allowed");
+    const session = /^\/api\/session\/([A-Za-z0-9_-]+)(\/interrupt)?$/.exec(route);
+    const allowed = (method==="GET" && (route==="/api/info" || route==="/api/session" || (session && !session[2]))) ||
+      (method==="POST" && (route==="/api/session" || (session && session[2]==="/interrupt")));
+    if(!allowed) throw new Error("Route not allowed");
+    if(method==="POST" && route==="/api/session"){
+      const input=body as {title?:unknown;permissions?:unknown}|undefined;
+      if(typeof input?.title!=="string" || JSON.stringify(input.permissions)!==JSON.stringify([{action:"*",resource:"*",effect:"deny"}])) throw new Error("Only deny-all diagnostic sessions allowed");
+      body={title:input.title,permissions:[{action:"*",resource:"*",effect:"deny"}]};
+    } else if(body!==undefined) throw new Error("Unexpected request body");
     const response=await fetch(this.origin+route,{method,headers:{...this.headers(),"content-type":"application/json"},body:body===undefined?undefined:JSON.stringify(body),redirect:"error",signal:AbortSignal.timeout(8000)});
     if(!response.ok){await response.body?.cancel();throw new Error("Sidecar HTTP "+response.status);}
     return response.status===204?undefined:response.json();
