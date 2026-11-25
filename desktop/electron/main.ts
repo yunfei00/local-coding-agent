@@ -1,3 +1,4 @@
+import { OpenCodeSupervisor } from "./openCodeSupervisor";
 import {
   app,
   BrowserWindow,
@@ -951,6 +952,13 @@ ipcMain.on("renderer:ready", () => {
   maybeCompletePackagedSmoke();
 });
 
+const migrationSidecar = new OpenCodeSupervisor();
+ipcMain.handle("agent:engine-status", () => ({
+  selected: "legacy", engines: [
+    {id:"legacy", available:true},
+    {id:"opencode", available:false, version:"2.2.6", reason:"P0 security and budget gates pending"}
+  ]
+}));
 ipcMain.handle("agent:get-status", () => agentStatus);
 ipcMain.handle("agent:screenshot-preview", (_event, candidate: unknown) =>
   desktopArtifact(process.env.LCA_DATA_DIR || app.getPath("userData"), candidate));
@@ -1553,7 +1561,7 @@ app.on("before-quit", (event) => {
   }
 
   quitInProgress = true;
-  void stopAgent().finally(() => {
+  void Promise.allSettled([stopAgent(), migrationSidecar.stop()]).finally(() => {
     quitReady = true;
     app.quit();
   });
