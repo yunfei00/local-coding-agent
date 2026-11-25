@@ -35,3 +35,34 @@ def test_orphan_is_not_reclaimed(tmp_path):
     with pytest.raises(RuntimeError, match="lease occupied"):
         with engine_lease(tmp_path):
             pytest.fail("orphan lease must not be reclaimed")
+
+
+def test_background_contention_pauses_without_execution(tmp_path, monkeypatch):
+    import asyncio
+    import sqlite3
+    from agent.core.background import BackgroundJobs
+    from agent.core.engine_lease import EngineLeaseOccupied
+
+    monkeypatch.setenv("LCA_DATA_DIR", str(tmp_path))
+    async def scenario():
+        db = sqlite3.connect(":memory:")
+        try:
+            jobs = BackgroundJobs(db)
+            jobs.add("job", "thread", "project")
+            called = False
+            async def operation():
+                nonlocal called
+                called = True
+            with engine_lease(tmp_path):
+                with pytest.raises(EngineLeaseOccupied):
+                    await jobs.run("job", operation)
+            assert not called
+            assert jobs.list()[0]["state"] == "paused"
+            assert not jobs.running_claims
+            jobs.add("next", "thread", "project")
+            await jobs.run("next", operation)
+            assert called
+            assert not jobs.running_claims
+        finally:
+            db.close()
+    asyncio.run(scenario())
