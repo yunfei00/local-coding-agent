@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from "react";
 import {ToolExecutionCards,appendToolEvent,type ToolCard,type ToolEvent} from "./ToolExecutionCards";
+import "./OpenCodeChatDialog.css";
 import {Modal} from "./Modal";
 
 export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
@@ -65,27 +66,29 @@ export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
     }catch(error){setStatus("执行未确认："+String(error));}
     finally{running.current=false;setBusy(false);setWaiting(false);setNextMessage("");}
   }
-  return <Modal title="OpenCode 本地对话实验" busy={busy} onClose={onClose}>
-    <p className="modal-description">仅限本地 Ollama 纯文本最多二十轮预设消息对话，不允许文件或命令工具。每次启动独立会话。需显式启用实验功能。</p>
-    <form onSubmit={event=>{event.preventDefault();void run();}}>
+  return <Modal className="opencode-chat-modal" title="OpenCode 本地对话实验" busy={busy} onClose={onClose}>
+    <p className="modal-description">本地 Ollama · 独立会话 · 暂不支持文件与命令工具</p>
+    <form className="oc-form" onSubmit={event=>{event.preventDefault();void run();}}>
+      <div className="oc-columns"><aside className="oc-settings"><h3>模型配置</h3>
       <button type="button" disabled={busy||!window.localAgent.listSharedLocalProfiles} onClick={()=>void loadProfiles()}>读取已有模型配置</button>
       <label>已有配置 <select value={profileId} disabled={busy} onChange={e=>{const id=e.target.value;setProfileId(id);const p=profiles.find(p=>p.id===id);if(p){setModel(p.model);setPort(String(p.port));setModels([]);}}}><option value="">手动配置</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.label} · {p.context} context</option>)}</select></label>
       <label>模型 <input list="opencode-local-models" value={model} disabled={busy} onChange={e=>{setModel(e.target.value);setProfileId("");}}/></label>
       <datalist id="opencode-local-models">{models.map(name=><option key={name} value={name}/>)}</datalist>
       <button type="button" disabled={busy||discovering||!window.localAgent.discoverOllamaModels} onClick={()=>void discover()}>{discovering?"正在读取":"读取 Ollama 模型"}</button>
       <label>Ollama 回环端口 <input type="number" min={1} max={65535} value={port} disabled={busy} onChange={e=>{setPort(e.target.value);setModels([]);setProfileId("");}}/></label>
+      <label className="oc-check"><input type="checkbox" checked={interactive} disabled={busy} onChange={e=>setInteractive(e.target.checked)}/> 即时连续对话</label>
+      <label className="oc-check"><input type="checkbox" checked={saveHistory} disabled={busy} onChange={e=>setSaveHistory(e.target.checked)}/> 保存本地历史（明文）</label>
+      </aside><section className="oc-conversation"><h3>对话</h3><div className="oc-output"><p role="status">{status}</p><pre aria-label="OpenCode 输出">{output||"发送消息后将在此显示回复。"}</pre>{cards.length>0&&<ToolExecutionCards cards={cards}/>}</div>
       <label>消息 <textarea rows={4} value={prompt} disabled={busy} onChange={e=>setPrompt(e.target.value)}/></label>
-      {followups.map((message,i)=><label key={i}>第 {i+2} 轮消息 <textarea rows={2} value={message} disabled={busy} onChange={e=>setFollowups(previous=>previous.map((v,j)=>j===i?e.target.value:v))}/><button type="button" disabled={busy} onClick={()=>setFollowups(previous=>previous.filter((_,j)=>j!==i))}>删除</button></label>)}
-      <button type="button" disabled={busy||followups.length>=19} onClick={()=>setFollowups(previous=>[...previous,""])}>添加下一轮消息</button>
-      <label><input type="checkbox" checked={interactive} disabled={busy} onChange={e=>setInteractive(e.target.checked)}/> 即时连续对话（最长约八分钟）</label>
+      <details className="oc-advanced"><summary>预设多轮消息</summary>{followups.map((message,i)=><label key={i}>第 {i+2} 轮消息 <textarea rows={2} value={message} disabled={busy} onChange={e=>setFollowups(previous=>previous.map((v,j)=>j===i?e.target.value:v))}/><button type="button" disabled={busy} onClick={()=>setFollowups(previous=>previous.filter((_,j)=>j!==i))}>删除</button></label>)}
+      <button type="button" disabled={busy||followups.length>=19} onClick={()=>setFollowups(previous=>[...previous,""])}>添加下一轮消息</button></details>
+
       {waiting&&<section><label>下一轮消息<textarea value={nextMessage} onChange={e=>setNextMessage(e.target.value)}/></label><button type="button" disabled={!nextMessage.trim()} onClick={async()=>{setWaiting(false);try{await window.localAgent.sendLocalChatNext?.(nextMessage);setNextMessage("");setStatus("正在生成");}catch(e){setWaiting(true);setStatus(String(e));}}}>继续发送</button><button type="button" onClick={async()=>{setWaiting(false);try{await window.localAgent.endLocalChat?.();}catch(e){setWaiting(true);setStatus(String(e));}}}>结束会话</button></section>}
-      <label><input type="checkbox" checked={saveHistory} disabled={busy} onChange={e=>setSaveHistory(e.target.checked)}/> 保存本次对话到本机（明文）</label>
+
       <button type="button" disabled={busy||!window.localAgent.listLocalChatHistory} onClick={()=>void loadHistory()}>查看历史</button>
       {historyOpen&&<section aria-label="历史对话" style={{maxHeight:280,overflow:"auto"}}>{history.length===0?<p>暂无历史</p>:history.map(item=><details key={item.id}><summary>{item.createdAt} · {item.model} · {item.status}</summary><pre style={{whiteSpace:"pre-wrap"}}>{item.messages.join("\n\n")}</pre><pre style={{whiteSpace:"pre-wrap"}}>{item.output}</pre><button type="button" disabled={busy||!window.localAgent.diagnoseHistorySession} onClick={async()=>{setBusy(true);try{const result=await window.localAgent.diagnoseHistorySession?.(item.id);setStatus(result?`原始会话：${result.outcome}；${result.active?"仍活跃":"未活跃"}；仅诊断，不恢复执行`:"已取消诊断");}catch(error){setStatus(String(error));}finally{setBusy(false);}}}>检查原始会话</button></details>)}<button type="button" onClick={()=>setHistoryOpen(false)}>收起历史</button></section>}
-      <p role="status">{status}</p>
-      <pre aria-label="OpenCode 输出" style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:240,overflow:"auto"}}>{output}</pre>
-      {cards.length>0&&<ToolExecutionCards cards={cards}/>}
-      {progress.length>0?<ul aria-label="执行事件">{progress.map((item,i)=><li key={i}>{item}</li>)}</ul>:null}
+      {progress.length>0?<details><summary>执行事件 ({progress.length})</summary><ul aria-label="执行事件">{progress.map((item,i)=><li key={i}>{item}</li>)}</ul></details>:null}
+      </section></div>
       <div className="modal-actions">
         <button type="button" disabled={!busy} onClick={()=>{setStatus("正在请求停止");void window.localAgent.cancelLocalChat?.().catch(error=>setStatus(String(error)));}}>停止</button>
         <button type="submit" disabled={busy||!prompt.trim()||!window.localAgent.runLocalChat}>发送</button>
