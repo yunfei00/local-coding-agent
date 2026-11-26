@@ -1694,8 +1694,20 @@ ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
     { threadId }
   );
 });
+let productionBindings:EngineSessionStore|undefined;
+async function bindLegacyThread(threadId:string){
+ const loaded=await sendRequest("thread.get","thread.loaded",{thread_id:threadId},{threadId});
+ const payload=loaded.payload as {project_id?:string;thread?:{id?:string}};
+ if(payload.thread?.id!==threadId||!payload.project_id)throw new Error("Invalid thread identity");
+ const project=await sendRequest("project.get","project.loaded",{project_id:payload.project_id});
+ const root=(project.payload as {project?:{path?:string}}).project?.path;
+ if(!root||!path.isAbsolute(root))throw new Error("Invalid project root");
+ productionBindings??=new EngineSessionStore(path.join(process.env.LCA_DATA_DIR||app.getPath("userData"),"production-engine-bindings.json"));
+ await productionBindings.bind({threadId:payload.project_id+":"+threadId,engine:"legacy",sessionId:threadId,projectRoot:root});
+}
 ipcMain.handle("agent:turn-start", async (_event, threadId: string, prompt: string, model?: string, unified?: boolean, resume?:{run_id:string;confirm_workspace:boolean},routing?:{allow_fallback:boolean;engine?:unknown}) => {
   assertProductionEngine(routing?.engine);
+  await bindLegacyThread(threadId);
   return sendRequest(
     "turn.start",
     "turn.started",
