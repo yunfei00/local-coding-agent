@@ -3,9 +3,9 @@ import {resolveRecoveryStorage} from "./recoveryStorage";
 import {inspectOriginalSession} from "./openCodeRecovery";
 import {OpenCodeSupervisor} from "./openCodeSupervisor";
 import type {HistoryEntry} from "./openCodeHistory";
-export async function diagnoseHistorySession(input:{binary:string;userData:string;dataDir:string;entry:HistoryEntry}){
+export async function diagnoseHistorySession(input:{binary:string;userData:string;dataDir:string;entry:Pick<HistoryEntry,"sessionId"|"storageId"> & {status:string}}){
  const {entry}=input;
- if(entry.status==="running"||!entry.sessionId||!entry.storageId)throw new Error("History session is not eligible for diagnosis");
+ if(["running","waiting","stopping"].includes(entry.status)||!entry.sessionId||!entry.storageId)throw new Error("History session is not eligible for diagnosis");
  const release=await acquireEngineLease(input.dataDir);
  const supervisor=new OpenCodeSupervisor();
  try{
