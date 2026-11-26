@@ -984,6 +984,26 @@ const openCodeRuntime = new OpenCodeRuntime();
 const activeOpenCodeTurns = new Map<string, { controller: AbortController; sessionId?: string; cancelled: boolean; outcome: string; threadId: string }>();
 let migrationDiagnosticRunning = false;
 let migrationDiagnosticDone: Promise<void> = Promise.resolve();
+
+function openCodeProductionGatePath(): string {
+  return path.join(process.env.LCA_DATA_DIR || app.getPath("userData"), "opencode-production-gate.json");
+}
+function readOpenCodeProductionGate(): boolean {
+  try {
+    const raw = JSON.parse(readFileSync(openCodeProductionGatePath(), "utf8")) as { enabled?: boolean };
+    return raw.enabled === true;
+  } catch { return false; }
+}
+function writeOpenCodeProductionGate(enabled: boolean): void {
+  const file = openCodeProductionGatePath();
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify({ enabled: enabled === true }), "utf8");
+}
+function applyOpenCodeProductionGate(enabled: boolean): void {
+  if (enabled) process.env.LCA_ENABLE_OPENCODE_PRODUCTION = "1";
+  else delete process.env.LCA_ENABLE_OPENCODE_PRODUCTION;
+}
+try { applyOpenCodeProductionGate(readOpenCodeProductionGate()); } catch {}
 ipcMain.handle("agent:engine-diagnostic", async () => {
   if (migrationDiagnosticRunning || quitInProgress) throw new Error("Diagnostic unavailable");
   migrationDiagnosticRunning = true;
@@ -1145,6 +1165,14 @@ ipcMain.handle("agent:engine-status", () => {
       {id:"opencode", available: oc.available, version: oc.version, reason: oc.reason}
     ]
   };
+});
+ipcMain.handle("agent:opencode-production-get", () => ({ enabled: process.env.LCA_ENABLE_OPENCODE_PRODUCTION === "1" }));
+ipcMain.handle("agent:opencode-production-set", async (_event, enabled: boolean) => {
+  const next = enabled === true;
+  writeOpenCodeProductionGate(next);
+  applyOpenCodeProductionGate(next);
+  if (!next) await openCodeRuntime.stop().catch(() => {});
+  return { enabled: next };
 });
 ipcMain.handle("agent:get-status", () => agentStatus);
 ipcMain.handle("agent:screenshot-preview", (_event, candidate: unknown) =>

@@ -30,6 +30,8 @@ declare global {
       onLocalChatDelta?: (handler:(delta:string)=>void)=>()=>void;
       runEngineDiagnostic?: () => Promise<{status:string;sessionId?:string}>;
       getEngineStatus?: () => Promise<{selected: "legacy" | "opencode"; engines: Array<{id: "legacy" | "opencode"; available: boolean; version?: string; reason?: string}>}>;
+    getOpenCodeProductionGate?: () => Promise<{enabled: boolean}>;
+    setOpenCodeProductionGate?: (enabled: boolean) => Promise<{enabled: boolean}>;
       setWindowTheme: (theme: "light" | "dark") => Promise<void>;
       menuAction: (action: string) => Promise<void>;
       openProjectFolder: (projectId?:string) => Promise<void>;
