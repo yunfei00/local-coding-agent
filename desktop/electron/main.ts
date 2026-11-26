@@ -1093,7 +1093,7 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
       if(next!==null)openCodeTasks().transition(taskId,"running");
       if(next!==null&&history&&historyId)await history.checkpoint(historyId,output,next);
       return next;
-    }:undefined,history&&historyId?async id=>history.bindSession(historyId,id,path.basename(root)):undefined);
+    }:undefined,async id=>{openCodeTasks().bindSession(taskId,id,path.basename(root));if(history&&historyId)await history.bindSession(historyId,id,path.basename(root));});
     }catch(error){
       openCodeTasks().finish(taskId,"unknown");
       if(history&&historyId)await history.finish(historyId,"unknown",output);
