@@ -4,6 +4,7 @@ const path=require('node:path');
 const {spawnSync}=require('node:child_process');
 const assert=require('node:assert/strict');
 const crypto=require('node:crypto');
+const os=require('node:os');
 const deny={action:'*',resource:'*',effect:'deny'};
 const allow=(action,resource)=>({action,resource,effect:'allow'});
 const original='module.exports = (a, b) => a - b;\n';
@@ -29,7 +30,7 @@ function init(root){
   fs.writeFileSync(path.join(root,'add.cjs'),original,{flag:'wx'});
   fs.writeFileSync(path.join(root,'test-add.cjs'),testSource,{flag:'wx'});
   // Only in the freshly generated fixture, never an existing user's worktree.
-  for(const args of [['init','--quiet'],['-c','core.autocrlf=false','add','--','seed.txt','add.cjs','test-add.cjs']]){
+  for(const args of [['init','--quiet','--template='],['-c','core.autocrlf=false','add','--','seed.txt','add.cjs','test-add.cjs']]){
     assert.equal(run('git',args,root).exitCode,0,'Git fixture setup failed');
   }
   return marker;
@@ -38,9 +39,14 @@ function verifyRepair(root){
   try{
     assert.equal(read(root,'add.cjs'),repaired);
     assert.equal(read(root,'test-add.cjs'),testSource);
-    // Exact known bytes are checked before executing the fixed trusted test.
-    const result=run(process.execPath,['test-add.cjs'],root);
-    assert.equal(result.exitCode,0);
+    // Execute a trusted copy, not a mutable file that the model can replace.
+    const isolated=fs.mkdtempSync(path.join(os.tmpdir(),'lca-p2-verify-'));
+    try{
+      fs.writeFileSync(path.join(isolated,'add.cjs'),repaired,{flag:'wx'});
+      fs.writeFileSync(path.join(isolated,'test-add.cjs'),testSource,{flag:'wx'});
+      const result=run(process.execPath,['test-add.cjs'],isolated);
+      assert.equal(result.exitCode,0);
+    }finally{fs.rmSync(isolated,{recursive:true,force:true});}
     return true;
   }catch{return false;}
 }
