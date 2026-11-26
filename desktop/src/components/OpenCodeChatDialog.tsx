@@ -3,6 +3,13 @@ import {ToolExecutionCards,appendToolEvent,type ToolCard,type ToolEvent} from ".
 import {Modal} from "./Modal";
 
 export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
+  const [saveHistory,setSaveHistory]=useState(false);
+  const [history,setHistory]=useState<{id:string;model:string;createdAt:string;messages:string[];output:string;status:string;sessionId?:string}[]>([]);
+  const [historyOpen,setHistoryOpen]=useState(false);
+  async function loadHistory(){
+    try{setHistory(await window.localAgent.listLocalChatHistory?.()??[]);setHistoryOpen(true);}
+    catch(error){setStatus("历史读取失败："+String(error));}
+  }
   const [model,setModel]=useState("gemma4:31b");
   const [port,setPort]=useState("11434");
   const [prompt,setPrompt]=useState("");
@@ -34,7 +41,7 @@ export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
     if(!model.trim()||!prompt.trim()||!Number.isInteger(number)||number<1||number>65535){setStatus("请输入有效模型、端口和消息");return;}
     running.current=true;setBusy(true);setOutput("");setProgress([]);setCards([]);setStatus("正在启动，请选择固定版本 OpenCode EXE");
     try{
-      const result=await window.localAgent.runLocalChat({model:model.trim(),port:number,prompt,messages:[prompt,...followups.filter(message=>message.trim())]});
+      const result=await window.localAgent.runLocalChat({model:model.trim(),port:number,prompt,messages:[prompt,...followups.filter(message=>message.trim())],saveHistory});
       setStatus(result.outcome==="succeeded"?"对话结束（未独立验证）":result.outcome==="cancelled"||result.outcome==="interrupted"?"已取消或中断":"执行失败："+result.outcome);
     }catch(error){setStatus("执行未确认："+String(error));}
     finally{running.current=false;setBusy(false);}
@@ -47,6 +54,9 @@ export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
       <label>消息 <textarea rows={4} value={prompt} disabled={busy} onChange={e=>setPrompt(e.target.value)}/></label>
       {followups.map((message,i)=><label key={i}>第 {i+2} 轮消息 <textarea rows={2} value={message} disabled={busy} onChange={e=>setFollowups(previous=>previous.map((v,j)=>j===i?e.target.value:v))}/><button type="button" disabled={busy} onClick={()=>setFollowups(previous=>previous.filter((_,j)=>j!==i))}>删除</button></label>)}
       <button type="button" disabled={busy||followups.length>=19} onClick={()=>setFollowups(previous=>[...previous,""])}>添加下一轮消息</button>
+      <label><input type="checkbox" checked={saveHistory} disabled={busy} onChange={e=>setSaveHistory(e.target.checked)}/> 保存本次对话到本机（明文）</label>
+      <button type="button" disabled={busy||!window.localAgent.listLocalChatHistory} onClick={()=>void loadHistory()}>查看历史</button>
+      {historyOpen&&<section aria-label="历史对话" style={{maxHeight:280,overflow:"auto"}}>{history.length===0?<p>暂无历史</p>:history.map(item=><details key={item.id}><summary>{item.createdAt} · {item.model} · {item.status}</summary><pre style={{whiteSpace:"pre-wrap"}}>{item.messages.join("\n\n")}</pre><pre style={{whiteSpace:"pre-wrap"}}>{item.output}</pre></details>)}<button type="button" onClick={()=>setHistoryOpen(false)}>收起历史</button></section>}
       <p role="status">{status}</p>
       <pre aria-label="OpenCode 输出" style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:240,overflow:"auto"}}>{output}</pre>
       {cards.length>0&&<ToolExecutionCards cards={cards}/>}
