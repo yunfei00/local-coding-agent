@@ -21,7 +21,7 @@ describe("local model gateway",()=>{
     try{
       expect((await call(body,"wrong")).status).toBe(401);
       expect((await call({...body,model:"other"})).status).toBe(400);
-      expect((await call({...body,tools:[]})).status).toBe(403);
+      expect((await call({...body,tools:[{type:"function",function:{name:"write"}}]})).status).toBe(403);
       const result=await call(body);
       expect(result.status).toBe(200);
       expect(await result.json()).toEqual({model:"gemma4:31b",max:128});
