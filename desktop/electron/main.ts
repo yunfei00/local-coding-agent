@@ -1,3 +1,4 @@
+import {searchProject} from "./projectSearch";
 import { runLocalChat } from "./openCodeLocalChat";
 import { acquireEngineLease } from "./engineLease";
 import { EngineSessionStore } from "./engineSessionStore";
@@ -1498,6 +1499,21 @@ async function openRegisteredProjectFolder(projectId?:string) {
   const error = await shell.openPath(project.path);
   if (error) throw new Error(error);
 }
+let projectSearchController:AbortController|undefined;
+ipcMain.handle("agent:project-search-cancel",()=>projectSearchController?.abort());
+ipcMain.handle("agent:project-search",async(event,query:unknown,mode:unknown)=>{
+  if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");
+  if(typeof query!=="string"||(mode!=="file"&&mode!=="text"))throw new Error("Invalid search");
+  if(projectSearchController)throw new Error("Search already active");
+  const controller=new AbortController();projectSearchController=controller;
+  const abort=()=>controller.abort();event.sender.once("destroyed",abort);
+  try{
+    const result=await sendRequest("project.get","project.loaded");
+    const project=result.payload?.project as {path?:unknown}|undefined;
+    if(typeof project?.path!=="string"||!path.isAbsolute(project.path))throw new Error("No active project");
+    return await searchProject(project.path,query,mode,controller.signal);
+  }finally{event.sender.removeListener("destroyed",abort);projectSearchController=undefined;}
+});
 ipcMain.handle("agent:project-folder", () => openRegisteredProjectFolder());
 ipcMain.handle("agent:project-folder-by-id", (_event, projectId:string) => {
   if (typeof projectId !== "string" || !projectId) throw new Error("Invalid project ID");
