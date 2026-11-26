@@ -10,7 +10,7 @@
     "build": "vite build && tsc -p electron/tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p electron/tsconfig.json",
     "test": "vitest run --maxWorkers=1 --fileParallelism=false",
-    "package:win": "npm run build && electron-builder --win nsis portable --x64 --publish never"
+    "package:win": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ../scripts/dev/prepare-opencode.ps1 && npm run build && electron-builder --win nsis portable --x64 --publish never"
   },
   "dependencies": {
     "react": "^19.1.1",
@@ -55,6 +55,14 @@
         "to": "agent",
         "filter": [
           "**/*"
+        ]
+      },
+      {
+        "from": "../build/opencode-runtime",
+        "to": "opencode",
+        "filter": [
+          "opencode.exe",
+          "LICENSE"
         ]
       }
     ],
