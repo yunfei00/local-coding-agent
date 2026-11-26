@@ -17,9 +17,9 @@ export function OpenCodeTaskList(){
   return ()=>{alive=false;clearInterval(timer);};
  },[]);
  if(!window.localAgent.listOpenCodeTasks)return null;
- return <section className="context-section" aria-label="OpenCode 实验任务"><h3>OpenCode 实验任务（全局）</h3><p>仅显示本次软件运行期间的实验任务，不属于当前工程的正式任务。</p>
+ return <section className="context-section" aria-label="OpenCode 实验任务"><h3>OpenCode 实验任务（全局）</h3><p>实验任务记录跨重启保存；异常退出的任务标记为状态未知，不自动重放。</p>
  {error&&<p role="alert">{error}</p>}
  {tasks.length===0&&<p>暂无实验任务</p>}
- {tasks.map(task=><details key={task.id} open={task.status==="running"}><summary>{task.model} · {({running:"执行中",succeeded:"执行结束（未验收）",failed:"失败",interrupted:"中断",unknown:"状态未知"} as Record<string,string>)[task.status]??task.status}</summary><p>任务 ID：{task.id}</p><p>开始：{task.startedAt} · 结束：{task.endedAt??"—"}</p><p>执行事件：{task.events} · 独立验收：未执行</p>{task.status==="running"&&<button disabled={stopping||!window.localAgent.cancelLocalChat} onClick={async()=>{setStopping(true);try{await window.localAgent.cancelLocalChat?.(task.id);}catch(e){setError(String(e));}finally{setStopping(false);}}}>请求停止</button>}</details>)}
+ {tasks.map(task=><details key={task.id} open={task.status==="running"}><summary>{task.model} · {({running:"执行中",waiting:"等待下一轮输入",stopping:"正在停止",succeeded:"执行结束（未验收）",failed:"失败",interrupted:"中断",unknown:"状态未知"} as Record<string,string>)[task.status]??task.status}</summary><p>任务 ID：{task.id}</p><p>开始：{task.startedAt} · 结束：{task.endedAt??"—"}</p><p>执行事件：{task.events} · 独立验收：未执行</p>{["running","waiting"].includes(task.status)&&<button disabled={stopping||!window.localAgent.cancelLocalChat} onClick={async()=>{setStopping(true);try{await window.localAgent.cancelLocalChat?.(task.id);}catch(e){setError(String(e));}finally{setStopping(false);}}}>请求停止</button>}</details>)}
  </section>;
 }
