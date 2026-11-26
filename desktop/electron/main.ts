@@ -43,6 +43,17 @@ import {appendBoundedLog} from './runtimeLog';
 import {UpdateManager} from './updateManager';
 import {desktopArtifact} from "./desktopArtifact";
 
+async function selectOpenCodeBinary(): Promise<{canceled:boolean;filePaths:string[]}> {
+  const bundled=path.join(process.resourcesPath,"opencode","opencode.exe");
+  if(app.isPackaged){
+    if(!existsSync(bundled))throw new Error("Bundled OpenCode runtime missing; reinstall Local Coding Agent");
+    return {canceled:false,filePaths:[bundled]};
+  }
+  const staged=path.resolve(app.getAppPath(),"../build/opencode-runtime/opencode.exe");
+  if(existsSync(staged))return {canceled:false,filePaths:[staged]};
+  return dialog.showOpenDialog({properties:["openFile"],filters:[{name:"OpenCode executable",extensions:["exe"]}]});
+}
+
 const APP_ID = "com.yunfei.localcodingagent";
 // Expose the renderer's semantic controls to Windows UI Automation.
 app.commandLine.appendSwitch("force-renderer-accessibility");
@@ -1064,7 +1075,7 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
   let finish!:()=>void;
   migrationDiagnosticDone=new Promise<void>(resolve=>{finish=resolve;});
   try{
-    const picked=await dialog.showOpenDialog({properties:["openFile"],filters:[{name:"OpenCode executable",extensions:["exe"]}]});
+    const picked=await selectOpenCodeBinary();
     if(picked.canceled || !picked.filePaths[0] || quitInProgress || controller.signal.aborted)return {outcome:"cancelled"};
     const selected=value.profileId===undefined?undefined:(await getSharedLocalProfiles()).find(p=>p.id===value.profileId);
     if(value.profileId!==undefined&&!selected)throw new Error("Shared model profile unavailable");
@@ -1117,7 +1128,7 @@ ipcMain.handle("agent:history-diagnose",async(event,id:unknown,source?:unknown)=
  try{
   const entry=source==="task"?openCodeTasks().list().find(row=>row.id===id):(await (await localChatHistory()).list()).find(row=>row.id===id);
   if(!entry||!entry.sessionId||!entry.storageId||["running","waiting","stopping"].includes(entry.status))throw new Error("History session unavailable");
-  const picked=await dialog.showOpenDialog({properties:["openFile"],filters:[{name:"OpenCode executable",extensions:["exe"]}]});
+  const picked=await selectOpenCodeBinary();
   if(picked.canceled||!picked.filePaths[0])return null;
   return await diagnoseHistorySession({binary:picked.filePaths[0],userData:app.getPath("userData"),dataDir:process.env.LCA_DATA_DIR||app.getPath("userData"),entry});
  }finally{migrationDiagnosticRunning=false;finish();}
