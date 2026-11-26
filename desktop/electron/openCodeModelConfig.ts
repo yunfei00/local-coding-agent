@@ -4,7 +4,7 @@ export type LocalModelProfile = {
   context: number;
   maxOutput: number;
 };
-export function buildLocalModelConfig(profile: LocalModelProfile, gateway: {port:number; token:string}) {
+export function buildLocalModelConfig(profile: LocalModelProfile, gateway: {port:number; token:string},allowTools=false) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,127}$/.test(profile.model)) throw new Error("Invalid model ID");
   if (!Number.isSafeInteger(profile.context) || profile.context < 1024 || profile.context > 262144 ||
       !Number.isSafeInteger(profile.maxOutput) || profile.maxOutput < 1 || profile.maxOutput >= profile.context) throw new Error("Invalid model limits");
@@ -17,7 +17,7 @@ export function buildLocalModelConfig(profile: LocalModelProfile, gateway: {port
     providers:{[provider]:{
       package:"@opencode/ai/providers/openai-compatible",
       settings:{baseURL:"http://127.0.0.1:"+gateway.port+"/v1",apiKey:gateway.token},
-      models:{[profile.model]:{name:profile.model,capabilities:{tools:false},limit:{context:profile.context,output:profile.maxOutput}}}
+      models:{[profile.model]:{name:profile.model,capabilities:{tools:allowTools},limit:{context:profile.context,output:profile.maxOutput}}}
     }}
   };
 }
