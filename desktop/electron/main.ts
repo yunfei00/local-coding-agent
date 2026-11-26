@@ -1088,7 +1088,7 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
       const next=await pending;
       if(next!==null&&history&&historyId)await history.checkpoint(historyId,output,next);
       return next;
-    }:undefined);
+    }:undefined,history&&historyId?async id=>history.bindSession(historyId,id):undefined);
     }catch(error){
       openCodeTasks.finish(taskId,"unknown");
       if(history&&historyId)await history.finish(historyId,"unknown",output);
