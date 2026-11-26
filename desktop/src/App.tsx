@@ -1,3 +1,4 @@
+import {OpenCodeChatDialog} from "./components/OpenCodeChatDialog";
 import {FirstRunCard} from './components/FirstRunCard';
 import {UnifiedProgress,useUnifiedProgress} from './components/UnifiedProgress';
 import {
@@ -222,6 +223,7 @@ function resultObject(value: unknown): Record<string, unknown> {
 }
 
 function App() {
+  const [localChatOpen,setLocalChatOpen]=useState(false);
   const [engineStatus, setEngineStatus] = useState<Awaited<ReturnType<NonNullable<Window["localAgent"]["getEngineStatus"]>>> | null>(null);
   useEffect(() => {
     let disposed = false;
@@ -1473,6 +1475,7 @@ function App() {
           </div>
           <nav className="app-menubar" role="menubar" aria-label="Application menu">
             <ActionMenu label="引擎" className="app-menu-button" menuBarItem actions={[
+              {label:"OpenCode 本地对话实验",disabled:!window.localAgent.runLocalChat||Boolean(runningTurnId),onSelect:()=>setLocalChatOpen(true)},
               {label:"OpenCode 隔离诊断", disabled:!window.localAgent.runEngineDiagnostic, onSelect:()=>{void window.localAgent.runEngineDiagnostic?.().then(result=>window.alert("OpenCode 诊断："+result.status)).catch(error=>window.alert("OpenCode 诊断失败："+String(error)));}},
               {label:engineStatus?.selected === "legacy" ? "Local Coding Agent（当前）" : "Local Coding Agent", disabled:true, onSelect:()=>{}},
               {label:"OpenCode " + (engineStatus?.engines.find(engine=>engine.id==="opencode")?.version ?? "v2.2.6") + (engineStatus ? "（待安全验收）" : "（状态未确认）"), disabled:true, onSelect:()=>{}}
@@ -1912,6 +1915,7 @@ function App() {
           />
         ) : null}
       </main>
+      {localChatOpen ? <OpenCodeChatDialog onClose={()=>setLocalChatOpen(false)}/> : null}
       {renamingThread ? <RenameThreadDialog title={renamingThread.thread.title} onSave={commitThreadRename} onClose={() => {
         const trigger = renamingThread.trigger;
         setRenamingThread(null);
