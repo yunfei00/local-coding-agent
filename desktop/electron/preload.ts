@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld("localAgent", {
   listOpenCodeTasks: ()=>ipcRenderer.invoke("agent:opencode-tasks"),
   listSharedLocalProfiles: ()=>ipcRenderer.invoke("agent:shared-local-profiles"),
   discoverOllamaModels: (port:number)=>ipcRenderer.invoke("agent:ollama-discover",port),
-  diagnoseHistorySession: (id:string)=>ipcRenderer.invoke("agent:history-diagnose",id),
+  diagnoseHistorySession: (id:string,source?:"task")=>ipcRenderer.invoke("agent:history-diagnose",id,source),
   listLocalChatHistory: ()=>ipcRenderer.invoke("agent:local-chat-history"),
   runLocalChat: (input:{model:string;prompt:string;port:number;followup?:string;messages?:string[];saveHistory?:boolean;profileId?:string;interactive?:boolean}) => ipcRenderer.invoke("agent:local-chat",input),
   onLocalChatProgress: (handler:(progress:unknown)=>void) => {const listener=(_event:unknown,progress:unknown)=>handler(progress);ipcRenderer.on("agent:local-chat-progress",listener);return ()=>ipcRenderer.removeListener("agent:local-chat-progress",listener);},
