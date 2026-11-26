@@ -3,6 +3,9 @@ import { contextBridge, ipcRenderer } from "electron";
 type AgentEventHandler = (event: unknown) => void;
 
 contextBridge.exposeInMainWorld("localAgent", {
+  runLocalChat: (input:{model:string;prompt:string;port:number}) => ipcRenderer.invoke("agent:local-chat",input),
+  cancelLocalChat: () => ipcRenderer.invoke("agent:local-chat-cancel"),
+  onLocalChatDelta: (handler:(delta:string)=>void) => {const listener=(_event:unknown,delta:string)=>handler(delta);ipcRenderer.on("agent:local-chat-delta",listener);return ()=>ipcRenderer.removeListener("agent:local-chat-delta",listener);},
   runEngineDiagnostic: () => ipcRenderer.invoke("agent:engine-diagnostic"),
   getEngineStatus: () => ipcRenderer.invoke("agent:engine-status"),
   platform: process.platform,
