@@ -2,8 +2,8 @@ import {ReactNode, useEffect, useId, useRef} from "react";
 import {createPortal} from "react-dom";
 
 /** Native modal provides focus trapping, Escape, and focus restoration. */
-export function Modal({title, onClose, busy = false, children}: {
-  title:string; onClose:() => void; busy?:boolean; children:ReactNode;
+export function Modal({title, onClose, busy = false, children, className = ""}: {
+  title:string; onClose:() => void; busy?:boolean; children:ReactNode; className?:string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -12,7 +12,7 @@ export function Modal({title, onClose, busy = false, children}: {
     element.showModal();
     return () => element.close();
   }, []);
-  return createPortal(<dialog ref={dialog} className="app-modal" aria-labelledby={titleId} aria-modal="true"
+  return createPortal(<dialog ref={dialog} className={`app-modal ${className}`} aria-labelledby={titleId} aria-modal="true"
     onCancel={event => {event.preventDefault(); if (!busy) onClose();}}
     onClick={event => {
       if (event.target !== event.currentTarget || busy) return;
