@@ -17,7 +17,8 @@ declare global {
       readProjectDiff?: ()=>Promise<{status:string;unstaged:string;staged:string}>;
       searchProject?: (query:string,mode:"file"|"text")=>Promise<{hits:{file:string;line?:number;text?:string}[];truncated:boolean;skipped:number}>;
       cancelProjectSearch?: ()=>Promise<void>;
-      runLocalChat?: (input:{model:string;prompt:string;port:number;followup?:string;messages?:string[]})=>Promise<{outcome:string;sessionId?:string;verified?:false}>;
+      listLocalChatHistory?: ()=>Promise<{id:string;model:string;createdAt:string;messages:string[];output:string;status:string;sessionId?:string}[]>;
+      runLocalChat?: (input:{model:string;prompt:string;port:number;followup?:string;messages?:string[];saveHistory?:boolean})=>Promise<{outcome:string;sessionId?:string;verified?:false}>;
       onLocalChatProgress?: (handler:(progress:unknown)=>void)=>()=>void;
       cancelLocalChat?: ()=>Promise<void>;
       onLocalChatDelta?: (handler:(delta:string)=>void)=>()=>void;
