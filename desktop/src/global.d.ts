@@ -17,6 +17,7 @@ declare global {
       readProjectDiff?: ()=>Promise<{status:string;unstaged:string;staged:string}>;
       searchProject?: (query:string,mode:"file"|"text")=>Promise<{hits:{file:string;line?:number;text?:string}[];truncated:boolean;skipped:number}>;
       cancelProjectSearch?: ()=>Promise<void>;
+      listOpenCodeTasks?: ()=>Promise<{id:string;engine:"opencode";model:string;status:string;startedAt:string;endedAt?:string;events:number;verified:false}[]>;
       listSharedLocalProfiles?: ()=>Promise<{id:string;label:string;model:string;port:number;context:number;maxOutput:number}[]>;
       discoverOllamaModels?: (port:number)=>Promise<string[]>;
       listLocalChatHistory?: ()=>Promise<{id:string;model:string;createdAt:string;messages:string[];output:string;status:string;sessionId?:string}[]>;
