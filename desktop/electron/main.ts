@@ -1,3 +1,4 @@
+import {discoverOllamaModels} from "./ollamaDiscovery";
 import {OpenCodeHistory} from "./openCodeHistory";
 import {readProjectDiff} from "./projectDiff";
 import {searchProject} from "./projectSearch";
@@ -999,6 +1000,10 @@ ipcMain.handle("agent:engine-diagnostic", async () => {
   } finally {
     try { await migrationSidecar.stop(); await releaseLease?.(); } finally { migrationDiagnosticRunning=false; finishDiagnostic(); }
   }
+});
+ipcMain.handle("agent:ollama-discover",async(event,port:unknown)=>{
+  if(event.sender!==mainWindow?.webContents||typeof port!=="number")throw new Error("Invalid discovery request");
+  return discoverOllamaModels(port);
 });
 let historyReady:Promise<OpenCodeHistory>|undefined;
 function localChatHistory(){
