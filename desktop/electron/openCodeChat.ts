@@ -10,7 +10,7 @@ export type ChatResult = {outcome:"succeeded"|"failed"|"interrupted"; verified:f
 export class OpenCodeChat {
   private active=false;
   constructor(private readonly transport:ChatTransport){}
-  async run(id:string,prompt:string,onText:(delta:string)=>void,signal:AbortSignal,onEvent?:(event:EngineEvent)=>void):Promise<ChatResult>{
+  async run(id:string,prompt:string,onText:(delta:string)=>void,signal:AbortSignal,onEvent?:(event:EngineEvent)=>void,completion:"text"|"tool-or-text"="text"):Promise<ChatResult>{
     if(this.active)throw new Error("Chat already active");
     if(!/^[A-Za-z0-9_-]+$/.test(id)||!prompt.trim()||Buffer.byteLength(prompt)>65536)throw new Error("Invalid chat input");
     signal.throwIfAborted();
@@ -22,6 +22,7 @@ export class OpenCodeChat {
     const route="/api/session/"+id;
     let admitted=false;
     let hasText=false;
+    let hasToolSuccess=false;
     const deduper=new EngineEventDeduper();
     try{
       const response=await this.transport.events(controller.signal);
@@ -37,6 +38,7 @@ export class OpenCodeChat {
           if(event?.data?.sessionID!==id || !deduper.accept(frame))continue;
           const translated=translateEngineEvent(frame,id);
           if(translated)onEvent?.(translated);
+          if(event.type==="session.tool.success")hasToolSuccess=true;
           if(event.type==="session.text.delta"){
             const delta=event.data.delta??event.data.text;
             if(typeof delta==="string"){hasText ||= !!delta.trim();onText(delta);}
@@ -44,7 +46,7 @@ export class OpenCodeChat {
           const outcome=event.type?.match(/^session\.execution\.(succeeded|failed|interrupted)$/)?.[1] as ChatResult["outcome"]|undefined;
           if(outcome){
             admitted=false;
-            return {outcome:outcome==="succeeded"&&!hasText?"failed":outcome,verified:false};
+            return {outcome:outcome==="succeeded"&&!hasText&&!(completion==="tool-or-text"&&hasToolSuccess)?"failed":outcome,verified:false};
           }
         }
         throw new Error("Chat stream ended without terminal event");
