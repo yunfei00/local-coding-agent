@@ -12,6 +12,12 @@ export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
   }
   const [model,setModel]=useState("gemma4:31b");
   const [port,setPort]=useState("11434");
+  const [profiles,setProfiles]=useState<{id:string;label:string;model:string;port:number;context:number;maxOutput:number}[]>([]);
+  const [profileId,setProfileId]=useState("");
+  async function loadProfiles(){
+    try{setProfiles(await window.localAgent.listSharedLocalProfiles?.()??[]);}
+    catch(error){setStatus("配置读取失败："+String(error));}
+  }
   const [models,setModels]=useState<string[]>([]);
   const [discovering,setDiscovering]=useState(false);
   async function discover(){
@@ -50,7 +56,7 @@ export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
     if(!model.trim()||!prompt.trim()||!Number.isInteger(number)||number<1||number>65535){setStatus("请输入有效模型、端口和消息");return;}
     running.current=true;setBusy(true);setOutput("");setProgress([]);setCards([]);setStatus("正在启动，请选择固定版本 OpenCode EXE");
     try{
-      const result=await window.localAgent.runLocalChat({model:model.trim(),port:number,prompt,messages:[prompt,...followups.filter(message=>message.trim())],saveHistory});
+      const result=await window.localAgent.runLocalChat({model:model.trim(),port:number,prompt,messages:[prompt,...followups.filter(message=>message.trim())],saveHistory,profileId:profileId||undefined});
       setStatus(result.outcome==="succeeded"?"对话结束（未独立验证）":result.outcome==="cancelled"||result.outcome==="interrupted"?"已取消或中断":"执行失败："+result.outcome);
     }catch(error){setStatus("执行未确认："+String(error));}
     finally{running.current=false;setBusy(false);}
@@ -58,10 +64,12 @@ export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
   return <Modal title="OpenCode 本地对话实验" busy={busy} onClose={onClose}>
     <p className="modal-description">仅限本地 Ollama 纯文本最多二十轮预设消息对话，不允许文件或命令工具。每次启动独立会话。需显式启用实验功能。</p>
     <form onSubmit={event=>{event.preventDefault();void run();}}>
-      <label>模型 <input list="opencode-local-models" value={model} disabled={busy} onChange={e=>setModel(e.target.value)}/></label>
+      <button type="button" disabled={busy||!window.localAgent.listSharedLocalProfiles} onClick={()=>void loadProfiles()}>读取已有模型配置</button>
+      <label>已有配置 <select value={profileId} disabled={busy} onChange={e=>{const id=e.target.value;setProfileId(id);const p=profiles.find(p=>p.id===id);if(p){setModel(p.model);setPort(String(p.port));setModels([]);}}}><option value="">手动配置</option>{profiles.map(p=><option key={p.id} value={p.id}>{p.label} · {p.context} context</option>)}</select></label>
+      <label>模型 <input list="opencode-local-models" value={model} disabled={busy} onChange={e=>{setModel(e.target.value);setProfileId("");}}/></label>
       <datalist id="opencode-local-models">{models.map(name=><option key={name} value={name}/>)}</datalist>
       <button type="button" disabled={busy||discovering||!window.localAgent.discoverOllamaModels} onClick={()=>void discover()}>{discovering?"正在读取":"读取 Ollama 模型"}</button>
-      <label>Ollama 回环端口 <input type="number" min={1} max={65535} value={port} disabled={busy} onChange={e=>{setPort(e.target.value);setModels([]);}}/></label>
+      <label>Ollama 回环端口 <input type="number" min={1} max={65535} value={port} disabled={busy} onChange={e=>{setPort(e.target.value);setModels([]);setProfileId("");}}/></label>
       <label>消息 <textarea rows={4} value={prompt} disabled={busy} onChange={e=>setPrompt(e.target.value)}/></label>
       {followups.map((message,i)=><label key={i}>第 {i+2} 轮消息 <textarea rows={2} value={message} disabled={busy} onChange={e=>setFollowups(previous=>previous.map((v,j)=>j===i?e.target.value:v))}/><button type="button" disabled={busy} onClick={()=>setFollowups(previous=>previous.filter((_,j)=>j!==i))}>删除</button></label>)}
       <button type="button" disabled={busy||followups.length>=19} onClick={()=>setFollowups(previous=>[...previous,""])}>添加下一轮消息</button>
