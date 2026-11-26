@@ -981,7 +981,7 @@ ipcMain.on("renderer:ready", () => {
 
 const migrationSidecar = new OpenCodeSupervisor();
 const openCodeRuntime = new OpenCodeRuntime();
-const activeOpenCodeTurns = new Map<string, { controller: AbortController; sessionId?: string }>();
+const activeOpenCodeTurns = new Map<string, { controller: AbortController; sessionId?: string; cancelled: boolean; outcome: string }>();
 let migrationDiagnosticRunning = false;
 let migrationDiagnosticDone: Promise<void> = Promise.resolve();
 ipcMain.handle("agent:engine-diagnostic", async () => {
@@ -1761,7 +1761,7 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
   const turnId = "turn_" + randomUUID().replace(/-/g, "");
   const startedAt = new Date().toISOString();
   broadcastAgentEvent({ type: "turn.started", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: startedAt, payload: { engine: "opencode" } });
-  const entry = { controller: new AbortController(), sessionId: undefined as string | undefined };
+  const entry = { controller: new AbortController(), sessionId: undefined as string | undefined, cancelled: false, outcome: "succeeded" };
   activeOpenCodeTurns.set(turnId, entry);
   void (async () => {
     let assistant = "";
@@ -1790,6 +1790,7 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       await sendRequest("turn.record_external", "turn.recorded", { role: "user", content: prompt }, { threadId }).catch(() => {});
       const bridge = openCodeRuntime.bridge(3);
       let finished = false;
+      const toolCalls = new Map<string, { name: string; started: boolean }>();
       const follow = bridge.follow(sessionId, entry.controller.signal, (event) => {
         if (event.kind === "text") {
           const delta = String((event.payload as any)?.delta ?? "");
@@ -1798,12 +1799,31 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
             broadcastAgentEvent({ type: "turn.delta", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { delta } });
           }
         } else if (event.kind === "tool") {
-          const type = String((event.payload as any)?.type ?? "session.tool");
-          const toolCallId = "tool_" + randomUUID().replace(/-/g, "");
-          broadcastAgentEvent({ type: "tool.requested", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { tool_call_id: toolCallId, name: type, arguments: {} } });
-          broadcastAgentEvent({ type: "tool.completed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { tool_call_id: toolCallId, result: { ok: !type.includes("failed"), summary: type, data: {} } } });
+          const p = (event.payload as any) || {};
+          const type = String(p.type ?? "session.tool");
+          const callId = String(p.callId ?? p.name ?? type);
+          const name = String(p.name ?? (type.replace(/^session\.tool\./, "") || "tool"));
+          const isEnd = type.endsWith(".completed") || type.endsWith(".failed") || type.endsWith(".error");
+          const isStart = type.endsWith(".started") || type.endsWith(".running") || !isEnd;
+          const existing = toolCalls.get(callId);
+          if (isStart && !existing?.started) {
+            toolCalls.set(callId, { name, started: true });
+            broadcastAgentEvent({ type: "tool.requested", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { tool_call_id: callId, name, arguments: p.input && typeof p.input === "object" ? p.input : {} } });
+            broadcastAgentEvent({ type: "tool.started", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { tool_call_id: callId } });
+          }
+          if (isEnd) {
+            if (!existing?.started) {
+              toolCalls.set(callId, { name, started: true });
+              broadcastAgentEvent({ type: "tool.requested", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { tool_call_id: callId, name, arguments: p.input && typeof p.input === "object" ? p.input : {} } });
+            }
+            const ok = !type.endsWith(".failed") && !type.endsWith(".error");
+            const out = p.output ?? p.error ?? {};
+            broadcastAgentEvent({ type: "tool.completed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { tool_call_id: callId, result: { ok, summary: String((out as any)?.summary ?? (out as any)?.message ?? name), data: typeof out === "object" && out ? out : { output: out }, stdout: String((out as any)?.stdout ?? ""), stderr: String((out as any)?.stderr ?? ""), error: ok ? undefined : { code: "TOOL_FAILED", message: String((out as any)?.message ?? (out as any)?.error ?? type) } } } });
+          }
         } else if (event.kind === "execution-ended") {
           finished = true;
+          const oc = String((event.payload as any)?.outcome ?? "succeeded");
+          entry.outcome = oc;
           entry.controller.abort();
         }
       }).catch(() => {});
@@ -1812,16 +1832,27 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       while (!finished && Date.now() < timeout && !entry.controller.signal.aborted) {
         await new Promise((r) => setTimeout(r, 200));
       }
+      if (!finished && entry.controller.signal.aborted && entry.cancelled) {
+        // user cancelled
+      } else if (!finished) {
+        entry.outcome = "failed";
+      }
       entry.controller.abort();
       await follow.catch(() => {});
       await sendRequest("turn.record_external", "turn.recorded", { role: "assistant", content: assistant }, { threadId }).catch(() => {});
-      broadcastAgentEvent({ type: "turn.completed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { engine: "opencode" } });
+      if (entry.cancelled || entry.outcome === "interrupted") {
+        broadcastAgentEvent({ type: "turn.cancelled", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { engine: "opencode" } });
+      } else if (entry.outcome === "failed") {
+        broadcastAgentEvent({ type: "turn.failed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { message: "OpenCode execution failed", engine: "opencode" } });
+      } else {
+        broadcastAgentEvent({ type: "turn.completed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { engine: "opencode" } });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (entry.controller.signal.aborted) {
-        broadcastAgentEvent({ type: "turn.cancelled", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: {} });
+      if (entry.cancelled) {
+        broadcastAgentEvent({ type: "turn.cancelled", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { engine: "opencode" } });
       } else {
-        broadcastAgentEvent({ type: "turn.failed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { message } });
+        broadcastAgentEvent({ type: "turn.failed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { message, engine: "opencode" } });
       }
     } finally {
       activeOpenCodeTurns.delete(turnId);
@@ -1852,6 +1883,8 @@ ipcMain.handle('agent:turn-append',async (_event,threadId:string,turnId:string,p
 ipcMain.handle("agent:turn-cancel", async (_event, turnId: string) => {
   const oc = activeOpenCodeTurns.get(turnId);
   if (oc) {
+    oc.cancelled = true;
+    oc.outcome = "interrupted";
     oc.controller.abort();
     if (oc.sessionId) await openCodeRuntime.interrupt(oc.sessionId).catch(() => {});
     return { ok: true };
