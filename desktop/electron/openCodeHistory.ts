@@ -32,6 +32,15 @@ export class OpenCodeHistory {
   const id=randomUUID(),entry:HistoryEntry={id,model,createdAt:new Date().toISOString(),messages:[...messages],output:"",status:"running"};
   await this.change(rows=>[entry,...rows].slice(0,100));return id;
  }
+ checkpoint(id:string,output:string,message?:string){
+  return this.change(rows=>{
+   const row=rows.find(r=>r.id===id&&r.status==="running");
+   if(!row)throw new Error("Unknown or terminal history entry");
+   const messages=message===undefined?row.messages:[...row.messages,message];
+   if(messages.length>20||Buffer.byteLength(JSON.stringify(messages))>262144)throw new Error("History input limit exceeded");
+   return rows.map(r=>r.id===id?{...r,messages,output:output.slice(0,262144)}:r);
+  });
+ }
  finish(id:string,status:Exclude<HistoryEntry["status"],"running">,output:string,sessionId?:string){
   return this.change(rows=>{
    if(!rows.some(r=>r.id===id&&r.status==="running"))throw new Error("Unknown or terminal history entry");
