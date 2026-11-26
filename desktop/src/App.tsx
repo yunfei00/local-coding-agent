@@ -229,6 +229,7 @@ function App() {
   const [fixtureBusy,setFixtureBusy]=useState(false);
   const [fixtureOutput,setFixtureOutput]=useState("");
   const [fixtureStatus,setFixtureStatus]=useState("");
+  const [fixtureEvents,setFixtureEvents]=useState<string[]>([]);
   const [projectDiffOpen,setProjectDiffOpen]=useState(false);
   const [projectSearchOpen,setProjectSearchOpen]=useState(false);
   const [localChatOpen,setLocalChatOpen]=useState(false);
@@ -1410,7 +1411,11 @@ function App() {
 
     if(chatEngine==="opencode"){
       if(fixtureBusy||runningTurnId||conversationTasks.active)return;
-      sendingRef.current=true;setFixtureBusy(true);setFixtureOutput("");setFixtureStatus("准备 OpenCode 独立工程");
+      sendingRef.current=true;setFixtureBusy(true);setFixtureOutput("");setFixtureEvents([]);setFixtureStatus("准备 OpenCode 独立工程");
+      const offProgress=window.localAgent.onLocalChatProgress?.(value=>{
+        const event=value as {kind?:string;payload?:unknown};
+        if(event?.kind)setFixtureEvents(previous=>[...previous,`${event.kind}: ${JSON.stringify(event.payload??null).slice(0,1000)}`].slice(-100));
+      });
       const off=window.localAgent.onLocalChatDelta?.(delta=>setFixtureOutput(previous=>(previous+delta).slice(-262144)));
       try{
         const profiles=await window.localAgent.listSharedLocalProfiles?.();
@@ -1419,7 +1424,7 @@ function App() {
         const result=await window.localAgent.runLocalChat({model:profile.model,port:profile.port,profileId:profile.id,prompt,fixtureTools:true});
         setFixtureStatus(result.outcome+" · 未独立验收"+(result.fixtureRoot?" · "+result.fixtureRoot:""));
         if(result.outcome!=="cancelled")setInput(current=>current===prompt?"":current);
-      }catch(error){setFixtureStatus(String(error));}finally{off?.();sendingRef.current=false;setFixtureBusy(false);}
+      }catch(error){setFixtureStatus(String(error));}finally{off?.();offProgress?.();sendingRef.current=false;setFixtureBusy(false);}
       return;
     }
     setUiError(null);
@@ -1805,7 +1810,7 @@ function App() {
           </div> : null}
           {uiError ? <div className="error-banner">{uiError}</div> : null}
           {followupNotice?<div className="composer-hints" role="status">{followupNotice}</div>:null}
-          {chatEngine==="opencode"&&<section className="context-section"><strong>OpenCode 独立工程测试（不修改当前工程）</strong><p role="status">{fixtureStatus}</p><pre style={{whiteSpace:"pre-wrap",maxHeight:240,overflow:"auto"}}>{fixtureOutput}</pre></section>}
+          {chatEngine==="opencode"&&<section className="context-section"><strong>OpenCode 独立工程测试（不修改当前工程）</strong><p role="status">{fixtureStatus}</p><pre style={{whiteSpace:"pre-wrap",maxHeight:240,overflow:"auto"}}>{fixtureOutput}</pre><details><summary>工具执行事件（{fixtureEvents.length}）</summary><pre style={{whiteSpace:"pre-wrap",maxHeight:180,overflow:"auto"}}>{fixtureEvents.join("\n")}</pre></details></section>}
           <textarea
             value={input}
             onChange={(event) => {setInput(event.target.value); inputDrafts.current.set(inputOwner, event.target.value);}}
