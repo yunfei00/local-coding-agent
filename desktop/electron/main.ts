@@ -1,3 +1,4 @@
+import {readProjectDiff} from "./projectDiff";
 import {searchProject} from "./projectSearch";
 import { runLocalChat } from "./openCodeLocalChat";
 import { acquireEngineLease } from "./engineLease";
@@ -1499,6 +1500,13 @@ async function openRegisteredProjectFolder(projectId?:string) {
   const error = await shell.openPath(project.path);
   if (error) throw new Error(error);
 }
+ipcMain.handle("agent:project-diff",async(event)=>{
+  if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");
+  const result=await sendRequest("project.get","project.loaded");
+  const project=result.payload?.project as {path?:unknown}|undefined;
+  if(typeof project?.path!=="string"||!path.isAbsolute(project.path))throw new Error("No active project");
+  return readProjectDiff(project.path);
+});
 let projectSearchController:AbortController|undefined;
 ipcMain.handle("agent:project-search-cancel",()=>projectSearchController?.abort());
 ipcMain.handle("agent:project-search",async(event,query:unknown,mode:unknown)=>{
