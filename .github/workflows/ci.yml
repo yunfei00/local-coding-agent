@@ -7,6 +7,11 @@ on:
       - "feature/**"
   pull_request:
 
+# Cancel superseded CI on the same branch (including PR/push duplicates).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   checks:
     name: Core checks
