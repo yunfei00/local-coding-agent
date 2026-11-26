@@ -1082,7 +1082,7 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
     let output="";
     let result:Awaited<ReturnType<typeof runLocalChat>>;
     try{
-    result=await runLocalChat({binary:picked.filePaths[0],root,dataDir:process.env.LCA_DATA_DIR || app.getPath("userData"),profile:{model:value.model,context:selected?.context??8192,maxOutput:Math.min(selected?.maxOutput??512,2048)},ollamaPort:value.port,fixtureTools:value.fixtureTools===true,prompt:value.prompt,messages:Array.isArray(messages)?messages:undefined,followup:typeof value.followup==="string"?value.followup.trim():undefined},delta=>{
+    result=await runLocalChat({binary:picked.filePaths[0],root,dataDir:process.env.LCA_DATA_DIR || app.getPath("userData"),profile:{model:value.model,context:selected?.context??8192,maxOutput:Math.min(selected?.maxOutput??512,2048)},ollamaPort:value.port,ollamaBaseUrl:selected?.baseUrl,fixtureTools:value.fixtureTools===true,prompt:value.prompt,messages:Array.isArray(messages)?messages:undefined,followup:typeof value.followup==="string"?value.followup.trim():undefined},delta=>{
       if(historyId&&output.length<262144)output=(output+delta).slice(0,262144);
       if(!event.sender.isDestroyed())event.sender.send("agent:local-chat-delta",delta);
     },controller.signal,progress=>{
