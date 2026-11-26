@@ -8,7 +8,7 @@ import type {EngineEvent} from "./engineEventBridge";
 import type {LocalModelProfile} from "./openCodeModelConfig";
 
 // Isolated text-only diagnostic; not a production workspace execution route.
-export async function runLocalChat(input:{binary:string;root:string;dataDir:string;profile:LocalModelProfile;ollamaPort:number;prompt:string;followup?:string;messages?:string[]},onText:(delta:string)=>void,signal:AbortSignal,onEvent?:(event:EngineEvent)=>void,nextTurn?:(signal:AbortSignal)=>Promise<string|null>){
+export async function runLocalChat(input:{binary:string;root:string;dataDir:string;profile:LocalModelProfile;ollamaPort:number;prompt:string;followup?:string;messages?:string[]},onText:(delta:string)=>void,signal:AbortSignal,onEvent?:(event:EngineEvent)=>void,nextTurn?:(signal:AbortSignal)=>Promise<string|null>,onSession?:(id:string)=>Promise<void>){
   const messages=[...(input.messages??[input.prompt,...(input.followup?[input.followup]:[])])];
   if(messages.length<1||messages.length>20||messages.some(message=>typeof message!=="string"||!message.trim()||Buffer.byteLength(message)>65536)||messages.reduce((sum,message)=>sum+Buffer.byteLength(message),0)>131072)throw new Error("Invalid conversation messages");
   signal.throwIfAborted();
@@ -22,6 +22,7 @@ export async function runLocalChat(input:{binary:string;root:string;dataDir:stri
     signal.throwIfAborted();
     const adapter=new OpenCodeAdapter((route,method,body)=>supervisor.request(route,method,body));
     const id=await adapter.create(input.root,"P2 isolated text chat");
+    await onSession?.(id);
     const chat=new OpenCodeChat(supervisor);
     const conversation=new OpenCodeConversation(supervisor,id,(prompt,turnSignal)=>chat.run(id,prompt,onText,turnSignal,onEvent),20);
     try{
