@@ -1002,8 +1002,9 @@ ipcMain.handle("agent:local-chat-cancel",()=>{localChatController?.abort();});
 ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
   if(migrationDiagnosticRunning || quitInProgress || localChatController)throw new Error("Engine busy");
   if(process.env.LCA_ENABLE_EXPERIMENTAL_LOCAL_CHAT!=="1")throw new Error("Experimental local chat disabled");
-  const value=input as {model?:unknown;prompt?:unknown;port?:unknown};
+  const value=input as {model?:unknown;prompt?:unknown;port?:unknown;followup?:unknown};
   if(typeof value?.model!=="string" || typeof value.prompt!=="string" || !value.prompt.trim() || Buffer.byteLength(value.prompt)>65536 || typeof value.port!=="number" || !Number.isInteger(value.port) || value.port<1 || value.port>65535)throw new Error("Invalid local chat input");
+  if(value.followup!==undefined && (typeof value.followup!=="string" || Buffer.byteLength(value.followup)>65536))throw new Error("Invalid follow-up");
   const controller=new AbortController();
   localChatController=controller;
   migrationDiagnosticRunning=true;
@@ -1013,9 +1014,11 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
     const picked=await dialog.showOpenDialog({properties:["openFile"],filters:[{name:"OpenCode executable",extensions:["exe"]}]});
     if(picked.canceled || !picked.filePaths[0] || quitInProgress || controller.signal.aborted)return {outcome:"cancelled"};
     const root=await mkdtemp(path.join(app.getPath("userData"),"opencode-chat-"));
-    return await runLocalChat({binary:picked.filePaths[0],root,dataDir:process.env.LCA_DATA_DIR || app.getPath("userData"),profile:{model:value.model,context:8192,maxOutput:512},ollamaPort:value.port,prompt:value.prompt},delta=>{
+    return await runLocalChat({binary:picked.filePaths[0],root,dataDir:process.env.LCA_DATA_DIR || app.getPath("userData"),profile:{model:value.model,context:8192,maxOutput:512},ollamaPort:value.port,prompt:value.prompt,followup:typeof value.followup==="string"?value.followup.trim():undefined},delta=>{
       if(!event.sender.isDestroyed())event.sender.send("agent:local-chat-delta",delta);
-    },controller.signal);
+    },controller.signal,progress=>{
+      if(!event.sender.isDestroyed()&&progress.kind!=="text")event.sender.send("agent:local-chat-progress",{kind:progress.kind,payload:progress.payload});
+    });
   }finally{localChatController=undefined;migrationDiagnosticRunning=false;finish();}
 });
 ipcMain.handle("agent:engine-status", () => ({
