@@ -42,7 +42,8 @@ export class EngineRouter {
     throw new Error("Unknown engine");
   }
   async run(binding: SessionBinding, prompt: string): Promise<void> {
-    if (!["legacy","opencode"].includes(binding.engine)) throw new Error("Unknown engine");
+    // OpenCode prompt admission does not hold the workspace lease until execution settles.
+    if (binding.engine !== "legacy") throw new Error("OpenCode execution disabled");
     if (this.active.has(binding.threadId)) throw new Error("Thread already active");
     this.active.add(binding.threadId);
     try {

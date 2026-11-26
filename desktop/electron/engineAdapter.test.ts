@@ -11,7 +11,7 @@ describe("engine contract", () => {
     expect(request).toHaveBeenCalledWith("/api/session/s/prompt", "POST", {text:"hello"});
   });
 
-  it("defaults to legacy and routes opencode through router", async () => {
+  it("defaults to legacy and rejects admission-only OpenCode routing", async () => {
     const send = vi.fn(async () => {});
     const legacy = new LegacyAdapter({create:async()=>"l",status:async()=>null,send,cancel:async()=>null});
     const opRequest = vi.fn(async (route: string) => route === "/api/session" ? ({data:{id:"s"}}) : undefined);
@@ -19,12 +19,10 @@ describe("engine contract", () => {
     expect(router.engine()).toBe(legacy);
     await router.run({threadId:"t",engine:"legacy",sessionId:"l",projectRoot:process.cwd()},"hello");
     expect(send).toHaveBeenCalledWith("l","hello");
-    const { mkdtemp } = await import("node:fs/promises");
-    const { tmpdir } = await import("node:os");
-    const { join } = await import("node:path");
-    const ocRoot = await mkdtemp(join(tmpdir(), "oc-test-"));
-    await router.run({threadId:"t2",engine:"opencode",sessionId:"s",projectRoot:ocRoot},"hello");
-    expect(opRequest).toHaveBeenCalledWith("/api/session/s/prompt", "POST", {text:"hello"});
+    await expect(router.run({
+      threadId:"t2",engine:"opencode",sessionId:"s",projectRoot:process.cwd(),
+    },"hello")).rejects.toThrow("disabled");
+    expect(opRequest).not.toHaveBeenCalled();
   });
 
   it("holds the workspace lease until execution settles, including failure",async()=>{

@@ -19,8 +19,8 @@ export type OpenCodeRuntimeStatus = {
 
 const VERSION = "2.2.6";
 const VERSION_ALIASES = ["2.2.6", "v2.2.6", "opencode v2.2.6"];
-const ARCHIVE_SHA256 = "f75c16b33b8523fe1ff41e7d97e3ae654a47d59a0e327def24db2d9291bb24be";
 const EXECUTABLE_SHA256 = "98cb0aa854c7c015cf6febafa7afb872c359bfe5a823a526f3b4fd347a9e9677";
+const ACTIVATION_BLOCK = "OpenCode production execution disabled: security and budget gates pending";
 
 export class OpenCodeRuntime implements EventSource {
   private readonly supervisor = new OpenCodeSupervisor();
@@ -33,11 +33,11 @@ export class OpenCodeRuntime implements EventSource {
 
   status(): OpenCodeRuntimeStatus {
     return {
-      available: !!this.resolveBinary(),
+      available: false,
       running: !!this.root,
       version: VERSION,
       binary: this.binaryPath,
-      reason: this.resolveBinary() ? undefined : "OpenCode runtime not found",
+      reason: ACTIVATION_BLOCK,
     };
   }
 
@@ -57,6 +57,7 @@ export class OpenCodeRuntime implements EventSource {
   }
 
   async ensureStarted(configContent: string, cwd?: string): Promise<void> {
+    if (!this.status().available) throw new Error(ACTIVATION_BLOCK);
     const wantedCwd = cwd ? path.resolve(cwd) : process.cwd();
     if (this.root && this.cwd === wantedCwd) return;
     if (this.root && this.cwd !== wantedCwd) await this.stop();

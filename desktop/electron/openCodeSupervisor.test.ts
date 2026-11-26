@@ -5,7 +5,7 @@ describe("diagnostic transport gate",()=>{
     const supervisor=new OpenCodeSupervisor();
     const fetchSpy=vi.spyOn(globalThis,"fetch");
     try{
-      for(const [route,method] of [["/api/session/s/prompt","POST"],["/api/session/s","PATCH"],["/api/session/..","GET"],["/api/session/%2e%2e","GET"],["/api/info","POST"]]){
+      for(const [route,method] of [["/api/session/s/prompt","POST"],["/api/session/s","PATCH"],["/api/session/s","DELETE"],["/api/session/..","GET"],["/api/session/%2e%2e","GET"],["/api/info","POST"]]){
         await expect(supervisor.request(route,method)).rejects.toThrow("Route not allowed");
       }
       await expect(supervisor.request("/api/session","POST",{title:"unsafe",permissions:[]})).rejects.toThrow("deny-all");

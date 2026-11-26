@@ -89,12 +89,12 @@ export class OpenCodeSupervisor {
     const promptAllowed = this.localChat || this.options.allowPrompt === true;
     const allowed = (method==="GET" && (route==="/api/info" || route==="/api/session" || route==="/api/session/active" || (session && !session[2] && session[1]))) ||
       (method==="POST" && (route==="/api/session" || (session && (session[2]==="/interrupt" || (promptAllowed && session[2]==="/prompt"))))) ||
-      (method==="DELETE" && !!session && !session[2]);
+      (method==="DELETE" && this.options.allowPrompt === true && !!session && !session[2]);
     if(!allowed) throw new Error("Route not allowed");
     if(method==="POST" && route==="/api/session"){
       const input=body as {title?:unknown;permissions?:unknown}|undefined;
       if(typeof input?.title!=="string" || !Array.isArray(input.permissions)) throw new Error("Invalid session create request");
-      if(!promptAllowed){
+      if(this.options.allowPrompt !== true){
         if(JSON.stringify(input.permissions)!==JSON.stringify([{action:"*",resource:"*",effect:"deny"}])) throw new Error("Only deny-all diagnostic sessions allowed");
         body={title:input.title,permissions:[{action:"*",resource:"*",effect:"deny"},...(this.fixtureTools?[{action:"read",resource:"seed.txt",effect:"allow"},{action:"read",resource:"add.cjs",effect:"allow"},{action:"edit",resource:"add.cjs",effect:"allow"},{action:"edit",resource:"result.txt",effect:"allow"},{action:"shell",resource:"echo P2_SHELL_CHECK",effect:"allow"},{action:"shell",resource:"git status --short",effect:"allow"},{action:"shell",resource:"git diff -- add.cjs",effect:"allow"}]:[])]};
       } else {

@@ -1,8 +1,8 @@
 # P0 架构审计（OpenCode 核心替换）
 
-> 审计日期：2026-11-26  
-> 审计分支：`feature/opencode-engine-migration`  
-> 审计 HEAD：`4e9d8e5fb5e8d9510a8dccad6c8bc1635f12ac2b`  
+> 审计日期：2026-11-26
+> 审计分支：`feature/opencode-engine-migration`
+> 审计 HEAD：`4e9d8e5fb5e8d9510a8dccad6c8bc1635f12ac2b`
 > 审计人：AI coding agent（基于仓库源码、文档、测试、git 历史）
 
 ## 1. 范围与方法

@@ -1739,7 +1739,7 @@ async function bindLegacyThread(threadId:string){
 }
 
 async function refreshOpenCodeRuntimeConfig(): Promise<void> {
-  if (!openCodeRuntime.resolveBinary()) return;
+  if (!openCodeRuntime.status().available) return;
   if (activeOpenCodeTurns.size > 0) return;
   try {
     const [catalogRes, settingsRes] = await Promise.all([
@@ -1876,13 +1876,7 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
 
 ipcMain.handle("agent:turn-start", async (_event, threadId: string, prompt: string, model?: string, unified?: boolean, resume?:{run_id:string;confirm_workspace:boolean},routing?:{allow_fallback:boolean;engine?:unknown}) => {
   assertProductionEngine(routing?.engine);
-  if (openCodeRuntime.resolveBinary()) {
-    try {
-      return await startOpenCodeTurn(threadId, prompt, model);
-    } catch (error) {
-      throw error;
-    }
-  }
+  if (openCodeRuntime.status().available) return startOpenCodeTurn(threadId, prompt, model);
   await bindLegacyThread(threadId);
   return sendRequest(
     "turn.start",

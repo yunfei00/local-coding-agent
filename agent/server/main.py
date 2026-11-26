@@ -1625,23 +1625,6 @@ class AgentServer:
                 await self.send_error(ws,'FOLLOWUP_REJECTED',str(exc),request_id=request_id,thread_id=thread_id,turn_id=turn_id)
             return
 
-        if message_type == "turn.record_external":
-            thread_id = str(data.get("thread_id") or payload.get("thread_id") or "")
-            project = self.projects.active
-            thread = project.state.get_thread(thread_id) if project else None
-            if not project or not thread:
-                await self.send_error(ws, "THREAD_NOT_FOUND", "Thread not found.", request_id=request_id, thread_id=thread_id or None)
-                return
-            role = str(payload.get("role") or "")
-            content = str(payload.get("content") or "")
-            if role not in {"user", "assistant", "system"}:
-                await self.send_error(ws, "INVALID_ROLE", "Invalid role.", request_id=request_id, thread_id=thread_id)
-                return
-            now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
-            self.store.append_message(thread_id=thread_id, role=role, content=content, created_at=now)
-            await ws.send_json(envelope("turn.recorded", {"role": role}, request_id=request_id, thread_id=thread_id))
-            return
-
         if message_type == "turn.start":
             background = payload.get('unified') is True and payload.get('background') is True
             if any(not task.done() for task in self.active_turns.values()) and not background:
