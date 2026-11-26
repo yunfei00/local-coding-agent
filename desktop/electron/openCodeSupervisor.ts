@@ -1,3 +1,4 @@
+import {buildLocalModelConfig, type LocalModelProfile} from "./openCodeModelConfig";
 import { spawn, ChildProcess } from "node:child_process";
 import { randomBytes, createHash } from "node:crypto";
 import { readFile, mkdir } from "node:fs/promises";
@@ -8,9 +9,10 @@ export class OpenCodeSupervisor {
   private child?: ChildProcess;
   private origin?: string;
   private password?: string;
+  private localChat = false;
   private starting = false;
   private stopping = false;
-  async start(binary: string, isolatedRoot: string): Promise<void> {
+  async start(binary: string, isolatedRoot: string, local?: {profile:LocalModelProfile;gateway:{port:number;token:string}}): Promise<void> {
     if (this.child || this.starting || this.stopping) throw new Error("Sidecar already owned");
     this.starting = true;
     try {
@@ -18,6 +20,8 @@ export class OpenCodeSupervisor {
       if (!path.isAbsolute(binary) || !path.isAbsolute(isolatedRoot)) throw new Error("Absolute paths required");
       if (createHash("sha256").update(await readFile(binary)).digest("hex") !== HASH) throw new Error("Sidecar checksum mismatch");
       await mkdir(isolatedRoot, {recursive:true});
+      const config = local ? buildLocalModelConfig(local.profile,local.gateway) : {providers:{},policies:[{action:"provider.use",resource:"*",effect:"deny"}]};
+      this.localChat = !!local;
       const password = randomBytes(32).toString("hex");
       this.password = password;
       const env: NodeJS.ProcessEnv = {};
@@ -26,7 +30,7 @@ export class OpenCodeSupervisor {
         XDG_CONFIG_HOME:path.join(isolatedRoot,"config"), XDG_DATA_HOME:path.join(isolatedRoot,"data"),
         XDG_CACHE_HOME:path.join(isolatedRoot,"cache"), XDG_STATE_HOME:path.join(isolatedRoot,"state"),
         OPENCODE_PASSWORD:password, OPENCODE_DISABLE_MODELS_FETCH:"1", OPENCODE_DISABLE_PROJECT_CONFIG:"1",
-        OPENCODE_DISABLE_CLAUDE_CODE:"1", OPENCODE_CONFIG_CONTENT:JSON.stringify({providers:{},policies:[{action:"provider.use",resource:"*",effect:"deny"}]})});
+        OPENCODE_DISABLE_CLAUDE_CODE:"1", OPENCODE_CONFIG_CONTENT:JSON.stringify(config)});
       const child = spawn(binary,["serve","--hostname","127.0.0.1","--port","0"],{cwd:isolatedRoot,env,windowsHide:true,stdio:["ignore","pipe","pipe"]});
       this.child = child;
       child.stderr?.resume();
@@ -64,14 +68,18 @@ export class OpenCodeSupervisor {
     return {authorization:"Basic "+Buffer.from("opencode:"+this.password).toString("base64")};
   }
   async request(route:string,method="GET",body?:unknown):Promise<unknown>{
-    const session = /^\/api\/session\/([A-Za-z0-9_-]+)(\/interrupt)?$/.exec(route);
+    const session = /^\/api\/session\/([A-Za-z0-9_-]+)(\/interrupt|\/prompt)?$/.exec(route);
     const allowed = (method==="GET" && (route==="/api/info" || route==="/api/session" || (session && !session[2]))) ||
-      (method==="POST" && (route==="/api/session" || (session && session[2]==="/interrupt")));
+      (method==="POST" && (route==="/api/session" || (session && (session[2]==="/interrupt" || (this.localChat && session[2]==="/prompt")))));
     if(!allowed) throw new Error("Route not allowed");
     if(method==="POST" && route==="/api/session"){
       const input=body as {title?:unknown;permissions?:unknown}|undefined;
       if(typeof input?.title!=="string" || JSON.stringify(input.permissions)!==JSON.stringify([{action:"*",resource:"*",effect:"deny"}])) throw new Error("Only deny-all diagnostic sessions allowed");
       body={title:input.title,permissions:[{action:"*",resource:"*",effect:"deny"}]};
+    } else if(method==="POST" && session?.[2]==="/prompt" && this.localChat){
+      const input=body as {text?:unknown}|undefined;
+      if(typeof input?.text!=="string" || !input.text.trim() || Buffer.byteLength(input.text)>65536)throw new Error("Invalid prompt");
+      body={text:input.text};
     } else if(body!==undefined) throw new Error("Unexpected request body");
     const response=await fetch(this.origin+route,{method,headers:{...this.headers(),"content-type":"application/json"},body:body===undefined?undefined:JSON.stringify(body),redirect:"error",signal:AbortSignal.timeout(8000)});
     if(!response.ok){await response.body?.cancel();throw new Error("Sidecar HTTP "+response.status);}
@@ -83,7 +91,7 @@ export class OpenCodeSupervisor {
     return response;
   }
   async stop():Promise<void>{
-    this.origin=undefined;this.password=undefined;
+    this.origin=undefined;this.password=undefined;this.localChat=false;
     const child=this.child;
     if(!child || this.stopping)return;
     this.stopping=true;
