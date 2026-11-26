@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from "react";
+import {ToolExecutionCards,appendToolEvent,type ToolCard,type ToolEvent} from "./ToolExecutionCards";
 import {Modal} from "./Modal";
 
 export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
@@ -6,6 +7,7 @@ export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
   const [port,setPort]=useState("11434");
   const [prompt,setPrompt]=useState("");
   const [followup,setFollowup]=useState("");
+  const [cards,setCards]=useState<ToolCard[]>([]);
   const [progress,setProgress]=useState<string[]>([]);
   const [output,setOutput]=useState("");
   const [status,setStatus]=useState("未开始");
@@ -18,6 +20,9 @@ export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
     const offProgress=window.localAgent.onLocalChatProgress?.(raw=>{
       if(!running.current)return;
       const event=raw as {kind?:string;payload?:{type?:string;outcome?:string}};
+      if(event.kind==="tool"&&typeof event.payload?.type==="string"){
+        setCards(previous=>appendToolEvent(previous,event.payload as ToolEvent));return;
+      }
       const label=event.kind==="tool"?event.payload?.type:event.kind==="usage"?"用量已更新":event.kind==="execution-ended"?"执行终态："+event.payload?.outcome:undefined;
       if(label)setProgress(previous=>[...previous.slice(-49),label]);
     });
@@ -27,7 +32,7 @@ export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
     if(running.current||!window.localAgent.runLocalChat)return;
     const number=Number(port);
     if(!model.trim()||!prompt.trim()||!Number.isInteger(number)||number<1||number>65535){setStatus("请输入有效模型、端口和消息");return;}
-    running.current=true;setBusy(true);setOutput("");setProgress([]);setStatus("正在启动，请选择固定版本 OpenCode EXE");
+    running.current=true;setBusy(true);setOutput("");setProgress([]);setCards([]);setStatus("正在启动，请选择固定版本 OpenCode EXE");
     try{
       const result=await window.localAgent.runLocalChat({model:model.trim(),port:number,prompt,followup:followup.trim()||undefined});
       setStatus(result.outcome==="succeeded"?"对话结束（未独立验证）":result.outcome==="cancelled"||result.outcome==="interrupted"?"已取消或中断":"执行失败："+result.outcome);
@@ -43,6 +48,7 @@ export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
       <label>第二轮消息（可选） <textarea rows={2} value={followup} disabled={busy} onChange={e=>setFollowup(e.target.value)}/></label>
       <p role="status">{status}</p>
       <pre aria-label="OpenCode 输出" style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:240,overflow:"auto"}}>{output}</pre>
+      {cards.length>0&&<ToolExecutionCards cards={cards}/>}
       {progress.length>0?<ul aria-label="执行事件">{progress.map((item,i)=><li key={i}>{item}</li>)}</ul>:null}
       <div className="modal-actions">
         <button type="button" disabled={!busy} onClick={()=>{setStatus("正在请求停止");void window.localAgent.cancelLocalChat?.().catch(error=>setStatus(String(error)));}}>停止</button>
