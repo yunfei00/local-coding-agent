@@ -1820,7 +1820,7 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
             tool_failures: toolFailures,
             provider_retries: 0,
             elapsed_ms: Math.max(0, Date.now() - startedAtMs),
-            context_token_estimate: usageTotals.input,
+            context_token_estimate: usageTotals.total || usageTotals.input,
             context_sources: { input_tokens: usageTotals.input, output_tokens: usageTotals.output, total_tokens: usageTotals.total },
           },
         } });
