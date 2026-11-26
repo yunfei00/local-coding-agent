@@ -1,0 +1,18 @@
+dialog.app-modal.opencode-chat-modal{box-sizing:border-box;width:min(1080px,calc(100vw - 32px));max-width:none;max-height:calc(100vh - 32px);overflow:auto}
+.opencode-chat-modal .oc-form{display:flex;flex-direction:column;gap:12px;min-width:0}
+.opencode-chat-modal .oc-columns{display:grid;grid-template-columns:minmax(200px,260px) minmax(0,1fr);gap:20px;align-items:start;max-height:calc(100vh - 200px);overflow:auto}
+.opencode-chat-modal .oc-settings,.opencode-chat-modal .oc-conversation{display:flex;flex-direction:column;gap:12px;min-width:0}
+.opencode-chat-modal .oc-settings{padding-right:16px;border-right:1px solid currentColor;border-right-color:color-mix(in srgb,currentColor 15%,transparent)}
+.opencode-chat-modal h3{margin:0;font-size:14px}
+.opencode-chat-modal label{display:flex;flex-direction:column;gap:5px;min-width:0}
+.opencode-chat-modal label.oc-check{flex-direction:row;align-items:center}
+.opencode-chat-modal .oc-check input{width:auto;flex:none}
+.opencode-chat-modal input:not([type=checkbox]),.opencode-chat-modal select,.opencode-chat-modal textarea{box-sizing:border-box;width:100%;min-width:0}
+.opencode-chat-modal textarea{resize:vertical}
+.opencode-chat-modal .oc-output{min-height:160px;height:clamp(160px,32vh,380px);overflow:auto;border:1px solid color-mix(in srgb,currentColor 20%,transparent);border-radius:8px;padding:12px}
+.opencode-chat-modal .oc-output p{margin:0 0 12px;font-size:12px}
+.opencode-chat-modal pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.opencode-chat-modal details{min-width:0}
+.opencode-chat-modal summary{cursor:pointer}
+.opencode-chat-modal .modal-actions{flex:none;margin-top:0}
+@media(max-width:700px){.opencode-chat-modal .oc-columns{grid-template-columns:minmax(0,1fr);gap:12px}.opencode-chat-modal .oc-settings{border-right:0;padding-right:0}.opencode-chat-modal .oc-output{height:200px}}
