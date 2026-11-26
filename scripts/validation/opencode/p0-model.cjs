@@ -141,6 +141,11 @@ async function start() {
   const password = crypto.randomBytes(32).toString('hex');
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
     !/key|token|secret|credential|password|^opencode_|^git_config_/i.test(key)));
+  if (mode === '--p2') {
+    const permitted = new Set(['systemroot','windir','path','temp','tmp','comspec','pathext']);
+    for (const key of Object.keys(env)) if (!permitted.has(key.toLowerCase())) delete env[key];
+    Object.assign(env, {GIT_CONFIG_NOSYSTEM:'1', GIT_CONFIG_GLOBAL:'NUL', GIT_TERMINAL_PROMPT:'0'});
+  }
   Object.assign(env, {
     OPENCODE_TEST_HOME: run,
     OPENCODE_CONFIG_DIR: path.join(run, 'config'),
@@ -183,7 +188,7 @@ async function start() {
 
 async function stopSidecar() {
   if (child?.pid && child.exitCode === null) {
-    spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], {windowsHide: true, stdio: 'ignore'});
+    spawnSync(path.join(process.env.SystemRoot || 'C:\\Windows','System32','taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], {windowsHide: true, stdio: 'ignore', timeout: 8000});
     for (let i = 0; i < 30 && child.exitCode === null; i++) await pause(100);
   }
   return !child?.pid || child.exitCode !== null;
@@ -381,7 +386,8 @@ async function main() {
     const succeeded = (tools, n) => tools.filter(event => event.type === 'session.tool.success').length >= n;
     if (mode === '--p2') {
       report.fixtureVerified = await require('./p2-fixture.cjs').runP2Cases(api, project, runCase);
-      report.result = report.fixtureVerified && report.cases.length >= 8 && report.cases.every(item => item.status === 'PASS') ? 'PASS' : 'PARTIAL';
+      await testInterruptAndRestart(api,[deny]);
+      report.result = report.fixtureVerified && report.cases.length >= 9 && report.cases.every(item => item.status === 'PASS') ? 'PASS' : 'PARTIAL';
       return;
     }
     const marker = 'P0-' + crypto.randomBytes(5).toString('hex');
