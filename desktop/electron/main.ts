@@ -14,6 +14,7 @@ import { EngineEventBridge } from "./engineEventBridge";
 import { OpenCodeAdapter } from "./engineAdapter";
 import { mkdtemp } from "node:fs/promises";
 import { OpenCodeSupervisor } from "./openCodeSupervisor";
+import { OpenCodeRuntime, buildConfigFromCatalog } from "./openCodeRuntime";
 import {
   app,
   BrowserWindow,
@@ -979,6 +980,7 @@ ipcMain.on("renderer:ready", () => {
 });
 
 const migrationSidecar = new OpenCodeSupervisor();
+const openCodeRuntime = new OpenCodeRuntime();
 let migrationDiagnosticRunning = false;
 let migrationDiagnosticDone: Promise<void> = Promise.resolve();
 ipcMain.handle("agent:engine-diagnostic", async () => {
@@ -1133,12 +1135,16 @@ ipcMain.handle("agent:history-diagnose",async(event,id:unknown,source?:unknown)=
   return await diagnoseHistorySession({binary:picked.filePaths[0],userData:app.getPath("userData"),dataDir:process.env.LCA_DATA_DIR||app.getPath("userData"),entry});
  }finally{migrationDiagnosticRunning=false;finish();}
 });
-ipcMain.handle("agent:engine-status", () => ({
-  selected: "legacy", engines: [
-    {id:"legacy", available:true},
-    {id:"opencode", available:false, version:"2.2.6", reason:"P0 security and budget gates pending"}
-  ]
-}));
+ipcMain.handle("agent:engine-status", () => {
+  const oc = openCodeRuntime.status();
+  return {
+    selected: oc.available ? "opencode" : "legacy",
+    engines: [
+      {id:"legacy", available: !oc.available, reason: oc.available ? "Replaced by OpenCode runtime" : undefined},
+      {id:"opencode", available: oc.available, version: oc.version, reason: oc.reason}
+    ]
+  };
+});
 ipcMain.handle("agent:get-status", () => agentStatus);
 ipcMain.handle("agent:screenshot-preview", (_event, candidate: unknown) =>
   desktopArtifact(process.env.LCA_DATA_DIR || app.getPath("userData"), candidate));
@@ -1725,8 +1731,77 @@ async function bindLegacyThread(threadId:string){
  productionBindings??=new EngineSessionStore(path.join(process.env.LCA_DATA_DIR||app.getPath("userData"),"production-engine-bindings.json"));
  await productionBindings.bind({threadId:payload.project_id+":"+threadId,engine:"legacy",sessionId:threadId,projectRoot:root});
 }
+
+async function startOpenCodeTurn(threadId: string, prompt: string, model?: string): Promise<AgentEnvelope> {
+  const turnId = "turn_" + randomUUID().replace(/-/g, "");
+  const startedAt = new Date().toISOString();
+  broadcastAgentEvent({ type: "turn.started", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: startedAt, payload: { engine: "opencode" } });
+  void (async () => {
+    let assistant = "";
+    try {
+      const [projectRes, catalogRes, settingsRes] = await Promise.all([
+        sendRequest("project.get", "project.loaded", {}, { threadId }).catch(() => null),
+        sendRequest("task.catalog.get", "task.loaded", {}, { threadId }),
+        sendRequest("task.settings.get", "task.loaded", {}, { threadId }).catch(() => null),
+      ]);
+      const projectPath = String((projectRes as any)?.payload?.project?.path || (projectRes as any)?.payload?.path || process.cwd());
+      const catalog = (catalogRes as any)?.payload?.catalog;
+      const config = (catalogRes as any)?.payload?.config || (settingsRes as any)?.payload?.config;
+      const credentials = readModelCredentials();
+      const configContent = buildConfigFromCatalog(catalog, config, credentials, model?.startsWith("profile:") ? model.slice("profile:".length) : (catalogRes as any)?.payload?.chat_default);
+      await openCodeRuntime.ensureStarted(configContent);
+      let binding = await openCodeRuntime.bindings().get(threadId).catch(() => undefined);
+      let sessionId = binding?.sessionId;
+      if (!sessionId) {
+        sessionId = await openCodeRuntime.createSession(prompt.slice(0, 80) || "Chat", projectPath, threadId);
+      }
+      await sendRequest("turn.record_external", "turn.recorded", { role: "user", content: prompt }, { threadId }).catch(() => {});
+      const controller = new AbortController();
+      const bridge = openCodeRuntime.bridge(3);
+      let finished = false;
+      const follow = bridge.follow(sessionId, controller.signal, (event) => {
+        if (event.kind === "text") {
+          const delta = String((event.payload as any)?.delta ?? "");
+          if (delta) {
+            assistant += delta;
+            broadcastAgentEvent({ type: "turn.delta", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { delta } });
+          }
+        } else if (event.kind === "tool") {
+          const type = String((event.payload as any)?.type ?? "session.tool");
+          const toolCallId = "tool_" + randomUUID().replace(/-/g, "");
+          broadcastAgentEvent({ type: "tool.requested", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { tool_call_id: toolCallId, name: type, arguments: {} } });
+          broadcastAgentEvent({ type: "tool.completed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { tool_call_id: toolCallId, result: { ok: !type.includes("failed"), summary: type, data: {} } } });
+        } else if (event.kind === "execution-ended") {
+          finished = true;
+          controller.abort();
+        }
+      }).catch(() => {});
+      await openCodeRuntime.prompt(sessionId, prompt);
+      const timeout = Date.now() + 10 * 60 * 1000;
+      while (!finished && Date.now() < timeout) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      controller.abort();
+      await follow.catch(() => {});
+      await sendRequest("turn.record_external", "turn.recorded", { role: "assistant", content: assistant }, { threadId }).catch(() => {});
+      broadcastAgentEvent({ type: "turn.completed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { engine: "opencode" } });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      broadcastAgentEvent({ type: "turn.failed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { message } });
+    }
+  })();
+  return { type: "turn.started", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: startedAt, payload: { engine: "opencode" } };
+}
+
 ipcMain.handle("agent:turn-start", async (_event, threadId: string, prompt: string, model?: string, unified?: boolean, resume?:{run_id:string;confirm_workspace:boolean},routing?:{allow_fallback:boolean;engine?:unknown}) => {
   assertProductionEngine(routing?.engine);
+  if (openCodeRuntime.resolveBinary()) {
+    try {
+      return await startOpenCodeTurn(threadId, prompt, model);
+    } catch (error) {
+      throw error;
+    }
+  }
   await bindLegacyThread(threadId);
   return sendRequest(
     "turn.start",
@@ -1780,7 +1855,7 @@ app.on("before-quit", (event) => {
   }
 
   quitInProgress = true;
-  void Promise.allSettled([stopAgent(), (localChatController?.abort(), migrationDiagnosticDone.then(()=>migrationSidecar.stop()))]).finally(() => {
+  void Promise.allSettled([stopAgent(), (localChatController?.abort(), migrationDiagnosticDone.then(()=>migrationSidecar.stop())), openCodeRuntime.stop()]).finally(() => {
     quitReady = true;
     app.quit();
   });
