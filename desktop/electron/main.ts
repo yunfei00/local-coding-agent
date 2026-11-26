@@ -1766,10 +1766,11 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
   void (async () => {
     let assistant = "";
     try {
-      const [projectRes, catalogRes, settingsRes] = await Promise.all([
+      const [projectRes, catalogRes, settingsRes, threadRes] = await Promise.all([
         sendRequest("project.get", "project.loaded", {}, { threadId }).catch(() => null),
         sendRequest("task.catalog.get", "task.loaded", {}, { threadId }),
         sendRequest("task.settings.get", "task.loaded", {}, { threadId }).catch(() => null),
+        sendRequest("thread.get", "thread.loaded", { thread_id: threadId }, { threadId }).catch(() => null),
       ]);
       const projectPath = String((projectRes as any)?.payload?.project?.path || (projectRes as any)?.payload?.path || process.cwd());
       const catalog = (catalogRes as any)?.payload?.catalog;
@@ -1779,15 +1780,27 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       await openCodeRuntime.ensureStarted(configContent, projectPath);
       let binding = await openCodeRuntime.bindings().get(threadId).catch(() => undefined);
       let sessionId = binding?.sessionId;
+      let newSession = false;
       if (sessionId) {
         const ok = await openCodeRuntime.getSession(sessionId).then(() => true).catch(() => false);
         if (!ok) sessionId = undefined;
       }
       if (!sessionId) {
         sessionId = await openCodeRuntime.createSession(prompt.slice(0, 80) || "Chat", projectPath, threadId);
+        newSession = true;
       }
       entry.sessionId = sessionId;
       await sendRequest("turn.record_external", "turn.recorded", { role: "user", content: prompt }, { threadId }).catch(() => {});
+      let effectivePrompt = prompt;
+      if (newSession) {
+        const msgs = Array.isArray((threadRes as any)?.payload?.messages) ? (threadRes as any).payload.messages : [];
+        const recent = msgs.slice(-20).map((m: any) => `${String(m.role || "user")}: ${String(m.content || "").slice(0, 2000)}`).join("\n");
+        if (recent.trim()) {
+          effectivePrompt = `Project: ${projectPath}\nRecent conversation context:\n${recent}\n\nCurrent user request:\n${prompt}`;
+        } else {
+          effectivePrompt = `Project: ${projectPath}\n\nUser request:\n${prompt}`;
+        }
+      }
       const bridge = openCodeRuntime.bridge(3);
       let finished = false;
       const toolCalls = new Map<string, { name: string; started: boolean }>();
@@ -1827,7 +1840,7 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
           entry.controller.abort();
         }
       }).catch(() => {});
-      await openCodeRuntime.prompt(sessionId, prompt);
+      await openCodeRuntime.prompt(sessionId, effectivePrompt);
       const timeout = Date.now() + 10 * 60 * 1000;
       while (!finished && Date.now() < timeout && !entry.controller.signal.aborted) {
         await new Promise((r) => setTimeout(r, 200));
