@@ -14,6 +14,7 @@ declare global {
   interface Window {
     localAgent: {
       platform: string;
+      readProjectDiff?: ()=>Promise<{status:string;unstaged:string;staged:string}>;
       searchProject?: (query:string,mode:"file"|"text")=>Promise<{hits:{file:string;line?:number;text?:string}[];truncated:boolean;skipped:number}>;
       cancelProjectSearch?: ()=>Promise<void>;
       runLocalChat?: (input:{model:string;prompt:string;port:number;followup?:string})=>Promise<{outcome:string;sessionId?:string;verified?:false}>;
