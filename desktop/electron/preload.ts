@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("localAgent", {
   readProjectDiff: ()=>ipcRenderer.invoke("agent:project-diff"),
   searchProject: (query:string,mode:"file"|"text")=>ipcRenderer.invoke("agent:project-search",query,mode),
   cancelProjectSearch: ()=>ipcRenderer.invoke("agent:project-search-cancel"),
+  discoverOllamaModels: (port:number)=>ipcRenderer.invoke("agent:ollama-discover",port),
   listLocalChatHistory: ()=>ipcRenderer.invoke("agent:local-chat-history"),
   runLocalChat: (input:{model:string;prompt:string;port:number;followup?:string;messages?:string[];saveHistory?:boolean}) => ipcRenderer.invoke("agent:local-chat",input),
   onLocalChatProgress: (handler:(progress:unknown)=>void) => {const listener=(_event:unknown,progress:unknown)=>handler(progress);ipcRenderer.on("agent:local-chat-progress",listener);return ()=>ipcRenderer.removeListener("agent:local-chat-progress",listener);},
