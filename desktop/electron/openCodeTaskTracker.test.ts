@@ -18,12 +18,14 @@ describe("persistent lifecycle",()=>{
   const root=mkdtempSync(path.join(os.tmpdir(),"lca-journal-"));
   try{
    const file=path.join(root,"tasks.json"),a=new OpenCodeTaskTracker(file),id=a.begin("local");
+   a.bindSession(id,"session-original","opencode-chat-abcdef");
+   expect(()=>a.bindSession(id,"session-other","opencode-chat-abcdef")).toThrow();
    a.transition(id,"waiting");
    expect(()=>a.begin("other")).toThrow();
    a.transition(id,"running");a.transition(id,"stopping");a.transition(id,"running");
    expect(a.list()[0].status).toBe("stopping");
    const b=new OpenCodeTaskTracker(file);
-   expect(b.list()[0]).toMatchObject({id,status:"unknown",verified:false});
+   expect(b.list()[0]).toMatchObject({id,status:"unknown",verified:false,sessionId:"session-original",storageId:"opencode-chat-abcdef"});
    b.finish(id,"succeeded");
    expect(b.list()[0].status).toBe("unknown");
   }finally{rmSync(root,{recursive:true,force:true});}
