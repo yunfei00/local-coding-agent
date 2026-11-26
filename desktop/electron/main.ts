@@ -1,4 +1,4 @@
-import {assertProductionEngine,legacyTaskPayload} from "./productionEngineGate";
+import {assertProductionEngine,legacyTaskPayload,openCodeProductionEnabled} from "./productionEngineGate";
 import {diagnoseHistorySession} from "./recoveryDiagnostic";
 import {InteractiveTurnQueue} from "./interactiveTurnQueue";
 import {OpenCodeTaskTracker} from "./openCodeTaskTracker";
@@ -1910,7 +1910,10 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
 
 ipcMain.handle("agent:turn-start", async (_event, threadId: string, prompt: string, model?: string, unified?: boolean, resume?:{run_id:string;confirm_workspace:boolean},routing?:{allow_fallback:boolean;engine?:unknown}) => {
   assertProductionEngine(routing?.engine);
-  if (openCodeRuntime.status().available) return startOpenCodeTurn(threadId, prompt, model);
+  if (openCodeProductionEnabled()) {
+    if (!openCodeRuntime.resolveBinary()) throw new Error("OpenCode production gate enabled but runtime binary was not found.");
+    return startOpenCodeTurn(threadId, prompt, model);
+  }
   await bindLegacyThread(threadId);
   return sendRequest(
     "turn.start",
