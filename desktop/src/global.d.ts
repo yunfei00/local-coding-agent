@@ -26,7 +26,7 @@ declare global {
       listLocalChatHistory?: ()=>Promise<{id:string;model:string;createdAt:string;messages:string[];output:string;status:string;sessionId?:string;storageId?:string}[]>;
       runLocalChat?: (input:{model:string;prompt:string;port:number;followup?:string;messages?:string[];saveHistory?:boolean;profileId?:string;interactive?:boolean})=>Promise<{outcome:string;sessionId?:string;verified?:false}>;
       onLocalChatProgress?: (handler:(progress:unknown)=>void)=>()=>void;
-      cancelLocalChat?: ()=>Promise<void>;
+      cancelLocalChat?: (id?:string)=>Promise<void>;
       onLocalChatDelta?: (handler:(delta:string)=>void)=>()=>void;
       runEngineDiagnostic?: () => Promise<{status:string;sessionId?:string}>;
       getEngineStatus?: () => Promise<{selected: "legacy" | "opencode"; engines: Array<{id: "legacy" | "opencode"; available: boolean; version?: string; reason?: string}>}>;
