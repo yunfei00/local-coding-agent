@@ -1,6 +1,6 @@
 import {createServer} from "node:http";
 import {randomBytes,timingSafeEqual} from "node:crypto";
-import {Readable} from "node:stream";
+import {Readable,Transform} from "node:stream";
 import {pipeline} from "node:stream/promises";
 
 export type GatewayLimits={requests:number;inputBytes:number;maxOutput:number;durationMs:number};
@@ -22,6 +22,8 @@ export async function startLocalModelGateway(model:string,upstreamPort:number,li
     requests++;
     const controller=new AbortController();active.add(controller);
     const timer=setTimeout(()=>controller.abort(),Math.max(1,deadline-Date.now()));
+    const abortBody=()=>{if(!req.complete)req.destroy();};
+    controller.signal.addEventListener("abort",abortBody,{once:true});
     res.once("close",()=>controller.abort());
     try{
       const chunks:Buffer[]=[];
@@ -43,10 +45,18 @@ export async function startLocalModelGateway(model:string,upstreamPort:number,li
         body:JSON.stringify({model,messages:body.messages,stream:body.stream===true,max_tokens:max})
       });
       res.writeHead(upstream.status,{"content-type":upstream.headers.get("content-type")??"application/json"});
-      if(upstream.body)await pipeline(Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0]),res);
+      if(upstream.body){
+        let outputBytes=0;
+        const bounded=new Transform({transform(chunk,_encoding,callback){
+          outputBytes+=Buffer.byteLength(chunk);
+          if(outputBytes>2*1024*1024){controller.abort();callback(new Error("Gateway output exceeds byte limit"));return;}
+          callback(null,chunk);
+        }});
+        await pipeline(Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0]),bounded,res,{signal:controller.signal});
+      }
       else res.end();
     }catch{if(!res.headersSent)reject(502);else res.destroy();}
-    finally{clearTimeout(timer);active.delete(controller);}
+    finally{clearTimeout(timer);controller.signal.removeEventListener("abort",abortBody);active.delete(controller);}
   });
   server.requestTimeout=Math.min(limits.durationMs,30000);
   await new Promise<void>((resolve,reject)=>{server.once("error",reject);server.listen(0,"127.0.0.1",()=>{server.removeListener("error",reject);resolve();});});
