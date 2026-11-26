@@ -13,10 +13,12 @@ const mode = process.argv[3];
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error('Supply a prevalidated local Ollama loopback port.');
 }
-if (mode && !['--gate-only', '--lifecycle-only', '--crash-only', '--revoke-only'].includes(mode)) {
+if (mode && !['--gate-only', '--lifecycle-only', '--crash-only', '--revoke-only', '--p2'].includes(mode)) {
   throw new Error('Unknown P0 probe mode.');
 }
-const model = 'gemma4:31b';
+const model = mode === '--p2' ? (process.argv[4] || 'gemma4:31b') : 'gemma4:31b';
+if (!/^[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,127}$/.test(model)) throw new Error('Invalid local model ID');
+if (mode === '--p2' && process.env.LCA_P2_FIXTURE_ONLY !== '1') throw new Error('Use the P2 fixture runner.');
 const ollama = `http://127.0.0.1:${port}`;
 const root = path.resolve('build/opencode-p0');
 const binary = path.join(root, 'verified-bin', 'opencode.exe');
@@ -28,8 +30,8 @@ const project = path.join(run, 'project');
 fs.mkdirSync(project);
 const report = {version: lock.version, model, forwarded: 0, rejected: 0, cases: []};
 const output = path.join(run, 'report.json');
-const deadline = Date.now() + 480_000;
-const requestLimit = 16;
+const deadline = Date.now() + (mode === '--p2' ? 900_000 : 480_000);
+const requestLimit = mode === '--p2' ? 28 : 16;
 const gatewayToken = crypto.randomBytes(32).toString('hex');
 let gatewayClosed = false;
 let beforeForward;
@@ -281,9 +283,16 @@ async function runCase(api, name, text, permissions, check, options = {}) {
   const result = {name, modelRequests: 0, events: {}, status: 'FAIL'};
   report.cases.push(result);
   const sentBefore = report.forwarded;
-  const created = await api('/api/session', {method: 'POST', body: JSON.stringify({title: name, permissions})});
-  if (!created.ok) throw new Error('SESSION_CREATE_' + created.status);
-  const id = (await created.json()).data.id;
+  let id = options.sessionId;
+  if (!id) {
+    const created = await api('/api/session', {method: 'POST', body: JSON.stringify({title: name, permissions})});
+    if (!created.ok) throw new Error('SESSION_CREATE_' + created.status);
+    id = (await created.json()).data.id;
+  } else {
+    const active = await api('/api/session/active');
+    if (!active.ok || id in (await active.json()).data) throw new Error('SESSION_NOT_IDLE');
+  }
+  result.sessionId = id;
   if (options.revoke) {
     beforeForward = async () => {
       const status = await api(`/api/session/${id}`, {
@@ -370,6 +379,11 @@ async function main() {
     const deny = {action: '*', resource: '*', effect: 'deny'};
     const allow = (action, resource) => ({action, resource, effect: 'allow'});
     const succeeded = (tools, n) => tools.filter(event => event.type === 'session.tool.success').length >= n;
+    if (mode === '--p2') {
+      report.fixtureVerified = await require('./p2-fixture.cjs').runP2Cases(api, project, runCase);
+      report.result = report.fixtureVerified && report.cases.length >= 8 && report.cases.every(item => item.status === 'PASS') ? 'PASS' : 'PARTIAL';
+      return;
+    }
     const marker = 'P0-' + crypto.randomBytes(5).toString('hex');
     const fixture = path.join(project, 'seed.txt');
     fs.writeFileSync(fixture, marker, 'utf8');
