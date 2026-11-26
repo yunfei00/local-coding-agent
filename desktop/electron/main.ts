@@ -1030,10 +1030,11 @@ ipcMain.handle("agent:local-chat-history",async(event)=>{
   if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");
   return (await localChatHistory()).list();
 });
-const openCodeTasks=new OpenCodeTaskTracker();
+let taskTracker:OpenCodeTaskTracker|undefined;
+function openCodeTasks(){return taskTracker??=new OpenCodeTaskTracker(path.join(process.env.LCA_DATA_DIR||app.getPath("userData"),"opencode-task-journal.json"));}
 ipcMain.handle("agent:opencode-tasks",(event)=>{
   if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");
-  return openCodeTasks.list();
+  return openCodeTasks().list();
 });
 let interactiveQueue:InteractiveTurnQueue|undefined;
 ipcMain.handle("agent:local-chat-next",(event,message:unknown)=>{
@@ -1045,7 +1046,7 @@ ipcMain.handle("agent:local-chat-end",(event)=>{
  interactiveQueue?.close();
 });
 let localChatController: AbortController | undefined;
-ipcMain.handle("agent:local-chat-cancel",(event,id?:unknown)=>{if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");if(id!==undefined&&!openCodeTasks.list().some(row=>row.id===id&&row.status==="running"))throw new Error("Task is no longer active");localChatController?.abort();});
+ipcMain.handle("agent:local-chat-cancel",(event,id?:unknown)=>{if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");if(id!==undefined&&!openCodeTasks().list().some(row=>row.id===id&&["running","waiting","stopping"].includes(row.status)))throw new Error("Task is no longer active");for(const row of openCodeTasks().list())if(["running","waiting"].includes(row.status))openCodeTasks().transition(row.id,"stopping");localChatController?.abort();});
 ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
   if(migrationDiagnosticRunning || quitInProgress || localChatController)throw new Error("Engine busy");
   if(process.env.LCA_ENABLE_EXPERIMENTAL_LOCAL_CHAT!=="1")throw new Error("Experimental local chat disabled");
@@ -1071,7 +1072,7 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
     const root=await mkdtemp(path.join(app.getPath("userData"),"opencode-chat-"));
     const history=value.saveHistory===true?await localChatHistory():undefined;
     const historyId=history?await history.begin(value.model,Array.isArray(messages)?messages:[value.prompt,...(typeof value.followup==="string"&&value.followup.trim()?[value.followup]:[])]):undefined;
-    const taskId=openCodeTasks.begin(value.model);
+    const taskId=openCodeTasks().begin(value.model);
     const queue=value.interactive===true?new InteractiveTurnQueue():undefined;
     interactiveQueue=queue;
     let output="";
@@ -1081,22 +1082,24 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
       if(historyId&&output.length<262144)output=(output+delta).slice(0,262144);
       if(!event.sender.isDestroyed())event.sender.send("agent:local-chat-delta",delta);
     },controller.signal,progress=>{
-      openCodeTasks.progress(taskId);
+      openCodeTasks().progress(taskId);
       if(!event.sender.isDestroyed()&&progress.kind!=="text")event.sender.send("agent:local-chat-progress",{kind:progress.kind,payload:progress.payload});
     },queue?async signal=>{
       if(history&&historyId)await history.checkpoint(historyId,output);
+      openCodeTasks().transition(taskId,"waiting");
       const pending=queue.next(signal);
       if(!event.sender.isDestroyed())event.sender.send("agent:local-chat-progress",{kind:"waiting-input"});
       const next=await pending;
+      if(next!==null)openCodeTasks().transition(taskId,"running");
       if(next!==null&&history&&historyId)await history.checkpoint(historyId,output,next);
       return next;
     }:undefined,history&&historyId?async id=>history.bindSession(historyId,id,path.basename(root)):undefined);
     }catch(error){
-      openCodeTasks.finish(taskId,"unknown");
+      openCodeTasks().finish(taskId,"unknown");
       if(history&&historyId)await history.finish(historyId,"unknown",output);
       throw error;
     }
-    openCodeTasks.finish(taskId,result.outcome);
+    openCodeTasks().finish(taskId,result.outcome);
     if(history&&historyId)await history.finish(historyId,result.outcome,output,result.sessionId);
     return result;
   }finally{event.sender.removeListener("destroyed",abort);interactiveQueue?.close();interactiveQueue=undefined;localChatController=undefined;migrationDiagnosticRunning=false;finish();}
