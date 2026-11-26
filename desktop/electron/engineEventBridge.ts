@@ -1,3 +1,4 @@
+import {summarizeToolEvent} from "./toolEventSummary";
 import { readEngineEvents, type RawEngineEvent } from "./openCodeEvents";
 import { EngineEventDeduper } from "./engineEventDeduper";
 export type EngineEvent = {
@@ -20,10 +21,7 @@ export function translateEngineEvent(raw:RawEngineEvent,sessionId:string):Engine
   }
   if(type==="session.usage.updated")return {...base,kind:"usage",payload:{tokens:data.tokens}};
   if(type.startsWith("session.tool.") && !type.includes(".input.")){
-    // Do not forward arbitrary structured payloads or credential-bearing arguments.
-    // Only explicit bounded metadata is exposed until the pinned schema is verified.
-    const safe=(v:unknown)=>typeof v==="string"?v.slice(0,128):undefined;
-    return {...base,kind:"tool",payload:{type,callId:safe(data.callID??data.toolCallID),name:safe(data.toolName??data.tool)}};
+    return {...base,kind:"tool",payload:summarizeToolEvent(type,data)};
   }
   if(["session.execution.succeeded","session.execution.failed","session.execution.interrupted"].includes(type))
     return {...base,kind:"execution-ended",payload:{outcome:type.split(".").pop(),verified:false}};
