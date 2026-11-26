@@ -11,7 +11,7 @@ import type {EngineEvent} from "./engineEventBridge";
 import type {LocalModelProfile} from "./openCodeModelConfig";
 
 // Isolated text-only diagnostic; not a production workspace execution route.
-export async function runLocalChat(input:{binary:string;root:string;dataDir:string;profile:LocalModelProfile;ollamaPort:number;prompt:string;followup?:string;messages?:string[];fixtureTools?:boolean},onText:(delta:string)=>void,signal:AbortSignal,onEvent?:(event:EngineEvent)=>void,nextTurn?:(signal:AbortSignal)=>Promise<string|null>,onSession?:(id:string)=>Promise<void>){
+export async function runLocalChat(input:{binary:string;root:string;dataDir:string;profile:LocalModelProfile;ollamaPort:number;ollamaBaseUrl?:string;prompt:string;followup?:string;messages?:string[];fixtureTools?:boolean},onText:(delta:string)=>void,signal:AbortSignal,onEvent?:(event:EngineEvent)=>void,nextTurn?:(signal:AbortSignal)=>Promise<string|null>,onSession?:(id:string)=>Promise<void>){
   const messages=[...(input.messages??[input.prompt,...(input.followup?[input.followup]:[])])];
   if(messages.length<1||messages.length>20||messages.some(message=>typeof message!=="string"||!message.trim()||Buffer.byteLength(message)>65536)||messages.reduce((sum,message)=>sum+Buffer.byteLength(message),0)>131072)throw new Error("Invalid conversation messages");
   signal.throwIfAborted();
@@ -27,7 +27,7 @@ export async function runLocalChat(input:{binary:string;root:string;dataDir:stri
       execFileSync("git",["init","--quiet","--template="],{cwd:root,timeout:10000,windowsHide:true});
       execFileSync("git",["add","--","seed.txt","add.cjs"],{cwd:root,timeout:10000,windowsHide:true});
     }
-    gateway=await startLocalModelGateway(input.profile.model,input.ollamaPort,{allowTools:input.fixtureTools===true,requests:input.fixtureTools?28:nextTurn?80:messages.length*4,inputBytes:262144,maxOutput:input.profile.maxOutput,durationMs:480000});
+    gateway=await startLocalModelGateway(input.profile.model,input.ollamaPort,{upstreamBaseUrl:input.ollamaBaseUrl,allowTools:input.fixtureTools===true,requests:input.fixtureTools?28:nextTurn?80:messages.length*4,inputBytes:262144,maxOutput:input.profile.maxOutput,durationMs:480000});
     await supervisor.start(input.binary,root,{profile:input.profile,gateway,fixtureTools:input.fixtureTools});
     signal.throwIfAborted();
     const adapter=new OpenCodeAdapter((route,method,body)=>supervisor.request(route,method,body));
