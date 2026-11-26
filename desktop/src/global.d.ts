@@ -14,7 +14,8 @@ declare global {
   interface Window {
     localAgent: {
       platform: string;
-      runLocalChat?: (input:{model:string;prompt:string;port:number})=>Promise<{outcome:string;sessionId?:string;verified?:false}>;
+      runLocalChat?: (input:{model:string;prompt:string;port:number;followup?:string})=>Promise<{outcome:string;sessionId?:string;verified?:false}>;
+      onLocalChatProgress?: (handler:(progress:unknown)=>void)=>()=>void;
       cancelLocalChat?: ()=>Promise<void>;
       onLocalChatDelta?: (handler:(delta:string)=>void)=>()=>void;
       runEngineDiagnostic?: () => Promise<{status:string;sessionId?:string}>;
