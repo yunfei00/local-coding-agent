@@ -62,6 +62,17 @@ async function runP2Cases(api,root,runCase){
   await runCase(api,'p2_shell','Use the shell to run exactly: echo P2_SHELL_CHECK\nReport its output.',[deny,allow('shell','echo P2_SHELL_CHECK')],(answer,tools)=>succeeded(tools,1)&&answer.includes('P2_SHELL_CHECK'));
   await runCase(api,'p2_git_status','Use the shell to run exactly: git status --short\nReport the status of add.cjs.',[deny,allow('shell','git status --short')],(answer,tools)=>succeeded(tools,1)&&answer.includes('add.cjs'));
   await runCase(api,'p2_git_diff','Use the shell to run exactly: git diff -- add.cjs\nReport the addition change.',[deny,allow('shell','git diff -- add.cjs')],(answer,tools)=>succeeded(tools,1)&&answer.includes('add.cjs'));
+  const first=await runCase(api,'p2_context_store','Remember this identifier for the next message: '+marker+'. Reply READY only. Do not use tools.',[deny],(answer,tools)=>answer.includes('READY')&&tools.length===0);
+  if(first.status==='PASS'){
+    // Wait for the session drain to end. Do not re-submit on disconnect.
+    let idle=false;
+    for(let i=0;i<30;i++){
+      const response=await api('/api/session/active');
+      if(response.ok && !(first.sessionId in (await response.json()).data)){idle=true;break;}
+      await new Promise(resolve=>setTimeout(resolve,100));
+    }
+    if(idle)await runCase(api,'p2_context_recall','What was the identifier in my preceding message? Reply only with that identifier.',[deny],(answer,tools)=>answer.includes(marker)&&tools.length===0,{sessionId:first.sessionId});
+  }
   return verifyTree(root,marker);
 }
 module.exports={runP2Cases,verifyRepair,verifyTree,init,original,repaired,testSource};
