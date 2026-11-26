@@ -38,6 +38,14 @@ describe("project engine routing",()=>{
     await service.run(input);
     expect(send).toHaveBeenCalledTimes(1);
   });
+  it("retains the lease after an ambiguous dispatch failure",async()=>{
+    const {service,input,send}=setup();
+    send.mockRejectedValueOnce(new Error("transport lost"));
+    await expect(service.run(input)).rejects.toThrow("transport lost");
+    await expect(acquireEngineLease(data)).rejects.toThrow();
+    await expect(service.run(input)).rejects.toThrow();
+    expect(send).toHaveBeenCalledTimes(1);
+  });
   it("rejects project changes for a bound thread",async()=>{
     const {service,input,send}=setup();await service.run(input);
     const other=path.join(root,"other");await mkdir(other);
