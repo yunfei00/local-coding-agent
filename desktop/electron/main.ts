@@ -1840,6 +1840,7 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
           },
         } });
       };
+      emitMetrics();
       const follow = bridge.follow(sessionId, entry.controller.signal, (event) => {
         if (event.kind === "text") {
           const delta = String((event.payload as any)?.delta ?? "");
