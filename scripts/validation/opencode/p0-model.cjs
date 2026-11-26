@@ -386,8 +386,11 @@ async function main() {
     const succeeded = (tools, n) => tools.filter(event => event.type === 'session.tool.success').length >= n;
     if (mode === '--p2') {
       report.fixtureVerified = await require('./p2-fixture.cjs').runP2Cases(api, project, runCase);
+      const verifier = spawnSync('uv',['run','--locked','python','-m','scripts.validation.opencode.p2_verify',project,process.execPath],{encoding:'utf8',windowsHide:true,timeout:60000});
+      report.independentVerification = {exitCode:verifier.status,passed:verifier.status===0 && !verifier.error};
+      fs.writeFileSync(path.join(run,'independent-verification.json'),verifier.stdout || '');
       await testInterruptAndRestart(api,[deny]);
-      report.result = report.fixtureVerified && report.cases.length >= 9 && report.cases.every(item => item.status === 'PASS') ? 'PASS' : 'PARTIAL';
+      report.result = report.independentVerification.passed && report.fixtureVerified && report.cases.length >= 9 && report.cases.every(item => item.status === 'PASS') ? 'PASS' : 'PARTIAL';
       return;
     }
     const marker = 'P0-' + crypto.randomBytes(5).toString('hex');
