@@ -21,6 +21,7 @@ export class OpenCodeChat {
     const timer=setTimeout(abort,480000);
     const route="/api/session/"+id;
     let admitted=false;
+    let hasText=false;
     const deduper=new EngineEventDeduper();
     try{
       const response=await this.transport.events(controller.signal);
@@ -38,12 +39,12 @@ export class OpenCodeChat {
           if(translated)onEvent?.(translated);
           if(event.type==="session.text.delta"){
             const delta=event.data.delta??event.data.text;
-            if(typeof delta==="string")onText(delta);
+            if(typeof delta==="string"){hasText ||= !!delta.trim();onText(delta);}
           }
           const outcome=event.type?.match(/^session\.execution\.(succeeded|failed|interrupted)$/)?.[1] as ChatResult["outcome"]|undefined;
           if(outcome){
             admitted=false;
-            return {outcome,verified:false};
+            return {outcome:outcome==="succeeded"&&!hasText?"failed":outcome,verified:false};
           }
         }
         throw new Error("Chat stream ended without terminal event");
