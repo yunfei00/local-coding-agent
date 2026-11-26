@@ -3,11 +3,13 @@ import {randomBytes,timingSafeEqual} from "node:crypto";
 import {Readable,Transform} from "node:stream";
 import {pipeline} from "node:stream/promises";
 
-export type GatewayLimits={requests:number;inputBytes:number;maxOutput:number;durationMs:number;allowTools?:boolean};
+export type GatewayLimits={requests:number;inputBytes:number;maxOutput:number;durationMs:number;allowTools?:boolean;upstreamBaseUrl?:string};
 export async function startLocalModelGateway(model:string,upstreamPort:number,limits:GatewayLimits){
   if(!/^[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,127}$/.test(model))throw new Error("Invalid model");
   if(!Number.isInteger(upstreamPort)||upstreamPort<1||upstreamPort>65535)throw new Error("Invalid upstream port");
   for(const n of [limits.requests,limits.inputBytes,limits.maxOutput,limits.durationMs])if(!Number.isSafeInteger(n)||n<1)throw new Error("Invalid gateway limit");
+  const upstreamUrl=new URL(limits.upstreamBaseUrl??('http://127.0.0.1:'+upstreamPort));
+  if(upstreamUrl.protocol!=="http:"||upstreamUrl.username||upstreamUrl.password||upstreamUrl.search||upstreamUrl.hash||upstreamUrl.pathname!=="/"||! /^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/.test(upstreamUrl.hostname))throw new Error("Invalid private Ollama address");
   const token=randomBytes(32).toString("hex");
   const deadline=Date.now()+limits.durationMs;
   let requests=0,bytes=0,closed=false;
@@ -41,7 +43,7 @@ export async function startLocalModelGateway(model:string,upstreamPort:number,li
       }
       const max=Math.min(body.max_tokens??limits.maxOutput,body.max_completion_tokens??limits.maxOutput);
       controller.signal.throwIfAborted();
-      const upstream=await fetch("http://127.0.0.1:"+upstreamPort+"/v1/chat/completions",{
+      const upstream=await fetch(upstreamUrl.origin+"/v1/chat/completions",{
         method:"POST",headers:{"content-type":"application/json"},redirect:"error",signal:controller.signal,
         body:JSON.stringify({model,messages:body.messages,stream:body.stream===true,max_tokens:max,...(limits.allowTools?{tools:body.tools,tool_choice:body.tool_choice}:{})})
       });
