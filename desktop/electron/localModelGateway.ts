@@ -3,7 +3,7 @@ import {randomBytes,timingSafeEqual} from "node:crypto";
 import {Readable,Transform} from "node:stream";
 import {pipeline} from "node:stream/promises";
 
-export type GatewayLimits={requests:number;inputBytes:number;maxOutput:number;durationMs:number};
+export type GatewayLimits={requests:number;inputBytes:number;maxOutput:number;durationMs:number;allowTools?:boolean};
 export async function startLocalModelGateway(model:string,upstreamPort:number,limits:GatewayLimits){
   if(!/^[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,127}$/.test(model))throw new Error("Invalid model");
   if(!Number.isInteger(upstreamPort)||upstreamPort<1||upstreamPort>65535)throw new Error("Invalid upstream port");
@@ -34,7 +34,8 @@ export async function startLocalModelGateway(model:string,upstreamPort:number,li
       }
       const body=JSON.parse(Buffer.concat(chunks).toString("utf8"));
       if(!body||body.model!==model||!Array.isArray(body.messages))return reject(400);
-      if((body.tools!==undefined && (!Array.isArray(body.tools)||body.tools.length!==0)) || (body.tool_choice!==undefined && body.tool_choice!=="none" && body.tool_choice!=="auto"))return reject(403);
+      if(!limits.allowTools && ((body.tools!==undefined && (!Array.isArray(body.tools)||body.tools.length!==0)) || (body.tool_choice!==undefined && body.tool_choice!=="none" && body.tool_choice!=="auto")))return reject(403);
+      if(limits.allowTools && body.tools!==undefined && (!Array.isArray(body.tools)||body.tools.length>64))return reject(400);
       for(const key of ["max_tokens","max_completion_tokens"]){
         if(body[key]!==undefined&&(!Number.isSafeInteger(body[key])||body[key]<1||body[key]>limits.maxOutput))return reject(400);
       }
@@ -42,7 +43,7 @@ export async function startLocalModelGateway(model:string,upstreamPort:number,li
       controller.signal.throwIfAborted();
       const upstream=await fetch("http://127.0.0.1:"+upstreamPort+"/v1/chat/completions",{
         method:"POST",headers:{"content-type":"application/json"},redirect:"error",signal:controller.signal,
-        body:JSON.stringify({model,messages:body.messages,stream:body.stream===true,max_tokens:max})
+        body:JSON.stringify({model,messages:body.messages,stream:body.stream===true,max_tokens:max,...(limits.allowTools?{tools:body.tools,tool_choice:body.tool_choice}:{})})
       });
       res.writeHead(upstream.status,{"content-type":upstream.headers.get("content-type")??"application/json"});
       if(upstream.body){
