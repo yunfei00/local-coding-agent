@@ -1067,7 +1067,6 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
     if(value.profileId!==undefined&&!selected)throw new Error("Shared model profile unavailable");
     if(selected&&(selected.model!==value.model||selected.port!==value.port))throw new Error("Shared model profile changed; refresh selection");
     const root=await mkdtemp(path.join(app.getPath("userData"),"opencode-chat-"));
-    if(value.interactive===true&&value.saveHistory===true)throw new Error("Interactive history is not yet supported");
     const history=value.saveHistory===true?await localChatHistory():undefined;
     const historyId=history?await history.begin(value.model,Array.isArray(messages)?messages:[value.prompt,...(typeof value.followup==="string"&&value.followup.trim()?[value.followup]:[])]):undefined;
     const taskId=openCodeTasks.begin(value.model);
@@ -1083,9 +1082,12 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
       openCodeTasks.progress(taskId);
       if(!event.sender.isDestroyed()&&progress.kind!=="text")event.sender.send("agent:local-chat-progress",{kind:progress.kind,payload:progress.payload});
     },queue?async signal=>{
+      if(history&&historyId)await history.checkpoint(historyId,output);
       const pending=queue.next(signal);
       if(!event.sender.isDestroyed())event.sender.send("agent:local-chat-progress",{kind:"waiting-input"});
-      return pending;
+      const next=await pending;
+      if(next!==null&&history&&historyId)await history.checkpoint(historyId,output,next);
+      return next;
     }:undefined);
     }catch(error){
       openCodeTasks.finish(taskId,"unknown");
