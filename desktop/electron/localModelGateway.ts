@@ -32,7 +32,7 @@ export async function startLocalModelGateway(model:string,upstreamPort:number,li
       }
       const body=JSON.parse(Buffer.concat(chunks).toString("utf8"));
       if(!body||body.model!==model||!Array.isArray(body.messages))return reject(400);
-      if(body.tools!==undefined||body.tool_choice!==undefined)return reject(403);
+      if((body.tools!==undefined && (!Array.isArray(body.tools)||body.tools.length!==0)) || (body.tool_choice!==undefined && body.tool_choice!=="none" && body.tool_choice!=="auto"))return reject(403);
       for(const key of ["max_tokens","max_completion_tokens"]){
         if(body[key]!==undefined&&(!Number.isSafeInteger(body[key])||body[key]<1||body[key]>limits.maxOutput))return reject(400);
       }
