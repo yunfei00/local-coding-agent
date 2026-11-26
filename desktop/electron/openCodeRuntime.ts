@@ -8,6 +8,7 @@ import { EngineSessionStore } from "./engineSessionStore";
 import { buildOpenCodeConfig } from "./openCodeConfig";
 import { OpenCodeSupervisor } from "./openCodeSupervisor";
 import { acquireEngineLease } from "./engineLease";
+import { openCodeProductionEnabled } from "./productionEngineGate";
 
 export type OpenCodeRuntimeStatus = {
   available: boolean;
@@ -31,13 +32,19 @@ export class OpenCodeRuntime implements EventSource {
   private starting?: Promise<void>;
   private stopping?: Promise<void>;
 
+  binaryAvailable(): boolean {
+    return !!this.resolveBinary();
+  }
+
   status(): OpenCodeRuntimeStatus {
+    const binary = this.resolveBinary();
+    const gated = !openCodeProductionEnabled();
     return {
-      available: false,
+      available: !!binary && !gated,
       running: !!this.root,
       version: VERSION,
-      binary: this.binaryPath,
-      reason: ACTIVATION_BLOCK,
+      binary: this.binaryPath ?? binary,
+      reason: !binary ? "OpenCode runtime not found" : gated ? ACTIVATION_BLOCK : undefined,
     };
   }
 
