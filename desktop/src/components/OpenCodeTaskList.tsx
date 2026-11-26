@@ -1,5 +1,5 @@
 import {useEffect,useState} from "react";
-type Task={id:string;engine:"opencode";model:string;status:string;startedAt:string;endedAt?:string;events:number;verified:false};
+type Task={id:string;engine:"opencode";model:string;status:string;startedAt:string;endedAt?:string;events:number;verified:false;sessionId?:string;storageId?:string};
 export function OpenCodeTaskList(){
  const [tasks,setTasks]=useState<Task[]>([]);
  const [error,setError]=useState("");
@@ -20,6 +20,6 @@ export function OpenCodeTaskList(){
  return <section className="context-section" aria-label="OpenCode 实验任务"><h3>OpenCode 实验任务（全局）</h3><p>实验任务记录跨重启保存；异常退出的任务标记为状态未知，不自动重放。</p>
  {error&&<p role="alert">{error}</p>}
  {tasks.length===0&&<p>暂无实验任务</p>}
- {tasks.map(task=><details key={task.id} open={task.status==="running"}><summary>{task.model} · {({running:"执行中",waiting:"等待下一轮输入",stopping:"正在停止",succeeded:"执行结束（未验收）",failed:"失败",interrupted:"中断",unknown:"状态未知"} as Record<string,string>)[task.status]??task.status}</summary><p>任务 ID：{task.id}</p><p>开始：{task.startedAt} · 结束：{task.endedAt??"—"}</p><p>执行事件：{task.events} · 独立验收：未执行</p>{["running","waiting"].includes(task.status)&&<button disabled={stopping||!window.localAgent.cancelLocalChat} onClick={async()=>{setStopping(true);try{await window.localAgent.cancelLocalChat?.(task.id);}catch(e){setError(String(e));}finally{setStopping(false);}}}>请求停止</button>}</details>)}
+ {tasks.map(task=><details key={task.id} open={task.status==="running"}><summary>{task.model} · {({running:"执行中",waiting:"等待下一轮输入",stopping:"正在停止",succeeded:"执行结束（未验收）",failed:"失败",interrupted:"中断",unknown:"状态未知"} as Record<string,string>)[task.status]??task.status}</summary><p>任务 ID：{task.id}</p><p>开始：{task.startedAt} · 结束：{task.endedAt??"—"}</p>{task.sessionId&&<p>Session：{task.sessionId}</p>}{task.sessionId&&task.storageId&&!["running","waiting","stopping"].includes(task.status)&&<button disabled={stopping} onClick={async()=>{setStopping(true);try{const result=await window.localAgent.diagnoseHistorySession?.(task.id,"task");setError(result?`原会话：${result.outcome}；${result.active?"活跃":"未活跃"}；未恢复执行`:"已取消诊断");}catch(e){setError(String(e));}finally{setStopping(false);}}}>检查原始会话</button>}<p>执行事件：{task.events} · 独立验收：未执行</p>{["running","waiting"].includes(task.status)&&<button disabled={stopping||!window.localAgent.cancelLocalChat} onClick={async()=>{setStopping(true);try{await window.localAgent.cancelLocalChat?.(task.id);}catch(e){setError(String(e));}finally{setStopping(false);}}}>请求停止</button>}</details>)}
  </section>;
 }
