@@ -71,7 +71,7 @@ export class OpenCodeSupervisor {
   }
   async request(route:string,method="GET",body?:unknown):Promise<unknown>{
     const session = /^\/api\/session\/([A-Za-z0-9_-]+)(\/interrupt|\/prompt)?$/.exec(route);
-    const allowed = (method==="GET" && (route==="/api/info" || route==="/api/session" || (session && !session[2]))) ||
+    const allowed = (method==="GET" && (route==="/api/info" || route==="/api/session" || route==="/api/session/active" || (session && !session[2]))) ||
       (method==="POST" && (route==="/api/session" || (session && (session[2]==="/interrupt" || (this.localChat && session[2]==="/prompt")))));
     if(!allowed) throw new Error("Route not allowed");
     if(method==="POST" && route==="/api/session"){
