@@ -981,6 +981,7 @@ ipcMain.on("renderer:ready", () => {
 
 const migrationSidecar = new OpenCodeSupervisor();
 const openCodeRuntime = new OpenCodeRuntime();
+const activeOpenCodeTurns = new Map<string, { controller: AbortController; sessionId?: string }>();
 let migrationDiagnosticRunning = false;
 let migrationDiagnosticDone: Promise<void> = Promise.resolve();
 ipcMain.handle("agent:engine-diagnostic", async () => {
@@ -1736,6 +1737,8 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
   const turnId = "turn_" + randomUUID().replace(/-/g, "");
   const startedAt = new Date().toISOString();
   broadcastAgentEvent({ type: "turn.started", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: startedAt, payload: { engine: "opencode" } });
+  const entry = { controller: new AbortController(), sessionId: undefined as string | undefined };
+  activeOpenCodeTurns.set(turnId, entry);
   void (async () => {
     let assistant = "";
     try {
@@ -1755,11 +1758,11 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       if (!sessionId) {
         sessionId = await openCodeRuntime.createSession(prompt.slice(0, 80) || "Chat", projectPath, threadId);
       }
+      entry.sessionId = sessionId;
       await sendRequest("turn.record_external", "turn.recorded", { role: "user", content: prompt }, { threadId }).catch(() => {});
-      const controller = new AbortController();
       const bridge = openCodeRuntime.bridge(3);
       let finished = false;
-      const follow = bridge.follow(sessionId, controller.signal, (event) => {
+      const follow = bridge.follow(sessionId, entry.controller.signal, (event) => {
         if (event.kind === "text") {
           const delta = String((event.payload as any)?.delta ?? "");
           if (delta) {
@@ -1773,21 +1776,27 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
           broadcastAgentEvent({ type: "tool.completed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { tool_call_id: toolCallId, result: { ok: !type.includes("failed"), summary: type, data: {} } } });
         } else if (event.kind === "execution-ended") {
           finished = true;
-          controller.abort();
+          entry.controller.abort();
         }
       }).catch(() => {});
       await openCodeRuntime.prompt(sessionId, prompt);
       const timeout = Date.now() + 10 * 60 * 1000;
-      while (!finished && Date.now() < timeout) {
+      while (!finished && Date.now() < timeout && !entry.controller.signal.aborted) {
         await new Promise((r) => setTimeout(r, 200));
       }
-      controller.abort();
+      entry.controller.abort();
       await follow.catch(() => {});
       await sendRequest("turn.record_external", "turn.recorded", { role: "assistant", content: assistant }, { threadId }).catch(() => {});
       broadcastAgentEvent({ type: "turn.completed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { engine: "opencode" } });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      broadcastAgentEvent({ type: "turn.failed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { message } });
+      if (entry.controller.signal.aborted) {
+        broadcastAgentEvent({ type: "turn.cancelled", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: {} });
+      } else {
+        broadcastAgentEvent({ type: "turn.failed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { message } });
+      }
+    } finally {
+      activeOpenCodeTurns.delete(turnId);
     }
   })();
   return { type: "turn.started", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: startedAt, payload: { engine: "opencode" } };
@@ -1813,6 +1822,12 @@ ipcMain.handle("agent:turn-start", async (_event, threadId: string, prompt: stri
 ipcMain.handle('agent:turn-append',async (_event,threadId:string,turnId:string,prompt:string,messageId:string)=>
   sendRequest('turn.append','turn.appended',{prompt,message_id:messageId},{threadId,turnId}));
 ipcMain.handle("agent:turn-cancel", async (_event, turnId: string) => {
+  const oc = activeOpenCodeTurns.get(turnId);
+  if (oc) {
+    oc.controller.abort();
+    if (oc.sessionId) await openCodeRuntime.interrupt(oc.sessionId).catch(() => {});
+    return { ok: true };
+  }
   const socket = agentSocket;
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     throw new Error("Agent WebSocket is not connected.");
