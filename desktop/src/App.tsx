@@ -225,6 +225,10 @@ function resultObject(value: unknown): Record<string, unknown> {
 }
 
 function App() {
+  const [chatEngine,setChatEngine]=useState<"legacy"|"opencode">("legacy");
+  const [fixtureBusy,setFixtureBusy]=useState(false);
+  const [fixtureOutput,setFixtureOutput]=useState("");
+  const [fixtureStatus,setFixtureStatus]=useState("");
   const [projectDiffOpen,setProjectDiffOpen]=useState(false);
   const [projectSearchOpen,setProjectSearchOpen]=useState(false);
   const [localChatOpen,setLocalChatOpen]=useState(false);
@@ -1404,6 +1408,20 @@ function App() {
       return;
     }
 
+    if(chatEngine==="opencode"){
+      if(fixtureBusy||runningTurnId||conversationTasks.active)return;
+      sendingRef.current=true;setFixtureBusy(true);setFixtureOutput("");setFixtureStatus("准备 OpenCode 独立工程");
+      const off=window.localAgent.onLocalChatDelta?.(delta=>setFixtureOutput(previous=>(previous+delta).slice(-262144)));
+      try{
+        const profiles=await window.localAgent.listSharedLocalProfiles?.();
+        const profile=profiles?.find(p=>p.id===selectedModel||"profile:"+p.id===selectedModel);
+        if(!profile||!window.localAgent.runLocalChat)throw new Error("请选择已配置的本地 Ollama 模型");
+        const result=await window.localAgent.runLocalChat({model:profile.model,port:profile.port,profileId:profile.id,prompt,fixtureTools:true});
+        setFixtureStatus(result.outcome+" · 未独立验收"+(result.fixtureRoot?" · "+result.fixtureRoot:""));
+        if(result.outcome!=="cancelled")setInput(current=>current===prompt?"":current);
+      }catch(error){setFixtureStatus(String(error));}finally{off?.();sendingRef.current=false;setFixtureBusy(false);}
+      return;
+    }
     setUiError(null);
     sendingRef.current = true;
     const userItemId = "user:" + Date.now();
@@ -1787,6 +1805,7 @@ function App() {
           </div> : null}
           {uiError ? <div className="error-banner">{uiError}</div> : null}
           {followupNotice?<div className="composer-hints" role="status">{followupNotice}</div>:null}
+          {chatEngine==="opencode"&&<section className="context-section"><strong>OpenCode 独立工程测试（不修改当前工程）</strong><p role="status">{fixtureStatus}</p><pre style={{whiteSpace:"pre-wrap",maxHeight:240,overflow:"auto"}}>{fixtureOutput}</pre></section>}
           <textarea
             value={input}
             onChange={(event) => {setInput(event.target.value); inputDrafts.current.set(inputOwner, event.target.value);}}
@@ -1815,6 +1834,7 @@ function App() {
           />
           <div className="composer-row">
             <div className="model-controls">
+              <select aria-label="执行引擎" value={chatEngine} disabled={fixtureBusy||Boolean(runningTurnId)||Boolean(conversationTasks.active)} onChange={e=>setChatEngine(e.target.value==="opencode"?"opencode":"legacy")}><option value="legacy">Legacy</option><option value="opencode">OpenCode（独立工程测试）</option></select>
 
               <select
                 className={
@@ -1867,7 +1887,7 @@ function App() {
                 <span>Shift+Enter newline</span>
               </span>
             </div>
-            {runningTurnId || conversationTasks.active ? (
+            {fixtureBusy ? <button type="button" className="stop-button" onClick={()=>void window.localAgent.cancelLocalChat?.().catch(error=>setFixtureStatus(String(error)))}>停止 OpenCode</button> : runningTurnId || conversationTasks.active ? (
               <>
               <button type="submit" className="followup-send-button" disabled={!input.trim() || status.state!=='ready' || !providerReady}>追加需求</button>
               <button
