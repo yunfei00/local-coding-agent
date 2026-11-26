@@ -24,7 +24,7 @@ declare global {
       discoverOllamaModels?: (port:number)=>Promise<string[]>;
       diagnoseHistorySession?: (id:string,source?:"task")=>Promise<{sessionId:string;outcome:string;active:boolean;canResume:false;verified:false}|null>;
       listLocalChatHistory?: ()=>Promise<{id:string;model:string;createdAt:string;messages:string[];output:string;status:string;sessionId?:string;storageId?:string}[]>;
-      runLocalChat?: (input:{model:string;prompt:string;port:number;followup?:string;messages?:string[];saveHistory?:boolean;profileId?:string;interactive?:boolean})=>Promise<{outcome:string;sessionId?:string;verified?:false}>;
+      runLocalChat?: (input:{model:string;prompt:string;port:number;followup?:string;messages?:string[];saveHistory?:boolean;profileId?:string;interactive?:boolean;fixtureTools?:boolean})=>Promise<{outcome:string;sessionId?:string;verified?:false;fixtureRoot?:string}>;
       onLocalChatProgress?: (handler:(progress:unknown)=>void)=>()=>void;
       cancelLocalChat?: (id?:string)=>Promise<void>;
       onLocalChatDelta?: (handler:(delta:string)=>void)=>()=>void;
