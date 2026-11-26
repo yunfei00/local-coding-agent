@@ -12,6 +12,15 @@ export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
   }
   const [model,setModel]=useState("gemma4:31b");
   const [port,setPort]=useState("11434");
+  const [models,setModels]=useState<string[]>([]);
+  const [discovering,setDiscovering]=useState(false);
+  async function discover(){
+    if(discovering||!window.localAgent.discoverOllamaModels)return;
+    setDiscovering(true);setModels([]);
+    try{const found=await window.localAgent.discoverOllamaModels(Number(port));setModels(found);setStatus("发现 "+found.length+" 个本地模型");}
+    catch(error){setStatus("模型发现失败："+String(error));}
+    finally{setDiscovering(false);}
+  }
   const [prompt,setPrompt]=useState("");
   const [followups,setFollowups]=useState<string[]>([]);
   const [cards,setCards]=useState<ToolCard[]>([]);
@@ -49,8 +58,10 @@ export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
   return <Modal title="OpenCode 本地对话实验" busy={busy} onClose={onClose}>
     <p className="modal-description">仅限本地 Ollama 纯文本最多二十轮预设消息对话，不允许文件或命令工具。每次启动独立会话。需显式启用实验功能。</p>
     <form onSubmit={event=>{event.preventDefault();void run();}}>
-      <label>模型 <input value={model} disabled={busy} onChange={e=>setModel(e.target.value)}/></label>
-      <label>Ollama 回环端口 <input type="number" min={1} max={65535} value={port} disabled={busy} onChange={e=>setPort(e.target.value)}/></label>
+      <label>模型 <input list="opencode-local-models" value={model} disabled={busy} onChange={e=>setModel(e.target.value)}/></label>
+      <datalist id="opencode-local-models">{models.map(name=><option key={name} value={name}/>)}</datalist>
+      <button type="button" disabled={busy||discovering||!window.localAgent.discoverOllamaModels} onClick={()=>void discover()}>{discovering?"正在读取":"读取 Ollama 模型"}</button>
+      <label>Ollama 回环端口 <input type="number" min={1} max={65535} value={port} disabled={busy} onChange={e=>{setPort(e.target.value);setModels([]);}}/></label>
       <label>消息 <textarea rows={4} value={prompt} disabled={busy} onChange={e=>setPrompt(e.target.value)}/></label>
       {followups.map((message,i)=><label key={i}>第 {i+2} 轮消息 <textarea rows={2} value={message} disabled={busy} onChange={e=>setFollowups(previous=>previous.map((v,j)=>j===i?e.target.value:v))}/><button type="button" disabled={busy} onClick={()=>setFollowups(previous=>previous.filter((_,j)=>j!==i))}>删除</button></label>)}
       <button type="button" disabled={busy||followups.length>=19} onClick={()=>setFollowups(previous=>[...previous,""])}>添加下一轮消息</button>
