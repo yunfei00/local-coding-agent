@@ -1,4 +1,6 @@
 import {readEngineEvents} from "./openCodeEvents";
+import {EngineEventDeduper} from "./engineEventDeduper";
+import {translateEngineEvent, type EngineEvent} from "./engineEventBridge";
 
 export type ChatTransport = {
   request(route:string,method?:string,body?:unknown):Promise<unknown>;
@@ -8,7 +10,7 @@ export type ChatResult = {outcome:"succeeded"|"failed"|"interrupted"; verified:f
 export class OpenCodeChat {
   private active=false;
   constructor(private readonly transport:ChatTransport){}
-  async run(id:string,prompt:string,onText:(delta:string)=>void,signal:AbortSignal):Promise<ChatResult>{
+  async run(id:string,prompt:string,onText:(delta:string)=>void,signal:AbortSignal,onEvent?:(event:EngineEvent)=>void):Promise<ChatResult>{
     if(this.active)throw new Error("Chat already active");
     if(!/^[A-Za-z0-9_-]+$/.test(id)||!prompt.trim()||Buffer.byteLength(prompt)>65536)throw new Error("Invalid chat input");
     signal.throwIfAborted();
@@ -19,6 +21,7 @@ export class OpenCodeChat {
     const timer=setTimeout(abort,480000);
     const route="/api/session/"+id;
     let admitted=false;
+    const deduper=new EngineEventDeduper();
     try{
       const response=await this.transport.events(controller.signal);
       const stream=readEngineEvents(response);
@@ -30,7 +33,9 @@ export class OpenCodeChat {
         for await(const frame of stream){
           controller.signal.throwIfAborted();
           const event=frame.data as {type?:string;data?:{sessionID?:string;delta?:string;text?:string}};
-          if(event?.data?.sessionID!==id)continue;
+          if(event?.data?.sessionID!==id || !deduper.accept(frame))continue;
+          const translated=translateEngineEvent(frame,id);
+          if(translated)onEvent?.(translated);
           if(event.type==="session.text.delta"){
             const delta=event.data.delta??event.data.text;
             if(typeof delta==="string")onText(delta);
@@ -45,8 +50,18 @@ export class OpenCodeChat {
       }finally{controller.abort();await stream.return(undefined);}
     }catch(error){
       if(admitted){
-        try{await this.transport.request(route+"/interrupt","POST");}
-        catch{throw new Error("Chat outcome unknown; interrupt failed; retain execution lease");}
+        try{
+          await this.transport.request(route+"/interrupt","POST");
+          // Interrupt admission is not proof of cancellation. Require both persisted
+          // terminal state and absence from the active drain list.
+          for(let attempt=0;attempt<10;attempt++){
+            const snapshot=await this.transport.request(route) as {data?:{id?:string;outcome?:string}};
+            const active=await this.transport.request("/api/session/active") as {data?:Record<string,unknown>};
+            if(snapshot?.data?.id===id && snapshot.data.outcome==="interrupted" && active?.data && !Object.hasOwn(active.data,id))
+              return {outcome:"interrupted",verified:false};
+            if(attempt<9)await new Promise(resolve=>setTimeout(resolve,150));
+          }
+        }catch{throw new Error("Chat outcome unknown; interrupt or reconciliation failed; retain execution lease");}
         throw new Error("Chat outcome unknown; interruption requested; reconcile before releasing execution lease");
       }
       throw error;
