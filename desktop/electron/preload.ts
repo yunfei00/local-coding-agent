@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from "electron";
 type AgentEventHandler = (event: unknown) => void;
 
 contextBridge.exposeInMainWorld("localAgent", {
+  readProjectDiff: ()=>ipcRenderer.invoke("agent:project-diff"),
   searchProject: (query:string,mode:"file"|"text")=>ipcRenderer.invoke("agent:project-search",query,mode),
   cancelProjectSearch: ()=>ipcRenderer.invoke("agent:project-search-cancel"),
   runLocalChat: (input:{model:string;prompt:string;port:number;followup?:string}) => ipcRenderer.invoke("agent:local-chat",input),
