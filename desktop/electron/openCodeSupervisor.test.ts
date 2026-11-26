@@ -13,4 +13,14 @@ describe("diagnostic transport gate",()=>{
       expect(fetchSpy).not.toHaveBeenCalled();
     }finally{fetchSpy.mockRestore();}
   });
+  it("allows active-session reconciliation only as a read operation",async()=>{
+    const supervisor=new OpenCodeSupervisor();
+    const fetchSpy=vi.spyOn(globalThis,"fetch");
+    try{
+      // A stopped supervisor must reject on availability, not on the route whitelist.
+      await expect(supervisor.request("/api/session/active")).rejects.toThrow("Sidecar unavailable");
+      await expect(supervisor.request("/api/session/active","POST")).rejects.toThrow("Route not allowed");
+      expect(fetchSpy).not.toHaveBeenCalled();
+    }finally{fetchSpy.mockRestore();}
+  });
 });
