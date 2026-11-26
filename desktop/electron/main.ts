@@ -1045,7 +1045,7 @@ ipcMain.handle("agent:local-chat-end",(event)=>{
  interactiveQueue?.close();
 });
 let localChatController: AbortController | undefined;
-ipcMain.handle("agent:local-chat-cancel",(event)=>{if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");localChatController?.abort();});
+ipcMain.handle("agent:local-chat-cancel",(event,id?:unknown)=>{if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");if(id!==undefined&&!openCodeTasks.list().some(row=>row.id===id&&row.status==="running"))throw new Error("Task is no longer active");localChatController?.abort();});
 ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
   if(migrationDiagnosticRunning || quitInProgress || localChatController)throw new Error("Engine busy");
   if(process.env.LCA_ENABLE_EXPERIMENTAL_LOCAL_CHAT!=="1")throw new Error("Experimental local chat disabled");
