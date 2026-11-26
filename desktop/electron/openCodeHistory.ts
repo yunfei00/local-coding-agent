@@ -1,7 +1,7 @@
 import {mkdir,readFile,writeFile,rename,unlink} from "node:fs/promises";
 import {randomUUID} from "node:crypto";
 import path from "node:path";
-export type HistoryEntry={id:string;model:string;createdAt:string;messages:string[];output:string;status:"running"|"succeeded"|"failed"|"interrupted"|"unknown";sessionId?:string};
+export type HistoryEntry={id:string;model:string;createdAt:string;messages:string[];output:string;status:"running"|"succeeded"|"failed"|"interrupted"|"unknown";sessionId?:string;storageId?:string};
 export class OpenCodeHistory {
  private queue:Promise<unknown>=Promise.resolve();
  constructor(private readonly file:string){}
@@ -32,12 +32,13 @@ export class OpenCodeHistory {
   const id=randomUUID(),entry:HistoryEntry={id,model,createdAt:new Date().toISOString(),messages:[...messages],output:"",status:"running"};
   await this.change(rows=>[entry,...rows].slice(0,100));return id;
  }
- bindSession(id:string,sessionId:string){
+ bindSession(id:string,sessionId:string,storageId?:string){
+  if(storageId!==undefined&&!/^opencode-chat-[A-Za-z0-9_-]{6,64}$/.test(storageId))throw new Error("Invalid session storage ID");
   if(!/^[A-Za-z0-9_-]{1,128}$/.test(sessionId))throw new Error("Invalid session ID");
   return this.change(rows=>{
    const row=rows.find(r=>r.id===id&&r.status==="running");
-   if(!row||row.sessionId&&row.sessionId!==sessionId)throw new Error("Invalid session binding");
-   return rows.map(r=>r.id===id?{...r,sessionId}:r);
+   if(!row||row.sessionId&&row.sessionId!==sessionId||row.storageId&&storageId!==undefined&&row.storageId!==storageId)throw new Error("Invalid session binding");
+   return rows.map(r=>r.id===id?{...r,sessionId,storageId:storageId??r.storageId}:r);
   });
  }
  checkpoint(id:string,output:string,message?:string){
