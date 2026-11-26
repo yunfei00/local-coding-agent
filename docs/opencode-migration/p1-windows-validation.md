@@ -25,7 +25,7 @@ $env:LCA_TEST_PYTHON = (uv run python -c "import sys; print(sys.executable)")
 npm ci --prefix desktop; Check
 npm run agent:check; Check
 npm run agent:test; Check
-uv run --with pytest python -m pytest tests/test_engine_lease.py -q; Check
+uv run python -m unittest discover -s tests -p test_engine_lease.py -v; Check
 npm run desktop:typecheck; Check
 npm run desktop:test; Check
 npm run desktop:build; Check
