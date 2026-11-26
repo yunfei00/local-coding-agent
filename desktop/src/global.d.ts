@@ -14,6 +14,9 @@ declare global {
   interface Window {
     localAgent: {
       platform: string;
+      runLocalChat?: (input:{model:string;prompt:string;port:number})=>Promise<{outcome:string;sessionId?:string;verified?:false}>;
+      cancelLocalChat?: ()=>Promise<void>;
+      onLocalChatDelta?: (handler:(delta:string)=>void)=>()=>void;
       runEngineDiagnostic?: () => Promise<{status:string;sessionId?:string}>;
       getEngineStatus?: () => Promise<{selected: "legacy" | "opencode"; engines: Array<{id: "legacy" | "opencode"; available: boolean; version?: string; reason?: string}>}>;
       setWindowTheme: (theme: "light" | "dark") => Promise<void>;
