@@ -4,7 +4,7 @@ export type ToolCard=ToolEvent&{key:string;state:"running"|"succeeded"|"failed"|
 export function appendToolEvent(cards:ToolCard[],event:ToolEvent):ToolCard[]{
  const state=event.type==="session.tool.success"?"succeeded":/\.(error|failed)$/.test(event.type)?"failed":/\.(call|start|started)$/.test(event.type)?"running":"unknown";
  const index=event.callId?cards.findIndex(card=>card.callId===event.callId):-1;
- if(index<0)return [...cards.slice(-99),{...event,key:event.callId||"event-"+(cards.length?Number(cards[cards.length-1].key.split("-").pop())+1:0),state}];
+ if(index<0)return [...cards.slice(-99),{...event,key:event.callId||"event-"+(Math.max(-1,...cards.filter(card=>!card.callId).map(card=>Number(card.key.slice(6))).filter(Number.isFinite))+1),state}];
  return cards.map((card,i)=>i!==index?card:{...card,...Object.fromEntries(Object.entries(event).filter(([,v])=>v!==undefined)),state:card.state==="succeeded"||card.state==="failed"?card.state:state});
 }
 export function ToolExecutionCards({cards}:{cards:ToolCard[]}){
