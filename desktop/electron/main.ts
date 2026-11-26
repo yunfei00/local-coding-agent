@@ -1,3 +1,4 @@
+import {sharedLocalProfiles} from "./sharedLocalProfiles";
 import {discoverOllamaModels} from "./ollamaDiscovery";
 import {OpenCodeHistory} from "./openCodeHistory";
 import {readProjectDiff} from "./projectDiff";
@@ -1001,6 +1002,14 @@ ipcMain.handle("agent:engine-diagnostic", async () => {
     try { await migrationSidecar.stop(); await releaseLease?.(); } finally { migrationDiagnosticRunning=false; finishDiagnostic(); }
   }
 });
+async function getSharedLocalProfiles(){
+  const response=await sendRequest("task.catalog.get","task.loaded");
+  return sharedLocalProfiles(response.payload?.catalog);
+}
+ipcMain.handle("agent:shared-local-profiles",async(event)=>{
+  if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");
+  return getSharedLocalProfiles();
+});
 ipcMain.handle("agent:ollama-discover",async(event,port:unknown)=>{
   if(event.sender!==mainWindow?.webContents||typeof port!=="number")throw new Error("Invalid discovery request");
   return discoverOllamaModels(port);
@@ -1022,7 +1031,7 @@ ipcMain.handle("agent:local-chat-cancel",(event)=>{if(event.sender!==mainWindow?
 ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
   if(migrationDiagnosticRunning || quitInProgress || localChatController)throw new Error("Engine busy");
   if(process.env.LCA_ENABLE_EXPERIMENTAL_LOCAL_CHAT!=="1")throw new Error("Experimental local chat disabled");
-  const value=input as {model?:unknown;prompt?:unknown;port?:unknown;followup?:unknown;messages?:unknown;saveHistory?:unknown};
+  const value=input as {model?:unknown;prompt?:unknown;port?:unknown;followup?:unknown;messages?:unknown;saveHistory?:unknown;profileId?:unknown};
   if(typeof value?.model!=="string" || typeof value.prompt!=="string" || !value.prompt.trim() || Buffer.byteLength(value.prompt)>65536 || typeof value.port!=="number" || !Number.isInteger(value.port) || value.port<1 || value.port>65535)throw new Error("Invalid local chat input");
   if(value.followup!==undefined && (typeof value.followup!=="string" || Buffer.byteLength(value.followup)>65536))throw new Error("Invalid follow-up");
   const messages=value.messages;
@@ -1038,13 +1047,16 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
   try{
     const picked=await dialog.showOpenDialog({properties:["openFile"],filters:[{name:"OpenCode executable",extensions:["exe"]}]});
     if(picked.canceled || !picked.filePaths[0] || quitInProgress || controller.signal.aborted)return {outcome:"cancelled"};
+    const selected=value.profileId===undefined?undefined:(await getSharedLocalProfiles()).find(p=>p.id===value.profileId);
+    if(value.profileId!==undefined&&!selected)throw new Error("Shared model profile unavailable");
+    if(selected&&(selected.model!==value.model||selected.port!==value.port))throw new Error("Shared model profile changed; refresh selection");
     const root=await mkdtemp(path.join(app.getPath("userData"),"opencode-chat-"));
     const history=value.saveHistory===true?await localChatHistory():undefined;
     const historyId=history?await history.begin(value.model,Array.isArray(messages)?messages:[value.prompt,...(typeof value.followup==="string"&&value.followup.trim()?[value.followup]:[])]):undefined;
     let output="";
     let result:Awaited<ReturnType<typeof runLocalChat>>;
     try{
-    result=await runLocalChat({binary:picked.filePaths[0],root,dataDir:process.env.LCA_DATA_DIR || app.getPath("userData"),profile:{model:value.model,context:8192,maxOutput:512},ollamaPort:value.port,prompt:value.prompt,messages:Array.isArray(messages)?messages:undefined,followup:typeof value.followup==="string"?value.followup.trim():undefined},delta=>{
+    result=await runLocalChat({binary:picked.filePaths[0],root,dataDir:process.env.LCA_DATA_DIR || app.getPath("userData"),profile:{model:value.model,context:selected?.context??8192,maxOutput:Math.min(selected?.maxOutput??512,2048)},ollamaPort:value.port,prompt:value.prompt,messages:Array.isArray(messages)?messages:undefined,followup:typeof value.followup==="string"?value.followup.trim():undefined},delta=>{
       if(historyId&&output.length<262144)output=(output+delta).slice(0,262144);
       if(!event.sender.isDestroyed())event.sender.send("agent:local-chat-delta",delta);
     },controller.signal,progress=>{
