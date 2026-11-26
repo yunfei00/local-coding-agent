@@ -10,9 +10,10 @@ export class OpenCodeSupervisor {
   private origin?: string;
   private password?: string;
   private localChat = false;
+  private fixtureTools = false;
   private starting = false;
   private stopping = false;
-  async start(binary: string, isolatedRoot: string, local?: {profile:LocalModelProfile;gateway:{port:number;token:string}}): Promise<void> {
+  async start(binary: string, isolatedRoot: string, local?: {profile:LocalModelProfile;gateway:{port:number;token:string};fixtureTools?:boolean}): Promise<void> {
     if (this.child || this.starting || this.stopping) throw new Error("Sidecar already owned");
     this.starting = true;
     try {
@@ -20,8 +21,9 @@ export class OpenCodeSupervisor {
       if (!path.isAbsolute(binary) || !path.isAbsolute(isolatedRoot)) throw new Error("Absolute paths required");
       if (createHash("sha256").update(await readFile(binary)).digest("hex") !== HASH) throw new Error("Sidecar checksum mismatch");
       await mkdir(isolatedRoot, {recursive:true});
-      const config = local ? buildLocalModelConfig(local.profile,local.gateway) : {providers:{},policies:[{action:"provider.use",resource:"*",effect:"deny"}]};
+      const config = local ? buildLocalModelConfig(local.profile,local.gateway,local.fixtureTools===true) : {providers:{},policies:[{action:"provider.use",resource:"*",effect:"deny"}]};
       this.localChat = !!local;
+      this.fixtureTools = local?.fixtureTools===true;
       const password = randomBytes(32).toString("hex");
       this.password = password;
       const env: NodeJS.ProcessEnv = {};
@@ -75,7 +77,7 @@ export class OpenCodeSupervisor {
     if(method==="POST" && route==="/api/session"){
       const input=body as {title?:unknown;permissions?:unknown}|undefined;
       if(typeof input?.title!=="string" || JSON.stringify(input.permissions)!==JSON.stringify([{action:"*",resource:"*",effect:"deny"}])) throw new Error("Only deny-all diagnostic sessions allowed");
-      body={title:input.title,permissions:[{action:"*",resource:"*",effect:"deny"}]};
+      body={title:input.title,permissions:[{action:"*",resource:"*",effect:"deny"},...(this.fixtureTools?[{action:"read",resource:"seed.txt",effect:"allow"},{action:"read",resource:"add.cjs",effect:"allow"},{action:"edit",resource:"add.cjs",effect:"allow"},{action:"edit",resource:"result.txt",effect:"allow"},{action:"shell",resource:"echo P2_SHELL_CHECK",effect:"allow"},{action:"shell",resource:"git status --short",effect:"allow"},{action:"shell",resource:"git diff -- add.cjs",effect:"allow"}]:[])]};
     } else if(method==="POST" && session?.[2]==="/prompt" && this.localChat){
       const input=body as {text?:unknown}|undefined;
       if(typeof input?.text!=="string" || !input.text.trim() || Buffer.byteLength(input.text)>65536)throw new Error("Invalid prompt");
@@ -91,7 +93,7 @@ export class OpenCodeSupervisor {
     return response;
   }
   async stop():Promise<void>{
-    this.origin=undefined;this.password=undefined;this.localChat=false;
+    this.origin=undefined;this.password=undefined;this.localChat=false;this.fixtureTools=false;
     const child=this.child;
     if(!child || this.stopping)return;
     this.stopping=true;
