@@ -27,8 +27,8 @@ export class OpenCodeAdapter implements AgentEngine {
     return result.data.id;
   }
   status(id: string) { return this.request("/api/session/" + encodeURIComponent(id)); }
-  async send(_id: string, _prompt: string): Promise<void> {
-    throw new Error("OpenCode execution disabled: security and budget gates pending");
+  async send(id: string, prompt: string): Promise<void> {
+    await this.request("/api/session/" + encodeURIComponent(id) + "/prompt", "POST", { text: prompt });
   }
   cancel(id: string) { return this.request("/api/session/" + encodeURIComponent(id) + "/interrupt", "POST"); }
 }
@@ -42,8 +42,7 @@ export class EngineRouter {
     throw new Error("Unknown engine");
   }
   async run(binding: SessionBinding, prompt: string): Promise<void> {
-    // Never wire an admission-only RPC to send(): its lease would release early.
-    if (binding.engine !== "legacy") throw new Error("OpenCode execution disabled");
+    if (!["legacy","opencode"].includes(binding.engine)) throw new Error("Unknown engine");
     if (this.active.has(binding.threadId)) throw new Error("Thread already active");
     this.active.add(binding.threadId);
     try {
