@@ -6,7 +6,19 @@
 
 使用 P1 验收的固定版本 v2.2.6 EXE，SHA256 98cb0aa854c7c015cf6febafa7afb872c359bfe5a823a526f3b4fd347a9e9677。CLI 编程验收要求将其放在 build/opencode-p0/verified-bin/opencode.exe。不得使用 latest。Windows x64、Git、Node、uv、已运行的 Ollama（或获授权的本地回环转发）。关闭所有本项目应用和 Agent；用独立测试数据目录，不使用生产工程。模型必须已经安装，不自动拉取。
 
-## 2. 自动化验证
+## 2. 一键自动化验证
+
+关闭本项目应用和 Agent，准备固定版本 EXE 后，在仓库根目录执行：
+
+```powershell
+powershell -NoProfile -File scripts/validation/opencode/p2-acceptance.ps1
+```
+
+仅运行静态回归时追加 -StaticOnly；可指定 -Port 和 -Model。脚本不切换分支、不清理工作区、不拉取模型，真实模型验收使用新建临时数据目录。手动 UI 验收仍须单独完成。
+
+已确认提交 7e104d1492fd7970020ed906522eeb1acb0f9348 的 Windows 和 Ubuntu CI 均通过（run 45746223267）；此结果不覆盖后续提交。
+
+### 分步执行
 
 在项目根目录的 PowerShell 执行，先检查工作区，不清理用户文件：
 
