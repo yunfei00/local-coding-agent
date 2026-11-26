@@ -1,3 +1,4 @@
+import {InteractiveTurnQueue} from "./interactiveTurnQueue";
 import {OpenCodeTaskTracker} from "./openCodeTaskTracker";
 import {sharedLocalProfiles} from "./sharedLocalProfiles";
 import {discoverOllamaModels} from "./ollamaDiscovery";
@@ -1032,12 +1033,21 @@ ipcMain.handle("agent:opencode-tasks",(event)=>{
   if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");
   return openCodeTasks.list();
 });
+let interactiveQueue:InteractiveTurnQueue|undefined;
+ipcMain.handle("agent:local-chat-next",(event,message:unknown)=>{
+ if(event.sender!==mainWindow?.webContents||typeof message!=="string"||!interactiveQueue)throw new Error("Invalid interactive turn");
+ interactiveQueue.submit(message);
+});
+ipcMain.handle("agent:local-chat-end",(event)=>{
+ if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");
+ interactiveQueue?.close();
+});
 let localChatController: AbortController | undefined;
 ipcMain.handle("agent:local-chat-cancel",(event)=>{if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");localChatController?.abort();});
 ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
   if(migrationDiagnosticRunning || quitInProgress || localChatController)throw new Error("Engine busy");
   if(process.env.LCA_ENABLE_EXPERIMENTAL_LOCAL_CHAT!=="1")throw new Error("Experimental local chat disabled");
-  const value=input as {model?:unknown;prompt?:unknown;port?:unknown;followup?:unknown;messages?:unknown;saveHistory?:unknown;profileId?:unknown};
+  const value=input as {model?:unknown;prompt?:unknown;port?:unknown;followup?:unknown;messages?:unknown;saveHistory?:unknown;profileId?:unknown;interactive?:unknown};
   if(typeof value?.model!=="string" || typeof value.prompt!=="string" || !value.prompt.trim() || Buffer.byteLength(value.prompt)>65536 || typeof value.port!=="number" || !Number.isInteger(value.port) || value.port<1 || value.port>65535)throw new Error("Invalid local chat input");
   if(value.followup!==undefined && (typeof value.followup!=="string" || Buffer.byteLength(value.followup)>65536))throw new Error("Invalid follow-up");
   const messages=value.messages;
@@ -1057,9 +1067,12 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
     if(value.profileId!==undefined&&!selected)throw new Error("Shared model profile unavailable");
     if(selected&&(selected.model!==value.model||selected.port!==value.port))throw new Error("Shared model profile changed; refresh selection");
     const root=await mkdtemp(path.join(app.getPath("userData"),"opencode-chat-"));
+    if(value.interactive===true&&value.saveHistory===true)throw new Error("Interactive history is not yet supported");
     const history=value.saveHistory===true?await localChatHistory():undefined;
     const historyId=history?await history.begin(value.model,Array.isArray(messages)?messages:[value.prompt,...(typeof value.followup==="string"&&value.followup.trim()?[value.followup]:[])]):undefined;
     const taskId=openCodeTasks.begin(value.model);
+    const queue=value.interactive===true?new InteractiveTurnQueue():undefined;
+    interactiveQueue=queue;
     let output="";
     let result:Awaited<ReturnType<typeof runLocalChat>>;
     try{
@@ -1069,7 +1082,11 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
     },controller.signal,progress=>{
       openCodeTasks.progress(taskId);
       if(!event.sender.isDestroyed()&&progress.kind!=="text")event.sender.send("agent:local-chat-progress",{kind:progress.kind,payload:progress.payload});
-    });
+    },queue?async signal=>{
+      const pending=queue.next(signal);
+      if(!event.sender.isDestroyed())event.sender.send("agent:local-chat-progress",{kind:"waiting-input"});
+      return pending;
+    }:undefined);
     }catch(error){
       openCodeTasks.finish(taskId,"unknown");
       if(history&&historyId)await history.finish(historyId,"unknown",output);
@@ -1078,7 +1095,7 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
     openCodeTasks.finish(taskId,result.outcome);
     if(history&&historyId)await history.finish(historyId,result.outcome,output,result.sessionId);
     return result;
-  }finally{event.sender.removeListener("destroyed",abort);localChatController=undefined;migrationDiagnosticRunning=false;finish();}
+  }finally{event.sender.removeListener("destroyed",abort);interactiveQueue?.close();interactiveQueue=undefined;localChatController=undefined;migrationDiagnosticRunning=false;finish();}
 });
 ipcMain.handle("agent:engine-status", () => ({
   selected: "legacy", engines: [
