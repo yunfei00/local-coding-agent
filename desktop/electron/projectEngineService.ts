@@ -19,6 +19,7 @@ export class ProjectEngineService {
       const root=await realpath(input.projectRoot);
       if(!(await stat(root)).isDirectory())throw new Error("Project is not a directory");
       const release=await acquireEngineLease(this.dataDir);
+      let admitted=false,terminal=false;
       try{
         let binding=await this.store.get(input.threadId);
         if(binding){
@@ -28,9 +29,11 @@ export class ProjectEngineService {
           await this.store.bind(binding);
         }
         // Delegate must own the complete execution lifecycle and confirm cleanup.
+        admitted=true;
         await this.legacy.send(binding.sessionId,input.prompt);
+        terminal=true;
         return binding;
-      }finally{await release();}
+      }finally{if(!admitted||terminal)await release();}
     }finally{this.active.delete(input.threadId);}
   }
 }
