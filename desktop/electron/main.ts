@@ -1104,16 +1104,15 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
     return result;
   }finally{event.sender.removeListener("destroyed",abort);interactiveQueue?.close();interactiveQueue=undefined;localChatController=undefined;migrationDiagnosticRunning=false;finish();}
 });
-ipcMain.handle("agent:history-diagnose",async(event,id:unknown)=>{
+ipcMain.handle("agent:history-diagnose",async(event,id:unknown,source?:unknown)=>{
  if(event.sender!==mainWindow?.webContents||typeof id!=="string")throw new Error("Invalid history request");
  if(migrationDiagnosticRunning)throw new Error("Engine diagnostic already running");
  migrationDiagnosticRunning=true;
  let finish!:()=>void;
  migrationDiagnosticDone=new Promise<void>(resolve=>{finish=resolve;});
  try{
-  const history=await localChatHistory();
-  const entry=(await history.list()).find(row=>row.id===id);
-  if(!entry||!entry.sessionId||!entry.storageId||entry.status==="running")throw new Error("History session unavailable");
+  const entry=source==="task"?openCodeTasks().list().find(row=>row.id===id):(await (await localChatHistory()).list()).find(row=>row.id===id);
+  if(!entry||!entry.sessionId||!entry.storageId||["running","waiting","stopping"].includes(entry.status))throw new Error("History session unavailable");
   const picked=await dialog.showOpenDialog({properties:["openFile"],filters:[{name:"OpenCode executable",extensions:["exe"]}]});
   if(picked.canceled||!picked.filePaths[0])return null;
   return await diagnoseHistorySession({binary:picked.filePaths[0],userData:app.getPath("userData"),dataDir:process.env.LCA_DATA_DIR||app.getPath("userData"),entry});
