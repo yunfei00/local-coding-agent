@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld("localAgent", {
   listLocalChatHistory: ()=>ipcRenderer.invoke("agent:local-chat-history"),
   runLocalChat: (input:{model:string;prompt:string;port:number;followup?:string;messages?:string[];saveHistory?:boolean;profileId?:string;interactive?:boolean}) => ipcRenderer.invoke("agent:local-chat",input),
   onLocalChatProgress: (handler:(progress:unknown)=>void) => {const listener=(_event:unknown,progress:unknown)=>handler(progress);ipcRenderer.on("agent:local-chat-progress",listener);return ()=>ipcRenderer.removeListener("agent:local-chat-progress",listener);},
-  cancelLocalChat: () => ipcRenderer.invoke("agent:local-chat-cancel"),
+  cancelLocalChat: (id?:string) => ipcRenderer.invoke("agent:local-chat-cancel",id),
   onLocalChatDelta: (handler:(delta:string)=>void) => {const listener=(_event:unknown,delta:string)=>handler(delta);ipcRenderer.on("agent:local-chat-delta",listener);return ()=>ipcRenderer.removeListener("agent:local-chat-delta",listener);},
   runEngineDiagnostic: () => ipcRenderer.invoke("agent:engine-diagnostic"),
   getEngineStatus: () => ipcRenderer.invoke("agent:engine-status"),
