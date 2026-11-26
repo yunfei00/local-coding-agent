@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("localAgent", {
   readProjectDiff: ()=>ipcRenderer.invoke("agent:project-diff"),
   searchProject: (query:string,mode:"file"|"text")=>ipcRenderer.invoke("agent:project-search",query,mode),
   cancelProjectSearch: ()=>ipcRenderer.invoke("agent:project-search-cancel"),
+  listOpenCodeTasks: ()=>ipcRenderer.invoke("agent:opencode-tasks"),
   listSharedLocalProfiles: ()=>ipcRenderer.invoke("agent:shared-local-profiles"),
   discoverOllamaModels: (port:number)=>ipcRenderer.invoke("agent:ollama-discover",port),
   listLocalChatHistory: ()=>ipcRenderer.invoke("agent:local-chat-history"),
