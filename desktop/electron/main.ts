@@ -1046,7 +1046,7 @@ ipcMain.handle("agent:local-chat-end",(event)=>{
  interactiveQueue?.close();
 });
 let localChatController: AbortController | undefined;
-ipcMain.handle("agent:local-chat-cancel",(event,id?:unknown)=>{if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");if(id!==undefined&&!openCodeTasks().list().some(row=>row.id===id&&["running","waiting","stopping"].includes(row.status)))throw new Error("Task is no longer active");for(const row of openCodeTasks().list())if(["running","waiting"].includes(row.status))openCodeTasks().transition(row.id,"stopping");localChatController?.abort();});
+ipcMain.handle("agent:local-chat-cancel",(event,id?:unknown)=>{if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");if(id!==undefined&&!openCodeTasks().list().some(row=>row.id===id&&["running","waiting","stopping"].includes(row.status)))throw new Error("Task is no longer active");try{for(const row of openCodeTasks().list())if(["running","waiting"].includes(row.status))openCodeTasks().transition(row.id,"stopping");}finally{localChatController?.abort();}});
 ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
   if(migrationDiagnosticRunning || quitInProgress || localChatController)throw new Error("Engine busy");
   if(process.env.LCA_ENABLE_EXPERIMENTAL_LOCAL_CHAT!=="1")throw new Error("Experimental local chat disabled");
