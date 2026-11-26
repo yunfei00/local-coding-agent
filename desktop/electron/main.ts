@@ -981,7 +981,7 @@ ipcMain.on("renderer:ready", () => {
 
 const migrationSidecar = new OpenCodeSupervisor();
 const openCodeRuntime = new OpenCodeRuntime();
-const activeOpenCodeTurns = new Map<string, { controller: AbortController; sessionId?: string; cancelled: boolean; outcome: string }>();
+const activeOpenCodeTurns = new Map<string, { controller: AbortController; sessionId?: string; cancelled: boolean; outcome: string; threadId: string }>();
 let migrationDiagnosticRunning = false;
 let migrationDiagnosticDone: Promise<void> = Promise.resolve();
 ipcMain.handle("agent:engine-diagnostic", async () => {
@@ -1716,8 +1716,23 @@ ipcMain.handle("agent:plan-request", async (_event, threadId: string, operation:
 ipcMain.handle("agent:thread-rename", async (_event, threadId: string, title: string, projectId?: string) => {
   return sendRequest("thread.rename", "thread.updated", { title, project_id:projectId }, { threadId });
 });
-ipcMain.handle("agent:thread-delete", async (_event, threadId:string, projectId:string) =>
-  sendRequest("thread.delete", "thread.deleted", {project_id:projectId, cancel_tasks:true}, {threadId}, 60_000));
+ipcMain.handle("agent:thread-delete", async (_event, threadId:string, projectId:string) => {
+  for (const [, entry] of activeOpenCodeTurns.entries()) {
+    if (entry.threadId === threadId) {
+      entry.cancelled = true;
+      entry.outcome = "interrupted";
+      entry.controller.abort();
+      if (entry.sessionId) await openCodeRuntime.interrupt(entry.sessionId).catch(() => {});
+    }
+  }
+  try {
+    if (openCodeRuntime.status().running) {
+      const binding = await openCodeRuntime.bindings().get(threadId).catch(() => undefined);
+      if (binding?.sessionId) await openCodeRuntime.deleteSession(binding.sessionId).catch(() => {});
+    }
+  } catch {}
+  return sendRequest("thread.delete", "thread.deleted", {project_id:projectId, cancel_tasks:true}, {threadId}, 60_000);
+});
 ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
   return sendRequest(
     "thread.get",
@@ -1761,7 +1776,7 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
   const turnId = "turn_" + randomUUID().replace(/-/g, "");
   const startedAt = new Date().toISOString();
   broadcastAgentEvent({ type: "turn.started", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: startedAt, payload: { engine: "opencode" } });
-  const entry = { controller: new AbortController(), sessionId: undefined as string | undefined, cancelled: false, outcome: "succeeded" };
+  const entry = { controller: new AbortController(), sessionId: undefined as string | undefined, cancelled: false, outcome: "succeeded", threadId };
   activeOpenCodeTurns.set(turnId, entry);
   void (async () => {
     let assistant = "";
@@ -1922,8 +1937,10 @@ ipcMain.handle("agent:turn-start", async (_event, threadId: string, prompt: stri
     { threadId }
   );
 });
-ipcMain.handle('agent:turn-append',async (_event,threadId:string,turnId:string,prompt:string,messageId:string)=>
-  sendRequest('turn.append','turn.appended',{prompt,message_id:messageId},{threadId,turnId}));
+ipcMain.handle('agent:turn-append',async (_event,threadId:string,turnId:string,prompt:string,messageId:string)=>{
+  if (activeOpenCodeTurns.has(turnId)) throw new Error('当前 OpenCode 任务不支持追加消息；请等待当前任务完成后再发送。');
+  return sendRequest('turn.append','turn.appended',{prompt,message_id:messageId},{threadId,turnId});
+});
 ipcMain.handle("agent:turn-cancel", async (_event, turnId: string) => {
   const oc = activeOpenCodeTurns.get(turnId);
   if (oc) {
