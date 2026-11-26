@@ -32,6 +32,14 @@ export class OpenCodeHistory {
   const id=randomUUID(),entry:HistoryEntry={id,model,createdAt:new Date().toISOString(),messages:[...messages],output:"",status:"running"};
   await this.change(rows=>[entry,...rows].slice(0,100));return id;
  }
+ bindSession(id:string,sessionId:string){
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(sessionId))throw new Error("Invalid session ID");
+  return this.change(rows=>{
+   const row=rows.find(r=>r.id===id&&r.status==="running");
+   if(!row||row.sessionId&&row.sessionId!==sessionId)throw new Error("Invalid session binding");
+   return rows.map(r=>r.id===id?{...r,sessionId}:r);
+  });
+ }
  checkpoint(id:string,output:string,message?:string){
   return this.change(rows=>{
    const row=rows.find(r=>r.id===id&&r.status==="running");
@@ -44,7 +52,7 @@ export class OpenCodeHistory {
  finish(id:string,status:Exclude<HistoryEntry["status"],"running">,output:string,sessionId?:string){
   return this.change(rows=>{
    if(!rows.some(r=>r.id===id&&r.status==="running"))throw new Error("Unknown or terminal history entry");
-   return rows.map(r=>r.id===id?{...r,status,output:output.slice(0,262144),sessionId}:r);
+   return rows.map(r=>r.id===id?{...r,status,output:output.slice(0,262144),sessionId:sessionId??r.sessionId}:r);
   });
  }
  recover(){return this.change(rows=>rows.map(r=>r.status==="running"?{...r,status:"unknown"}:r));}
