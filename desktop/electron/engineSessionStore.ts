@@ -37,4 +37,19 @@ export class EngineSessionStore {
     this.queue=task.catch(()=>{});
     return task;
   }
+  rebind(binding:SessionBinding):Promise<void>{
+    const snapshot={...binding};
+    const task=this.queue.then(async()=>{
+      if(!snapshot.threadId || !snapshot.sessionId || !path.isAbsolute(snapshot.projectRoot) || !["legacy","opencode"].includes(snapshot.engine))throw new Error("Invalid binding");
+      const rows=await this.read();
+      const next=rows.filter(item=>item.threadId!==snapshot.threadId);
+      next.push(snapshot);
+      await mkdir(path.dirname(this.file),{recursive:true});
+      const temporary=this.file+"."+randomUUID()+".tmp";
+      try{await writeFile(temporary,JSON.stringify(next),{flag:"wx",mode:0o600});await rename(temporary,this.file);}
+      finally{await unlink(temporary).catch(()=>{});}
+    });
+    this.queue=task.catch(()=>{});
+    return task;
+  }
 }

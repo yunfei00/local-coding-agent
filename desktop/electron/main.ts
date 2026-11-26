@@ -1776,9 +1776,13 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       const config = (catalogRes as any)?.payload?.config || (settingsRes as any)?.payload?.config;
       const credentials = readModelCredentials();
       const configContent = buildConfigFromCatalog(catalog, config, credentials, model?.startsWith("profile:") ? model.slice("profile:".length) : (catalogRes as any)?.payload?.chat_default);
-      await openCodeRuntime.ensureStarted(configContent);
+      await openCodeRuntime.ensureStarted(configContent, projectPath);
       let binding = await openCodeRuntime.bindings().get(threadId).catch(() => undefined);
       let sessionId = binding?.sessionId;
+      if (sessionId) {
+        const ok = await openCodeRuntime.getSession(sessionId).then(() => true).catch(() => false);
+        if (!ok) sessionId = undefined;
+      }
       if (!sessionId) {
         sessionId = await openCodeRuntime.createSession(prompt.slice(0, 80) || "Chat", projectPath, threadId);
       }

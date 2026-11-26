@@ -10,6 +10,7 @@ export type OpenCodeSupervisorOptions = {
   allowPrompt?: boolean;
   expectedVersion?: string[];
   binarySha256?: string;
+  cwd?: string;
 };
 export class OpenCodeSupervisor {
   private child?: ChildProcess;

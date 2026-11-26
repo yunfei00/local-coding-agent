@@ -26,6 +26,7 @@ export class OpenCodeRuntime implements EventSource {
   private readonly supervisor = new OpenCodeSupervisor();
   private store?: EngineSessionStore;
   private root?: string;
+  private cwd?: string;
   private binaryPath?: string;
   private starting?: Promise<void>;
   private stopping?: Promise<void>;
@@ -55,14 +56,16 @@ export class OpenCodeRuntime implements EventSource {
     return undefined;
   }
 
-  async ensureStarted(configContent: string): Promise<void> {
-    if (this.root) return;
+  async ensureStarted(configContent: string, cwd?: string): Promise<void> {
+    const wantedCwd = cwd ? path.resolve(cwd) : process.cwd();
+    if (this.root && this.cwd === wantedCwd) return;
+    if (this.root && this.cwd !== wantedCwd) await this.stop();
     if (this.starting) return this.starting;
-    this.starting = this.start(configContent).finally(() => { this.starting = undefined; });
+    this.starting = this.start(configContent, wantedCwd).finally(() => { this.starting = undefined; });
     return this.starting;
   }
 
-  private async start(configContent: string): Promise<void> {
+  private async start(configContent: string, cwd: string): Promise<void> {
     const binary = this.resolveBinary();
     if (!binary) throw new Error("OpenCode runtime not found. Install bundled runtime or set LCA_OPENCODE_BINARY.");
     const root = await mkdtemp(path.join(app.getPath("userData"), "opencode-runtime-"));
@@ -72,9 +75,11 @@ export class OpenCodeRuntime implements EventSource {
       allowPrompt: true,
       expectedVersion: VERSION_ALIASES,
       binarySha256: EXECUTABLE_SHA256,
+      cwd,
     });
     this.root = root;
-    this.store = new EngineSessionStore(path.join(root, "bindings.json"));
+    this.cwd = cwd;
+    this.store = new EngineSessionStore(path.join(app.getPath("userData"), "opencode-session-bindings.json"));
   }
 
   async restart(configContent: string): Promise<void> {
@@ -86,7 +91,7 @@ export class OpenCodeRuntime implements EventSource {
     if (this.stopping) return this.stopping;
     this.stopping = (async () => {
       try { await this.supervisor.stop(); }
-      finally { this.root = undefined; this.store = undefined; this.stopping = undefined; }
+      finally { this.root = undefined; this.cwd = undefined; this.store = undefined; this.stopping = undefined; }
     })();
     return this.stopping;
   }
@@ -108,7 +113,10 @@ export class OpenCodeRuntime implements EventSource {
     const result = await this.request("/api/session", "POST", { title, permissions: [{ action: "*", resource: "*", effect: "allow" }] }) as { data?: { id?: string } };
     const id = result?.data?.id;
     if (!id) throw new Error("Missing OpenCode session ID");
-    await this.bindings().bind({ threadId, engine: "opencode", sessionId: id, projectRoot });
+    const binding = { threadId, engine: "opencode" as const, sessionId: id, projectRoot };
+    const existing = await this.bindings().get(threadId).catch(() => undefined);
+    if (existing) await this.bindings().rebind(binding);
+    else await this.bindings().bind(binding);
     return id;
   }
 
