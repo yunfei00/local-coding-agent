@@ -17,7 +17,7 @@ export function buildLocalModelConfig(profile: LocalModelProfile, gateway: {port
     providers:{[provider]:{
       package:"@opencode/ai/providers/openai-compatible",
       settings:{baseURL:"http://127.0.0.1:"+gateway.port+"/v1",apiKey:gateway.token},
-      models:{[profile.model]:{name:profile.model,limit:{context:profile.context,output:profile.maxOutput}}}
+      models:{[profile.model]:{name:profile.model,capabilities:{tools:false},limit:{context:profile.context,output:profile.maxOutput}}}
     }}
   };
 }
