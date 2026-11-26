@@ -1050,7 +1050,7 @@ ipcMain.handle("agent:local-chat-cancel",(event,id?:unknown)=>{if(event.sender!=
 ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
   if(migrationDiagnosticRunning || quitInProgress || localChatController)throw new Error("Engine busy");
   if(process.env.LCA_ENABLE_EXPERIMENTAL_LOCAL_CHAT!=="1")throw new Error("Experimental local chat disabled");
-  const value=input as {model?:unknown;prompt?:unknown;port?:unknown;followup?:unknown;messages?:unknown;saveHistory?:unknown;profileId?:unknown;interactive?:unknown};
+  const value=input as {model?:unknown;prompt?:unknown;port?:unknown;followup?:unknown;messages?:unknown;saveHistory?:unknown;profileId?:unknown;interactive?:unknown;fixtureTools?:unknown};
   if(typeof value?.model!=="string" || typeof value.prompt!=="string" || !value.prompt.trim() || Buffer.byteLength(value.prompt)>65536 || typeof value.port!=="number" || !Number.isInteger(value.port) || value.port<1 || value.port>65535)throw new Error("Invalid local chat input");
   if(value.followup!==undefined && (typeof value.followup!=="string" || Buffer.byteLength(value.followup)>65536))throw new Error("Invalid follow-up");
   const messages=value.messages;
@@ -1069,6 +1069,10 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
     const selected=value.profileId===undefined?undefined:(await getSharedLocalProfiles()).find(p=>p.id===value.profileId);
     if(value.profileId!==undefined&&!selected)throw new Error("Shared model profile unavailable");
     if(selected&&(selected.model!==value.model||selected.port!==value.port))throw new Error("Shared model profile changed; refresh selection");
+    if(value.fixtureTools===true){
+      const choice=await dialog.showMessageBox({type:"warning",buttons:["取消","运行独立测试工程"],defaultId:0,cancelId:0,message:"OpenCode 将在新建测试工程执行受限文件和 Shell 工具。不会使用当前正式工程。"});
+      if(choice.response!==1)return {outcome:"cancelled"};
+    }
     const root=await mkdtemp(path.join(app.getPath("userData"),"opencode-chat-"));
     const history=value.saveHistory===true?await localChatHistory():undefined;
     const historyId=history?await history.begin(value.model,Array.isArray(messages)?messages:[value.prompt,...(typeof value.followup==="string"&&value.followup.trim()?[value.followup]:[])]):undefined;
@@ -1078,7 +1082,7 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
     let output="";
     let result:Awaited<ReturnType<typeof runLocalChat>>;
     try{
-    result=await runLocalChat({binary:picked.filePaths[0],root,dataDir:process.env.LCA_DATA_DIR || app.getPath("userData"),profile:{model:value.model,context:selected?.context??8192,maxOutput:Math.min(selected?.maxOutput??512,2048)},ollamaPort:value.port,prompt:value.prompt,messages:Array.isArray(messages)?messages:undefined,followup:typeof value.followup==="string"?value.followup.trim():undefined},delta=>{
+    result=await runLocalChat({binary:picked.filePaths[0],root,dataDir:process.env.LCA_DATA_DIR || app.getPath("userData"),profile:{model:value.model,context:selected?.context??8192,maxOutput:Math.min(selected?.maxOutput??512,2048)},ollamaPort:value.port,fixtureTools:value.fixtureTools===true,prompt:value.prompt,messages:Array.isArray(messages)?messages:undefined,followup:typeof value.followup==="string"?value.followup.trim():undefined},delta=>{
       if(historyId&&output.length<262144)output=(output+delta).slice(0,262144);
       if(!event.sender.isDestroyed())event.sender.send("agent:local-chat-delta",delta);
     },controller.signal,progress=>{
@@ -1093,7 +1097,7 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
       if(next!==null)openCodeTasks().transition(taskId,"running");
       if(next!==null&&history&&historyId)await history.checkpoint(historyId,output,next);
       return next;
-    }:undefined,async id=>{openCodeTasks().bindSession(taskId,id,path.basename(root));if(history&&historyId)await history.bindSession(historyId,id,path.basename(root));});
+    }:undefined,async id=>{if(value.fixtureTools===true)return;openCodeTasks().bindSession(taskId,id,path.basename(root));if(history&&historyId)await history.bindSession(historyId,id,path.basename(root));});
     }catch(error){
       openCodeTasks().finish(taskId,"unknown");
       if(history&&historyId)await history.finish(historyId,"unknown",output);
