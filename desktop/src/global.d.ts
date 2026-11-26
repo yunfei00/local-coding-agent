@@ -22,7 +22,7 @@ declare global {
       listOpenCodeTasks?: ()=>Promise<{id:string;engine:"opencode";model:string;status:string;startedAt:string;endedAt?:string;events:number;verified:false}[]>;
       listSharedLocalProfiles?: ()=>Promise<{id:string;label:string;model:string;port:number;context:number;maxOutput:number}[]>;
       discoverOllamaModels?: (port:number)=>Promise<string[]>;
-      diagnoseHistorySession?: (id:string)=>Promise<{sessionId:string;outcome:string;active:boolean;canResume:false;verified:false}|null>;
+      diagnoseHistorySession?: (id:string,source?:"task")=>Promise<{sessionId:string;outcome:string;active:boolean;canResume:false;verified:false}|null>;
       listLocalChatHistory?: ()=>Promise<{id:string;model:string;createdAt:string;messages:string[];output:string;status:string;sessionId?:string;storageId?:string}[]>;
       runLocalChat?: (input:{model:string;prompt:string;port:number;followup?:string;messages?:string[];saveHistory?:boolean;profileId?:string;interactive?:boolean})=>Promise<{outcome:string;sessionId?:string;verified?:false}>;
       onLocalChatProgress?: (handler:(progress:unknown)=>void)=>()=>void;
