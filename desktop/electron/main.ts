@@ -1,3 +1,4 @@
+import {OpenCodeTaskTracker} from "./openCodeTaskTracker";
 import {sharedLocalProfiles} from "./sharedLocalProfiles";
 import {discoverOllamaModels} from "./ollamaDiscovery";
 import {OpenCodeHistory} from "./openCodeHistory";
@@ -1026,6 +1027,11 @@ ipcMain.handle("agent:local-chat-history",async(event)=>{
   if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");
   return (await localChatHistory()).list();
 });
+const openCodeTasks=new OpenCodeTaskTracker();
+ipcMain.handle("agent:opencode-tasks",(event)=>{
+  if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");
+  return openCodeTasks.list();
+});
 let localChatController: AbortController | undefined;
 ipcMain.handle("agent:local-chat-cancel",(event)=>{if(event.sender!==mainWindow?.webContents)throw new Error("Invalid sender");localChatController?.abort();});
 ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
@@ -1053,6 +1059,7 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
     const root=await mkdtemp(path.join(app.getPath("userData"),"opencode-chat-"));
     const history=value.saveHistory===true?await localChatHistory():undefined;
     const historyId=history?await history.begin(value.model,Array.isArray(messages)?messages:[value.prompt,...(typeof value.followup==="string"&&value.followup.trim()?[value.followup]:[])]):undefined;
+    const taskId=openCodeTasks.begin(value.model);
     let output="";
     let result:Awaited<ReturnType<typeof runLocalChat>>;
     try{
@@ -1060,12 +1067,15 @@ ipcMain.handle("agent:local-chat",async(event,input:unknown)=>{
       if(historyId&&output.length<262144)output=(output+delta).slice(0,262144);
       if(!event.sender.isDestroyed())event.sender.send("agent:local-chat-delta",delta);
     },controller.signal,progress=>{
+      openCodeTasks.progress(taskId);
       if(!event.sender.isDestroyed()&&progress.kind!=="text")event.sender.send("agent:local-chat-progress",{kind:progress.kind,payload:progress.payload});
     });
     }catch(error){
+      openCodeTasks.finish(taskId,"unknown");
       if(history&&historyId)await history.finish(historyId,"unknown",output);
       throw error;
     }
+    openCodeTasks.finish(taskId,result.outcome);
     if(history&&historyId)await history.finish(historyId,result.outcome,output,result.sessionId);
     return result;
   }finally{event.sender.removeListener("destroyed",abort);localChatController=undefined;migrationDiagnosticRunning=false;finish();}
