@@ -1,3 +1,4 @@
+import {ProjectDiffDialog} from "./components/ProjectDiffDialog";
 import {ProjectSearchDialog} from "./components/ProjectSearchDialog";
 import {OpenCodeChatDialog} from "./components/OpenCodeChatDialog";
 import {FirstRunCard} from './components/FirstRunCard';
@@ -224,6 +225,7 @@ function resultObject(value: unknown): Record<string, unknown> {
 }
 
 function App() {
+  const [projectDiffOpen,setProjectDiffOpen]=useState(false);
   const [projectSearchOpen,setProjectSearchOpen]=useState(false);
   const [localChatOpen,setLocalChatOpen]=useState(false);
   const [engineStatus, setEngineStatus] = useState<Awaited<ReturnType<NonNullable<Window["localAgent"]["getEngineStatus"]>>> | null>(null);
@@ -1477,6 +1479,7 @@ function App() {
           </div>
           <nav className="app-menubar" role="menubar" aria-label="Application menu">
             <ActionMenu label="引擎" className="app-menu-button" menuBarItem actions={[
+              {label:"工程 Git 差异",disabled:!window.localAgent.readProjectDiff||Boolean(runningTurnId),onSelect:()=>setProjectDiffOpen(true)},
               {label:"工程搜索",disabled:!window.localAgent.searchProject||Boolean(runningTurnId),onSelect:()=>setProjectSearchOpen(true)},
               {label:"OpenCode 本地对话实验",disabled:!window.localAgent.runLocalChat||Boolean(runningTurnId),onSelect:()=>setLocalChatOpen(true)},
               {label:"OpenCode 隔离诊断", disabled:!window.localAgent.runEngineDiagnostic, onSelect:()=>{void window.localAgent.runEngineDiagnostic?.().then(result=>window.alert("OpenCode 诊断："+result.status)).catch(error=>window.alert("OpenCode 诊断失败："+String(error)));}},
@@ -1918,6 +1921,7 @@ function App() {
           />
         ) : null}
       </main>
+      {projectDiffOpen ? <ProjectDiffDialog onClose={()=>setProjectDiffOpen(false)}/> : null}
       {projectSearchOpen ? <ProjectSearchDialog onClose={()=>setProjectSearchOpen(false)}/> : null}
       {localChatOpen ? <OpenCodeChatDialog onClose={()=>setLocalChatOpen(false)}/> : null}
       {renamingThread ? <RenameThreadDialog title={renamingThread.thread.title} onSave={commitThreadRename} onClose={() => {
