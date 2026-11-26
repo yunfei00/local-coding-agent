@@ -1273,6 +1273,7 @@ ipcMain.handle(
     }
 
     const provider = await sendRequest("model.list", "model.listed");
+    void refreshOpenCodeRuntimeConfig();
     return { event, provider, secret };
   }
 );
@@ -1290,6 +1291,7 @@ ipcMain.handle("agent:settings-reset", async () => {
     );
   }
   const provider = await sendRequest("model.list", "model.listed");
+  void refreshOpenCodeRuntimeConfig();
   return {
     event,
     provider,
@@ -1688,6 +1690,7 @@ ipcMain.handle("agent:task-request", async (_event, threadId: string, operation:
     // Agent rejects changes while a turn is running before disk persistence.
     await sendRequest("task.credentials.update", "task.loaded", {credentials:values});
     storeModelCredentials(values);
+    void refreshOpenCodeRuntimeConfig();
     return {type:"task.loaded", payload:{mode:safeStorage.isEncryptionAvailable() ? "os_protected" : "session_only", configured:!!key}};
   }
   const allowed = new Set(["task.runtime.list", "task.catalog.get", "task.catalog.update", "task.settings.get", "task.settings.update", "task.connection.test", "task.list", "task.start", "task.resume", "task.continue", "task.pause", "task.cancel", "task.budget.add", "task.configure", "task.approve", "task.diagnostics"]);
@@ -1700,7 +1703,9 @@ ipcMain.handle("agent:task-request", async (_event, threadId: string, operation:
     payload=legacyTaskPayload(payload);
     await bindLegacyThread(threadId);
   }
-  return sendRequest(operation, operation.startsWith('knowledge.')?'knowledge.loaded':operation==='model.capabilities'?'model.capabilities.loaded':"task.loaded", payload, {threadId}, operation === "task.model.diagnostic" ? 300000 : operation === "task.connection.test" ? 30000 : 15000);
+  const result = await sendRequest(operation, operation.startsWith('knowledge.')?'knowledge.loaded':operation==='model.capabilities'?'model.capabilities.loaded':"task.loaded", payload, {threadId}, operation === "task.model.diagnostic" ? 300000 : operation === "task.connection.test" ? 30000 : 15000);
+  if (["task.catalog.update","task.settings.update","task.credential.set"].includes(operation)) void refreshOpenCodeRuntimeConfig();
+  return result;
 });
 ipcMain.handle("agent:plan-request", async (_event, threadId: string, operation: string, payload: Record<string, unknown> = {}) => {
   const allowed = new Set(["plan.list", "plan.create", "plan.step.update", "plan.step.edit", "plan.steps.reorder", "plan.checkpoint", "plan.resume", "plan.resume.confirm", "plan.recover", "plan.execution.extend", "plan.operation.review"]);
@@ -1731,6 +1736,25 @@ async function bindLegacyThread(threadId:string){
  if(!root||!path.isAbsolute(root))throw new Error("Invalid project root");
  productionBindings??=new EngineSessionStore(path.join(process.env.LCA_DATA_DIR||app.getPath("userData"),"production-engine-bindings.json"));
  await productionBindings.bind({threadId:payload.project_id+":"+threadId,engine:"legacy",sessionId:threadId,projectRoot:root});
+}
+
+async function refreshOpenCodeRuntimeConfig(): Promise<void> {
+  if (!openCodeRuntime.resolveBinary()) return;
+  if (activeOpenCodeTurns.size > 0) return;
+  try {
+    const [catalogRes, settingsRes] = await Promise.all([
+      sendRequest("task.catalog.get", "task.loaded", {}, {}),
+      sendRequest("task.settings.get", "task.loaded", {}, {}).catch(() => null),
+    ]);
+    const catalog = (catalogRes as any)?.payload?.catalog;
+    const config = (catalogRes as any)?.payload?.config || (settingsRes as any)?.payload?.config;
+    const credentials = readModelCredentials();
+    const configContent = buildConfigFromCatalog(catalog, config, credentials, (catalogRes as any)?.payload?.chat_default);
+    await openCodeRuntime.restart(configContent);
+  } catch (error) {
+    appendRuntimeLog("desktop.log", "OpenCode runtime config refresh failed: " + String(error));
+  }
+
 }
 
 async function startOpenCodeTurn(threadId: string, prompt: string, model?: string): Promise<AgentEnvelope> {
