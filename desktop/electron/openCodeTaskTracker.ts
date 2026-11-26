@@ -1,7 +1,7 @@
 import {randomUUID} from "node:crypto";
 import {existsSync,readFileSync,mkdirSync,writeFileSync,renameSync,unlinkSync} from "node:fs";
 import path from "node:path";
-export type OpenCodeTaskSnapshot={id:string;engine:"opencode";model:string;status:"running"|"waiting"|"stopping"|"succeeded"|"failed"|"interrupted"|"unknown";startedAt:string;endedAt?:string;events:number;verified:false};
+export type OpenCodeTaskSnapshot={id:string;engine:"opencode";model:string;status:"running"|"waiting"|"stopping"|"succeeded"|"failed"|"interrupted"|"unknown";sessionId?:string;storageId?:string;startedAt:string;endedAt?:string;events:number;verified:false};
 type Status=OpenCodeTaskSnapshot["status"];
 const active=(s:Status)=>["running","waiting","stopping"].includes(s);
 export class OpenCodeTaskTracker{
@@ -27,6 +27,12 @@ export class OpenCodeTaskTracker{
   if(this.rows.some(r=>active(r.status)))throw new Error("OpenCode task already running");
   const row:OpenCodeTaskSnapshot={id:randomUUID(),engine:"opencode",model,startedAt:new Date().toISOString(),status:"running",events:0,verified:false};
   this.save([row,...this.rows].slice(0,100));return row.id;
+ }
+ bindSession(id:string,sessionId:string,storageId:string){
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(sessionId)||!/^opencode-chat-[A-Za-z0-9_-]{6,64}$/.test(storageId))throw new Error("Invalid session identity");
+  const row=this.rows.find(r=>r.id===id);
+  if(!row||!active(row.status)||(row.sessionId&&row.sessionId!==sessionId)||(row.storageId&&row.storageId!==storageId))throw new Error("Invalid task session binding");
+  this.save(this.rows.map(r=>r.id===id?{...r,sessionId,storageId}:r));
  }
  progress(id:string){this.save(this.rows.map(r=>r.id===id&&active(r.status)?{...r,events:r.events+1}:r));}
  transition(id:string,status:"running"|"waiting"|"stopping"){
