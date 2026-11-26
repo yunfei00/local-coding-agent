@@ -11,10 +11,11 @@ describe("OpenCode history",()=>{
    const id=await first.begin("model",["hello"]);
    await first.finish(id,"succeeded","reply","session");
    const unfinished=await first.begin("model",["next"]);
+   await first.checkpoint(unfinished,"partial reply","follow-up");
    const second=new OpenCodeHistory(file);await second.recover();
    const rows=await second.list();
    expect(rows.find(r=>r.id===id)).toMatchObject({status:"succeeded",output:"reply",sessionId:"session"});
-   expect(rows.find(r=>r.id===unfinished)?.status).toBe("unknown");
+   expect(rows.find(r=>r.id===unfinished)).toMatchObject({status:"unknown",messages:["next","follow-up"],output:"partial reply"});
    await expect(second.finish(id,"failed","")).rejects.toThrow("terminal");
   }finally{await rm(dir,{recursive:true,force:true});}
  });
