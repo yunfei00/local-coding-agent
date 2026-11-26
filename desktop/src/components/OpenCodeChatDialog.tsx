@@ -60,7 +60,7 @@ export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
     if(!model.trim()||!prompt.trim()||!Number.isInteger(number)||number<1||number>65535){setStatus("请输入有效模型、端口和消息");return;}
     running.current=true;setBusy(true);setOutput("");setProgress([]);setCards([]);setStatus("正在启动，请选择固定版本 OpenCode EXE");
     try{
-      const result=await window.localAgent.runLocalChat({model:model.trim(),port:number,prompt,messages:[prompt,...followups.filter(message=>message.trim())],saveHistory:saveHistory&&!interactive,profileId:profileId||undefined,interactive});
+      const result=await window.localAgent.runLocalChat({model:model.trim(),port:number,prompt,messages:[prompt,...followups.filter(message=>message.trim())],saveHistory,profileId:profileId||undefined,interactive});
       setStatus(result.outcome==="succeeded"?"对话结束（未独立验证）":result.outcome==="cancelled"||result.outcome==="interrupted"?"已取消或中断":"执行失败："+result.outcome);
     }catch(error){setStatus("执行未确认："+String(error));}
     finally{running.current=false;setBusy(false);setWaiting(false);setNextMessage("");}
@@ -79,7 +79,7 @@ export function OpenCodeChatDialog({onClose}:{onClose:()=>void}){
       <button type="button" disabled={busy||followups.length>=19} onClick={()=>setFollowups(previous=>[...previous,""])}>添加下一轮消息</button>
       <label><input type="checkbox" checked={interactive} disabled={busy} onChange={e=>setInteractive(e.target.checked)}/> 即时连续对话（最长约八分钟）</label>
       {waiting&&<section><label>下一轮消息<textarea value={nextMessage} onChange={e=>setNextMessage(e.target.value)}/></label><button type="button" disabled={!nextMessage.trim()} onClick={async()=>{setWaiting(false);try{await window.localAgent.sendLocalChatNext?.(nextMessage);setNextMessage("");setStatus("正在生成");}catch(e){setWaiting(true);setStatus(String(e));}}}>继续发送</button><button type="button" onClick={async()=>{setWaiting(false);try{await window.localAgent.endLocalChat?.();}catch(e){setWaiting(true);setStatus(String(e));}}}>结束会话</button></section>}
-      <label><input type="checkbox" checked={saveHistory&&!interactive} disabled={busy||interactive} onChange={e=>setSaveHistory(e.target.checked)}/> 保存本次对话到本机（明文）</label>
+      <label><input type="checkbox" checked={saveHistory} disabled={busy} onChange={e=>setSaveHistory(e.target.checked)}/> 保存本次对话到本机（明文）</label>
       <button type="button" disabled={busy||!window.localAgent.listLocalChatHistory} onClick={()=>void loadHistory()}>查看历史</button>
       {historyOpen&&<section aria-label="历史对话" style={{maxHeight:280,overflow:"auto"}}>{history.length===0?<p>暂无历史</p>:history.map(item=><details key={item.id}><summary>{item.createdAt} · {item.model} · {item.status}</summary><pre style={{whiteSpace:"pre-wrap"}}>{item.messages.join("\n\n")}</pre><pre style={{whiteSpace:"pre-wrap"}}>{item.output}</pre></details>)}<button type="button" onClick={()=>setHistoryOpen(false)}>收起历史</button></section>}
       <p role="status">{status}</p>
