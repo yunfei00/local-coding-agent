@@ -2,10 +2,11 @@ export type SharedLocalProfile={id:string;label:string;model:string;port:number;
 export function sharedLocalProfiles(value:unknown):SharedLocalProfile[]{
  const catalog=value as {connections?:unknown;profiles?:unknown};
  if(!Array.isArray(catalog?.connections)||!Array.isArray(catalog?.profiles))return [];
+ const connections=catalog.connections;
  const result:SharedLocalProfile[]=[];
  for(const p of catalog.profiles){
   if(!p||typeof p.model_profile_id!=="string"||typeof p.model_id!=="string"||!/^[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,127}$/.test(p.model_id))continue;
-  const c=catalog.connections.find(c=>c?.connection_id===p.connection_id);
+  const c=connections.find(c=>c?.connection_id===p.connection_id);
   if(!c||c.enabled!==true||c.provider_type!=="ollama"||typeof c.base_url!=="string")continue;
   let url:URL;try{url=new URL(c.base_url);}catch{continue;}
   if(url.protocol!=="http:"||!["127.0.0.1","localhost"].includes(url.hostname)||url.username||url.password||url.search||url.hash||url.pathname!=="/")continue;
