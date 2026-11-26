@@ -1804,6 +1804,27 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       const bridge = openCodeRuntime.bridge(3);
       let finished = false;
       const toolCalls = new Map<string, { name: string; started: boolean }>();
+      const startedAtMs = Date.now();
+      let modelSteps = 0;
+      let toolFailures = 0;
+      const usageTotals = { input: 0, output: 0, total: 0 };
+      const modelLabel = String(model?.startsWith("profile:") ? model.slice("profile:".length) : (model || (catalogRes as any)?.payload?.chat_default || "opencode"));
+      const emitMetrics = () => {
+        broadcastAgentEvent({ type: "turn.metrics", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: {
+          provider: "opencode",
+          model: modelLabel,
+          execution_summary: {
+            model_steps: modelSteps,
+            tool_calls: toolCalls.size,
+            tool_duration_ms: 0,
+            tool_failures: toolFailures,
+            provider_retries: 0,
+            elapsed_ms: Math.max(0, Date.now() - startedAtMs),
+            context_token_estimate: usageTotals.input,
+            context_sources: { input_tokens: usageTotals.input, output_tokens: usageTotals.output, total_tokens: usageTotals.total },
+          },
+        } });
+      };
       const follow = bridge.follow(sessionId, entry.controller.signal, (event) => {
         if (event.kind === "text") {
           const delta = String((event.payload as any)?.delta ?? "");
@@ -1811,6 +1832,16 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
             assistant += delta;
             broadcastAgentEvent({ type: "turn.delta", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { delta } });
           }
+        } else if (event.kind === "usage") {
+          const t = ((event.payload as any)?.tokens ?? event.payload ?? {}) as any;
+          const inp = Number(t.input_tokens ?? t.input ?? t.prompt_tokens ?? 0) || 0;
+          const out = Number(t.output_tokens ?? t.output ?? t.completion_tokens ?? 0) || 0;
+          const total = Number(t.total_tokens ?? t.total ?? (inp + out)) || (inp + out);
+          if (inp > 0) usageTotals.input = Math.max(usageTotals.input, inp);
+          if (out > 0) usageTotals.output = Math.max(usageTotals.output, out);
+          if (total > 0) usageTotals.total = Math.max(usageTotals.total, total);
+          modelSteps += 1;
+          emitMetrics();
         } else if (event.kind === "tool") {
           const p = (event.payload as any) || {};
           const type = String(p.type ?? "session.tool");
@@ -1830,8 +1861,10 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
               broadcastAgentEvent({ type: "tool.requested", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { tool_call_id: callId, name, arguments: p.input && typeof p.input === "object" ? p.input : {} } });
             }
             const ok = !type.endsWith(".failed") && !type.endsWith(".error");
+            if (!ok) toolFailures += 1;
             const out = p.output ?? p.error ?? {};
             broadcastAgentEvent({ type: "tool.completed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { tool_call_id: callId, result: { ok, summary: String((out as any)?.summary ?? (out as any)?.message ?? name), data: typeof out === "object" && out ? out : { output: out }, stdout: String((out as any)?.stdout ?? ""), stderr: String((out as any)?.stderr ?? ""), error: ok ? undefined : { code: "TOOL_FAILED", message: String((out as any)?.message ?? (out as any)?.error ?? type) } } } });
+            emitMetrics();
           }
         } else if (event.kind === "execution-ended") {
           finished = true;
@@ -1853,6 +1886,7 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       entry.controller.abort();
       await follow.catch(() => {});
       await sendRequest("turn.record_external", "turn.recorded", { role: "assistant", content: assistant }, { threadId }).catch(() => {});
+      emitMetrics();
       if (entry.cancelled || entry.outcome === "interrupted") {
         broadcastAgentEvent({ type: "turn.cancelled", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { engine: "opencode" } });
       } else if (entry.outcome === "failed") {
