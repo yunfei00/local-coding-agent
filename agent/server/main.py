@@ -8,6 +8,7 @@ import os
 import platform
 import re
 import secrets
+import shutil
 import sqlite3
 import sys
 from time import perf_counter
@@ -966,7 +967,6 @@ class AgentServer:
             return
 
         if message_type == "mcp.env":
-            import shutil, sys, platform
             def _which(name):
                 p = shutil.which(name)
                 return {"name": name, "available": bool(p), "path": p}
