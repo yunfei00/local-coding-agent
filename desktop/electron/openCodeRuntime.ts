@@ -144,6 +144,10 @@ export class OpenCodeRuntime implements EventSource {
     return this.request("/api/session/" + encodeURIComponent(sessionId) + "/interrupt", "POST");
   }
 
+  async replyPermission(sessionId: string, requestId: string, reply: "once" | "always" | "reject"): Promise<unknown> {
+    return this.request("/api/session/" + encodeURIComponent(sessionId) + "/permission/" + encodeURIComponent(requestId) + "/reply", "POST", { reply });
+  }
+
   async deleteSession(sessionId: string): Promise<void> {
     await this.request("/api/session/" + encodeURIComponent(sessionId), "DELETE");
   }

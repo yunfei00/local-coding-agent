@@ -3,7 +3,7 @@ import { readEngineEvents, type RawEngineEvent } from "./openCodeEvents";
 import { EngineEventDeduper } from "./engineEventDeduper";
 export type EngineEvent = {
   engine:"opencode"; sessionId:string;
-  kind:"text"|"usage"|"tool"|"execution-ended"|"snapshot"|"disconnected";
+  kind:"text"|"usage"|"tool"|"execution-ended"|"snapshot"|"disconnected"|"approval"|"diff";
   payload:unknown;
 };
 type RecordValue = Record<string,unknown>;
@@ -22,6 +22,20 @@ export function translateEngineEvent(raw:RawEngineEvent,sessionId:string):Engine
   if(type==="session.usage.updated")return {...base,kind:"usage",payload:{tokens:data.tokens}};
   if(type.startsWith("session.tool.") && !type.includes(".input.")){
     return {...base,kind:"tool",payload:summarizeToolEvent(type,data)};
+  }
+  if(type==="permission.asked" || type==="session.permission.asked" || type==="permission.request"){
+    return {...base,kind:"approval",payload:{
+      requestId: data.requestID ?? data.requestId ?? data.id,
+      action: data.action ?? data.permission,
+      resources: data.resources ?? data.patterns ?? [],
+      message: data.message,
+      metadata: data.metadata,
+      source: data.source,
+      save: data.save,
+    }};
+  }
+  if(type==="session.diff" || type==="file.edited" || type==="session.file.edited"){
+    return {...base,kind:"diff",payload:{type, diff: data.diff ?? data.files ?? data.changes ?? data}};
   }
   if(["session.execution.succeeded","session.execution.failed","session.execution.interrupted"].includes(type))
     return {...base,kind:"execution-ended",payload:{outcome:type.split(".").pop(),verified:false}};

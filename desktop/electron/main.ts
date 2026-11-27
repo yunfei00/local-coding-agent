@@ -982,6 +982,7 @@ ipcMain.on("renderer:ready", () => {
 const migrationSidecar = new OpenCodeSupervisor();
 const openCodeRuntime = new OpenCodeRuntime();
 const activeOpenCodeTurns = new Map<string, { controller: AbortController; sessionId?: string; cancelled: boolean; outcome: string; threadId: string }>();
+const pendingOpenCodeApprovals = new Map<string, { sessionId: string; requestId: string; turnId: string; threadId: string }>();
 let migrationDiagnosticRunning = false;
 let migrationDiagnosticDone: Promise<void> = Promise.resolve();
 
@@ -1571,6 +1572,14 @@ ipcMain.handle(
     decision: "allow_once" | "allow_turn" | "deny",
     turnId?: string
   ) => {
+    const pending = pendingOpenCodeApprovals.get(approvalId);
+    if (pending) {
+      pendingOpenCodeApprovals.delete(approvalId);
+      const reply = decision === "deny" ? "reject" : decision === "allow_turn" ? "always" : "once";
+      await openCodeRuntime.replyPermission(pending.sessionId, pending.requestId, reply);
+      broadcastAgentEvent({ type: "approval.resolved", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: pending.turnId, thread_id: pending.threadId, timestamp: new Date().toISOString(), payload: { approval_id: approvalId, decision, engine: "opencode" } });
+      return { type: "approval.resolved", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: pending.turnId, thread_id: pending.threadId, timestamp: new Date().toISOString(), payload: { approval_id: approvalId, decision } };
+    }
     return sendRequest(
       "approval.respond",
       "approval.resolved",
@@ -1873,6 +1882,7 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
         } });
       };
       emitMetrics();
+      let bridgeFailed = false;
       const follow = bridge.follow(sessionId, entry.controller.signal, (event) => {
         if (event.kind === "text") {
           const delta = String((event.payload as any)?.delta ?? "");
@@ -1895,8 +1905,8 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
           const type = String(p.type ?? "session.tool");
           const callId = String(p.callId ?? p.name ?? type);
           const name = String(p.name ?? (type.replace(/^session\.tool\./, "") || "tool"));
-          const isEnd = type.endsWith(".completed") || type.endsWith(".failed") || type.endsWith(".error");
-          const isStart = type.endsWith(".started") || type.endsWith(".running") || !isEnd;
+          const isEnd = type.endsWith(".completed") || type.endsWith(".failed") || type.endsWith(".error") || type.endsWith(".success");
+          const isStart = type.endsWith(".started") || type.endsWith(".running") || type.endsWith(".called") || (!isEnd && !type.endsWith(".progress"));
           const existing = toolCalls.get(callId);
           if (isStart && !existing?.started) {
             toolCalls.set(callId, { name, started: true });
@@ -1914,22 +1924,60 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
             broadcastAgentEvent({ type: "tool.completed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { tool_call_id: callId, result: { ok, summary: String((out as any)?.summary ?? (out as any)?.message ?? name), data: typeof out === "object" && out ? out : { output: out }, stdout: String((out as any)?.stdout ?? ""), stderr: String((out as any)?.stderr ?? ""), error: ok ? undefined : { code: "TOOL_FAILED", message: String((out as any)?.message ?? (out as any)?.error ?? type) } } } });
             emitMetrics();
           }
+        } else if (event.kind === "approval") {
+          const p = (event.payload as any) || {};
+          const requestId = String(p.requestId ?? p.requestID ?? p.id ?? "");
+          if (requestId) {
+            const approvalId = "oc_" + requestId;
+            pendingOpenCodeApprovals.set(approvalId, { sessionId, requestId, turnId, threadId });
+            broadcastAgentEvent({ type: "approval.requested", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: {
+              approval_id: approvalId,
+              tool: String(p.action ?? p.tool ?? "permission"),
+              arguments: (p.metadata && typeof p.metadata === "object") ? p.metadata : { resources: p.resources ?? [] },
+              reason: String(p.message ?? "OpenCode ????"),
+              risk: "sensitive",
+              engine: "opencode",
+            } });
+          }
+        } else if (event.kind === "diff") {
+          const p = (event.payload as any) || {};
+          const callId = "diff_" + randomUUID().slice(0, 8);
+          broadcastAgentEvent({ type: "tool.requested", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { tool_call_id: callId, name: "file_diff", arguments: {} } });
+          broadcastAgentEvent({ type: "tool.started", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { tool_call_id: callId } });
+          broadcastAgentEvent({ type: "tool.completed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { tool_call_id: callId, result: { ok: true, summary: "???????", data: { diff: p.diff ?? p }, stdout: "", stderr: "" } } });
         } else if (event.kind === "execution-ended") {
           finished = true;
           const oc = String((event.payload as any)?.outcome ?? "succeeded");
           entry.outcome = oc;
           entry.controller.abort();
         }
-      }).catch(() => {});
+      }).catch(() => { bridgeFailed = true; });
       await openCodeRuntime.prompt(sessionId, effectivePrompt);
-      const timeout = Date.now() + 10 * 60 * 1000;
-      while (!finished && Date.now() < timeout && !entry.controller.signal.aborted) {
+      const timeoutAt = Date.now() + 10 * 60 * 1000;
+      while (!finished && Date.now() < timeoutAt && !entry.controller.signal.aborted) {
+        if (bridgeFailed) break;
         await new Promise((r) => setTimeout(r, 200));
       }
-      if (!finished && entry.controller.signal.aborted && entry.cancelled) {
-        // user cancelled
-      } else if (!finished) {
-        entry.outcome = "failed";
+      if (!finished && !entry.cancelled) {
+        // Recovery: check session snapshot before declaring failure.
+        try {
+          const snap = await openCodeRuntime.getSession(sessionId) as any;
+          const status = String(snap?.data?.status ?? snap?.status ?? "").toLowerCase();
+          const outcome = String(snap?.data?.outcome ?? "").toLowerCase();
+          if (["completed","succeeded","done","idle"].includes(status) || outcome === "succeeded") {
+            entry.outcome = "succeeded"; finished = true;
+          } else if (["interrupted","cancelled","aborted"].includes(status) || outcome === "interrupted") {
+            entry.outcome = "interrupted"; finished = true;
+          } else if (["failed","error"].includes(status) || outcome === "failed") {
+            entry.outcome = "failed"; finished = true;
+          } else if (Date.now() >= timeoutAt) {
+            entry.outcome = "failed";
+          } else if (bridgeFailed) {
+            entry.outcome = "failed";
+          }
+        } catch {
+          if (!entry.cancelled) entry.outcome = "failed";
+        }
       }
       entry.controller.abort();
       await follow.catch(() => {});
@@ -1938,7 +1986,8 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       if (entry.cancelled || entry.outcome === "interrupted") {
         broadcastAgentEvent({ type: "turn.cancelled", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { engine: "opencode" } });
       } else if (entry.outcome === "failed") {
-        broadcastAgentEvent({ type: "turn.failed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { message: "OpenCode execution failed", engine: "opencode" } });
+        const msg = Date.now() >= timeoutAt && !finished ? "OpenCode ????" : bridgeFailed ? "OpenCode ?????????????" : "OpenCode execution failed";
+        broadcastAgentEvent({ type: "turn.failed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { message: msg, engine: "opencode" } });
       } else {
         broadcastAgentEvent({ type: "turn.completed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { engine: "opencode" } });
       }
@@ -1950,6 +1999,9 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
         broadcastAgentEvent({ type: "turn.failed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { message, engine: "opencode" } });
       }
     } finally {
+      for (const [id, pending] of pendingOpenCodeApprovals) {
+        if (pending.turnId === turnId) pendingOpenCodeApprovals.delete(id);
+      }
       activeOpenCodeTurns.delete(turnId);
     }
   })();
