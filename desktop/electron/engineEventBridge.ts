@@ -25,6 +25,8 @@ export function translateEngineEvent(raw:RawEngineEvent,sessionId:string):Engine
   }
   if(["session.execution.succeeded","session.execution.failed","session.execution.interrupted"].includes(type))
     return {...base,kind:"execution-ended",payload:{outcome:type.split(".").pop(),verified:false}};
+  if(type==="session.error")
+    return {...base,kind:"execution-ended",payload:{outcome:"failed",verified:false,error:data.error ?? data.message}};
 }
 export interface EventSource {
   events(signal:AbortSignal):Promise<Response>;
