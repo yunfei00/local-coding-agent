@@ -8,11 +8,15 @@ from agent.tools.workspace import Workspace
 
 class P0PermissionMatrixTests(unittest.TestCase):
     def setUp(self):
-        import tempfile, pathlib
+        import tempfile
+        from pathlib import Path
         self.tmp = tempfile.TemporaryDirectory()
+        self.outside_tmp = tempfile.TemporaryDirectory()
         self.ws = Workspace(self.tmp.name)
+        self.outside_path = str(Path(self.outside_tmp.name) / "outside.txt")
 
     def tearDown(self):
+        self.outside_tmp.cleanup()
         self.tmp.cleanup()
 
     def test_restricted_blocks_shell_write_and_mcp(self):
@@ -79,14 +83,14 @@ class P0PermissionMatrixTests(unittest.TestCase):
 
     def test_outside_workspace_requires_approval(self):
         p = PermissionPolicy(PermissionMode.WORKSPACE)
-        v = p.evaluate(tool_name="write_file", arguments={"path": "C:/Windows/temp/a.txt", "content": "x"}, workspace=self.ws)
+        v = p.evaluate(tool_name="write_file", arguments={"path": self.outside_path, "content": "x"}, workspace=self.ws)
         self.assertTrue(v.allowed)
         self.assertTrue(v.requires_approval)
         self.assertEqual(v.risk, "outside_workspace")
 
     def test_restricted_denies_outside_workspace(self):
         p = PermissionPolicy(PermissionMode.RESTRICTED)
-        v = p.evaluate(tool_name="read_file", arguments={"path": "C:/Windows/temp/a.txt"}, workspace=self.ws)
+        v = p.evaluate(tool_name="read_file", arguments={"path": self.outside_path}, workspace=self.ws)
         # RESTRICTED allows read_file by tool whitelist but path outside workspace still must be guarded
         self.assertTrue(v.requires_approval or not v.allowed)
 
