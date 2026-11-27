@@ -141,7 +141,9 @@ class SQLiteStore:
                 enabled INTEGER NOT NULL DEFAULT 1,
                 trusted INTEGER NOT NULL DEFAULT 0,
                 timeout_seconds REAL NOT NULL DEFAULT 30,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                server_permission TEXT NOT NULL DEFAULT 'ask',
+                tool_permissions_json TEXT NOT NULL DEFAULT '{}'
             );
 
             CREATE INDEX IF NOT EXISTS idx_mcp_servers_name
@@ -164,6 +166,11 @@ class SQLiteStore:
         columns = {row[1] for row in self.connection.execute("PRAGMA table_info(threads)")}
         if "deleted_at" not in columns:
             self.connection.execute("ALTER TABLE threads ADD COLUMN deleted_at TEXT")
+        mcp_cols = {row[1] for row in self.connection.execute("PRAGMA table_info(mcp_servers)")}
+        if "server_permission" not in mcp_cols:
+            self.connection.execute("ALTER TABLE mcp_servers ADD COLUMN server_permission TEXT NOT NULL DEFAULT 'ask'")
+        if "tool_permissions_json" not in mcp_cols:
+            self.connection.execute("ALTER TABLE mcp_servers ADD COLUMN tool_permissions_json TEXT NOT NULL DEFAULT '{}'")
         self.connection.execute("PRAGMA user_version = " + str(SCHEMA_VERSION))
         self.connection.commit()
 
@@ -203,15 +210,17 @@ class SQLiteStore:
         trusted: bool,
         timeout_seconds: float,
         updated_at: str,
+        server_permission: str = "ask",
+        tool_permissions_json: str = "{}",
     ) -> None:
         self.connection.execute(
             """
             INSERT INTO mcp_servers(
                 id, name, transport, command, args_json, url, env_json,
                 secret_env_keys_json, enabled, trusted, timeout_seconds,
-                updated_at
+                updated_at, server_permission, tool_permissions_json
             )
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 transport = excluded.transport,
@@ -223,7 +232,9 @@ class SQLiteStore:
                 enabled = excluded.enabled,
                 trusted = excluded.trusted,
                 timeout_seconds = excluded.timeout_seconds,
-                updated_at = excluded.updated_at
+                updated_at = excluded.updated_at,
+                server_permission = excluded.server_permission,
+                tool_permissions_json = excluded.tool_permissions_json
             """,
             (
                 server_id,
@@ -238,6 +249,8 @@ class SQLiteStore:
                 1 if trusted else 0,
                 float(timeout_seconds),
                 updated_at,
+                server_permission,
+                tool_permissions_json,
             ),
         )
         self.connection.commit()
@@ -248,7 +261,7 @@ class SQLiteStore:
             SELECT
                 id, name, transport, command, args_json, url, env_json,
                 secret_env_keys_json, enabled, trusted, timeout_seconds,
-                updated_at
+                updated_at, server_permission, tool_permissions_json
             FROM mcp_servers
             ORDER BY name COLLATE NOCASE ASC
             """

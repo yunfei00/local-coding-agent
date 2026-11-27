@@ -74,6 +74,18 @@ contextBridge.exposeInMainWorld("localAgent", {
     ipcRenderer.invoke("agent:mcp-delete", serverId),
   refreshMcpServers: () =>
     ipcRenderer.invoke("agent:mcp-refresh"),
+  connectMcpServer: (serverId: string) =>
+    ipcRenderer.invoke("agent:mcp-connect", serverId),
+  disconnectMcpServer: (serverId: string) =>
+    ipcRenderer.invoke("agent:mcp-disconnect", serverId),
+  reconnectMcpServer: (serverId: string) =>
+    ipcRenderer.invoke("agent:mcp-reconnect", serverId),
+  getMcpHistory: (serverId?: string) =>
+    ipcRenderer.invoke("agent:mcp-history", serverId),
+  exportMcpServers: () =>
+    ipcRenderer.invoke("agent:mcp-export"),
+  importMcpServers: (servers: Record<string, unknown>[]) =>
+    ipcRenderer.invoke("agent:mcp-import", servers),
   getPromptRules: (threadId?: string) =>
     ipcRenderer.invoke("agent:prompt-rules-get", threadId),
   setPromptRule: (
@@ -145,6 +157,8 @@ contextBridge.exposeInMainWorld("localAgent", {
       decision,
       turnId
     ),
+  cancelApproval: (approvalId: string, turnId?: string) =>
+    ipcRenderer.invoke("agent:approval-cancel", approvalId, turnId),
   openProject: (model?: string) => ipcRenderer.invoke("agent:project-open", model),
   projectCreationDefaults: () => ipcRenderer.invoke("agent:project-create-defaults"),
   chooseProjectParent: (defaultPath?: string) => ipcRenderer.invoke("agent:project-choose-parent", defaultPath),

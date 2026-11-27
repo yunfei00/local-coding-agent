@@ -167,6 +167,12 @@ declare global {
           }
         >;
       }>;
+      connectMcpServer: (serverId: string) => Promise<{ event: AgentEnvelope; secrets: Record<string, {configured:boolean;keys:string[];stored:boolean;mode:"os_protected"|"session_only"|"environment"|"none"}>; }>;
+      disconnectMcpServer: (serverId: string) => Promise<{ event: AgentEnvelope; secrets: Record<string, {configured:boolean;keys:string[];stored:boolean;mode:"os_protected"|"session_only"|"environment"|"none"}>; }>;
+      reconnectMcpServer: (serverId: string) => Promise<{ event: AgentEnvelope; secrets: Record<string, {configured:boolean;keys:string[];stored:boolean;mode:"os_protected"|"session_only"|"environment"|"none"}>; }>;
+      getMcpHistory: (serverId?: string) => Promise<{ event: AgentEnvelope; secrets: Record<string, {configured:boolean;keys:string[];stored:boolean;mode:"os_protected"|"session_only"|"environment"|"none"}>; }>;
+      exportMcpServers: () => Promise<{ event: AgentEnvelope }>;
+      importMcpServers: (servers: Record<string, unknown>[]) => Promise<{ event: AgentEnvelope; secrets: Record<string, {configured:boolean;keys:string[];stored:boolean;mode:"os_protected"|"session_only"|"environment"|"none"}>; }>;
       getGitOverview: () => Promise<AgentEnvelope>;
       openManagedWorktree: (
         pathValue: string,
@@ -208,6 +214,7 @@ declare global {
         decision: "allow_once" | "allow_turn" | "deny",
         turnId?: string
       ) => Promise<AgentEnvelope>;
+      cancelApproval: (approvalId: string, turnId?: string) => Promise<any>;
       openProject: (model?: string) => Promise<{ canceled: boolean; event?: AgentEnvelope }>;
       projectCreationDefaults: () => Promise<{parent_path:string}>;
       chooseProjectParent: (defaultPath?:string) => Promise<{canceled:boolean; path?:string}>;

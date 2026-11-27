@@ -108,6 +108,15 @@ class ApprovalManager:
             pending.future.set_result(decision)
         return pending
 
+    def cancel(self, approval_id: str) -> PendingApproval | None:
+        pending = self._pending.get(approval_id)
+        if not pending:
+            return None
+        if not pending.future.done():
+            pending.future.cancel()
+        self._pending.pop(approval_id, None)
+        return pending
+
     def cancel_turn(self, turn_id: str) -> None:
         self._turn_grants.pop(turn_id, None)
         for pending in list(self._pending.values()):

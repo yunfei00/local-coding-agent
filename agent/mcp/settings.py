@@ -71,14 +71,16 @@ class MCPStoredServer:
     trusted: bool
     timeout_seconds: float
     updated_at: str
+    server_permission: str = "ask"
+    tool_permissions: dict[str, str] | None = None
 
     def to_public_dict(self) -> dict[str, Any]:
-        return {
-            **asdict(self),
-            "args": list(self.args),
-            "secret_env_keys": list(self.secret_env_keys),
-            "secret_configured": False,
-        }
+        data = asdict(self)
+        data["args"] = list(self.args)
+        data["secret_env_keys"] = list(self.secret_env_keys)
+        data["tool_permissions"] = dict(self.tool_permissions or {})
+        data["secret_configured"] = False
+        return data
 
     def to_client_config(
         self,
@@ -114,6 +116,13 @@ class MCPSettingsManager:
     def list(self) -> list[MCPStoredServer]:
         result: list[MCPStoredServer] = []
         for row in self.store.list_mcp_servers():
+            tool_perms_raw = row.get("tool_permissions_json") if isinstance(row, dict) else row["tool_permissions_json"]
+            try:
+                tool_perms = json.loads(str(tool_perms_raw or "{}"))
+            except Exception:
+                tool_perms = {}
+            if not isinstance(tool_perms, dict):
+                tool_perms = {}
             result.append(
                 MCPStoredServer(
                     id=str(row["id"]),
@@ -146,6 +155,8 @@ class MCPSettingsManager:
                     trusted=bool(row["trusted"]),
                     timeout_seconds=float(row["timeout_seconds"]),
                     updated_at=str(row["updated_at"]),
+                    server_permission=str(row.get("server_permission") if isinstance(row, dict) else row["server_permission"] or "ask"),
+                    tool_permissions={str(k): str(v) for k, v in tool_perms.items() if str(v) in {"allow","ask","deny"}},
                 )
             )
         return result
@@ -178,6 +189,16 @@ class MCPSettingsManager:
             timeout_seconds = float(payload.get("timeout_seconds", 30))
         except (TypeError, ValueError) as exc:
             raise ValueError("timeout_seconds must be a number.") from exc
+        server_permission = str(payload.get("server_permission") or "ask").strip().lower()
+        if server_permission not in {"allow","ask","deny"}:
+            raise ValueError("server_permission must be allow, ask, or deny.")
+        raw_tool_perms = payload.get("tool_permissions") or {}
+        if not isinstance(raw_tool_perms, dict):
+            raise ValueError("tool_permissions must be an object.")
+        tool_permissions = {str(k).strip(): str(v).strip().lower() for k, v in raw_tool_perms.items() if str(k).strip()}
+        for k, v in tool_permissions.items():
+            if v not in {"allow","ask","deny"}:
+                raise ValueError(f"tool_permissions[{k}] must be allow, ask, or deny.")
 
         if not name:
             raise ValueError("MCP server name cannot be empty.")
@@ -265,6 +286,8 @@ class MCPSettingsManager:
             trusted=trusted,
             timeout_seconds=timeout_seconds,
             updated_at=updated_at,
+            server_permission=server_permission,
+            tool_permissions_json=json.dumps(tool_permissions, ensure_ascii=False, separators=(",", ":")),
         )
         item = self.get(server_id)
         if item is None:
