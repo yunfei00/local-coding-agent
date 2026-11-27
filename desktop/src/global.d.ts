@@ -173,6 +173,8 @@ declare global {
       getMcpHistory: (serverId?: string) => Promise<{ event: AgentEnvelope; secrets: Record<string, {configured:boolean;keys:string[];stored:boolean;mode:"os_protected"|"session_only"|"environment"|"none"}>; }>;
       exportMcpServers: () => Promise<{ event: AgentEnvelope }>;
       importMcpServers: (servers: Record<string, unknown>[]) => Promise<{ event: AgentEnvelope; secrets: Record<string, {configured:boolean;keys:string[];stored:boolean;mode:"os_protected"|"session_only"|"environment"|"none"}>; }>;
+      getMcpEnv: () => Promise<{ event: AgentEnvelope }>;
+      getMcpTemplates: () => Promise<{ event: AgentEnvelope }>;
       getGitOverview: () => Promise<AgentEnvelope>;
       openManagedWorktree: (
         pathValue: string,

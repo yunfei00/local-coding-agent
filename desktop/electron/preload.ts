@@ -86,6 +86,8 @@ contextBridge.exposeInMainWorld("localAgent", {
     ipcRenderer.invoke("agent:mcp-export"),
   importMcpServers: (servers: Record<string, unknown>[]) =>
     ipcRenderer.invoke("agent:mcp-import", servers),
+  getMcpEnv: () => ipcRenderer.invoke("agent:mcp-env"),
+  getMcpTemplates: () => ipcRenderer.invoke("agent:mcp-templates"),
   getPromptRules: (threadId?: string) =>
     ipcRenderer.invoke("agent:prompt-rules-get", threadId),
   setPromptRule: (

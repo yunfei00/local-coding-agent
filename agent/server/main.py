@@ -965,6 +965,31 @@ class AgentServer:
             await ws.send_json(envelope("mcp.exported", {"mcpServers": servers, "exported_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()}, request_id=request_id))
             return
 
+        if message_type == "mcp.env":
+            import shutil, sys, platform
+            def _which(name):
+                p = shutil.which(name)
+                return {"name": name, "available": bool(p), "path": p}
+            opencode = _which("opencode")
+            payload_env = {
+                "platform": platform.platform(),
+                "python": sys.version.split()[0],
+                "tools": [_which("node"), _which("npm"), _which("npx"), _which("uv"), _which("git"), opencode],
+            }
+            await ws.send_json(envelope("mcp.env", payload_env, request_id=request_id))
+            return
+
+        if message_type == "mcp.templates":
+            templates = [
+                {"id":"everything","name":"Everything (official test server)","transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-everything@2.4.0"],"enabled":False,"trusted":False,"timeout_seconds":60,"server_permission":"ask","tool_permissions":{},"note":"Official MCP test server. Pin version for reproducibility."},
+                {"id":"context7","name":"Context7","transport":"stdio","command":"npx","args":["-y","@upstash/context7-mcp@latest"],"enabled":False,"trusted":False,"timeout_seconds":60,"server_permission":"ask","tool_permissions":{},"note":"Docs lookup. Verify package/version before enabling."},
+                {"id":"playwright","name":"Playwright","transport":"stdio","command":"npx","args":["-y","@playwright/mcp@latest"],"enabled":False,"trusted":False,"timeout_seconds":120,"server_permission":"ask","tool_permissions":{},"note":"Browser automation. Requires local browser/runtime; verify before enabling."},
+                {"id":"github","name":"GitHub","transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-github@latest"],"enabled":False,"trusted":False,"timeout_seconds":60,"server_permission":"ask","tool_permissions":{},"note":"Repo management. Configure token via protected secret env; verify package/version."},
+                {"id":"custom","name":"Custom MCP","transport":"stdio","command":"","args":[],"enabled":False,"trusted":False,"timeout_seconds":30,"server_permission":"ask","tool_permissions":{},"note":"User-defined MCP server."},
+            ]
+            await ws.send_json(envelope("mcp.templates", {"templates": templates}, request_id=request_id))
+            return
+
         if message_type in {"mcp.upsert","mcp.delete","mcp.refresh","mcp.secrets","mcp.connect","mcp.disconnect","mcp.reconnect","mcp.import"}:
             if message_type in {"mcp.upsert","mcp.delete","mcp.secrets","mcp.refresh","mcp.import"} and any(not task.done() for task in self.active_turns.values()):
                 await self.send_error(ws, "TURN_RUNNING", "Stop the active turn before changing MCP configuration.", request_id=request_id)

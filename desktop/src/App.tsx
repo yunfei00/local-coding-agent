@@ -1382,6 +1382,15 @@ function App() {
       setUiError(String(error));
     }
   };
+  const cancelApprovalRequest = async (approval: ApprovalRequest) => {
+    setUiError(null);
+    try {
+      await window.localAgent.cancelApproval(approval.id, approval.turnId);
+      setApprovals((current) => current.filter((item) => item.id !== approval.id));
+    } catch (error) {
+      setUiError(String(error));
+    }
+  };
 
   const changeModel = async (model: string) => {
     setSelectedModel(model);
@@ -1731,6 +1740,13 @@ function App() {
                       onClick={() => void respondApproval(approval, "deny")}
                     >
                       Deny
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => void cancelApprovalRequest(approval)}
+                    >
+                      Cancel request
                     </button>
                   </div>
                 </div>

@@ -1498,6 +1498,14 @@ ipcMain.handle("agent:mcp-import", async (_event, servers: Record<string, unknow
   const event = await sendRequest("mcp.import", "mcp.changed", { servers }, {}, 45_000);
   return { event, secrets: mcpSecretStatuses() };
 });
+ipcMain.handle("agent:mcp-env", async () => {
+  const event = await sendRequest("mcp.env", "mcp.env", {}, {}, 20_000);
+  return { event };
+});
+ipcMain.handle("agent:mcp-templates", async () => {
+  const event = await sendRequest("mcp.templates", "mcp.templates", {}, {}, 20_000);
+  return { event };
+});
 
 ipcMain.handle(
   "agent:context-get",

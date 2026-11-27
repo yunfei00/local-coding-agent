@@ -336,6 +336,23 @@ export function MCPSettingsSection({ running }: { running: boolean }) {
       setMessage("MCP config imported.");
     } catch (e) { setError(String(e)); } finally { setBusy(false); }
   };
+  const checkEnv = async () => {
+    setBusy(true); setError(null);
+    try { const r = await window.localAgent.getMcpEnv(); const tools = (r.event.payload?.tools as any[]||[]).map((t:any)=>`:`).join(", "); setMessage(`Env: `); }
+    catch (e) { setError(String(e)); } finally { setBusy(false); }
+  };
+  const loadTemplates = async () => {
+    setBusy(true); setError(null);
+    try {
+      const r = await window.localAgent.getMcpTemplates();
+      const templates = (r.event.payload?.templates as any[]) || [];
+      const pick = window.prompt("Template id: " + templates.map(t=>t.id).join(", "));
+      const t = templates.find(x=>x.id===pick);
+      if (!t) return;
+      setDraft({ id: undefined, name: t.name, transport: t.transport, command: t.command||"", argsText: (t.args||[]).join("\n"), url: t.url||"", envText: "{}", secretKeysText: "", enabled: !!t.enabled, trusted: !!t.trusted, timeout_seconds: t.timeout_seconds||30, server_permission: t.server_permission||"ask", toolPermissionsText: JSON.stringify(t.tool_permissions||{}, null, 2) });
+      setMessage(`Template loaded: . Review and click Add server.`);
+    } catch (e) { setError(String(e)); } finally { setBusy(false); }
+  };
 
   const selectedSecret = draft.id ? secrets[draft.id] : undefined;
 
@@ -351,6 +368,8 @@ export function MCPSettingsSection({ running }: { running: boolean }) {
         </div>
         <div className="settings-inline-actions">
           <button type="button" className="settings-secondary" disabled={busy || running} onClick={() => void refresh()}>{busy ? "Working..." : "Refresh"}</button>
+          <button type="button" className="settings-secondary" disabled={busy || running} onClick={() => void checkEnv()}>Env</button>
+          <button type="button" className="settings-secondary" disabled={busy || running} onClick={() => void loadTemplates()}>Templates</button>
           <button type="button" className="settings-secondary" disabled={busy || running} onClick={() => void exportServers()}>Export</button>
           <button type="button" className="settings-secondary" disabled={busy || running} onClick={() => void importServers()}>Import</button>
           <button type="button" disabled={busy || running} onClick={createNew}>New server</button>
