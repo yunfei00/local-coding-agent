@@ -28,6 +28,8 @@
 ## 证据文件
 - `validation-reports/p0-mcp-real-acceptance.json`（gitignored，本地生成）
 - `validation-reports/p0-oauth-mcp-acceptance.json`（gitignored，本地生成）
+- `validation-reports/p0-real-model-mcp.json`（gitignored，本地生成；当前环境 BLOCKED）
 - `tests/test_p0_mcp_acceptance.py`
 - `tests/test_p0_permission_matrix.py`
 - `scripts/validation/oauth_mcp_acceptance.py`
+- `scripts/validation/p0_real_model_mcp_check.py`
