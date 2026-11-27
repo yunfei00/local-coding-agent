@@ -39,9 +39,10 @@ export class OpenCodeRuntime implements EventSource {
   status(): OpenCodeRuntimeStatus {
     const binary = this.resolveBinary();
     const gated = !openCodeProductionEnabled();
+    const running = this.supervisor.isRunning();
     return {
       available: !!binary && !gated,
-      running: !!this.root,
+      running,
       version: VERSION,
       binary: this.binaryPath ?? binary,
       reason: !binary ? "OpenCode runtime not found" : gated ? ACTIVATION_BLOCK : undefined,
@@ -66,6 +67,9 @@ export class OpenCodeRuntime implements EventSource {
   async ensureStarted(configContent: string, cwd?: string): Promise<void> {
     if (!this.status().available) throw new Error(ACTIVATION_BLOCK);
     const wantedCwd = cwd ? path.resolve(cwd) : process.cwd();
+    if (this.root && !this.supervisor.isRunning()) {
+      this.root = undefined; this.cwd = undefined; this.store = undefined;
+    }
     if (this.root && this.cwd === wantedCwd) return;
     if (this.root && this.cwd !== wantedCwd) await this.stop();
     if (this.starting) return this.starting;

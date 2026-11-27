@@ -114,6 +114,7 @@ export class OpenCodeSupervisor {
     if(!response.ok){await response.body?.cancel();throw new Error("Event HTTP "+response.status);}
     return response;
   }
+  isRunning():boolean{ return !!this.child && !!this.origin && !!this.password && !this.stopping; }
   async stop():Promise<void>{
     this.origin=undefined;this.password=undefined;this.localChat=false;this.fixtureTools=false;
     const child=this.child;
