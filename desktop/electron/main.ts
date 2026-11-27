@@ -1728,6 +1728,7 @@ ipcMain.handle("agent:task-request", async (_event, threadId: string, operation:
   for(const operation of ['knowledge.get','knowledge.search','knowledge.save','knowledge.delete','knowledge.settings','model.capabilities','task.runtime.templates','task.runtime.workflow.get','task.runtime.workflow.update','task.runtime.pause'])allowed.add(operation);
   if (!allowed.has(operation)) throw new Error("Unsupported task operation");
   if(["task.start","task.resume","task.continue","task.append"].includes(operation)){
+    if (openCodeProductionEnabled()) throw new Error("OpenCode 模式下请使用主聊天发送任务；旧任务执行链路已禁用。");
     payload=legacyTaskPayload(payload);
     await bindLegacyThread(threadId);
   }
@@ -1738,6 +1739,9 @@ ipcMain.handle("agent:task-request", async (_event, threadId: string, operation:
 ipcMain.handle("agent:plan-request", async (_event, threadId: string, operation: string, payload: Record<string, unknown> = {}) => {
   const allowed = new Set(["plan.list", "plan.create", "plan.step.update", "plan.step.edit", "plan.steps.reorder", "plan.checkpoint", "plan.resume", "plan.resume.confirm", "plan.recover", "plan.execution.extend", "plan.operation.review"]);
   if (!allowed.has(operation)) throw new Error("Unsupported plan operation");
+  if (openCodeProductionEnabled() && ["plan.resume","plan.resume.confirm","plan.execution.extend","plan.operation.review"].includes(operation)) {
+    throw new Error("OpenCode 模式下旧计划执行链路已禁用；请在主聊天中继续任务。");
+  }
   return sendRequest(operation, operation === "plan.resume" ? "plan.resumable" : "plan.loaded",
     { ...payload, thread_id: threadId }, { threadId }, operation==='plan.operation.review'?300000:25000);
 });
