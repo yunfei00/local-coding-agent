@@ -95,6 +95,31 @@ class P0PermissionMatrixTests(unittest.TestCase):
         v = p.evaluate(tool_name="git_commit", arguments={"message": "x"}, workspace=self.ws, user_prompt="fix bug")
         self.assertFalse(v.allowed)  # explicit intent required
 
+    def test_restricted_blocks_common_bypass_tools(self):
+        p = PermissionPolicy(PermissionMode.RESTRICTED)
+        cases = [
+            ("start_process", {"command": "python -c print(1)"}),
+            ("delete_file", {"path": "a.txt"}),
+            ("apply_patch", {"path": "a.txt", "patch": "*** Begin Patch\n*** End Patch"}),
+            ("environment_repair", {"action": "project_npm_proxy_reset"}),
+            ("git_stage", {"paths": ["a.txt"]}),
+            ("git_unstage", {"paths": ["a.txt"]}),
+        ]
+        for name, args in cases:
+            v = p.evaluate(tool_name=name, arguments=args, workspace=self.ws)
+            self.assertFalse(v.allowed, name)
+
+    def test_restricted_blocks_desktop_tools(self):
+        p = PermissionPolicy(PermissionMode.RESTRICTED)
+        for name in ["desktop_screenshot", "desktop_click", "desktop_type_text", "desktop_list_windows"]:
+            v = p.evaluate(tool_name=name, arguments={"window_id": "w1"}, workspace=self.ws)
+            self.assertFalse(v.allowed, name)
+
+    def test_restricted_blocks_unknown_tool(self):
+        p = PermissionPolicy(PermissionMode.RESTRICTED)
+        v = p.evaluate(tool_name="totally_unknown_tool", arguments={}, workspace=self.ws)
+        self.assertFalse(v.allowed)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -330,6 +330,8 @@ class PermissionPolicy:
         if tool_name in DESKTOP_TOOLS:
             if self.mode == PermissionMode.READ_ONLY:
                 return PermissionVerdict(False, reason="Desktop tools require explicit desktop consent outside Read Only mode", risk="read_only")
+            if self.mode == PermissionMode.RESTRICTED:
+                return PermissionVerdict(False, reason="Desktop tools are blocked in Restricted mode (company whitelist).", risk="restricted")
             target = str(arguments.get('window_id') or 'current-session-enumeration')
             share = bool(arguments.get('share_with_model'))
             risk = bool(arguments.get('confirm_risk')) or arguments.get('method') == 'coordinate' or tool_name == 'desktop_keypress'

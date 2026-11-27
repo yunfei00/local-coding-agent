@@ -147,7 +147,12 @@ class MCPToolAdapter(BaseTool):
                 arguments,
             )
         except asyncio.CancelledError:
-            record.update({"status": "cancelled", "cancelled_at": datetime.now(timezone.utc).isoformat(), "duration_ms": int((time.time()-started)*1000)})
+            record.update({
+                "status": "cancelled",
+                "cancelled_at": datetime.now(timezone.utc).isoformat(),
+                "duration_ms": int((time.time()-started)*1000),
+                "cancel_note": "Client-side cancellation requested. Server may not support cancellation; any side effects already performed are not rolled back.",
+            })
             if self.call_recorder:
                 try: self.call_recorder(record)
                 except Exception: pass

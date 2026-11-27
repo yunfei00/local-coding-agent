@@ -134,7 +134,9 @@ class P0McpAcceptanceTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(asyncio.CancelledError):
             await task
         history = self.runtime.get_call_history()
-        self.assertTrue(any(h.get("tool") == "long_running" and h.get("status") == "cancelled" for h in history))
+        m = [h for h in history if h.get("tool") == "long_running" and h.get("status") == "cancelled"]
+        self.assertTrue(m)
+        self.assertIn("cancel", str(m[-1].get("cancel_note","")).lower())
 
 
 if __name__ == "__main__":
