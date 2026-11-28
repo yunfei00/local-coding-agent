@@ -154,7 +154,7 @@ export function SettingsPanel({
   useEffect(()=>{if(window.localAgent.getPermission)void window.localAgent.getPermission().then(event=>{setAuthorization(event.payload?.authorization as typeof authorization);setPermissionTask(String(event.payload?.task_key||''));}).catch(()=>{});},[projectId,threadId]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [openCodeProduction, setOpenCodeProduction] = useState(false);
+  const [openCodeProduction, setOpenCodeProduction] = useState(true);
   useEffect(() => { void window.localAgent.getOpenCodeProductionGate?.().then(r => setOpenCodeProduction(r.enabled === true)).catch(() => {}); }, []);
 
   const loadRules = async () => {

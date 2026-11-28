@@ -3,7 +3,12 @@
 const OPENCODE_PRODUCTION_ENV = "LCA_ENABLE_OPENCODE_PRODUCTION";
 
 export function openCodeProductionEnabled(): boolean {
-  return process.env[OPENCODE_PRODUCTION_ENV] === "1";
+  // v2.0.0 RC1: OpenCode is the default formal execution engine.
+  // Gate is ON by default; can be explicitly disabled via env or settings.
+  if (process.env[OPENCODE_PRODUCTION_ENV] === "0") return false;
+  return process.env[OPENCODE_PRODUCTION_ENV] !== undefined
+    ? process.env[OPENCODE_PRODUCTION_ENV] === "1"
+    : true;
 }
 
 export function assertProductionEngine(engine:unknown):void{

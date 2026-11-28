@@ -992,8 +992,10 @@ function openCodeProductionGatePath(): string {
 function readOpenCodeProductionGate(): boolean {
   try {
     const raw = JSON.parse(readFileSync(openCodeProductionGatePath(), "utf8")) as { enabled?: boolean };
-    return raw.enabled === true;
-  } catch { return false; }
+    // v2.0.0 RC1: default ON unless explicitly disabled.
+    if (raw && typeof raw.enabled === "boolean") return raw.enabled;
+    return true;
+  } catch { return true; }
 }
 function writeOpenCodeProductionGate(enabled: boolean): void {
   const file = openCodeProductionGatePath();
