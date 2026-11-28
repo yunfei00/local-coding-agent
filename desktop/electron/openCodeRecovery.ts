@@ -26,7 +26,7 @@ export function recoverCompletedExchange(context:unknown, messageId:string, appe
       if (outcome === "succeeded" || outcome === "failed" || outcome === "interrupted") return {outcome,text};
       return;
     }
-    if (message?.type !== "assistant" || !Array.isArray(message.content)) continue;
+    if (message?.type !== "assistant" || message.finish === "error" || !Array.isArray(message.content)) continue;
     let answer = "";
     for (const part of message.content) {
       if (part?.type === "text" && typeof part.text === "string") answer += part.text;

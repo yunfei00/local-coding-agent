@@ -1899,7 +1899,8 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       };
       const selectAnswer = (id?:string) => {
         if (id && answerMessageId && id!==answerMessageId) {
-          consumeAnswer("",true);
+          // A provider retry can replace an assistant message without finishing
+          // its unclassified text. Do not promote that text to the formal reply.
           answer = new OpenCodeAnswer(taggedThinking);
         }
         if (id) answerMessageId=id;
@@ -2038,7 +2039,7 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       }
       entry.controller.abort();
       await drainEvents();
-      if (!entry.cancelled) consumeAnswer("",true);
+      if (!entry.cancelled && terminal && entry.outcome === "succeeded") consumeAnswer("",true);
       if (terminal && entry.outcome === "succeeded" && !entry.cancelled) {
         const recovered = durableCompletion ?? await recover();
         if (!entry.cancelled && recovered?.outcome === "succeeded" && recovered.text.startsWith(assistant)) {

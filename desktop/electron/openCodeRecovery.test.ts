@@ -26,4 +26,6 @@ it("requires the current admitted message and its own terminal marker", () => {
   const next = {type:"user",id:"msg_next"};
   expect(recoverCompletedExchange({data:[user,next,reply,stale]},user.id)).toBeUndefined();
   expect(recoverCompletedExchange({data:[user,next,reply,stale]},user.id,new Set([next.id]))).toEqual({outcome:"succeeded",text:"real reply"});
+  const failed = {type:"assistant",finish:"error",content:[{type:"text",text:"uncertain prefix from a timed out provider"}]};
+  expect(recoverCompletedExchange({data:[user,failed,reply,stale]},user.id)).toEqual({outcome:"succeeded",text:"real reply"});
 });
