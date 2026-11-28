@@ -122,6 +122,15 @@ jobs:
         working-directory: desktop
         run: npm run build
 
+      - name: Stage pinned OpenCode runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/dev/prepare-opencode.ps1
+
+      - name: OpenCode product loopback smoke
+        if: runner.os == 'Windows'
+        run: node scripts/validation/opencode/desktop-live.cjs --mock
+
       - name: Actual desktop task and regression smoke
         if: runner.os == 'Windows'
         run: node scripts/validation/desktop-smoke.cjs

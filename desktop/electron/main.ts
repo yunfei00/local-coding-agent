@@ -1,4 +1,3 @@
-import {assertProductionEngine,legacyTaskPayload,openCodeProductionEnabled} from "./productionEngineGate";
 import {diagnoseHistorySession} from "./recoveryDiagnostic";
 import {InteractiveTurnQueue} from "./interactiveTurnQueue";
 import {OpenCodeTaskTracker} from "./openCodeTaskTracker";
@@ -9,12 +8,13 @@ import {readProjectDiff} from "./projectDiff";
 import {searchProject} from "./projectSearch";
 import { runLocalChat } from "./openCodeLocalChat";
 import { acquireEngineLease } from "./engineLease";
-import { EngineSessionStore } from "./engineSessionStore";
 import { EngineEventBridge } from "./engineEventBridge";
 import { OpenCodeAdapter } from "./engineAdapter";
 import { mkdtemp } from "node:fs/promises";
-import { OpenCodeSupervisor } from "./openCodeSupervisor";
-import { OpenCodeRuntime, buildConfigFromCatalog } from "./openCodeRuntime";
+import { SidecarHttpError } from "./openCodeSupervisor";
+import { OpenCodeRuntime } from "./openCodeRuntime";
+import { selectOpenCodeProfile, startOpenCodeModel } from "./openCodeConfig";
+import type { OpenCodePermissionMode } from "./openCodePermissions";
 import {
   app,
   BrowserWindow,
@@ -748,7 +748,7 @@ function startAgent(): void {
     }
     agentProcess = launchAgent(
       configuredAgent,
-      ["--port", "0"],
+      ["--port", "0", "--data-service"],
       path.dirname(configuredAgent)
     );
   } else if (app.isPackaged) {
@@ -764,7 +764,7 @@ function startAgent(): void {
     }
     agentProcess = launchAgent(
       bundledAgent,
-      ["--port", "0"],
+      ["--port", "0", "--data-service"],
       path.dirname(bundledAgent)
     );
   } else {
@@ -782,7 +782,7 @@ function startAgent(): void {
     console.log("[desktop] Agent Python: " + python);
     agentProcess = launchAgent(
       python,
-      ["-m", "agent.server.main", "--port", "0"],
+      ["-m", "agent.server.main", "--port", "0", "--data-service"],
       repoRoot(),
       path.join(repoRoot(), ".venv")
     );
@@ -979,16 +979,34 @@ ipcMain.on("renderer:ready", () => {
   maybeCompletePackagedSmoke();
 });
 
-const migrationSidecar = new OpenCodeSupervisor();
 const openCodeRuntime = new OpenCodeRuntime();
-const activeOpenCodeTurns = new Map<string, { controller: AbortController; sessionId?: string; cancelled: boolean; outcome: string; threadId: string }>();
+type OpenCodeTurn = {
+  controller: AbortController;
+  sessionId?: string;
+  cancelled: boolean;
+  outcome: string;
+  threadId: string;
+  projectId?: string;
+  done: Promise<void>;
+  appended: Set<string>;
+  taskId?:string;
+  pauseTask?:boolean;
+};
+type OpenCodeTask = {
+  id:string;
+  workspace:string;
+  goal:string;
+  opencode_local_only?:boolean;
+  verification?: Array<{ok:boolean;summary?:string}>;
+  config:{roles?: {executor?:{model_profile_id?:string}}; budget?:Record<string,number|null>};
+};
+const activeOpenCodeTurns = new Map<string, OpenCodeTurn>();
+let preparingOpenCodeTask = false;
 const pendingOpenCodeApprovals = new Map<string, { sessionId: string; requestId: string; turnId: string; threadId: string }>();
-let migrationDiagnosticRunning = false;
-let migrationDiagnosticDone: Promise<void> = Promise.resolve();
-
-// v2.0.0 RC2: OpenCode gate switch removed; OpenCode is always the formal engine.
-ipcMain.handle("agent:opencode-production-get", () => ({ enabled: true }));
-ipcMain.handle("agent:opencode-production-set", async () => ({ enabled: true }));
+ipcMain.handle("agent:engine-status", () => {
+  const status = openCodeRuntime.status();
+  return { selected: "opencode", engines: [{ id: "opencode", ...status }] };
+});
 ipcMain.handle("agent:get-status", () => agentStatus);
 ipcMain.handle("agent:screenshot-preview", (_event, candidate: unknown) =>
   desktopArtifact(process.env.LCA_DATA_DIR || app.getPath("userData"), candidate));
@@ -1116,7 +1134,6 @@ ipcMain.handle(
     }
 
     const provider = await sendRequest("model.list", "model.listed");
-    void refreshOpenCodeRuntimeConfig();
     return { event, provider, secret };
   }
 );
@@ -1134,7 +1151,6 @@ ipcMain.handle("agent:settings-reset", async () => {
     );
   }
   const provider = await sendRequest("model.list", "model.listed");
-  void refreshOpenCodeRuntimeConfig();
   return {
     event,
     provider,
@@ -1364,6 +1380,7 @@ ipcMain.handle("agent:permission-get", async () => {
   return sendRequest("permission.get", "permission.loaded");
 });
 ipcMain.handle("agent:permission-set", async (_event, mode: string, options: {scope?:string;target?:string}={}) => {
+  if (activeOpenCodeTurns.size) throw new Error("请先停止 OpenCode 执行，再修改权限。");
   let confirmed=false;
   if(mode==='full_access') {
     const current=await sendRequest('permission.get','permission.loaded');
@@ -1388,9 +1405,16 @@ ipcMain.handle(
   ) => {
     const pending = pendingOpenCodeApprovals.get(approvalId);
     if (pending) {
+      const entry = activeOpenCodeTurns.get(pending.turnId);
+      if (!entry || entry.controller.signal.aborted || (turnId && turnId !== pending.turnId)) throw new Error("审批对应的执行已结束");
+      if (decision !== "deny" && decision !== "allow_once" && decision !== "allow_turn") throw new Error("无效审批决定");
       pendingOpenCodeApprovals.delete(approvalId);
-      const reply = decision === "deny" ? "reject" : decision === "allow_turn" ? "always" : "once";
-      await openCodeRuntime.replyPermission(pending.sessionId, pending.requestId, reply);
+      try {
+        await openCodeRuntime.replyPermission(pending.sessionId, pending.requestId, decision === "deny" ? "reject" : "once");
+      } catch (error) {
+        if (!entry.controller.signal.aborted) pendingOpenCodeApprovals.set(approvalId, pending);
+        throw error;
+      }
       broadcastAgentEvent({ type: "approval.resolved", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: pending.turnId, thread_id: pending.threadId, timestamp: new Date().toISOString(), payload: { approval_id: approvalId, decision, engine: "opencode" } });
       return { type: "approval.resolved", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: pending.turnId, thread_id: pending.threadId, timestamp: new Date().toISOString(), payload: { approval_id: approvalId, decision } };
     }
@@ -1541,7 +1565,6 @@ ipcMain.handle("agent:task-request", async (_event, threadId: string, operation:
     // Agent rejects changes while a turn is running before disk persistence.
     await sendRequest("task.credentials.update", "task.loaded", {credentials:values});
     storeModelCredentials(values);
-    void refreshOpenCodeRuntimeConfig();
     return {type:"task.loaded", payload:{mode:safeStorage.isEncryptionAvailable() ? "os_protected" : "session_only", configured:!!key}};
   }
   const allowed = new Set(["task.runtime.list", "task.catalog.get", "task.catalog.update", "task.settings.get", "task.settings.update", "task.connection.test", "task.list", "task.start", "task.resume", "task.continue", "task.pause", "task.cancel", "task.budget.add", "task.configure", "task.approve", "task.diagnostics"]);
@@ -1550,21 +1573,45 @@ ipcMain.handle("agent:task-request", async (_event, threadId: string, operation:
   allowed.add("task.model.diagnostic"); allowed.add("task.model.diagnostic.cancel");
   for(const operation of ['knowledge.get','knowledge.search','knowledge.save','knowledge.delete','knowledge.settings','model.capabilities','task.runtime.templates','task.runtime.workflow.get','task.runtime.workflow.update','task.runtime.pause'])allowed.add(operation);
   if (!allowed.has(operation)) throw new Error("Unsupported task operation");
-  if(["task.start","task.resume","task.continue","task.append"].includes(operation)){
-    if (openCodeProductionEnabled()) throw new Error("OpenCode 模式下请使用主聊天发送任务；旧任务执行链路已禁用。");
-    payload=legacyTaskPayload(payload);
-    await bindLegacyThread(threadId);
+  if (["task.start","task.resume","task.continue"].includes(operation)) {
+    if (preparingOpenCodeTask || activeOpenCodeTurns.size) throw new Error("已有 OpenCode 任务执行中");
+    if (!openCodeRuntime.resolveBinary()) throw new Error("未找到锁定的 OpenCode 运行时");
+    const continuation = operation === "task.continue" ? String(payload.prompt ?? "").trim() : "";
+    if (operation === "task.continue" && (!continuation || continuation.length > 4000)) throw new Error("追加任务须为 1–4000 字");
+    preparingOpenCodeTask = true;
+    try {
+      const prepared = await sendRequest("task.external.prepare", "task.loaded", payload, {threadId}, 300_000);
+      const task = prepared.payload?.task as OpenCodeTask;
+      if (!task?.id || !path.isAbsolute(task.workspace)) throw new Error("Task 工作区准备失败");
+      const priorFailures = task.verification?.filter(result => !result.ok).map(result => result.summary?.slice(0,750)).slice(0,4).join("\n");
+      const prompt = [task.goal, continuation, priorFailures && "上次独立验收失败：\n"+priorFailures,
+        "检查实际工作区并保留已完成的变更。修复源码，保留现有测试预期。"].filter(Boolean).join("\n\n");
+      await startOpenCodeTurn(threadId, prompt, undefined, task);
+      return prepared;
+    } finally {
+      preparingOpenCodeTask = false;
+    }
+  }
+  const activeTask = [...activeOpenCodeTurns.entries()].find(([,turn]) => turn.taskId === payload.task_id && turn.threadId === threadId);
+  if (operation === "task.append") {
+    if (!activeTask) throw new Error("任务未在执行");
+    const result = await appendOpenCodeTurn(threadId,activeTask[0],String(payload.prompt??""),String(payload.message_id??""));
+    return {type:"task.loaded",payload:{followup:result.payload}};
+  }
+  if (activeTask && (operation === "task.pause" || operation === "task.cancel")) {
+    const turn = activeTask[1];
+    turn.pauseTask = operation === "task.pause";
+    turn.cancelled = true;
+    turn.controller.abort();
+    await turn.done;
+    return sendRequest("task.list", "task.loaded", {}, {threadId});
   }
   const result = await sendRequest(operation, operation.startsWith('knowledge.')?'knowledge.loaded':operation==='model.capabilities'?'model.capabilities.loaded':"task.loaded", payload, {threadId}, operation === "task.model.diagnostic" ? 300000 : operation === "task.connection.test" ? 30000 : 15000);
-  if (["task.catalog.update","task.settings.update","task.credential.set"].includes(operation)) void refreshOpenCodeRuntimeConfig();
   return result;
 });
 ipcMain.handle("agent:plan-request", async (_event, threadId: string, operation: string, payload: Record<string, unknown> = {}) => {
   const allowed = new Set(["plan.list", "plan.create", "plan.step.update", "plan.step.edit", "plan.steps.reorder", "plan.checkpoint", "plan.resume", "plan.resume.confirm", "plan.recover", "plan.execution.extend", "plan.operation.review"]);
   if (!allowed.has(operation)) throw new Error("Unsupported plan operation");
-  if (openCodeProductionEnabled() && ["plan.resume","plan.resume.confirm","plan.execution.extend","plan.operation.review"].includes(operation)) {
-    throw new Error("OpenCode 模式下旧计划执行链路已禁用；请在主聊天中继续任务。");
-  }
   return sendRequest(operation, operation === "plan.resume" ? "plan.resumable" : "plan.loaded",
     { ...payload, thread_id: threadId }, { threadId }, operation==='plan.operation.review'?300000:25000);
 });
@@ -1596,82 +1643,88 @@ ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
     { threadId }
   );
 });
-let productionBindings:EngineSessionStore|undefined;
-async function bindLegacyThread(threadId:string){
- const loaded=await sendRequest("thread.get","thread.loaded",{thread_id:threadId},{threadId});
- const payload=loaded.payload as {project_id?:string;thread?:{id?:string}};
- if(payload.thread?.id!==threadId||!payload.project_id)throw new Error("Invalid thread identity");
- const project=await sendRequest("project.get","project.loaded",{project_id:payload.project_id});
- const root=(project.payload as {project?:{path?:string}}).project?.path;
- if(!root||!path.isAbsolute(root))throw new Error("Invalid project root");
- productionBindings??=new EngineSessionStore(path.join(process.env.LCA_DATA_DIR||app.getPath("userData"),"production-engine-bindings.json"));
- await productionBindings.bind({threadId:payload.project_id+":"+threadId,engine:"legacy",sessionId:threadId,projectRoot:root});
-}
-
-async function refreshOpenCodeRuntimeConfig(): Promise<void> {
-  if (!openCodeRuntime.status().available) return;
-  if (activeOpenCodeTurns.size > 0) return;
-  try {
-    const [catalogRes, settingsRes] = await Promise.all([
-      sendRequest("task.catalog.get", "task.loaded", {}, {}),
-      sendRequest("task.settings.get", "task.loaded", {}, {}).catch(() => null),
-    ]);
-    const catalog = (catalogRes as any)?.payload?.catalog;
-    const config = (catalogRes as any)?.payload?.config || (settingsRes as any)?.payload?.config;
-    const credentials = readModelCredentials();
-    const configContent = buildConfigFromCatalog(catalog, config, credentials, (catalogRes as any)?.payload?.chat_default);
-    await openCodeRuntime.restart(configContent);
-  } catch (error) {
-    appendRuntimeLog("desktop.log", "OpenCode runtime config refresh failed: " + String(error));
-  }
-
-}
-
-async function startOpenCodeTurn(threadId: string, prompt: string, model?: string): Promise<AgentEnvelope> {
+async function startOpenCodeTurn(threadId: string, prompt: string, model?: string, task?:OpenCodeTask): Promise<AgentEnvelope> {
+  if (shuttingDown || quitInProgress) throw new Error("应用正在关闭");
+  if (activeOpenCodeTurns.size || (preparingOpenCodeTask && !task)) throw new Error("已有 OpenCode 执行占用工作区，请等待或停止。");
+  if (typeof prompt !== "string" || !prompt.trim() || Buffer.byteLength(prompt) > 48000) throw new Error("请输入有效任务内容");
+  if (!openCodeRuntime.resolveBinary()) throw new Error("未找到锁定的 OpenCode 运行时，请检查安装完整性。");
   const turnId = "turn_" + randomUUID().replace(/-/g, "");
   const startedAt = new Date().toISOString();
   broadcastAgentEvent({ type: "turn.started", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: startedAt, payload: { engine: "opencode" } });
-  const entry = { controller: new AbortController(), sessionId: undefined as string | undefined, cancelled: false, outcome: "succeeded", threadId };
+  const entry: OpenCodeTurn = { controller: new AbortController(), cancelled: false, outcome: "failed", threadId, done: Promise.resolve(), appended: new Set(), taskId:task?.id };
   activeOpenCodeTurns.set(turnId, entry);
-  void (async () => {
+  entry.done = (async () => {
     let assistant = "";
+    let follow: Promise<void> | undefined;
+    let terminal = false;
+    let gateway: Awaited<ReturnType<typeof startOpenCodeModel>> | undefined;
     try {
-      const [projectRes, catalogRes, settingsRes, threadRes] = await Promise.all([
-        sendRequest("project.get", "project.loaded", {}, { threadId }).catch(() => null),
+      const threadRes = await sendRequest("thread.get", "thread.loaded", { thread_id: threadId }, { threadId });
+      const projectId = threadRes.payload?.project_id;
+      if (typeof projectId !== "string" || (threadRes.payload?.thread as {id?:string})?.id !== threadId) throw new Error("会话归属校验失败");
+      entry.projectId = projectId;
+      const [projectRes, catalogRes, permissionRes] = await Promise.all([
+        sendRequest("project.get", "project.loaded", {project_id:projectId}, { threadId }),
         sendRequest("task.catalog.get", "task.loaded", {}, { threadId }),
-        sendRequest("task.settings.get", "task.loaded", {}, { threadId }).catch(() => null),
-        sendRequest("thread.get", "thread.loaded", { thread_id: threadId }, { threadId }).catch(() => null),
+        sendRequest("permission.get", "permission.loaded", {project_id:projectId}, { threadId }),
       ]);
-      const projectPath = String((projectRes as any)?.payload?.project?.path || (projectRes as any)?.payload?.path || process.cwd());
+      const registeredPath = (projectRes.payload?.project as {path?:string; id?:string})?.path;
+      if (!registeredPath || !path.isAbsolute(registeredPath) || (projectRes.payload?.project as {id?:string})?.id !== projectId) throw new Error("工程目录无法确认");
+      const projectPath = task?.workspace ?? registeredPath;
+      const mode = permissionRes.payload?.mode as OpenCodePermissionMode;
+      if (!["read_only", "workspace", "full_access"].includes(mode)) throw new Error("无法确认执行权限");
       const catalog = (catalogRes as any)?.payload?.catalog;
-      const config = (catalogRes as any)?.payload?.config || (settingsRes as any)?.payload?.config;
-      const credentials = readModelCredentials();
-      const configContent = buildConfigFromCatalog(catalog, config, credentials, model?.startsWith("profile:") ? model.slice("profile:".length) : (catalogRes as any)?.payload?.chat_default);
-      await openCodeRuntime.ensureStarted(configContent, projectPath);
-      let binding = await openCodeRuntime.bindings().get(threadId).catch(() => undefined);
+      const config = task?.config ?? (catalogRes as any)?.payload?.config ?? {};
+      const credentials = {...readModelCredentials(), "legacy-openai":currentOpenAIKey() ?? ""};
+      const taskProfile = task?.config.roles?.executor?.model_profile_id;
+      const selectedProfileId = selectOpenCodeProfile(catalog, taskProfile ? "profile:"+taskProfile : model, catalogRes.payload?.chat_default, config);
+      if (task?.opencode_local_only && !catalog.connections.some((connection:any) =>
+        connection.provider_type === "ollama" && catalog.profiles.some((profile:any) =>
+          profile.model_profile_id === selectedProfileId && profile.connection_id === connection.connection_id))) {
+        throw new Error("当前 Task 仅允许 Ollama，请明确选择本地模型");
+      }
+      entry.controller.signal.throwIfAborted();
+      gateway = await startOpenCodeModel(catalog, config, credentials, selectedProfileId,
+        catalogRes.payload?.global_usage as {api_calls?:number; reserved_tokens?:number} | undefined);
+      await openCodeRuntime.ensureStarted(gateway.configContent, projectPath);
+      entry.controller.signal.throwIfAborted();
+      const bindingKey = task ? "task:" + task.id : threadId;
+      const binding = await openCodeRuntime.bindings().get(bindingKey);
+      if (binding && (binding.engine !== "opencode" || path.relative(binding.projectRoot, projectPath) !== "")) throw new Error("会话与当前工程不匹配");
       let sessionId = binding?.sessionId;
       let newSession = false;
       if (sessionId) {
-        const ok = await openCodeRuntime.getSession(sessionId).then(() => true).catch(() => false);
-        if (!ok) sessionId = undefined;
+        try {
+          const snapshot = await openCodeRuntime.getSession(sessionId) as {data?:{id?:string;location?:{directory?:string}}};
+          if (snapshot.data?.id !== sessionId || !snapshot.data.location?.directory ||
+              path.relative(projectPath, snapshot.data.location.directory) !== "") throw new Error("运行时会话目录不匹配");
+          await openCodeRuntime.updatePermissions(sessionId, mode);
+        } catch (error) {
+          if (!(error instanceof SidecarHttpError && error.status === 404)) throw error;
+          sessionId = undefined;
+        }
       }
       if (!sessionId) {
-        sessionId = await openCodeRuntime.createSession(prompt.slice(0, 80) || "Chat", projectPath, threadId);
+        sessionId = await openCodeRuntime.createSession(prompt.slice(0, 80), projectPath, bindingKey, mode);
         newSession = true;
       }
       entry.sessionId = sessionId;
-      await sendRequest("turn.record_external", "turn.recorded", { role: "user", content: prompt }, { threadId }).catch(() => {});
+      await openCodeRuntime.selectModel(sessionId, gateway.model);
+      entry.controller.signal.throwIfAborted();
+      await sendRequest("turn.record_external", "turn.recorded", { project_id:projectId, role: "user", content: prompt }, { threadId });
       let effectivePrompt = prompt;
-      if (newSession) {
+      if (newSession && !task) {
         const msgs = Array.isArray((threadRes as any)?.payload?.messages) ? (threadRes as any).payload.messages : [];
-        const recent = msgs.slice(-20).map((m: any) => `${String(m.role || "user")}: ${String(m.content || "").slice(0, 2000)}`).join("\n");
+        const recent = msgs.slice(-8).map((m: any) => `${String(m.role || "user")}: ${String(m.content || "").slice(0, 500)}`).join("\n");
         if (recent.trim()) {
           effectivePrompt = `Project: ${projectPath}\nRecent conversation context:\n${recent}\n\nCurrent user request:\n${prompt}`;
         } else {
           effectivePrompt = `Project: ${projectPath}\n\nUser request:\n${prompt}`;
         }
       }
-      const bridge = openCodeRuntime.bridge(3);
+      const bridge = openCodeRuntime.bridge(0);
+      let streamReady!: () => void;
+      const ready = new Promise<void>(resolve => { streamReady = resolve; });
       let finished = false;
       const toolCalls = new Map<string, { name: string; started: boolean }>();
       const startedAtMs = Date.now();
@@ -1697,8 +1750,11 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       };
       emitMetrics();
       let bridgeFailed = false;
-      const follow = bridge.follow(sessionId, entry.controller.signal, (event) => {
-        if (event.kind === "text") {
+      let terminalError = "";
+      follow = bridge.follow(sessionId, entry.controller.signal, (event) => {
+        if (event.kind === "snapshot") {
+          streamReady();
+        } else if (event.kind === "text") {
           const delta = String((event.payload as any)?.delta ?? "");
           if (delta) {
             assistant += delta;
@@ -1761,46 +1817,36 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
           broadcastAgentEvent({ type: "tool.completed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { tool_call_id: callId, result: { ok: true, summary: "???????", data: { diff: p.diff ?? p }, stdout: "", stderr: "" } } });
         } else if (event.kind === "execution-ended") {
           finished = true;
-          const oc = String((event.payload as any)?.outcome ?? "succeeded");
+          terminal = true;
+          const oc = String((event.payload as any)?.outcome ?? "failed");
           entry.outcome = oc;
+          const error = (event.payload as {error?:unknown}).error;
+          if (error && typeof error === "object") {
+            const identity = (error as {name?:unknown; _tag?:unknown})._tag ?? (error as {name?:unknown}).name;
+            if (typeof identity === "string" && /^[a-zA-Z0-9_.-]{1,100}$/.test(identity)) terminalError = identity;
+          }
           entry.controller.abort();
         }
       }).catch(() => { bridgeFailed = true; });
+      await Promise.race([ready, follow]);
+      entry.controller.signal.throwIfAborted();
+      if (bridgeFailed) throw new Error("OpenCode 事件流未连接");
       await openCodeRuntime.prompt(sessionId, effectivePrompt);
-      const timeoutAt = Date.now() + 10 * 60 * 1000;
+      const timeoutAt = Date.now() + gateway.durationMs;
       while (!finished && Date.now() < timeoutAt && !entry.controller.signal.aborted) {
         if (bridgeFailed) break;
         await new Promise((r) => setTimeout(r, 200));
       }
-      if (!finished && !entry.cancelled) {
-        // Recovery: check session snapshot before declaring failure.
-        try {
-          const snap = await openCodeRuntime.getSession(sessionId) as any;
-          const status = String(snap?.data?.status ?? snap?.status ?? "").toLowerCase();
-          const outcome = String(snap?.data?.outcome ?? "").toLowerCase();
-          if (["completed","succeeded","done","idle"].includes(status) || outcome === "succeeded") {
-            entry.outcome = "succeeded"; finished = true;
-          } else if (["interrupted","cancelled","aborted"].includes(status) || outcome === "interrupted") {
-            entry.outcome = "interrupted"; finished = true;
-          } else if (["failed","error"].includes(status) || outcome === "failed") {
-            entry.outcome = "failed"; finished = true;
-          } else if (Date.now() >= timeoutAt) {
-            entry.outcome = "failed";
-          } else if (bridgeFailed) {
-            entry.outcome = "failed";
-          }
-        } catch {
-          if (!entry.cancelled) entry.outcome = "failed";
-        }
-      }
       entry.controller.abort();
       await follow.catch(() => {});
-      await sendRequest("turn.record_external", "turn.recorded", { role: "assistant", content: assistant }, { threadId }).catch(() => {});
+      if (assistant) await sendRequest("turn.record_external", "turn.recorded", { project_id:projectId, role: "assistant", content: assistant.slice(0,200000) }, { threadId });
       emitMetrics();
       if (entry.cancelled || entry.outcome === "interrupted") {
         broadcastAgentEvent({ type: "turn.cancelled", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { engine: "opencode" } });
-      } else if (entry.outcome === "failed") {
-        const msg = Date.now() >= timeoutAt && !finished ? "OpenCode ????" : bridgeFailed ? "OpenCode ?????????????" : "OpenCode execution failed";
+      } else if (!finished || entry.outcome !== "succeeded") {
+        const usage = gateway.usage();
+        const diagnostic = [terminalError, usage.lastStatus && `model relay HTTP ${usage.lastStatus}`, usage.failure, `requests=${usage.requests}`].filter(Boolean).join(" / ");
+        const msg = Date.now() >= timeoutAt && !finished ? "OpenCode 执行超时" : bridgeFailed ? "OpenCode 连接中断或状态无法确认" : `OpenCode 执行失败 (${diagnostic})`;
         broadcastAgentEvent({ type: "turn.failed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { message: msg, engine: "opencode" } });
       } else {
         broadcastAgentEvent({ type: "turn.completed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { engine: "opencode" } });
@@ -1813,40 +1859,58 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
         broadcastAgentEvent({ type: "turn.failed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { message, engine: "opencode" } });
       }
     } finally {
+      entry.controller.abort();
+      await follow;
+      await gateway?.close().catch(() => {});
+      if (entry.sessionId && (entry.cancelled || !terminal)) {
+        await openCodeRuntime.interrupt(entry.sessionId).catch(() => {});
+        await openCodeRuntime.stop().catch(() => {});
+      }
+      if (task) {
+        try {
+          const outcome = entry.cancelled ? (entry.pauseTask ? "paused" : "cancelled") :
+            terminal && entry.outcome === "succeeded" ? "succeeded" : "failed";
+          const result = await sendRequest("task.external.finish", "task.loaded", {task_id:task.id,outcome}, {threadId}, 600_000);
+          broadcastAgentEvent({type:"task.updated",thread_id:threadId,turn_id:turnId,payload:result.payload});
+        } catch (error) {
+          broadcastAgentEvent({type:"turn.failed",thread_id:threadId,turn_id:turnId,payload:{message:String(error),engine:"opencode"}});
+        }
+      }
       for (const [id, pending] of pendingOpenCodeApprovals) {
         if (pending.turnId === turnId) pendingOpenCodeApprovals.delete(id);
       }
       activeOpenCodeTurns.delete(turnId);
     }
   })();
+  void entry.done.catch(() => {});
   return { type: "turn.started", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: startedAt, payload: { engine: "opencode" } };
 }
 
-ipcMain.handle("agent:turn-start", async (_event, threadId: string, prompt: string, model?: string, unified?: boolean, resume?:{run_id:string;confirm_workspace:boolean},routing?:{allow_fallback:boolean;engine?:unknown}) => {
-  assertProductionEngine(routing?.engine);
-  if (openCodeProductionEnabled()) {
-    if (!openCodeRuntime.resolveBinary()) throw new Error("OpenCode production gate enabled but runtime binary was not found.");
-    return startOpenCodeTurn(threadId, prompt, model);
+ipcMain.handle("agent:turn-start", (_event, threadId: string, prompt: string, model?: string, _unified?: boolean, resume?:{run_id:string;confirm_workspace:boolean}) => {
+  if (resume && resume.confirm_workspace !== true) throw new Error("请确认已检查当前工作区");
+  return startOpenCodeTurn(threadId, prompt, model);
+});
+async function appendOpenCodeTurn(threadId: string, turnId: string, prompt: string, messageId: string) {
+  const turn = activeOpenCodeTurns.get(turnId);
+  if (!turn?.sessionId || turn.threadId !== threadId || turn.controller.signal.aborted) throw new Error("当前会话未在执行");
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(messageId)) throw new Error("无效追加消息 ID");
+  if (!turn.appended.has(messageId)) {
+    if (turn.appended.size >= 20) throw new Error("追加消息达到上限");
+    turn.appended.add(messageId);
+    await openCodeRuntime.prompt(turn.sessionId, prompt, messageId);
+    await sendRequest("turn.record_external", "turn.recorded", { project_id:turn.projectId, role:"user", content:prompt }, {threadId});
   }
-  await bindLegacyThread(threadId);
-  return sendRequest(
-    "turn.start",
-    "turn.started",
-    { prompt, model, unified:unified === true, background:unified === true, resume_run_id:resume?.run_id, confirm_workspace:resume?.confirm_workspace === true,allow_model_fallback:routing?.allow_fallback===true },
-    { threadId }
-  );
-});
-ipcMain.handle('agent:turn-append',async (_event,threadId:string,turnId:string,prompt:string,messageId:string)=>{
-  if (activeOpenCodeTurns.has(turnId)) throw new Error('当前 OpenCode 任务不支持追加消息；请等待当前任务完成后再发送。');
-  return sendRequest('turn.append','turn.appended',{prompt,message_id:messageId},{threadId,turnId});
-});
+  return {type:"turn.appended", thread_id:threadId, turn_id:turnId, payload:{queued:true, message_id:messageId}};
+}
+ipcMain.handle("agent:turn-append", (_event, threadId: string, turnId: string, prompt: string, messageId: string) =>
+  appendOpenCodeTurn(threadId,turnId,prompt,messageId));
 ipcMain.handle("agent:turn-cancel", async (_event, turnId: string) => {
   const oc = activeOpenCodeTurns.get(turnId);
   if (oc) {
     oc.cancelled = true;
     oc.outcome = "interrupted";
     oc.controller.abort();
-    if (oc.sessionId) await openCodeRuntime.interrupt(oc.sessionId).catch(() => {});
+    await oc.done;
     return { ok: true };
   }
   const socket = agentSocket;
@@ -1891,8 +1955,12 @@ app.on("before-quit", (event) => {
   }
 
   quitInProgress = true;
-  const localChatController: any = undefined;
-  void Promise.allSettled([stopAgent(), (localChatController?.abort(), migrationDiagnosticDone.then(()=>migrationSidecar.stop())), openCodeRuntime.stop()]).finally(() => {
+  for (const turn of activeOpenCodeTurns.values()) {
+    turn.cancelled = true;
+    turn.controller.abort();
+  }
+  const openCodeStopped = Promise.allSettled([...activeOpenCodeTurns.values()].map(turn => turn.done)).then(() => openCodeRuntime.stop());
+  void Promise.allSettled([openCodeStopped.then(() => stopAgent()), openCodeStopped]).finally(() => {
     quitReady = true;
     app.quit();
   });

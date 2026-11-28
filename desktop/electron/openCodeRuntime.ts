@@ -1,14 +1,12 @@
 import { app } from "electron";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
-import os from "node:os";
 import { EngineEventBridge, type EventSource } from "./engineEventBridge";
 import { EngineSessionStore } from "./engineSessionStore";
 import { buildOpenCodeConfig } from "./openCodeConfig";
 import { OpenCodeSupervisor } from "./openCodeSupervisor";
-import { acquireEngineLease } from "./engineLease";
-import { openCodeProductionEnabled } from "./productionEngineGate";
+import { productionPermissions, type OpenCodePermissionMode } from "./openCodePermissions";
 
 export type OpenCodeRuntimeStatus = {
   available: boolean;
@@ -21,13 +19,13 @@ export type OpenCodeRuntimeStatus = {
 const VERSION = "2.2.6";
 const VERSION_ALIASES = ["2.2.6", "v2.2.6", "opencode v2.2.6"];
 const EXECUTABLE_SHA256 = "98cb0aa854c7c015cf6febafa7afb872c359bfe5a823a526f3b4fd347a9e9677";
-const ACTIVATION_BLOCK = "OpenCode production execution disabled: security and budget gates pending";
 
 export class OpenCodeRuntime implements EventSource {
   private readonly supervisor = new OpenCodeSupervisor();
   private store?: EngineSessionStore;
   private root?: string;
   private cwd?: string;
+  private configHash?: string;
   private binaryPath?: string;
   private starting?: Promise<void>;
   private stopping?: Promise<void>;
@@ -38,49 +36,46 @@ export class OpenCodeRuntime implements EventSource {
 
   status(): OpenCodeRuntimeStatus {
     const binary = this.resolveBinary();
-    const gated = !openCodeProductionEnabled();
     const running = this.supervisor.isRunning();
     return {
-      available: !!binary && !gated,
+      available: !!binary,
       running,
       version: VERSION,
       binary: this.binaryPath ?? binary,
-      reason: !binary ? "OpenCode runtime not found" : gated ? ACTIVATION_BLOCK : undefined,
+      reason: !binary ? "OpenCode runtime not found" : undefined,
     };
   }
 
   resolveBinary(): string | undefined {
-    const env = process.env.LCA_OPENCODE_BINARY?.trim();
-    const candidates = [
-      env,
-      path.join(process.resourcesPath || "", "opencode", "opencode.exe"),
-      path.join(app.getAppPath(), "..", "opencode", "opencode.exe"),
-      path.join(process.cwd(), "build", "opencode-p1", "verified-bin", "opencode.exe"),
-      path.join(process.cwd(), "build", "opencode-p0", "verified-bin", "opencode.exe"),
-    ].filter((v): v is string => !!v);
+    const candidates = app.isPackaged
+      ? [path.join(process.resourcesPath, "opencode", "opencode.exe")]
+      : [
+          process.env.LCA_OPENCODE_BINARY?.trim(),
+          path.resolve(app.getAppPath(), "../build/opencode-runtime/opencode.exe"),
+        ].filter((value): value is string => Boolean(value));
     for (const candidate of candidates) {
       if (existsSync(candidate)) return candidate;
     }
     return undefined;
   }
 
-  async ensureStarted(configContent: string, cwd?: string): Promise<void> {
-    if (!this.status().available) throw new Error(ACTIVATION_BLOCK);
-    const wantedCwd = cwd ? path.resolve(cwd) : process.cwd();
-    if (this.root && !this.supervisor.isRunning()) {
-      this.root = undefined; this.cwd = undefined; this.store = undefined;
-    }
-    if (this.root && this.cwd === wantedCwd) return;
-    if (this.root && this.cwd !== wantedCwd) await this.stop();
-    if (this.starting) return this.starting;
-    this.starting = this.start(configContent, wantedCwd).finally(() => { this.starting = undefined; });
+  async ensureStarted(configContent: string, cwd: string): Promise<void> {
+    if (!path.isAbsolute(cwd)) throw new Error("OpenCode requires an explicit project directory");
+    const wantedCwd = path.resolve(cwd);
+    const hash = createHash("sha256").update(configContent).digest("hex");
+    if (this.starting) await this.starting;
+    if (this.stopping) await this.stopping;
+    if (this.supervisor.isRunning() && this.cwd === wantedCwd && this.configHash === hash) return;
+    if (this.root) await this.stop();
+    this.starting = this.start(configContent, wantedCwd, hash).finally(() => { this.starting = undefined; });
     return this.starting;
   }
 
-  private async start(configContent: string, cwd: string): Promise<void> {
+  private async start(configContent: string, cwd: string, hash: string): Promise<void> {
     const binary = this.resolveBinary();
     if (!binary) throw new Error("OpenCode runtime not found. Install bundled runtime or set LCA_OPENCODE_BINARY.");
-    const root = await mkdtemp(path.join(app.getPath("userData"), "opencode-runtime-"));
+    const project = createHash("sha256").update(process.platform === "win32" ? cwd.toLowerCase() : cwd).digest("hex");
+    const root = path.join(app.getPath("userData"), "opencode-projects", project);
     this.binaryPath = binary;
     await this.supervisor.start(binary, root, {
       configContent,
@@ -91,19 +86,16 @@ export class OpenCodeRuntime implements EventSource {
     });
     this.root = root;
     this.cwd = cwd;
+    this.configHash = hash;
     this.store = new EngineSessionStore(path.join(app.getPath("userData"), "opencode-session-bindings.json"));
-  }
-
-  async restart(configContent: string): Promise<void> {
-    await this.stop();
-    await this.ensureStarted(configContent);
   }
 
   async stop(): Promise<void> {
     if (this.stopping) return this.stopping;
+    if (this.starting) await this.starting.catch(() => {});
     this.stopping = (async () => {
       try { await this.supervisor.stop(); }
-      finally { this.root = undefined; this.cwd = undefined; this.store = undefined; this.stopping = undefined; }
+      finally { this.root = undefined; this.cwd = undefined; this.configHash = undefined; this.store = undefined; this.stopping = undefined; }
     })();
     return this.stopping;
   }
@@ -121,10 +113,15 @@ export class OpenCodeRuntime implements EventSource {
     return this.supervisor.events(signal);
   }
 
-  async createSession(title: string, projectRoot: string, threadId: string): Promise<string> {
-    const result = await this.request("/api/session", "POST", { title, permissions: [{ action: "*", resource: "*", effect: "allow" }] }) as { data?: { id?: string } };
+  async createSession(title: string, projectRoot: string, threadId: string, mode: OpenCodePermissionMode): Promise<string> {
+    const result = await this.request("/api/session", "POST", {
+      title, location:{directory:projectRoot}, permissions:productionPermissions(mode),
+    }) as { data?: { id?: string; location?:{directory?:string} } };
     const id = result?.data?.id;
     if (!id) throw new Error("Missing OpenCode session ID");
+    if (!result.data?.location?.directory || path.relative(projectRoot,result.data.location.directory) !== "") {
+      throw new Error("OpenCode created session outside the registered workspace");
+    }
     const binding = { threadId, engine: "opencode" as const, sessionId: id, projectRoot };
     const existing = await this.bindings().get(threadId).catch(() => undefined);
     if (existing) await this.bindings().rebind(binding);
@@ -136,8 +133,18 @@ export class OpenCodeRuntime implements EventSource {
     return this.request("/api/session/" + encodeURIComponent(sessionId));
   }
 
-  async prompt(sessionId: string, text: string): Promise<void> {
-    await this.request("/api/session/" + encodeURIComponent(sessionId) + "/prompt", "POST", { text });
+  async updatePermissions(sessionId: string, mode: OpenCodePermissionMode): Promise<void> {
+    await this.request("/api/session/" + encodeURIComponent(sessionId), "PATCH", { permissions: productionPermissions(mode) });
+  }
+
+  async selectModel(sessionId: string, model: {id:string;providerID:string}): Promise<void> {
+    await this.request("/api/session/" + encodeURIComponent(sessionId) + "/model", "POST", {model});
+  }
+
+  async prompt(sessionId: string, text: string, followupId?:string): Promise<void> {
+    await this.request("/api/session/" + encodeURIComponent(sessionId) + "/prompt", "POST", {
+      text, ...(followupId ? {delivery:"steer",id:"msg_"+followupId,resume:false} : {}),
+    });
   }
 
   async interrupt(sessionId: string): Promise<unknown> {
@@ -145,7 +152,7 @@ export class OpenCodeRuntime implements EventSource {
   }
 
   async replyPermission(sessionId: string, requestId: string, reply: "once" | "always" | "reject"): Promise<unknown> {
-    return this.request("/api/session/" + encodeURIComponent(sessionId) + "/permission/" + encodeURIComponent(requestId) + "/reply", "POST", { reply });
+    return this.request("/api/session/" + encodeURIComponent(sessionId) + "/permission/" + encodeURIComponent(requestId) + "/reply", "POST", { decision: reply });
   }
 
   async deleteSession(sessionId: string): Promise<void> {

@@ -274,6 +274,12 @@ class TaskService:
                     result={'runtimes':runtimes,'background_jobs':self.server.background.list(thread_id),'active_turn_ids':[tid for tid,turn in self.server.active_turns.items() if not turn.done() and self.server.active_turn_threads.get(tid)==thread_id and tid not in self.server.disconnected_turns]}
                 elif kind == "task.list":
                     result = {"tasks": [self.public(t) for t in self.runtime.list(thread_id)]}
+                elif kind in {"task.external.prepare", "task.external.finish"}:
+                    if not self.server.data_service:
+                        raise ValueError("External task service requires the desktop data service")
+                    from agent.core.opencode_tasks import finish_task, prepare_task
+                    handler = prepare_task if kind.endswith(".prepare") else finish_task
+                    result = {"task": self.public(await handler(self, ws, project, thread_id, payload))}
                 elif kind == "task.start":
                     if any(not t.done() for t in self.server.active_turns.values()):
                         raise ValueError("Pause or stop the active task first")

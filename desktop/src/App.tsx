@@ -1,6 +1,5 @@
 import {ProjectDiffDialog} from "./components/ProjectDiffDialog";
 import {ProjectSearchDialog} from "./components/ProjectSearchDialog";
-import {OpenCodeChatDialog} from "./components/OpenCodeChatDialog";
 import {FirstRunCard} from './components/FirstRunCard';
 import {UnifiedProgress,useUnifiedProgress} from './components/UnifiedProgress';
 import {
@@ -225,14 +224,8 @@ function resultObject(value: unknown): Record<string, unknown> {
 }
 
 function App() {
-  const [chatEngine,setChatEngine]=useState<"legacy"|"opencode">("legacy");
-  const [fixtureBusy,setFixtureBusy]=useState(false);
-  const [fixtureOutput,setFixtureOutput]=useState("");
-  const [fixtureStatus,setFixtureStatus]=useState("");
-  const [fixtureEvents,setFixtureEvents]=useState<string[]>([]);
   const [projectDiffOpen,setProjectDiffOpen]=useState(false);
   const [projectSearchOpen,setProjectSearchOpen]=useState(false);
-  const [localChatOpen,setLocalChatOpen]=useState(false);
   const [engineStatus, setEngineStatus] = useState<Awaited<ReturnType<NonNullable<Window["localAgent"]["getEngineStatus"]>>> | null>(null);
   useEffect(() => {
     let disposed = false;
@@ -285,7 +278,6 @@ function App() {
   const [projectThreadCache, setProjectThreadCache] = useState<Record<string, ThreadRecord[]>>({});
   const [workspace, setWorkspace] = useState<ProjectInfo | null>(null);
   const [selectedModel, setSelectedModel] = useState("");
-  const [allowModelFallback,setAllowModelFallback]=useState(false);
   const [modelSearch,setModelSearch] = useState("");
   const [modelIdentity,setModelIdentity] = useState("");
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
@@ -1409,24 +1401,6 @@ function App() {
       return;
     }
 
-    if(chatEngine==="opencode"){
-      if(fixtureBusy||runningTurnId||conversationTasks.active)return;
-      sendingRef.current=true;setFixtureBusy(true);setFixtureOutput("");setFixtureEvents([]);setFixtureStatus("准备 OpenCode 独立工程");
-      const offProgress=window.localAgent.onLocalChatProgress?.(value=>{
-        const event=value as {kind?:string;payload?:unknown};
-        if(event?.kind)setFixtureEvents(previous=>[...previous,`${event.kind}: ${JSON.stringify(event.payload??null).slice(0,1000)}`].slice(-100));
-      });
-      const off=window.localAgent.onLocalChatDelta?.(delta=>setFixtureOutput(previous=>(previous+delta).slice(-262144)));
-      try{
-        const profiles=await window.localAgent.listSharedLocalProfiles?.();
-        const profile=profiles?.find(p=>p.id===selectedModel||"profile:"+p.id===selectedModel);
-        if(!profile||!window.localAgent.runLocalChat)throw new Error("请选择已配置的本地 Ollama 模型");
-        const result=await window.localAgent.runLocalChat({model:profile.model,port:profile.port,profileId:profile.id,prompt,fixtureTools:true});
-        setFixtureStatus(result.outcome+" · 未独立验收"+(result.fixtureRoot?" · "+result.fixtureRoot:""));
-        if(result.outcome!=="cancelled")setInput(current=>current===prompt?"":current);
-      }catch(error){setFixtureStatus(String(error));}finally{off?.();offProgress?.();sendingRef.current=false;setFixtureBusy(false);}
-      return;
-    }
     setUiError(null);
     sendingRef.current = true;
     const userItemId = "user:" + Date.now();
@@ -1447,7 +1421,7 @@ function App() {
         followupRetryRef.current=undefined;
         setFollowupNotice('追加需求已排队，将在完整工具批次结束后的下一次模型请求前生效。');
       }else{
-        const started = await window.localAgent.startTurn(boundThread.id,prompt,selectedModel,true,undefined,{allow_fallback:allowModelFallback});
+        const started = await window.localAgent.startTurn(boundThread.id,prompt,selectedModel,true);
         if (started.turn_id) setRunningTurnId(started.turn_id);
       }
       setInput(current => current.trim() === prompt ? "" : current);
@@ -1504,10 +1478,7 @@ function App() {
             <ActionMenu label="引擎" className="app-menu-button" menuBarItem actions={[
               {label:"工程 Git 差异",disabled:!window.localAgent.readProjectDiff||Boolean(runningTurnId),onSelect:()=>setProjectDiffOpen(true)},
               {label:"工程搜索",disabled:!window.localAgent.searchProject||Boolean(runningTurnId),onSelect:()=>setProjectSearchOpen(true)},
-              {label:"OpenCode 本地对话实验",disabled:!window.localAgent.runLocalChat||Boolean(runningTurnId),onSelect:()=>setLocalChatOpen(true)},
-              {label:"OpenCode 隔离诊断", disabled:!window.localAgent.runEngineDiagnostic, onSelect:()=>{void window.localAgent.runEngineDiagnostic?.().then(result=>window.alert("OpenCode 诊断："+result.status)).catch(error=>window.alert("OpenCode 诊断失败："+String(error)));}},
-              {label:engineStatus?.selected === "legacy" ? "Local Coding Agent（当前）" : "Local Coding Agent", disabled:true, onSelect:()=>{}},
-              {label:"OpenCode " + (engineStatus?.engines.find(engine=>engine.id==="opencode")?.version ?? "v2.2.6") + (engineStatus ? "（待安全验收）" : "（状态未确认）"), disabled:true, onSelect:()=>{}}
+              {label:"OpenCode " + (engineStatus?.engines.find(engine=>engine.id==="opencode")?.version ?? "v2.2.6") + (engineStatus ? "（当前）" : "（状态未确认）"), disabled:true, onSelect:()=>{}}
             ]}>引擎</ActionMenu>
             <ActionMenu label="文件" className="app-menu-button" menuBarItem actions={[
               {label:"添加现有文件夹…", disabled:status.state !== "ready" || Boolean(runningTurnId), onSelect:() => void openProject()},
@@ -1810,7 +1781,6 @@ function App() {
           </div> : null}
           {uiError ? <div className="error-banner">{uiError}</div> : null}
           {followupNotice?<div className="composer-hints" role="status">{followupNotice}</div>:null}
-          {chatEngine==="opencode"&&<section className="context-section"><strong>OpenCode 独立工程测试（不修改当前工程）</strong><p role="status">{fixtureStatus}</p><pre style={{whiteSpace:"pre-wrap",maxHeight:240,overflow:"auto"}}>{fixtureOutput}</pre><details><summary>工具执行事件（{fixtureEvents.length}）</summary><pre style={{whiteSpace:"pre-wrap",maxHeight:180,overflow:"auto"}}>{fixtureEvents.join("\n")}</pre></details></section>}
           <textarea
             value={input}
             onChange={(event) => {setInput(event.target.value); inputDrafts.current.set(inputOwner, event.target.value);}}
@@ -1839,7 +1809,6 @@ function App() {
           />
           <div className="composer-row">
             <div className="model-controls">
-              <select aria-label="执行引擎" value={chatEngine} disabled={fixtureBusy||Boolean(runningTurnId)||Boolean(conversationTasks.active)} onChange={e=>setChatEngine(e.target.value==="opencode"?"opencode":"legacy")}><option value="legacy">Legacy</option><option value="opencode">OpenCode（独立工程测试）</option></select>
 
               <select
                 className={
@@ -1879,7 +1848,6 @@ function App() {
                   <option value="">No models</option>
                 )}
               </select>
-              {selectedModel!=='auto'?<label className="model-fallback-toggle"><input type="checkbox" checked={allowModelFallback} disabled={runningTurnId!==null} onChange={e=>setAllowModelFallback(e.target.checked)}/>允许模型自动回退</label>:null}
               <span className="composer-hints">
                 {modelIdentity ? <span title={modelIdentity}>{modelIdentity}</span> : null}
                 {contextLabel ? (
@@ -1892,7 +1860,7 @@ function App() {
                 <span>Shift+Enter newline</span>
               </span>
             </div>
-            {fixtureBusy ? <button type="button" className="stop-button" onClick={()=>void window.localAgent.cancelLocalChat?.().catch(error=>setFixtureStatus(String(error)))}>停止 OpenCode</button> : runningTurnId || conversationTasks.active ? (
+            {runningTurnId || conversationTasks.active ? (
               <>
               <button type="submit" className="followup-send-button" disabled={!input.trim() || status.state!=='ready' || !providerReady}>追加需求</button>
               <button
@@ -1948,7 +1916,6 @@ function App() {
       </main>
       {projectDiffOpen ? <ProjectDiffDialog onClose={()=>setProjectDiffOpen(false)}/> : null}
       {projectSearchOpen ? <ProjectSearchDialog onClose={()=>setProjectSearchOpen(false)}/> : null}
-      {localChatOpen ? <OpenCodeChatDialog onClose={()=>setLocalChatOpen(false)}/> : null}
       {renamingThread ? <RenameThreadDialog title={renamingThread.thread.title} onSave={commitThreadRename} onClose={() => {
         const trigger = renamingThread.trigger;
         setRenamingThread(null);

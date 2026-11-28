@@ -85,28 +85,51 @@ export class OpenCodeSupervisor {
     return {authorization:"Basic "+Buffer.from("opencode:"+this.password).toString("base64")};
   }
   async request(route:string,method="GET",body?:unknown):Promise<unknown>{
-    const session = /^\/api\/session\/([A-Za-z0-9_-]+)(\/interrupt|\/prompt)?$/.exec(route);
+    const session = /^\/api\/session\/([A-Za-z0-9_-]+)(\/interrupt|\/prompt|\/model)?$/.exec(route);
+    const approval = /^\/api\/session\/[A-Za-z0-9_-]+\/permission\/per[A-Za-z0-9_-]+\/reply$/.test(route);
     const promptAllowed = this.localChat || this.options.allowPrompt === true;
     const allowed = (method==="GET" && (route==="/api/info" || route==="/api/session" || route==="/api/session/active" || (session && !session[2] && session[1]))) ||
       (method==="POST" && (route==="/api/session" || (session && (session[2]==="/interrupt" || (promptAllowed && session[2]==="/prompt"))))) ||
-      (method==="DELETE" && this.options.allowPrompt === true && !!session && !session[2]);
+      (this.options.allowPrompt === true && (
+        ((method==="DELETE" || method==="PATCH") && !!session && !session[2]) ||
+        (method==="POST" && (approval || session?.[2]==="/model"))));
     if(!allowed) throw new Error("Route not allowed");
     if(method==="POST" && route==="/api/session"){
-      const input=body as {title?:unknown;permissions?:unknown}|undefined;
+      const input=body as {title?:unknown;permissions?:unknown;location?:{directory?:unknown}}|undefined;
       if(typeof input?.title!=="string" || !Array.isArray(input.permissions)) throw new Error("Invalid session create request");
       if(this.options.allowPrompt !== true){
         if(JSON.stringify(input.permissions)!==JSON.stringify([{action:"*",resource:"*",effect:"deny"}])) throw new Error("Only deny-all diagnostic sessions allowed");
         body={title:input.title,permissions:[{action:"*",resource:"*",effect:"deny"},...(this.fixtureTools?[{action:"read",resource:"seed.txt",effect:"allow"},{action:"read",resource:"add.cjs",effect:"allow"},{action:"edit",resource:"add.cjs",effect:"allow"},{action:"edit",resource:"result.txt",effect:"allow"},{action:"shell",resource:"echo P2_SHELL_CHECK",effect:"allow"},{action:"shell",resource:"git status --short",effect:"allow"},{action:"shell",resource:"git diff -- add.cjs",effect:"allow"}]:[])]};
       } else {
-        body={title:input.title,permissions:input.permissions};
+        if (input.location && (typeof input.location.directory !== "string" || !path.isAbsolute(input.location.directory)
+          || !this.options.cwd || path.relative(this.options.cwd,input.location.directory) !== "")) {
+          throw new Error("Invalid project location");
+        }
+        body={title:input.title,permissions:input.permissions,...(input.location ? {location:input.location} : {})};
       }
+    } else if (method==="PATCH") {
+      const input=body as {permissions?:unknown}|undefined;
+      if (!Array.isArray(input?.permissions)) throw new Error("Invalid session permissions");
+      body={permissions:input.permissions};
+    } else if (method==="POST" && session?.[2]==="/model") {
+      const model=(body as {model?:{id?:unknown;providerID?:unknown}}|undefined)?.model;
+      if (typeof model?.id !== "string" || typeof model.providerID !== "string") throw new Error("Invalid session model");
+      body={model:{id:model.id,providerID:model.providerID}};
+    } else if (method==="POST" && approval) {
+      const input=body as {decision?:unknown}|undefined;
+      if (input?.decision !== "once" && input?.decision !== "reject") throw new Error("Invalid permission decision");
+      body={decision:input.decision};
     } else if(method==="POST" && session?.[2]==="/prompt") {
-      const input=body as {text?:unknown}|undefined;
+      const input=body as {text?:unknown;delivery?:unknown;id?:unknown;resume?:unknown}|undefined;
       if(typeof input?.text!=="string" || !input.text.trim() || Buffer.byteLength(input.text)>65536) throw new Error("Invalid prompt request");
-      body={text:input.text};
+      if (input.delivery !== undefined && (this.options.allowPrompt !== true || input.delivery !== "steer"
+        || typeof input.id !== "string" || !/^msg_[a-zA-Z0-9_-]{1,128}$/.test(input.id) || input.resume !== false)) {
+        throw new Error("Invalid prompt delivery");
+      }
+      body={text:input.text,...(input.delivery ? {delivery:input.delivery,id:input.id,resume:false} : {})};
     } else if(body!==undefined) throw new Error("Unexpected request body");
     const response=await fetch(this.origin+route,{method,headers:{...this.headers(),"content-type":"application/json"},body:body===undefined?undefined:JSON.stringify(body),redirect:"error",signal:AbortSignal.timeout(promptAllowed ? 30000 : 8000)});
-    if(!response.ok){await response.body?.cancel();throw new Error("Sidecar HTTP "+response.status);}
+    if(!response.ok){await response.body?.cancel();throw new SidecarHttpError(response.status);}
     return response.status===204?undefined:response.json();
   }
   async events(signal:AbortSignal):Promise<Response>{
@@ -127,5 +150,11 @@ export class OpenCodeSupervisor {
       }
       if(this.child===child) await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{child.removeListener("close",done);reject(new Error("Sidecar close timeout"));},5000);function done(){clearTimeout(timer);resolve();}child.once("close",done);});
     } finally {this.stopping=false;}
+  }
+}
+
+export class SidecarHttpError extends Error {
+  constructor(readonly status: number) {
+    super("Sidecar HTTP " + status);
   }
 }
