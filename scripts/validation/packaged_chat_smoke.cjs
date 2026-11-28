@@ -25,7 +25,8 @@ const server=http.createServer((req,res)=>{
   const delta=toolResult?{content:actual}:{tool_calls:[{index:0,id:'owned-read-'+calls,type:'function',function:{name:'read',arguments:JSON.stringify({[field]:fixture})}}]};
   const event=(content,finish_reason)=>'data: '+JSON.stringify({id:'packaged',object:'chat.completion.chunk',model:p.model,choices:[{index:0,delta:content,finish_reason}]})+'\n\n';
   res.writeHead(200,{'Content-Type':'text/event-stream'});
-  res.end(event({role:'assistant',...delta},null)+event({},toolResult?'stop':'tool_calls')+'data: [DONE]\n\n');
+  res.write(event({role:'assistant',...delta},null));
+  setTimeout(()=>res.end(event({},toolResult?'stop':'tool_calls')+'data: [DONE]\n\n'),25);
  });
 });
 (async()=>{
@@ -40,7 +41,13 @@ const server=http.createServer((req,res)=>{
    if(process.argv.includes('--no-sdk')){env.PATH=path.join(process.env.WINDIR,'System32')+';'+process.env.WINDIR;env.Path=env.PATH;env.LCA_NO_SDK_ACCEPTANCE='1';}
    child=cp.spawn(exe,[],{cwd:output,env,windowsHide:true,stdio:['ignore','pipe','pipe']});
    const errors=[];child.stderr.on('data',d=>{if(/Error|Exception/.test(String(d)))errors.push(String(d).slice(-500));});
-   const exit=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{cp.spawnSync('taskkill',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});reject(Error(`Owned packaged acceptance timeout (run ${run+1}, marker=${fs.existsSync(marker)})`));},120000);child.once('error',e=>{clearTimeout(timer);reject(e);});child.once('exit',code=>{clearTimeout(timer);resolve(code);});});
+   const exit=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{
+    if(fs.existsSync(marker)){
+     try{const snapshot=JSON.parse(fs.readFileSync(marker,'utf8'));report.failure_marker={ok:snapshot.ok,error:snapshot.error,engine:snapshot.engine,chat_verified:snapshot.chat_verified,file_verified:snapshot.file_verified};}catch{}
+    }
+    cp.spawnSync('taskkill',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
+    reject(Error(`Owned packaged acceptance timeout (run ${run+1}, marker=${fs.existsSync(marker)})`));
+   },120000);child.once('error',e=>{clearTimeout(timer);reject(e);});child.once('exit',code=>{clearTimeout(timer);resolve(code);});});
    child=null;if(exit!==0||!fs.existsSync(marker))throw Error('Package exited '+exit+' before marker; '+errors.join(' '));
    const data=JSON.parse(fs.readFileSync(marker,'utf8'));if(!data.ok||!data.chat_verified||!data.file_verified||!data.packaged||data.engine!=='opencode')throw Error('Package OpenCode chat/file proof failed: '+JSON.stringify(data));
    report.runs.push({result:'PASS',exit_code:exit,...data});

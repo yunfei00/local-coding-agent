@@ -135,6 +135,10 @@ jobs:
         if: runner.os == 'Windows'
         run: node scripts/validation/opencode/desktop-live.cjs --mock --drop-completion
 
+      - name: OpenCode product reconciliation after lost text events
+        if: runner.os == 'Windows'
+        run: node scripts/validation/opencode/desktop-live.cjs --mock --drop-text
+
       - name: Actual desktop task and regression smoke
         if: runner.os == 'Windows'
         run: node scripts/validation/desktop-smoke.cjs
@@ -179,4 +183,5 @@ jobs:
           path: |
             validation-reports/v2-opencode-desktop-mock.json
             validation-reports/v2-opencode-desktop-recovery.json
+            validation-reports/v2-opencode-desktop-text-recovery.json
           if-no-files-found: ignore

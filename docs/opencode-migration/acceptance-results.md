@@ -9,7 +9,7 @@
 | P2 旧内核清理 | PARTIAL | 桌面 Python 确实进入数据模式，独立 Python 执行仍存在 |
 | P3 真实 Ollama | PARTIAL | 本机 CPU `qwen3:4b` 对话和重启历史通过，120251 ms。默认 4096 上下文写入超时，616051 ms。8192 上下文、非默认环回端口真实写入通过，241790 ms。独立 Git 工程的完整 Task 在 609438 ms 超时并保留 worktree，未取得通过的验收结果 |
 | P4 在线开发 | NOT RUN | 付费请求、Token 和费用均为零 |
-| P5 Mock 正式产品回归 | PARTIAL | `node scripts/validation/opencode/desktop-live.cjs --mock` 通过，21117 ms，`validation-reports/v2-opencode-desktop-mock.json`。一次性审批、跨项目读取拦截、正式 Task、原生写入和终端、独立 unittest、Diff、重启历史均有证据。`--mock --drop-completion` 实际丢弃文本和完成 SSE 后恢复通过，28357 ms，`validation-reports/v2-opencode-desktop-recovery.json`；20 项矩阵仍有缺口 |
+| P5 Mock 正式产品回归 | PARTIAL | 正常 `--mock` 通过，14864 ms，`validation-reports/v2-opencode-desktop-mock.json`。丢弃文本和结束 `--drop-completion` 通过，22895 ms。仅丢弃文本 `--drop-text` 通过，15646 ms，`validation-reports/v2-opencode-desktop-text-recovery.json`。实际审批、项目边界、原生写入和终端、独立 unittest、Diff 与重启历史均有证据；20 项矩阵仍有缺口 |
 | P6 独立更新 | PARTIAL | 更新器 6 项回归和锁定 v2.2.6 真进程协议探测通过，2717 ms。用 GitHub CLI 下载的官方归档实测 v2.2.5 → v2.2.6 → v2.2.5，通过 SHA256、解压、指针持久化及回退后重启，13464 ms。应用原生 HTTPS 传输在本机超时 |
 | P7 安全和预算 | PARTIAL | 网关专项通过 HTTP 401/403/429/500、拒绝超预算以及清理错误响应中的凭据。文件边界专项使用真实 Windows junction。`credential_scan.py` 扫描 681 个跟踪文件，无发现；安全矩阵有缺口 |
 | P8 Windows 候选 | PARTIAL | 本机候选在 `build/v2-candidate-reviewed`。Portable 两次无 Git、Node、uv、Python 的独立启动和 `read` 通过，退出后零候选残留进程。Actions 已生成两个二进制，基础 Portable 启动通过，打包版聊天超时，Setup 未执行。[GitHub Actions Artifact](https://github.com/yunfei00/local-coding-agent/actions/runs/46106043867/artifacts/15248154934) |
@@ -39,6 +39,8 @@ Windows 专项使用原有真实 WinForms fixture。首次独立验收捕获故�
 同一个 Actions Portable 在本机第一轮无 SDK 原生读取和聊天通过，第二轮两次模型请求及真实读取已发生，但聊天验收标记失败并超时。对应证据为 `build/packaged-v2-action-portable-f98f0c2f2d3a4e50b4d5323c5649b19e/report.json`。仍需解决打包版两次启动的稳定性。
 
 `8f488a6` 的干净 Runner 完成解包版、Portable 基础启动、Setup 实装、两轮无 SDK 基础启动、卸载后数据检查和 SHA256 校验。两种包装的第二轮聊天测试均超时，工作流结果仍为失败。该轮尚未包含完成记录恢复修复。[8f488a6 Windows 候选](https://github.com/yunfei00/local-coding-agent/actions/runs/46122729376)
+
+`bd02aca` 干净 Runner 再次通过基础 Setup、Portable、无 SDK 重启、数据保留及 SHA256。聊天专项分别收到真实读取结果，但第一轮的应用退出计时超时。后续加入仅丢文本恢复及关闭上限，已由正式产品专项覆盖。[bd02aca Windows 候选](https://github.com/yunfei00/local-coding-agent/actions/runs/46123955582/artifacts/15254859197)
 
 | Actions 候选 `e16e853` | 大小（字节） | SHA256 |
 | --- | ---: | --- |

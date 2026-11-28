@@ -5,6 +5,7 @@
 | Python、桌面类型检查、桌面单元、前端构建 | `uv run --no-sync python scripts/validation/check.py` | `validation-reports` 下本次 JSON 和日志 |
 | 正式产品 Mock | `node scripts/validation/opencode/desktop-live.cjs --mock` | 原生批准、文件独立读取、下一轮工具输出、重启历史 |
 | 真实完成事件丢失 | `node scripts/validation/opencode/desktop-live.cjs --mock --drop-completion` | 真实 OpenCode、工具和工作树运行，仅在 Electron 测试端丢弃文本和结束事件，校验按本轮消息 ID 恢复 |
+| 仅文本事件丢失 | `node scripts/validation/opencode/desktop-live.cjs --mock --drop-text` | 保留真实结束事件，从同一轮持久会话恢复不可见的回复，验证重启仍可见 |
 | Ollama | `node scripts/validation/opencode/desktop-live.cjs` | 挑战字串、真实流式完成、重启历史 |
 | Ollama 实际写入 | `node scripts/validation/opencode/desktop-live.cjs --project-write` | 隔离文件实际内容、审批和工具完成 |
 | CPU 上下文 8192 复验 | `powershell.exe -NoProfile -File scripts/validation/opencode/run-local-ollama.ps1 -Scenario Write` | 复用本机已有模型，启动独立环回服务并完整清理；`-Scenario Task` 检查隔离工作树、unittest 和 Diff |

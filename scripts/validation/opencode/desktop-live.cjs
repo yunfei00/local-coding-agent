@@ -17,6 +17,7 @@ const checks = [];
 const model = "qwen3:4b";
 const mock = process.argv.includes("--mock");
 const dropCompletion = mock && process.argv.includes("--drop-completion");
+const dropText = dropCompletion || (mock && process.argv.includes("--drop-text"));
 const projectWrite = mock || process.argv.includes("--project-write");
 const liveTask = !mock && process.argv.includes("--project-task");
 const tunedOrigin = !mock && process.env.LCA_TEST_OLLAMA_ORIGIN;
@@ -159,17 +160,17 @@ async function main() {
       await api.taskRequest("","task.settings.update",{config:{...saved,budget:{...saved.budget,request_seconds:240,task_seconds:600}}});
     });
   }
-  if (dropCompletion) {
-    await application.evaluate((_electron, mainFile) => {
+  if (dropText) {
+    await application.evaluate((_electron, {mainFile,dropCompletion}) => {
       const requireFromApp = process.getBuiltinModule("node:module").createRequire(mainFile);
       const {EngineEventBridge} = requireFromApp("./engineEventBridge.js");
       const follow = EngineEventBridge.prototype.follow;
       EngineEventBridge.prototype.follow = function (sessionId, signal, receive) {
         return follow.call(this,sessionId,signal,event => {
-          if (event.kind !== "text" && event.kind !== "execution-ended") receive(event);
+          if (event.kind !== "text" && (!dropCompletion || event.kind !== "execution-ended")) receive(event);
         });
       };
-    },path.join(root,"desktop","dist-electron","main.js"));
+    },{mainFile:path.join(root,"desktop","dist-electron","main.js"),dropCompletion});
   }
   checks.push("Electron connected to isolated data service");
   await application.evaluate(({dialog}, folder) => {
@@ -226,6 +227,7 @@ async function main() {
     checks.push("OpenCode native write waited for one-shot approval, then changed the isolated file");
   }
   checks.push(dropCompletion ? "Missing text and terminal SSE were restored from the current native durable completion" :
+    dropText ? "Missing text was restored after the live native terminal event" :
     mock ? "Official composer streamed through OpenCode and the non-default-port model mock" :
     "Official composer streamed a real OpenCode answer via qwen3:4b");
   if (mock) {
@@ -288,8 +290,9 @@ main().then(() => write("PASS"), error => {
 });
 
 function write(status, error) {
-  const report = {status, model, mock, drop_completion:dropCompletion, checks, error, elapsed_ms:Date.now()-started, evidence_dir:data};
-  const destination = path.join(reports, dropCompletion ? "v2-opencode-desktop-recovery.json" : mock ? "v2-opencode-desktop-mock.json" :
+  const report = {status, model, mock, drop_completion:dropCompletion, drop_text:dropText, checks, error, elapsed_ms:Date.now()-started, evidence_dir:data};
+  const destination = path.join(reports, dropCompletion ? "v2-opencode-desktop-recovery.json" :
+    dropText ? "v2-opencode-desktop-text-recovery.json" : mock ? "v2-opencode-desktop-mock.json" :
     liveTask ? "v2-opencode-desktop-live-task.json" : tunedOrigin ? "v2-opencode-desktop-alternate-ollama.json" :
     projectWrite ? "v2-opencode-desktop-live-tool.json" : "v2-opencode-desktop-live.json");
   fs.mkdirSync(path.dirname(destination), {recursive:true});

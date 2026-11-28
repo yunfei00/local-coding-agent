@@ -144,7 +144,7 @@ async function maybeCompletePackagedSmoke():Promise<void> {
       }
       fileVerified=existsSync(target)&&readFileSync(target,'utf8')===nonce;
       engine=await mainWindow!.webContents.executeJavaScript('window.packagedSmokeEngine');
-      if(!chatVerified||!fileVerified||engine!=='opencode')throw new Error('Packaged composer/chat/file readback not verified');
+      if(!chatVerified||!fileVerified||engine!=='opencode')throw new Error(`Packaged composer/chat/file readback not verified (chat=${chatVerified}, file=${fileVerified}, completed=${engine==='opencode'})`);
     }
     writeFileSync(smokeFile,JSON.stringify({ok:true,renderer_ready:true,version:lastAgentReady.version,protocol:lastAgentReady.protocol,
       host:lastAgentReady.host,port:lastAgentReady.port,packaged:app.isPackaged,agent_executable:packagedAgentPath(),
@@ -1921,6 +1921,8 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       const timeoutAt = Date.now() + gateway.durationMs;
       let nextReconcile = Date.now() + 3000;
       let reconnectDeadline = Infinity;
+      let reconciledTerminal = false;
+      const recover = () => openCodeRuntime.sessionContext(sessionId).then(context=>recoverCompletedExchange(context,messageId)).catch(()=>undefined);
       while (!finished && Date.now() < timeoutAt && !entry.controller.signal.aborted) {
         if (bridgeFailed && reconnectDeadline === Infinity) reconnectDeadline = Date.now() + 10000;
         if (Date.now() >= reconnectDeadline) break;
@@ -1930,9 +1932,10 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
           const time = snapshot?.data?.time;
           if (!finished && !entry.controller.signal.aborted && snapshot?.data?.id === sessionId &&
               typeof time?.idle === "number" && typeof time.busy === "number" && time.idle >= Math.max(startedAtMs,time.busy)) {
-            const recovered = await openCodeRuntime.sessionContext(sessionId).then(context=>recoverCompletedExchange(context,messageId)).catch(()=>undefined);
+            const recovered = await recover();
             if (recovered && !finished && !entry.controller.signal.aborted) {
               terminal = finished = true;
+              reconciledTerminal = true;
               entry.outcome = recovered.outcome;
               if (recovered.text.startsWith(assistant)) appendDelta(recovered.text.slice(assistant.length));
               else {
@@ -1948,6 +1951,12 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       }
       entry.controller.abort();
       await follow.catch(() => {});
+      if (!reconciledTerminal && terminal && entry.outcome === "succeeded" && !entry.cancelled) {
+        const recovered = await recover();
+        if (!entry.cancelled && recovered?.outcome === "succeeded" && recovered.text.startsWith(assistant)) {
+          appendDelta(recovered.text.slice(assistant.length));
+        }
+      }
       if (assistant) await sendRequest("turn.record_external", "turn.recorded", { project_id:projectId, role: "assistant", content: assistant.slice(0,200000) }, { threadId });
       emitMetrics();
       if (entry.cancelled || entry.outcome === "interrupted") {
@@ -2078,12 +2087,16 @@ app.on("before-quit", (event) => {
   }
 
   quitInProgress = true;
-  const openCodeStopped = Promise.allSettled([...activeOpenCodeTurns.values()].map(turn => stopOpenCodeTurn(turn, true)))
-    .then(() => openCodeRuntime.stop());
-  void Promise.allSettled([openCodeStopped.then(() => stopAgent()), openCodeStopped]).finally(() => {
-    quitReady = true;
-    app.quit();
-  });
+  void (async ()=>{
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    const drained = Promise.allSettled([...activeOpenCodeTurns.values()].map(turn=>stopOpenCodeTurn(turn,true)));
+    try {
+      await Promise.race([drained,new Promise<void>(resolve=>{timer=setTimeout(resolve,15000);})]);
+    } finally {
+      clearTimeout(timer);
+    }
+    await Promise.allSettled([openCodeRuntime.stop(),stopAgent()]);
+  })().finally(()=>{quitReady=true;app.quit();});
 });
 
 app.on("window-all-closed", () => {
