@@ -152,7 +152,9 @@ export async function startOpenCodeModel(catalog: ModelCatalog, config: TaskConf
   const maxOutput = limits.output ?? 2048;
   const budget = config.budget ?? {};
   const online = connection.provider_type === "openai_compatible";
-  if (online && connection.credential_reference && !provider.settings.apiKey) {
+  // Migrated legacy profiles use this reference even when the original endpoint
+  // was deliberately anonymous. Explicit per-connection references are different.
+  if (online && connection.credential_reference && connection.credential_reference !== "legacy-openai" && !provider.settings.apiKey) {
     throw new Error("当前连接的受保护 API 凭据不可用，请在保存该连接的 Windows 用户账户下检查 Settings。");
   }
   if (online && !reserveOnline) throw new Error("在线模型需要持久化预算服务");

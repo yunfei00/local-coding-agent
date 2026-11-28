@@ -5,7 +5,9 @@
 - 单次传输请求独立计算字节上限，累计字节仅用于统计。OpenCode 使用已配置的上下文窗口，在线模型仍在转发前做持久预算检查。HTTP 413 表示单次报文过大，预算不足和上游上下文限制分别报告。
 - Kimi 复用锁定版 OpenCode 的 Moonshot Chat 适配器，保留历史推理内容和工具消息。网关使用 Settings 的端点和精确模型 ID，按 Kimi 文档发送 `max_completion_tokens` 并省略固定采样参数。HTTP 400 诊断仅保留经分类的原因和已知参数字段。真实上游响应、原始请求和凭据均不进入 UI 错误。参考 [Kimi K3.1 Pro 文档](https://platform.kimi.ai/docs/guide/kimi-k3-1-pro-quickstart)。
 - 本机 Ollama 的 `qwen3:4b` 真实回复包含单独一行的 `</think>`，但原生文本没有开头标签。桌面支持这种输出及 OpenCode 原生 reasoning 增量。思考单独折叠，恢复历史时仅使用正式正文。追加消息以原生送达事件为准，终态会清除排队提示。参考 [Ollama 思考模式](https://docs.ollama.com/capabilities/thinking)。
-- 原生运行时、桌面窗口与环回 Mock 验证同会话切换、新会话切换、实际请求模型 ID、Kimi 历史推理回传与正文分离。真实在线预检仍为 NOT RUN。当前 Windows Settings 无 `kimi-k3.1-pro` 精确项，`qwen4-max` 的凭据在 Electron 安全存储中不可读。两者均发出 0 次在线请求。
+- 原生运行时、桌面窗口与环回 Mock 验证同会话切换、新会话切换、实际请求模型 ID、Kimi 历史推理回传与正文分离。当前 Windows Settings 无 `kimi-k3.1-pro` 精确项，真实 Kimi 验收为 NOT RUN，0 次请求。
+- 隔离的开发进程无法读取 `qwen4-max` 的凭据。改用打包版 Electron、当前 Windows 用户与原始 AppData 后，OS 安全存储成功读取并确认了该连接绑定，原凭据文件保持原样。真实 Qwen 五轮均完成，未再出现 413。第一轮工程尝试暂停，第二次定向尝试的独立 unittest 与 Git Diff 已通过。整个 Qwen 验收至多发送 12 次请求。
+- 旧配置迁移时为 API 留下了一个通用凭据引用，即使原服务允许匿名请求。保留此兼容行为，新连接明确绑定的凭据不可用时仍在发出请求前提示。
 
 记录日期为 2026 年 11 月 28 日。当前仍有发布阻断项。
 
