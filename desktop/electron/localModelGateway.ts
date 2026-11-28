@@ -78,8 +78,12 @@ export async function startCompatibleGateway(model:string,endpoint:CompatibleEnd
           ...(body.stream_options && body.stream===true ? {stream_options:body.stream_options} : {}),
           ...(limits.allowTools?{tools:body.tools,tool_choice:body.tool_choice}:{})})
       });
+      if (!response.ok) {
+        await response.body?.cancel();
+        return reject(response.status,"Provider rejected model request");
+      }
       lastStatus=response.status;
-      failure=response.ok ? undefined : "Provider rejected model request";
+      failure=undefined;
       res.writeHead(response.status,{"content-type":response.headers.get("content-type")??"application/json"});
       if(response.body){
         let outputBytes=0;

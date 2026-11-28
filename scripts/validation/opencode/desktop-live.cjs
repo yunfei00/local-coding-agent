@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 const { randomBytes } = require("node:crypto");
 const { _electron } = require("../../../desktop/node_modules/playwright-core");
 
@@ -16,6 +17,11 @@ const checks = [];
 const model = "qwen3:4b";
 const mock = process.argv.includes("--mock");
 const projectWrite = mock || process.argv.includes("--project-write");
+const outside = path.join(data, "different-project.txt");
+const outsideCanary = "EXTERNAL_" + randomBytes(10).toString("hex");
+if (mock) fs.writeFileSync(outside,outsideCanary);
+const testEnv = Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith("GIT_CONFIG_")));
+let outsideResult;
 let provider;
 let providerUrl = "http://127.0.0.1:11434";
 let modelRequests = 0;
@@ -30,7 +36,7 @@ async function launch() {
     cwd: root,
     timeout: 60_000,
     env: {
-      ...process.env, LCA_DATA_DIR: path.join(data, "agent"), LCA_DESKTOP_DATA_DIR: path.join(data, "desktop"),
+      ...testEnv, LCA_DATA_DIR: path.join(data, "agent"), LCA_DESKTOP_DATA_DIR: path.join(data, "desktop"),
       LCA_PROVIDER:"ollama", LCA_OLLAMA_URL:providerUrl, LCA_OLLAMA_MODEL:model, LCA_OPENAI_API_KEY:"",
     },
   });
@@ -50,6 +56,12 @@ async function launch() {
 
 async function main() {
   if (mock) {
+    fs.writeFileSync(path.join(project,"calculator.py"),"def add(a, b):\n    return a - b\n");
+    fs.writeFileSync(path.join(project,"test_calculator.py"),"import unittest\nfrom calculator import add\nclass CalculatorTest(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n");
+    fs.writeFileSync(path.join(project,".gitignore"),"__pycache__/\n");
+    for (const argv of [["init","-q","-b","main"],["add","."],["-c","user.name=Fixture","-c","user.email=fixture@example.test","commit","-qm","fixture"]]) {
+      execFileSync("git",argv,{cwd:project,env:testEnv});
+    }
     provider = http.createServer(async (req,res) => {
       if (req.method === "GET" && req.url === "/api/tags") {
         res.writeHead(200,{"Content-Type":"application/json"});
@@ -65,11 +77,37 @@ async function main() {
       const request = JSON.parse(raw);
       const transcript = JSON.stringify(request.messages);
       const canary = transcript.match(/LCA[a-f0-9]{10}/)?.[0];
-      if (!canary || request.model !== model || !request.stream) return res.writeHead(400).end();
+      if (request.model !== model || !request.stream) return res.writeHead(400).end();
       modelRequests++;
       res.writeHead(200,{"Content-Type":"text/event-stream"});
       const delta = (content,finish_reason) => "data: "+JSON.stringify({id:"fixture",object:"chat.completion.chunk",model,
         choices:[{index:0,delta:content,finish_reason}]})+"\n\n";
+      const user = request.messages.findLastIndex(message => message.role === "user");
+      const thisTurn = request.messages.slice(user + 1);
+      if (JSON.stringify(request.messages[user] ?? {}).includes("open-code-task-fixture")) {
+        const result = thisTurn.findLast(message => message.role === "tool");
+        if (result) return res.end(delta({role:"assistant",content:"Calculator patch submitted for independent verification"},null)+delta({},"stop")+"data: [DONE]\n\n");
+        const tool = request.tools?.find(tool => tool.function?.name === "write")?.function;
+        const field = Object.keys(tool?.parameters?.properties ?? {}).find(name => /^(filePath|path|file_path)$/.test(name));
+        if (!field) return res.destroy();
+        res.write(delta({role:"assistant",tool_calls:[{index:0,id:"call_fixture_task",type:"function",
+          function:{name:"write",arguments:JSON.stringify({[field]:"calculator.py",content:"def add(a, b):\n    return a + b\n"})}}]},null));
+        return res.end(delta({},"tool_calls")+"data: [DONE]\n\n");
+      }
+      if (JSON.stringify(request.messages[user] ?? {}).includes("cross-project-check")) {
+        const result = thisTurn.findLast(message => message.role === "tool");
+        if (result) {
+          outsideResult = String(result.content);
+          return res.end(delta({role:"assistant",content:"Cross-project check finished"},null)+delta({},"stop")+"data: [DONE]\n\n");
+        }
+        const tool = request.tools?.find(tool => tool.function?.name === "read")?.function;
+        const field = Object.keys(tool?.parameters?.properties ?? {}).find(name => /^(filePath|path|file_path)$/.test(name));
+        if (!field) return res.destroy();
+        res.write(delta({role:"assistant",tool_calls:[{index:0,id:"call_fixture_external",type:"function",
+          function:{name:"read",arguments:JSON.stringify({[field]:outside})}}]},null));
+        return res.end(delta({},"tool_calls")+"data: [DONE]\n\n");
+      }
+      if (!canary) return res.destroy();
       if (transcript.includes("v2-tool.txt") && !request.messages.some(message => message.role === "tool")) {
         const write = request.tools?.find(tool => tool.function?.name === "write")?.function;
         const fields = write?.parameters?.properties ?? {};
@@ -104,11 +142,14 @@ async function main() {
       }
       if (e.type === "approval.requested") {
         window.openc.push({type:e.type});
-        if (e.payload?.tool === "edit" && JSON.stringify(e.payload?.arguments).includes("v2-tool.txt")) {
+        const allowedEdit = e.payload?.tool === "edit" && /v2-tool\.txt|calculator\.py/.test(JSON.stringify(e.payload?.arguments));
+        const ownedWorktree = e.payload?.tool === "git_worktree_create" && /^task-/.test(e.payload?.arguments?.task_name ?? "");
+        if (allowedEdit || ownedWorktree) {
           void window.localAgent.respondApproval(e.payload.approval_id,"allow_once",e.turn_id).catch(error =>
             window.openc.push({type:"approval.error",message:String(error)}));
         }
       }
+      if (e.type === "task.updated") window.openc.push({type:e.type,task:e.payload?.task});
     });
   });
   const canary = "LCA" + randomBytes(5).toString("hex");
@@ -137,11 +178,35 @@ async function main() {
   }
   checks.push(mock ? "Official composer streamed through OpenCode and the non-default-port model mock" :
     "Official composer streamed a real OpenCode answer via qwen3:4b");
+  if (mock) {
+    await page.evaluate(() => {window.openc.length=0;});
+    await input.fill("cross-project-check: check the fixture outside the open project");
+    await page.waitForFunction(() => document.querySelector(".send-button")?.disabled === false);
+    await input.press("Enter");
+    await page.waitForFunction(() => window.openc.some(e => ["turn.completed","turn.failed"].includes(e.type)), null, {timeout:30_000});
+    assert(outsideResult,"Cross-project fixture must receive a native tool response");
+    assert(!outsideResult.includes(outsideCanary),"Out-of-project confidential text reached the provider");
+    assert.match(outsideResult, /permission|denied|not allowed|outside/i);
+    checks.push("OpenCode blocked a read of a sibling file before its contents reached the model");
+    const thread = await page.evaluate(async () => (await window.localAgent.getProject()).payload.active_thread.id);
+    const taskID = await page.evaluate(async threadId => {
+      const prepared = await window.localAgent.taskRequest(threadId,"task.start",{goal:"open-code-task-fixture: repair calculator.py",config:{verification_commands:["python -m unittest discover -v"]}});
+      return prepared.payload.task.id;
+    },thread);
+    await page.waitForFunction(id => window.openc.some(e => e.type === "task.updated" && e.task?.id === id),taskID,{timeout:60_000});
+    const task = await page.evaluate(id => window.openc.find(e => e.type === "task.updated" && e.task?.id === id).task,taskID);
+    const failures = await page.evaluate(() => window.openc.filter(e=>e.type === "turn.failed").map(e=>e.message));
+    assert.equal(task.status,"awaiting_approval",JSON.stringify({reason:task.reason,verification:task.verification,failures}));
+    assert.notEqual(task.workspace,project);
+    assert(task.verification.every(result=>result.ok));
+    assert(task.report.diff.includes("return a + b"));
+    assert(fs.readFileSync(path.join(project,"calculator.py"),"utf8").includes("return a - b"));
+    checks.push("Official task IPC used an isolated worktree, a native write, real independent unittest and a verified Git diff");
+  }
   await application.close();
   application = undefined;
   const restarted = await launch();
-  await restarted.locator(".message.agent").last().waitFor();
-  assert((await restarted.locator(".message.agent").last().innerText()).includes(canary));
+  await restarted.locator(".message.agent").filter({hasText:canary}).waitFor();
   checks.push("Assistant message persisted across Electron restart");
 }
 

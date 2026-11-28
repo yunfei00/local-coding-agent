@@ -1,4 +1,5 @@
 """Exercise production data-service admission and real independent worktree verification."""
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -7,6 +8,9 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+
+from aiohttp import web
+from aiohttp.test_utils import TestClient, TestServer
 
 from agent.server.main import AgentServer
 from test_agent_reliability import FakeWebSocket
@@ -43,6 +47,7 @@ class OpenCodeDataServiceTests(unittest.IsolatedAsyncioTestCase):
         self.project, self.thread, _ = self.server.projects.open(str(self.repo), active_model="fixture")
         self.ws = FakeWebSocket()
         self.server.permissions.set_mode("workspace")
+        self.request_approval = self.server.approvals.request
 
         async def approve(*_args, **_kwargs):
             return "allow_once"
@@ -78,6 +83,48 @@ class OpenCodeDataServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("global_api_calls", denied["payload"]["message"])
         self.assertEqual(self.server.tasks.runtime.usage()["reserved_tokens"], 840)
         self.assertFalse(self.server.tasks.runtime.usage()["actual_cost_known"])
+
+    async def test_real_socket_can_reply_to_task_workspace_approval(self):
+        self.server.approvals.request = self.request_approval
+        app = web.Application()
+        app.router.add_get("/ws", self.server.websocket)
+        async with TestClient(TestServer(app)) as client:
+            async with client.ws_connect("/ws", headers={"Authorization": "Bearer fixture"}) as socket:
+                async def read_until(predicate):
+                    for _ in range(25):
+                        event = await socket.receive_json(timeout=10)
+                        if predicate(event):
+                            return event
+                    self.fail("Expected Task protocol event was not received")
+
+                await socket.send_json({"type": "task.external.prepare", "request_id": "prepare", "thread_id": self.thread.id,
+                                        "payload": {"goal": "Fix test", "config": {"verification_commands": ["python -m unittest discover -v"]}}})
+                approval = await read_until(lambda event: event["type"] == "approval.requested" or event.get("request_id") == "prepare")
+                self.assertEqual(approval["type"], "approval.requested", approval)
+                await socket.send_json({"type": "approval.respond", "request_id": "reply", "thread_id": self.thread.id,
+                                        "turn_id": approval["turn_id"], "payload": {"approval_id": approval["payload"]["approval_id"], "decision": "allow_once"}})
+                opened = await read_until(lambda event: event.get("request_id") == "prepare")
+                self.assertEqual(opened["type"], "task.loaded", opened)
+                task = opened["payload"]["task"]
+                workspace = Path(task["workspace"])
+                self.assertTrue(workspace.is_dir())
+                (workspace / "test_wait.py").write_text(
+                    "import time\nimport unittest\nclass SlowTest(unittest.TestCase):\n"
+                    "    def test_wait(self):\n        time.sleep(45)\n", encoding="utf-8",
+                )
+                await socket.send_json({"type": "task.external.finish", "request_id": "verify", "thread_id": self.thread.id,
+                                        "payload": {"task_id": task["id"], "outcome": "succeeded"}})
+                async with asyncio.timeout(8):
+                    while task["id"] not in self.server.tasks.external_verifications:
+                        await asyncio.sleep(.02)
+                await socket.send_json({"type": "task.external.stop", "request_id": "stop", "thread_id": self.thread.id,
+                                        "payload": {"task_id": task["id"], "pause": True}})
+                stopped = await read_until(lambda event: event.get("request_id") == "stop")
+                self.assertTrue(stopped["payload"]["stopping"], stopped)
+                finished = await read_until(lambda event: event.get("request_id") == "verify")
+                self.assertEqual(finished["payload"]["task"]["status"], "paused", finished)
+                self.assertNotIn(task["id"], self.server.tasks.external_verifications)
+                self.assertTrue((workspace / "test_wait.py").is_file())
 
     async def test_open_code_task_keeps_worktree_and_independent_verification(self):
         response = await self.request("task.external.prepare", goal="修复测试",

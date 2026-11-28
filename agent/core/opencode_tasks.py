@@ -1,4 +1,5 @@
 """Workspace and acceptance services for tasks executed by Electron's OpenCode runtime."""
+import asyncio
 import math
 from pathlib import Path
 import time
@@ -147,6 +148,9 @@ async def finish_task(service, ws, project, thread_id, payload):
         status = "cancelled" if outcome == "cancelled" else "paused"
         return runtime.transition(task_id, status, "OpenCode 执行未完成，保留工作区")
     runtime.transition(task_id, "verifying", "执行独立验收命令")
+    running = asyncio.current_task()
+    assert running is not None
+    service.external_verifications[task_id] = (running, None)
     owner = new_id("opencode_verify")
     view = None
     try:
@@ -192,11 +196,17 @@ async def finish_task(service, ws, project, thread_id, payload):
                   "review": "独立验收通过，等待审阅 Diff" if passed else "独立验收未通过"}
         return runtime.transition(task_id, "awaiting_approval" if passed else "paused", report["review"],
                                   verification=results, report=report)
+    except asyncio.CancelledError:
+        _, status = service.external_verifications[task_id]
+        return runtime.transition(task_id, status or "paused", "独立验收已停止，工作区保留")
     except (ValueError, OSError, TimeoutError):
         runtime.transition(task_id, "paused", "独立验收无法完成")
         raise
     finally:
-        if view:
-            await view.tools.desktop.close_owner(owner)
-            await view.tools.processes.close_owner(owner)
-        service.server.approvals.finish_turn(owner)
+        try:
+            if view:
+                await view.tools.desktop.close_owner(owner)
+                await view.tools.processes.close_owner(owner)
+        finally:
+            service.external_verifications.pop(task_id, None)
+            service.server.approvals.finish_turn(owner)

@@ -264,7 +264,7 @@ class AgentServer:
                         )
                         continue
 
-                    if data['type'] in {'task.model.diagnostic','plan.operation.review'}:
+                    if data['type'] in {'task.model.diagnostic', 'plan.operation.review', 'task.external.prepare', 'task.external.finish'}:
                         diagnostic = asyncio.create_task(self.handle_message(ws, data, owned_turns))
                         diagnostic_requests.add(diagnostic)
                         diagnostic.add_done_callback(diagnostic_requests.discard)

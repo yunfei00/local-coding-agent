@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
 import {createServer} from "node:http";
-import {startLocalModelGateway} from "./localModelGateway";
+import {startCompatibleGateway,startLocalModelGateway} from "./localModelGateway";
 describe("local model gateway",()=>{
   it("authenticates, restricts model and tools, and enforces request budget",async()=>{
     let forwarded=0;
@@ -28,6 +28,42 @@ describe("local model gateway",()=>{
       expect((await call(body)).status).toBe(429);
       expect(forwarded).toBe(1);
     }finally{
+      await gateway.close();
+      await new Promise<void>(resolve=>{upstream.close(()=>resolve());upstream.closeAllConnections();});
+    }
+  });
+
+  it("forwards upstream status while only the configured upstream receives its credential", async () => {
+    const observed: Array<string | undefined> = [];
+    const fixtureCredential = "fixture-provider-key-not-a-credential";
+    const statuses = [401,403,429,500];
+    const upstream = createServer((request,response) => {
+      observed.push(request.headers.authorization);
+      request.resume();
+      response.writeHead(statuses[observed.length - 1], {"content-type":"application/json"});
+      response.end(JSON.stringify({error:`fixture upstream echoed ${fixtureCredential}`}));
+    });
+    await new Promise<void>(resolve => upstream.listen(0,"127.0.0.1",resolve));
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("Missing fixture port");
+    const gateway = await startCompatibleGateway("selected",{baseUrl:`http://127.0.0.1:${address.port}/v1`,apiKey:fixtureCredential},
+      {requests:6,inputBytes:4096,maxOutput:64,durationMs:10000,reserve:async () => {
+        if (observed.length === statuses.length) throw new Error("Fixture limit");
+      }});
+    const call = () => fetch(`http://127.0.0.1:${gateway.port}/v1/chat/completions`,{method:"POST",
+      headers:{authorization:"Bearer "+gateway.token},body:JSON.stringify({model:"selected",messages:[{role:"user",content:"test"}]})});
+    try {
+      for (const status of statuses) {
+        const response = await call();
+        expect(response.status).toBe(status);
+        expect(await response.text()).not.toContain(fixtureCredential);
+      }
+      const rejected = await call();
+      expect(rejected.status).toBe(429);
+      expect(await rejected.text()).toContain("persisted budget");
+      expect(observed).toEqual(statuses.map(() => "Bearer "+fixtureCredential));
+      expect(JSON.stringify(gateway.usage())).not.toContain(fixtureCredential);
+    } finally {
       await gateway.close();
       await new Promise<void>(resolve=>{upstream.close(()=>resolve());upstream.closeAllConnections();});
     }

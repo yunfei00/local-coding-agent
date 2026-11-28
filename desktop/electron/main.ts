@@ -16,7 +16,7 @@ import { OpenCodeRuntime } from "./openCodeRuntime";
 import { selectOpenCodeProfile, startOpenCodeModel } from "./openCodeConfig";
 import {OpenCodeUpdateManager} from "./openCodeUpdateManager";
 import {probeOpenCodeCompatibility} from "./openCodeCompatibility";
-import type { OpenCodePermissionMode } from "./openCodePermissions";
+import { isScopedResource, type OpenCodePermissionMode } from "./openCodePermissions";
 import {
   app,
   BrowserWindow,
@@ -992,11 +992,13 @@ type OpenCodeTurn = {
   cancelled: boolean;
   outcome: string;
   threadId: string;
+  goal: string;
   projectId?: string;
   done: Promise<void>;
   appended: Set<string>;
   taskId?:string;
   pauseTask?:boolean;
+  verifying?:boolean;
 };
 type OpenCodeTask = {
   id:string;
@@ -1008,7 +1010,7 @@ type OpenCodeTask = {
 };
 const activeOpenCodeTurns = new Map<string, OpenCodeTurn>();
 let preparingOpenCodeTask = false;
-const pendingOpenCodeApprovals = new Map<string, { sessionId: string; requestId: string; turnId: string; threadId: string }>();
+const pendingOpenCodeApprovals = new Map<string, { sessionId: string; requestId: string; turnId: string; threadId: string; action:string; resources:string[]; sensitive:boolean }>();
 ipcMain.handle("agent:engine-status", () => {
   if (openCodeRuntime.bundledVersion()) installedRuntimeUpdater();
   const status = openCodeRuntime.status();
@@ -1454,6 +1456,16 @@ ipcMain.handle(
       if (decision !== "deny" && decision !== "allow_once" && decision !== "allow_turn") throw new Error("无效审批决定");
       pendingOpenCodeApprovals.delete(approvalId);
       try {
+        if (pending.sensitive) decision = "deny";
+        if (decision !== "deny" && ["shell","bash"].includes(pending.action)) {
+          try {
+            await sendRequest("task.external.shell_check", "task.loaded", {project_id:entry.projectId,task_id:entry.taskId,
+              goal:entry.goal,commands:pending.resources},{threadId:entry.threadId});
+          } catch {
+            decision = "deny";
+          }
+        }
+        entry.controller.signal.throwIfAborted();
         await openCodeRuntime.replyPermission(pending.sessionId, pending.requestId, decision === "deny" ? "reject" : "once");
       } catch (error) {
         if (!entry.controller.signal.aborted) pendingOpenCodeApprovals.set(approvalId, pending);
@@ -1645,10 +1657,7 @@ ipcMain.handle("agent:task-request", async (_event, threadId: string, operation:
   }
   if (activeTask && (operation === "task.pause" || operation === "task.cancel")) {
     const turn = activeTask[1];
-    turn.pauseTask = operation === "task.pause";
-    turn.cancelled = true;
-    turn.controller.abort();
-    await turn.done;
+    await stopOpenCodeTurn(turn, operation === "task.pause");
     return sendRequest("task.list", "task.loaded", {}, {threadId});
   }
   const result = await sendRequest(operation, operation.startsWith('knowledge.')?'knowledge.loaded':operation==='model.capabilities'?'model.capabilities.loaded':"task.loaded", payload, {threadId}, operation === "task.model.diagnostic" ? 300000 : operation === "task.connection.test" ? 30000 : 15000);
@@ -1698,7 +1707,7 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
   const turnId = "turn_" + randomUUID().replace(/-/g, "");
   const startedAt = new Date().toISOString();
   broadcastAgentEvent({ type: "turn.started", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: startedAt, payload: { engine: "opencode" } });
-  const entry: OpenCodeTurn = { controller: new AbortController(), cancelled: false, outcome: "failed", threadId, done: Promise.resolve(), appended: new Set(), taskId:task?.id };
+  const entry: OpenCodeTurn = { controller: new AbortController(), cancelled: false, outcome: "failed", threadId, goal:task?.goal ?? prompt, done: Promise.resolve(), appended: new Set(), taskId:task?.id };
   activeOpenCodeTurns.set(turnId, entry);
   entry.done = (async () => {
     let assistant = "";
@@ -1706,6 +1715,11 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
     let terminal = false;
     let gateway: Awaited<ReturnType<typeof startOpenCodeModel>> | undefined;
     let releaseLease: (()=>Promise<void>) | undefined;
+    let finalEvent: AgentEnvelope | undefined;
+    const end = (type:string, message?:string) => {
+      finalEvent = {type, request_id:"req_"+randomUUID().replace(/-/g,""), turn_id:turnId, thread_id:threadId,
+        timestamp:new Date().toISOString(), payload:{engine:"opencode", ...(message ? {message} : {})}};
+    };
     try {
       const threadRes = await sendRequest("thread.get", "thread.loaded", { thread_id: threadId }, { threadId });
       const projectId = threadRes.payload?.project_id;
@@ -1725,7 +1739,8 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       const config = task?.config ?? (catalogRes as any)?.payload?.config ?? {};
       const credentials = {...readModelCredentials(), "legacy-openai":currentOpenAIKey() ?? ""};
       const taskProfile = task?.config.roles?.executor?.model_profile_id;
-      const selectedProfileId = selectOpenCodeProfile(catalog, taskProfile ? "profile:"+taskProfile : model, catalogRes.payload?.chat_default, config);
+      const threadModel = (threadRes.payload?.thread as {active_model?:string})?.active_model;
+      const selectedProfileId = selectOpenCodeProfile(catalog, taskProfile ? "profile:"+taskProfile : model ?? threadModel, catalogRes.payload?.chat_default, config);
       if (task?.opencode_local_only && !catalog.connections.some((connection:any) =>
         connection.provider_type === "ollama" && catalog.profiles.some((profile:any) =>
           profile.model_profile_id === selectedProfileId && profile.connection_id === connection.connection_id))) {
@@ -1854,12 +1869,24 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
           const requestId = String(p.requestId ?? p.requestID ?? p.id ?? "");
           if (requestId) {
             const approvalId = "oc_" + requestId;
-            pendingOpenCodeApprovals.set(approvalId, { sessionId, requestId, turnId, threadId });
+            const action = String(p.action ?? "permission");
+            const resources:string[] = Array.isArray(p.resources) ? p.resources.filter((resource:unknown)=>typeof resource === "string") : [];
+            const sensitive = resources.some(resource=>Object.values(credentials).some(key=>key.length>=12 && resource.includes(key)));
+            if (["read","edit","grep","glob"].includes(action)) {
+              const metadata = p.metadata && typeof p.metadata === "object" ? p.metadata : undefined;
+              const targets = ["grep","glob"].includes(action) ? (metadata && metadata.hidden !== true ? [metadata.path ?? metadata.root] : []) : resources;
+              const scoped = !sensitive && targets.length > 0 && targets.length <= 20 && targets.every(target=>isScopedResource(projectPath,target));
+              if (!scoped || action !== "edit" || mode === "full_access") {
+                void openCodeRuntime.replyPermission(sessionId,requestId,scoped ? "once" : "reject").catch(() => entry.controller.abort());
+                return;
+              }
+            }
+            pendingOpenCodeApprovals.set(approvalId, { sessionId, requestId, turnId, threadId, action, resources, sensitive });
             broadcastAgentEvent({ type: "approval.requested", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: {
               approval_id: approvalId,
-              tool: String(p.action ?? p.tool ?? "permission"),
-              arguments: (p.metadata && typeof p.metadata === "object") ? p.metadata : { resources: p.resources ?? [] },
-              reason: String(p.message ?? "OpenCode ????"),
+              tool: action,
+              arguments: sensitive ? {} : {resources:resources.slice(0,20).map(resource=>resource.slice(0,2000))},
+              reason: sensitive ? "操作包含受保护凭据，系统将拒绝执行。" : "OpenCode 请求对此操作授予一次性权限。",
               risk: "sensitive",
               engine: "opencode",
             } });
@@ -1897,21 +1924,21 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       if (assistant) await sendRequest("turn.record_external", "turn.recorded", { project_id:projectId, role: "assistant", content: assistant.slice(0,200000) }, { threadId });
       emitMetrics();
       if (entry.cancelled || entry.outcome === "interrupted") {
-        broadcastAgentEvent({ type: "turn.cancelled", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { engine: "opencode" } });
+        end("turn.cancelled");
       } else if (!finished || entry.outcome !== "succeeded") {
         const usage = gateway.usage();
         const diagnostic = [terminalError, usage.lastStatus && `model relay HTTP ${usage.lastStatus}`, usage.failure, `requests=${usage.requests}`].filter(Boolean).join(" / ");
         const msg = Date.now() >= timeoutAt && !finished ? "OpenCode 执行超时" : bridgeFailed ? "OpenCode 连接中断或状态无法确认" : `OpenCode 执行失败 (${diagnostic})`;
-        broadcastAgentEvent({ type: "turn.failed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { message: msg, engine: "opencode" } });
+        end("turn.failed",msg);
       } else {
-        broadcastAgentEvent({ type: "turn.completed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { engine: "opencode" } });
+        end("turn.completed");
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (entry.cancelled) {
-        broadcastAgentEvent({ type: "turn.cancelled", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { engine: "opencode" } });
+        end("turn.cancelled");
       } else {
-        broadcastAgentEvent({ type: "turn.failed", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { message, engine: "opencode" } });
+        end("turn.failed",message);
       }
     } finally {
       entry.controller.abort();
@@ -1925,10 +1952,15 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
         try {
           const outcome = entry.cancelled ? (entry.pauseTask ? "paused" : "cancelled") :
             terminal && entry.outcome === "succeeded" ? "succeeded" : "failed";
+          entry.verifying = outcome === "succeeded";
           const result = await sendRequest("task.external.finish", "task.loaded", {project_id:entry.projectId,task_id:task.id,outcome}, {threadId}, 600_000);
           broadcastAgentEvent({type:"task.updated",thread_id:threadId,turn_id:turnId,payload:result.payload});
+          const state = result.payload?.task as {status?:string;reason?:string}|undefined;
+          if (outcome === "succeeded" && state?.status !== "awaiting_approval") {
+            end("turn.failed", state?.reason ?? "独立验收未通过");
+          }
         } catch (error) {
-          broadcastAgentEvent({type:"turn.failed",thread_id:threadId,turn_id:turnId,payload:{message:String(error),engine:"opencode"}});
+          end("turn.failed",String(error));
         }
       }
       await releaseLease?.().catch(() => {});
@@ -1936,6 +1968,8 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
         if (pending.turnId === turnId) pendingOpenCodeApprovals.delete(id);
       }
       activeOpenCodeTurns.delete(turnId);
+      if (entry.cancelled) end("turn.cancelled");
+      if (finalEvent) broadcastAgentEvent(finalEvent);
     }
   })();
   void entry.done.catch(() => {});
@@ -1960,13 +1994,19 @@ async function appendOpenCodeTurn(threadId: string, turnId: string, prompt: stri
 }
 ipcMain.handle("agent:turn-append", (_event, threadId: string, turnId: string, prompt: string, messageId: string) =>
   appendOpenCodeTurn(threadId,turnId,prompt,messageId));
+async function stopOpenCodeTurn(turn:OpenCodeTurn, pause = false) {
+  turn.pauseTask = pause;
+  turn.cancelled = true;
+  turn.controller.abort();
+  if (turn.verifying && turn.taskId) {
+    await sendRequest("task.external.stop", "task.loaded", {project_id:turn.projectId,task_id:turn.taskId,pause}, {threadId:turn.threadId});
+  }
+  await turn.done;
+}
 ipcMain.handle("agent:turn-cancel", async (_event, turnId: string) => {
   const oc = activeOpenCodeTurns.get(turnId);
   if (oc) {
-    oc.cancelled = true;
-    oc.outcome = "interrupted";
-    oc.controller.abort();
-    await oc.done;
+    await stopOpenCodeTurn(oc);
     return { ok: true };
   }
   const socket = agentSocket;
@@ -2011,11 +2051,8 @@ app.on("before-quit", (event) => {
   }
 
   quitInProgress = true;
-  for (const turn of activeOpenCodeTurns.values()) {
-    turn.cancelled = true;
-    turn.controller.abort();
-  }
-  const openCodeStopped = Promise.allSettled([...activeOpenCodeTurns.values()].map(turn => turn.done)).then(() => openCodeRuntime.stop());
+  const openCodeStopped = Promise.allSettled([...activeOpenCodeTurns.values()].map(turn => stopOpenCodeTurn(turn, true)))
+    .then(() => openCodeRuntime.stop());
   void Promise.allSettled([openCodeStopped.then(() => stopAgent()), openCodeStopped]).finally(() => {
     quitReady = true;
     app.quit();
