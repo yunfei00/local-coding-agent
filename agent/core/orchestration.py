@@ -120,6 +120,8 @@ class TaskService:
         request_id = data.get("request_id")
         thread_id = str(data.get("thread_id") or payload.get("thread_id") or "")
         project = self.server.projects.active
+        if kind.startswith("task.external.") and payload.get("project_id"):
+            project = self.server.projects.get(payload["project_id"])
         try:
             if kind == "task.credentials.update":
                 values = payload.get("credentials")
@@ -280,6 +282,12 @@ class TaskService:
                     from agent.core.opencode_tasks import finish_task, prepare_task
                     handler = prepare_task if kind.endswith(".prepare") else finish_task
                     result = {"task": self.public(await handler(self, ws, project, thread_id, payload))}
+                elif kind == "task.external.reserve":
+                    if not self.server.data_service:
+                        raise ValueError("External reservation requires the desktop data service")
+                    from agent.core.opencode_tasks import reserve_online_request
+                    reserve_online_request(self, thread_id, payload)
+                    result = {"reserved": True}
                 elif kind == "task.start":
                     if any(not t.done() for t in self.server.active_turns.values()):
                         raise ValueError("Pause or stop the active task first")

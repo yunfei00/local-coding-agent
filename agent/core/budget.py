@@ -62,11 +62,18 @@ def check_api_scope(*, scope, caps, used, tokens, cost, context):
 
 def execution_api_rows(db, owner=None):
     """Adapter over the existing execution ledger, not a second request budget."""
-    if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_execution_runs'").fetchone():
-        return []
-    records=db.execute('SELECT data_json FROM agent_execution_runs'+(' WHERE id=?' if owner else ''),(owner,) if owner else ()).fetchall()
-    return [{'route':'api','status':r['status'],'reserved_tokens':r['reserved_tokens'],'reserved_cost':r.get('reserved_cost',0),
-             'usage_json':json.dumps(r)} for row in records for r in json.loads(row[0]).get('unified_api_requests',[])]
+    tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('agent_execution_runs','opencode_model_reservations')")}
+    usage = []
+    if 'agent_execution_runs' in tables:
+        records=db.execute('SELECT data_json FROM agent_execution_runs'+(' WHERE id=?' if owner else ''),(owner,) if owner else ()).fetchall()
+        usage.extend({'route':'api','status':r['status'],'reserved_tokens':r['reserved_tokens'],'reserved_cost':r.get('reserved_cost',0),
+                      'usage_json':json.dumps(r)} for row in records for r in json.loads(row[0]).get('unified_api_requests',[]))
+    if 'opencode_model_reservations' in tables:
+        reserved = db.execute('SELECT reserved_tokens,reserved_cost FROM opencode_model_reservations'+(' WHERE owner=?' if owner else ''),
+                              (owner,) if owner else ())
+        usage.extend({'route':'api','status':'unknown','reserved_tokens':row[0],'reserved_cost':row[1],
+                      'usage_json':'{"estimated":true}'} for row in reserved)
+    return usage
 
 
 def request_token_reservation(messages, tools, output_limit):

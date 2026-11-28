@@ -15,6 +15,7 @@ fs.mkdirSync(project);
 const checks = [];
 const model = "qwen3:4b";
 const mock = process.argv.includes("--mock");
+const projectWrite = mock || process.argv.includes("--project-write");
 let provider;
 let providerUrl = "http://127.0.0.1:11434";
 let modelRequests = 0;
@@ -112,7 +113,8 @@ async function main() {
   });
   const canary = "LCA" + randomBytes(5).toString("hex");
   const input = page.locator(".composer textarea");
-  await input.fill(mock ? "请用 write 工具创建 v2-tool.txt，内容是 " + canary :
+  await input.fill(projectWrite ? "请用 write 工具在当前工程创建一个文件 v2-tool.txt，只写入这一行：" + canary +
+    "。必须成功写入后再回复「收到 " + canary + "」。" :
     "请直接用简体中文回复「收到 " + canary + "」。无需使用工具。");
   await page.waitForFunction(() => document.querySelector(".send-button")?.disabled === false);
   await input.press("Enter");
@@ -123,9 +125,11 @@ async function main() {
   assert.equal(result.engine, "opencode");
   assert(events.some(e => e.type === "turn.delta"));
   assert((await page.locator(".message.agent").last().innerText()).includes(canary));
-  if (mock) {
-    assert.equal(toolRequests,1,"Mock must direct one native file write");
-    assert(modelRequests >= 2,"Native tool output must return to the model");
+  if (projectWrite) {
+    if (mock) {
+      assert.equal(toolRequests,1,"Mock must direct one native file write");
+      assert(modelRequests >= 2,"Native tool output must return to the model");
+    }
     assert(events.some(event => event.type === "approval.requested"),"Approval was not emitted by OpenCode");
     assert(events.some(event => event.type === "tool.completed"),"Native tool result was not shown");
     assert.equal(fs.readFileSync(path.join(project,"v2-tool.txt"),"utf8").trim(),canary);
@@ -151,7 +155,7 @@ main().then(() => write("PASS"), error => {
 
 function write(status, error) {
   const report = {status, model, mock, checks, error, elapsed_ms:Date.now()-started, evidence_dir:data};
-  const destination = path.join(reports, mock ? "v2-opencode-desktop-mock.json" : "v2-opencode-desktop-live.json");
+  const destination = path.join(reports, mock ? "v2-opencode-desktop-mock.json" : projectWrite ? "v2-opencode-desktop-live-tool.json" : "v2-opencode-desktop-live.json");
   fs.mkdirSync(path.dirname(destination), {recursive:true});
   fs.writeFileSync(destination, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));

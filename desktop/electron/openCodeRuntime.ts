@@ -7,6 +7,7 @@ import { EngineSessionStore } from "./engineSessionStore";
 import { buildOpenCodeConfig } from "./openCodeConfig";
 import { OpenCodeSupervisor } from "./openCodeSupervisor";
 import { productionPermissions, type OpenCodePermissionMode } from "./openCodePermissions";
+import type {RuntimeVersion} from "./openCodeUpdateManager";
 
 export type OpenCodeRuntimeStatus = {
   available: boolean;
@@ -17,7 +18,6 @@ export type OpenCodeRuntimeStatus = {
 };
 
 const VERSION = "2.2.6";
-const VERSION_ALIASES = ["2.2.6", "v2.2.6", "opencode v2.2.6"];
 const EXECUTABLE_SHA256 = "98cb0aa854c7c015cf6febafa7afb872c359bfe5a823a526f3b4fd347a9e9677";
 
 export class OpenCodeRuntime implements EventSource {
@@ -29,6 +29,7 @@ export class OpenCodeRuntime implements EventSource {
   private binaryPath?: string;
   private starting?: Promise<void>;
   private stopping?: Promise<void>;
+  constructor(private readonly selectedVersion?: ()=>RuntimeVersion | undefined) {}
 
   binaryAvailable(): boolean {
     return !!this.resolveBinary();
@@ -40,13 +41,19 @@ export class OpenCodeRuntime implements EventSource {
     return {
       available: !!binary,
       running,
-      version: VERSION,
+      version: this.selectedVersion?.()?.version ?? VERSION,
       binary: this.binaryPath ?? binary,
       reason: !binary ? "OpenCode runtime not found" : undefined,
     };
   }
 
   resolveBinary(): string | undefined {
+    const selected = this.selectedVersion?.();
+    if (selected) return existsSync(selected.binary) ? selected.binary : undefined;
+    return this.bundledVersion()?.binary;
+  }
+
+  bundledVersion(): RuntimeVersion | undefined {
     const candidates = app.isPackaged
       ? [path.join(process.resourcesPath, "opencode", "opencode.exe")]
       : [
@@ -54,7 +61,7 @@ export class OpenCodeRuntime implements EventSource {
           path.resolve(app.getAppPath(), "../build/opencode-runtime/opencode.exe"),
         ].filter((value): value is string => Boolean(value));
     for (const candidate of candidates) {
-      if (existsSync(candidate)) return candidate;
+      if (existsSync(candidate)) return {version:"v"+VERSION,binary:candidate,sha256:EXECUTABLE_SHA256};
     }
     return undefined;
   }
@@ -75,19 +82,24 @@ export class OpenCodeRuntime implements EventSource {
     const binary = this.resolveBinary();
     if (!binary) throw new Error("OpenCode runtime not found. Install bundled runtime or set LCA_OPENCODE_BINARY.");
     const project = createHash("sha256").update(process.platform === "win32" ? cwd.toLowerCase() : cwd).digest("hex");
-    const root = path.join(app.getPath("userData"), "opencode-projects", project);
+    const selected = this.selectedVersion?.() ?? this.bundledVersion()!;
+    const number = selected.version.replace(/^v/,"");
+    // Keep the bundled data untouched while an independently managed version is active.
+    const namespace = number === VERSION ? "opencode-projects" : "opencode-projects-"+selected.version;
+    const root = path.join(app.getPath("userData"), namespace, project);
     this.binaryPath = binary;
     await this.supervisor.start(binary, root, {
       configContent,
       allowPrompt: true,
-      expectedVersion: VERSION_ALIASES,
-      binarySha256: EXECUTABLE_SHA256,
+      expectedVersion: [number,"v"+number,"opencode v"+number],
+      binarySha256: selected.sha256,
       cwd,
     });
     this.root = root;
     this.cwd = cwd;
     this.configHash = hash;
-    this.store = new EngineSessionStore(path.join(app.getPath("userData"), "opencode-session-bindings.json"));
+    const bindingFile = number === VERSION ? "opencode-session-bindings.json" : namespace+"-session-bindings.json";
+    this.store = new EngineSessionStore(path.join(app.getPath("userData"), bindingFile));
   }
 
   async stop(): Promise<void> {

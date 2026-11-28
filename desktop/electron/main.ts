@@ -14,6 +14,8 @@ import { mkdtemp } from "node:fs/promises";
 import { SidecarHttpError } from "./openCodeSupervisor";
 import { OpenCodeRuntime } from "./openCodeRuntime";
 import { selectOpenCodeProfile, startOpenCodeModel } from "./openCodeConfig";
+import {OpenCodeUpdateManager} from "./openCodeUpdateManager";
+import {probeOpenCodeCompatibility} from "./openCodeCompatibility";
 import type { OpenCodePermissionMode } from "./openCodePermissions";
 import {
   app,
@@ -127,22 +129,25 @@ async function maybeCompletePackagedSmoke():Promise<void> {
       if(!projectCreated)throw new Error('No Git project creation was not confirmed');
     }
     let chatVerified=false,fileVerified=false;
+    let engine:string|undefined;
     if(chatAcceptance){
-      if(process.env.LCA_PROVIDER!=='openai_compatible'||new URL(process.env.LCA_OPENAI_BASE_URL||'').hostname!=='127.0.0.1')throw new Error('Packaged chat acceptance requires an isolated loopback model');
+      if(!app.isPackaged||!process.env.LCA_DATA_DIR||!process.env.LCA_DESKTOP_DATA_DIR||process.env.LCA_PROVIDER!=='openai_compatible'||new URL(process.env.LCA_OPENAI_BASE_URL||'').hostname!=='127.0.0.1')throw new Error('Packaged chat acceptance requires isolated data and a loopback model');
       const nonce=String(process.env.LCA_PACKAGED_CHAT_NONCE||'');if(!/^PACKAGED_CHAT_[a-f0-9]{16}$/.test(nonce))throw new Error('Invalid owned chat canary');
-      await mainWindow!.webContents.executeJavaScript(`(async()=>{const a=window.localAgent;const e=await a.taskRequest('','task.settings.get');await a.taskRequest('','task.settings.update',{config:{...e.payload.config,verification_level:'none'}});const deadline=Date.now()+15000;while(!document.querySelector('.composer textarea')&&Date.now()<deadline)await new Promise(r=>setTimeout(r,100));const t=document.querySelector('.composer textarea');if(!t)throw Error('Composer missing');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(t,${JSON.stringify('请创建 packaged-chat.txt，内容为 '+nonce+'，并报告 '+nonce)});t.dispatchEvent(new Event('input',{bubbles:true}));await new Promise(r=>setTimeout(r,100));t.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));})()`);
+      const target=path.join(process.env.LCA_DATA_DIR,'project-fixture','无 Git 工程 含空格','packaged-chat.txt');
+      writeFileSync(target,nonce,{encoding:'utf8',flag:existsSync(target)?'r+':'wx'});
+      await mainWindow!.webContents.executeJavaScript(`(async()=>{window.packagedSmokeEngine=null;window.localAgent.onAgentEvent(e=>{if(e.type==='turn.completed')window.packagedSmokeEngine=e.payload.engine;});const deadline=Date.now()+15000;while(document.querySelector('.send-button')?.disabled!==false&&Date.now()<deadline){const input=document.querySelector('.composer textarea');if(input&&!input.value){Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,'请用 read 工具完整读取 packaged-chat.txt，并报告原文。');input.dispatchEvent(new Event('input',{bubbles:true}));}await new Promise(r=>setTimeout(r,100));}const button=document.querySelector('.send-button');if(!button||button.disabled)throw Error('Composer unavailable');button.click();})()`);
       const deadline=Date.now()+45000;
       while(Date.now()<deadline){
         chatVerified=await mainWindow!.webContents.executeJavaScript(`!![...document.querySelectorAll('.message.agent')].find(e=>e.textContent.includes(${JSON.stringify(nonce)}))&&!document.querySelector('.stop-button')`);
         if(chatVerified)break;await new Promise(r=>setTimeout(r,150));
       }
-      const target=path.join(process.env.LCA_DATA_DIR||app.getPath('userData'),'project-fixture','无 Git 工程 含空格','packaged-chat.txt');
       fileVerified=existsSync(target)&&readFileSync(target,'utf8')===nonce;
-      if(!chatVerified||!fileVerified)throw new Error('Packaged composer/chat/file readback not verified');
+      engine=await mainWindow!.webContents.executeJavaScript('window.packagedSmokeEngine');
+      if(!chatVerified||!fileVerified||engine!=='opencode')throw new Error('Packaged composer/chat/file readback not verified');
     }
     writeFileSync(smokeFile,JSON.stringify({ok:true,renderer_ready:true,version:lastAgentReady.version,protocol:lastAgentReady.protocol,
       host:lastAgentReady.host,port:lastAgentReady.port,packaged:app.isPackaged,agent_executable:packagedAgentPath(),
-      environment,no_sdk:process.env.LCA_NO_SDK_ACCEPTANCE==='1',no_git_project_created:projectCreated,chat_verified:chatVerified,file_verified:fileVerified,model_decisions:chatAcceptance?'MOCK_LOOPBACK':'NOT_RUN'},null,2),'utf8');
+      environment,no_sdk:process.env.LCA_NO_SDK_ACCEPTANCE==='1',no_git_project_created:projectCreated,chat_verified:chatVerified,file_verified:fileVerified,engine,engine_version:chatAcceptance?openCodeRuntime.status().version:undefined,model_decisions:chatAcceptance?'MOCK_LOOPBACK':'NOT_RUN'},null,2),'utf8');
     appendRuntimeLog('desktop.log','Packaged renderer/backend smoke completed');
   }catch(error){writeFileSync(smokeFile,JSON.stringify({ok:false,error:String(error)}),'utf8');}
   setTimeout(()=>app.quit(),250);
@@ -979,7 +984,8 @@ ipcMain.on("renderer:ready", () => {
   maybeCompletePackagedSmoke();
 });
 
-const openCodeRuntime = new OpenCodeRuntime();
+let runtimeUpdater:OpenCodeUpdateManager | undefined;
+const openCodeRuntime = new OpenCodeRuntime(() => runtimeUpdater?.current());
 type OpenCodeTurn = {
   controller: AbortController;
   sessionId?: string;
@@ -1004,8 +1010,46 @@ const activeOpenCodeTurns = new Map<string, OpenCodeTurn>();
 let preparingOpenCodeTask = false;
 const pendingOpenCodeApprovals = new Map<string, { sessionId: string; requestId: string; turnId: string; threadId: string }>();
 ipcMain.handle("agent:engine-status", () => {
+  if (openCodeRuntime.bundledVersion()) installedRuntimeUpdater();
   const status = openCodeRuntime.status();
   return { selected: "opencode", engines: [{ id: "opencode", ...status }] };
+});
+function installedRuntimeUpdater() {
+  const bundled = openCodeRuntime.bundledVersion();
+  if (!bundled) throw new Error("内置 OpenCode 运行时缺失");
+  return runtimeUpdater ??= new OpenCodeUpdateManager(app.getPath("userData"),bundled,probeOpenCodeCompatibility,
+    ()=>preparingOpenCodeTask || activeOpenCodeTurns.size > 0 || quitInProgress);
+}
+ipcMain.handle("agent:engine-update-check", async () => {
+  const manager = installedRuntimeUpdater();
+  const offer = await manager.checkForUpdates();
+  return {current:manager.current().version,latest:offer?.version ?? null};
+});
+ipcMain.handle("agent:engine-update-install", async () => {
+  const manager = installedRuntimeUpdater();
+  if (preparingOpenCodeTask || activeOpenCodeTurns.size) throw new Error("请先停止当前执行");
+  const offer = await manager.checkForUpdates();
+  if (!offer) throw new Error("没有可用的独立运行时升级");
+  const decision = await dialog.showMessageBox({type:"question",buttons:["取消","校验并升级"],defaultId:0,cancelId:0,
+    title:"升级 OpenCode 运行时",message:`独立安装 OpenCode ${offer.version}？`,detail:"验证 SHA256 和运行协议后切换，原版本和应用历史保留。"});
+  if (decision.response !== 1) return {current:manager.current().version};
+  try {
+    const active = await manager.upgrade(offer,()=>openCodeRuntime.stop());
+    appendRuntimeLog("desktop.log","OpenCode runtime version activated "+active.version);
+    return {current:active.version};
+  } catch (error) {
+    appendRuntimeLog("desktop.log","OpenCode runtime upgrade failed; current version was retained");
+    throw error;
+  }
+});
+ipcMain.handle("agent:engine-update-restore", async () => {
+  const manager = installedRuntimeUpdater();
+  const decision = await dialog.showMessageBox({type:"question",buttons:["取消","回到内置版本"],defaultId:0,cancelId:0,
+    title:"回到内置 OpenCode",message:"切换为应用附带的锁定运行时？"});
+  if (decision.response !== 1) return {current:manager.current().version};
+  const active = await manager.restoreBundled(()=>openCodeRuntime.stop());
+  appendRuntimeLog("desktop.log","OpenCode restored to "+active.version);
+  return {current:active.version};
 });
 ipcMain.handle("agent:get-status", () => agentStatus);
 ipcMain.handle("agent:screenshot-preview", (_event, candidate: unknown) =>
@@ -1574,6 +1618,7 @@ ipcMain.handle("agent:task-request", async (_event, threadId: string, operation:
   for(const operation of ['knowledge.get','knowledge.search','knowledge.save','knowledge.delete','knowledge.settings','model.capabilities','task.runtime.templates','task.runtime.workflow.get','task.runtime.workflow.update','task.runtime.pause'])allowed.add(operation);
   if (!allowed.has(operation)) throw new Error("Unsupported task operation");
   if (["task.start","task.resume","task.continue"].includes(operation)) {
+    if (runtimeUpdater?.isUpgrading()) throw new Error("OpenCode 正在升级");
     if (preparingOpenCodeTask || activeOpenCodeTurns.size) throw new Error("已有 OpenCode 任务执行中");
     if (!openCodeRuntime.resolveBinary()) throw new Error("未找到锁定的 OpenCode 运行时");
     const continuation = operation === "task.continue" ? String(payload.prompt ?? "").trim() : "";
@@ -1644,6 +1689,8 @@ ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
   );
 });
 async function startOpenCodeTurn(threadId: string, prompt: string, model?: string, task?:OpenCodeTask): Promise<AgentEnvelope> {
+  if (openCodeRuntime.bundledVersion()) installedRuntimeUpdater();
+  if (runtimeUpdater?.isUpgrading()) throw new Error("OpenCode 正在升级");
   if (shuttingDown || quitInProgress) throw new Error("应用正在关闭");
   if (activeOpenCodeTurns.size || (preparingOpenCodeTask && !task)) throw new Error("已有 OpenCode 执行占用工作区，请等待或停止。");
   if (typeof prompt !== "string" || !prompt.trim() || Buffer.byteLength(prompt) > 48000) throw new Error("请输入有效任务内容");
@@ -1658,6 +1705,7 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
     let follow: Promise<void> | undefined;
     let terminal = false;
     let gateway: Awaited<ReturnType<typeof startOpenCodeModel>> | undefined;
+    let releaseLease: (()=>Promise<void>) | undefined;
     try {
       const threadRes = await sendRequest("thread.get", "thread.loaded", { thread_id: threadId }, { threadId });
       const projectId = threadRes.payload?.project_id;
@@ -1684,8 +1732,15 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
         throw new Error("当前 Task 仅允许 Ollama，请明确选择本地模型");
       }
       entry.controller.signal.throwIfAborted();
+      releaseLease = await acquireEngineLease(process.env.LCA_DATA_DIR || app.getPath("userData"));
       gateway = await startOpenCodeModel(catalog, config, credentials, selectedProfileId,
-        catalogRes.payload?.global_usage as {api_calls?:number; reserved_tokens?:number} | undefined);
+        catalogRes.payload?.global_usage as {api_calls?:number; reserved_tokens?:number} | undefined,
+        async (input_bytes, max_output) => {
+          entry.controller.signal.throwIfAborted();
+          await sendRequest("task.external.reserve", "task.loaded", {
+            project_id:projectId, task_id:task?.id, turn_id:turnId, profile_id:selectedProfileId, input_bytes, max_output,
+          }, {threadId});
+        });
       await openCodeRuntime.ensureStarted(gateway.configContent, projectPath);
       entry.controller.signal.throwIfAborted();
       const bindingKey = task ? "task:" + task.id : threadId;
@@ -1870,12 +1925,13 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
         try {
           const outcome = entry.cancelled ? (entry.pauseTask ? "paused" : "cancelled") :
             terminal && entry.outcome === "succeeded" ? "succeeded" : "failed";
-          const result = await sendRequest("task.external.finish", "task.loaded", {task_id:task.id,outcome}, {threadId}, 600_000);
+          const result = await sendRequest("task.external.finish", "task.loaded", {project_id:entry.projectId,task_id:task.id,outcome}, {threadId}, 600_000);
           broadcastAgentEvent({type:"task.updated",thread_id:threadId,turn_id:turnId,payload:result.payload});
         } catch (error) {
           broadcastAgentEvent({type:"turn.failed",thread_id:threadId,turn_id:turnId,payload:{message:String(error),engine:"opencode"}});
         }
       }
+      await releaseLease?.().catch(() => {});
       for (const [id, pending] of pendingOpenCodeApprovals) {
         if (pending.turnId === turnId) pendingOpenCodeApprovals.delete(id);
       }

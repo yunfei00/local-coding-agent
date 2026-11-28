@@ -1,4 +1,5 @@
 import {UpdateSettings} from './UpdateSettings';
+import {OpenCodeUpdateSettings} from './OpenCodeUpdateSettings';
 import { MCPSettingsSection } from "./MCPSettingsSection";
 import { ModelSettingsSection } from "./ModelSettingsSection";
 import { useEffect, useMemo, useState } from "react";
@@ -511,7 +512,7 @@ export function SettingsPanel({
             </div>
           ) : null}
 
-          {tab === "about" ? <div className="settings-section"><h2>关于</h2><UpdateSettings/><button onClick={()=>void window.localAgent.backupData().then(event=>setMessage('备份已保存：'+String(event.payload?.path))).catch(error=>setError(String(error)))}>备份应用数据</button></div> : null}
+          {tab === "about" ? <div className="settings-section"><h2>关于</h2><UpdateSettings/><OpenCodeUpdateSettings/><button onClick={()=>void window.localAgent.backupData().then(event=>setMessage('备份已保存：'+String(event.payload?.path))).catch(error=>setError(String(error)))}>备份应用数据</button></div> : null}
 
           {tab === "provider" ? <div className="settings-section"><h2>Provider Connections</h2><p>连接与模型统一由 Models &amp; Routing 管理。旧配置和凭据继续保留兼容。</p><button onClick={() => setTab("models")}>Manage model connections</button></div> : null}
 

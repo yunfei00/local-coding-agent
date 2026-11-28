@@ -3,7 +3,7 @@ import {randomBytes,timingSafeEqual} from "node:crypto";
 import {Readable,Transform} from "node:stream";
 import {pipeline} from "node:stream/promises";
 
-export type GatewayLimits={requests:number;inputBytes:number;maxOutput:number;durationMs:number;allowTools?:boolean;upstreamBaseUrl?:string;requestMs?:number;reserveTokens?:number;temperature?:number;reasoningEffort?:"none"};
+export type GatewayLimits={requests:number;inputBytes:number;maxOutput:number;durationMs:number;allowTools?:boolean;upstreamBaseUrl?:string;requestMs?:number;reserveTokens?:number;temperature?:number;reasoningEffort?:"none";reserve?: (inputBytes:number, maxOutput:number)=>Promise<void>};
 export type CompatibleEndpoint = { baseUrl:string; apiKey?:string };
 export async function startLocalModelGateway(model:string,upstreamPort:number,limits:GatewayLimits){
   if(!/^[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,127}$/.test(model))throw new Error("Invalid model");
@@ -60,9 +60,15 @@ export async function startCompatibleGateway(model:string,endpoint:CompatibleEnd
         if(body[key]!==undefined&&(!Number.isSafeInteger(body[key])||body[key]<1))return reject(400,"Invalid output token limit");
       }
       const max=Math.min(limits.maxOutput,body.max_tokens??limits.maxOutput,body.max_completion_tokens??limits.maxOutput);
-      const reservation = Buffer.byteLength(JSON.stringify(body)) + max;
+      const requestBytes = Buffer.byteLength(JSON.stringify(body));
+      const reservation = requestBytes + max;
       if (limits.reserveTokens !== undefined && reserved + reservation > limits.reserveTokens) return reject(429,"Model token budget exhausted");
       reserved += reservation;
+      try {
+        await limits.reserve?.(requestBytes,max);
+      } catch {
+        return reject(429,"Online reservation denied by the persisted budget");
+      }
       controller.signal.throwIfAborted();
       const response=await fetch(upstream,{
         method:"POST",headers:{"content-type":"application/json",...(endpoint.apiKey ? {authorization:"Bearer "+endpoint.apiKey} : {})},redirect:"error",signal:controller.signal,

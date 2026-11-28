@@ -2,11 +2,13 @@ name: Windows installer candidate
 
 on:
   push:
-    branches: [feature/v1.0-windows-release]
+    branches: [feature/v1.0-windows-release, feature/opencode-engine-migration]
     paths:
       - agent/**
       - desktop/**
       - scripts/build/**
+      - scripts/dev/prepare-opencode.ps1
+      - scripts/validation/opencode/**
       - scripts/validation/desktop-smoke.cjs
       - scripts/validation/packaged_agent_smoke.py
       - scripts/validation/packaged_gui_smoke.py
@@ -75,4 +77,5 @@ jobs:
             desktop/release/SHA256SUMS.txt
             build/packaged-*-smoke.json
             validation-reports/desktop-smoke.json
+            validation-reports/v2-opencode-desktop-mock.json
             build/v10-upgrade-*/report.json

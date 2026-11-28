@@ -11,6 +11,7 @@ export type OpenCodeSupervisorOptions = {
   expectedVersion?: string[];
   binarySha256?: string;
   cwd?: string;
+  compatibilityProbe?: boolean;
 };
 export class OpenCodeSupervisor {
   private child?: ChildProcess;
@@ -87,12 +88,13 @@ export class OpenCodeSupervisor {
   async request(route:string,method="GET",body?:unknown):Promise<unknown>{
     const session = /^\/api\/session\/([A-Za-z0-9_-]+)(\/interrupt|\/prompt|\/model)?$/.exec(route);
     const approval = /^\/api\/session\/[A-Za-z0-9_-]+\/permission\/per[A-Za-z0-9_-]+\/reply$/.test(route);
+    const probePermission = this.options.compatibilityProbe === true && /^\/api\/session\/[A-Za-z0-9_-]+\/permission$/.test(route);
     const promptAllowed = this.localChat || this.options.allowPrompt === true;
     const allowed = (method==="GET" && (route==="/api/info" || route==="/api/session" || route==="/api/session/active" || (session && !session[2] && session[1]))) ||
       (method==="POST" && (route==="/api/session" || (session && (session[2]==="/interrupt" || (promptAllowed && session[2]==="/prompt"))))) ||
       (this.options.allowPrompt === true && (
         ((method==="DELETE" || method==="PATCH") && !!session && !session[2]) ||
-        (method==="POST" && (approval || session?.[2]==="/model"))));
+        (method==="POST" && (approval || probePermission || session?.[2]==="/model"))));
     if(!allowed) throw new Error("Route not allowed");
     if(method==="POST" && route==="/api/session"){
       const input=body as {title?:unknown;permissions?:unknown;location?:{directory?:unknown}}|undefined;
@@ -107,6 +109,8 @@ export class OpenCodeSupervisor {
         }
         body={title:input.title,permissions:input.permissions,...(input.location ? {location:input.location} : {})};
       }
+    } else if (method==="POST" && probePermission) {
+      body={action:"edit",resources:["compatibility.txt"]};
     } else if (method==="PATCH") {
       const input=body as {permissions?:unknown}|undefined;
       if (!Array.isArray(input?.permissions)) throw new Error("Invalid session permissions");

@@ -139,7 +139,8 @@ export function selectOpenCodeProfile(catalog: ModelCatalog, selection: string |
 }
 
 export async function startOpenCodeModel(catalog: ModelCatalog, config: TaskConfig, credentials: Record<string, string>,
-  profileId: string, globalUsage: {api_calls?:number; reserved_tokens?:number} = {}) {
+  profileId: string, globalUsage: {api_calls?:number; reserved_tokens?:number} = {},
+  reserveOnline?: (inputBytes:number,maxOutput:number)=>Promise<void>) {
   const spec = buildOpenCodeConfig({catalog, config, credentials, selectedProfileId:profileId});
   const profile = catalog.profiles.find(item => item.model_profile_id === profileId)!;
   const connection = catalog.connections.find(item => item.connection_id === profile.connection_id)!;
@@ -149,9 +150,7 @@ export async function startOpenCodeModel(catalog: ModelCatalog, config: TaskConf
   const maxOutput = limits.output ?? 2048;
   const budget = config.budget ?? {};
   const online = connection.provider_type === "openai_compatible";
-  if (online && (budget.api_cost != null || budget.global_api_cost != null)) {
-    throw new Error("OpenCode 暂不能验证金额预算，已停止在线请求");
-  }
+  if (online && !reserveOnline) throw new Error("在线模型需要持久化预算服务");
   const requests = online ? Math.min(budget.api_calls ?? 0, (budget.global_api_calls ?? 0) - (globalUsage.api_calls ?? 0), 32) : 32;
   const reserveTokens = online ? Math.min(budget.api_tokens ?? 0, (budget.global_api_tokens ?? 0) - (globalUsage.reserved_tokens ?? 0)) : 2_000_000;
   if (requests < 1 || reserveTokens <= maxOutput) throw new Error("BUDGET_EXHAUSTED：执行预算耗尽");
@@ -161,6 +160,7 @@ export async function startOpenCodeModel(catalog: ModelCatalog, config: TaskConf
     requestMs:Math.min((budget.request_seconds ?? 120) * 1000,durationMs),
     temperature: profile.temperature ?? undefined, allowTools: profile.tool_mode !== "none",
     reasoningEffort: connection.provider_type === "ollama" && profile.model_id === "qwen3:4b" ? "none" : undefined,
+    reserve:online ? reserveOnline : undefined,
   });
   provider.settings = {baseURL:`http://127.0.0.1:${gateway.port}/v1`,apiKey:gateway.token};
   return {configContent:JSON.stringify(spec), model:{providerID,id:profile.model_id}, durationMs, close:gateway.close, usage:gateway.usage, online};
