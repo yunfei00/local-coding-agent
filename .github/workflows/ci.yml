@@ -131,6 +131,10 @@ jobs:
         if: runner.os == 'Windows'
         run: node scripts/validation/opencode/desktop-live.cjs --mock
 
+      - name: OpenCode product reconciliation after lost completion events
+        if: runner.os == 'Windows'
+        run: node scripts/validation/opencode/desktop-live.cjs --mock --drop-completion
+
       - name: Actual desktop task and regression smoke
         if: runner.os == 'Windows'
         run: node scripts/validation/desktop-smoke.cjs
@@ -165,4 +169,14 @@ jobs:
         with:
           name: m5-electron-evidence-${{ matrix.os }}
           path: validation-reports/m5-electron-e2e.json
+          if-no-files-found: ignore
+
+      - name: Retain OpenCode product acceptance summaries
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-product-evidence-windows
+          path: |
+            validation-reports/v2-opencode-desktop-mock.json
+            validation-reports/v2-opencode-desktop-recovery.json
           if-no-files-found: ignore

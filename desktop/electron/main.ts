@@ -17,6 +17,7 @@ import { selectOpenCodeProfile, startOpenCodeModel } from "./openCodeConfig";
 import {OpenCodeUpdateManager} from "./openCodeUpdateManager";
 import {probeOpenCodeCompatibility} from "./openCodeCompatibility";
 import { isScopedResource, type OpenCodePermissionMode } from "./openCodePermissions";
+import { recoverCompletedExchange } from "./openCodeRecovery";
 import {
   app,
   BrowserWindow,
@@ -869,6 +870,7 @@ async function stopAgent(): Promise<void> {
     try {
       await fetch("http://127.0.0.1:" + currentPort + "/shutdown", {
         method: "POST",
+        signal: AbortSignal.timeout(2000),
         headers: {
           Authorization: "Bearer " + currentToken
         }
@@ -1821,15 +1823,16 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       emitMetrics();
       let bridgeFailed = false;
       let terminalError = "";
+      const appendDelta = (delta:string) => {
+        if (!delta) return;
+        assistant += delta;
+        broadcastAgentEvent({ type: "turn.delta", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { delta } });
+      };
       follow = bridge.follow(sessionId, entry.controller.signal, (event) => {
         if (event.kind === "snapshot") {
           streamReady();
         } else if (event.kind === "text") {
-          const delta = String((event.payload as any)?.delta ?? "");
-          if (delta) {
-            assistant += delta;
-            broadcastAgentEvent({ type: "turn.delta", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { delta } });
-          }
+          appendDelta(String((event.payload as any)?.delta ?? ""));
         } else if (event.kind === "usage") {
           const t = ((event.payload as any)?.tokens ?? event.payload ?? {}) as any;
           const inp = Number(t.input_tokens ?? t.input ?? t.prompt_tokens ?? 0) || 0;
@@ -1913,10 +1916,34 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       await Promise.race([ready, follow]);
       entry.controller.signal.throwIfAborted();
       if (bridgeFailed) throw new Error("OpenCode 事件流未连接");
-      await openCodeRuntime.prompt(sessionId, effectivePrompt);
+      const messageId = "msg_"+turnId;
+      await openCodeRuntime.prompt(sessionId, effectivePrompt,{id:messageId});
       const timeoutAt = Date.now() + gateway.durationMs;
+      let nextReconcile = Date.now() + 3000;
+      let reconnectDeadline = Infinity;
       while (!finished && Date.now() < timeoutAt && !entry.controller.signal.aborted) {
-        if (bridgeFailed) break;
+        if (bridgeFailed && reconnectDeadline === Infinity) reconnectDeadline = Date.now() + 10000;
+        if (Date.now() >= reconnectDeadline) break;
+        if (Date.now() >= nextReconcile && timeoutAt - Date.now() > 1000) {
+          nextReconcile = Date.now() + 5000;
+          const snapshot = await openCodeRuntime.getSession(sessionId).catch(()=>undefined) as {data?:{id?:string;time?:{idle?:number;busy?:number}}}|undefined;
+          const time = snapshot?.data?.time;
+          if (!finished && !entry.controller.signal.aborted && snapshot?.data?.id === sessionId &&
+              typeof time?.idle === "number" && typeof time.busy === "number" && time.idle >= Math.max(startedAtMs,time.busy)) {
+            const recovered = await openCodeRuntime.sessionContext(sessionId).then(context=>recoverCompletedExchange(context,messageId)).catch(()=>undefined);
+            if (recovered && !finished && !entry.controller.signal.aborted) {
+              terminal = finished = true;
+              entry.outcome = recovered.outcome;
+              if (recovered.text.startsWith(assistant)) appendDelta(recovered.text.slice(assistant.length));
+              else {
+                terminalError = "OPENCODE_RECOVERY_TEXT_MISMATCH";
+                entry.outcome = "failed";
+              }
+              entry.controller.abort();
+              break;
+            }
+          }
+        }
         await new Promise((r) => setTimeout(r, 200));
       }
       entry.controller.abort();
@@ -1987,7 +2014,7 @@ async function appendOpenCodeTurn(threadId: string, turnId: string, prompt: stri
   if (!turn.appended.has(messageId)) {
     if (turn.appended.size >= 20) throw new Error("追加消息达到上限");
     turn.appended.add(messageId);
-    await openCodeRuntime.prompt(turn.sessionId, prompt, messageId);
+    await openCodeRuntime.prompt(turn.sessionId, prompt, {id:"msg_"+messageId,steer:true});
     await sendRequest("turn.record_external", "turn.recorded", { project_id:turn.projectId, role:"user", content:prompt }, {threadId});
   }
   return {type:"turn.appended", thread_id:threadId, turn_id:turnId, payload:{queued:true, message_id:messageId}};

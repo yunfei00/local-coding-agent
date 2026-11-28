@@ -153,10 +153,14 @@ export class OpenCodeRuntime implements EventSource {
     await this.request("/api/session/" + encodeURIComponent(sessionId) + "/model", "POST", {model});
   }
 
-  async prompt(sessionId: string, text: string, followupId?:string): Promise<void> {
+  async prompt(sessionId: string, text: string, message?:{id:string;steer?:boolean}): Promise<void> {
     await this.request("/api/session/" + encodeURIComponent(sessionId) + "/prompt", "POST", {
-      text, ...(followupId ? {delivery:"steer",id:"msg_"+followupId,resume:false} : {}),
+      text, ...(message ? {id:message.id} : {}), ...(message?.steer ? {delivery:"steer",resume:false} : {}),
     });
+  }
+
+  async sessionContext(sessionId:string):Promise<unknown> {
+    return this.request("/api/session/" + encodeURIComponent(sessionId) + "/context");
   }
 
   async interrupt(sessionId: string): Promise<unknown> {

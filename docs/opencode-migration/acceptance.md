@@ -4,6 +4,7 @@
 | --- | --- | --- |
 | Python、桌面类型检查、桌面单元、前端构建 | `uv run --no-sync python scripts/validation/check.py` | `validation-reports` 下本次 JSON 和日志 |
 | 正式产品 Mock | `node scripts/validation/opencode/desktop-live.cjs --mock` | 原生批准、文件独立读取、下一轮工具输出、重启历史 |
+| 真实完成事件丢失 | `node scripts/validation/opencode/desktop-live.cjs --mock --drop-completion` | 真实 OpenCode、工具和工作树运行，仅在 Electron 测试端丢弃文本和结束事件，校验按本轮消息 ID 恢复 |
 | Ollama | `node scripts/validation/opencode/desktop-live.cjs` | 挑战字串、真实流式完成、重启历史 |
 | Ollama 实际写入 | `node scripts/validation/opencode/desktop-live.cjs --project-write` | 隔离文件实际内容、审批和工具完成 |
 | OpenCode Task 服务 | `uv run --no-sync python -m unittest discover -s tests -p test_opencode_data_service.py -v` | Git 隔离、真实测试失败并修复、预算拒绝、WinForms 独立断言 |

@@ -86,12 +86,13 @@ export class OpenCodeSupervisor {
     return {authorization:"Basic "+Buffer.from("opencode:"+this.password).toString("base64")};
   }
   async request(route:string,method="GET",body?:unknown):Promise<unknown>{
-    const session = /^\/api\/session\/([A-Za-z0-9_-]+)(\/interrupt|\/prompt|\/model)?$/.exec(route);
+    const session = /^\/api\/session\/([A-Za-z0-9_-]+)(\/interrupt|\/prompt|\/model|\/context)?$/.exec(route);
     const approval = /^\/api\/session\/[A-Za-z0-9_-]+\/permission\/per[A-Za-z0-9_-]+\/reply$/.test(route);
     const probePermission = this.options.compatibilityProbe === true && /^\/api\/session\/[A-Za-z0-9_-]+\/permission$/.test(route);
     const promptAllowed = this.localChat || this.options.allowPrompt === true;
+    const privateContext = method === "GET" && session?.[2] === "/context" && this.options.allowPrompt === true;
     const allowed = (method==="GET" && (route==="/api/info" || route==="/api/session" || route==="/api/session/active" || (session && !session[2] && session[1]))) ||
-      (method==="POST" && (route==="/api/session" || (session && (session[2]==="/interrupt" || (promptAllowed && session[2]==="/prompt"))))) ||
+      privateContext || (method==="POST" && (route==="/api/session" || (session && (session[2]==="/interrupt" || (promptAllowed && session[2]==="/prompt"))))) ||
       (this.options.allowPrompt === true && (
         ((method==="DELETE" || method==="PATCH") && !!session && !session[2]) ||
         (method==="POST" && (approval || probePermission || session?.[2]==="/model"))));
@@ -126,14 +127,29 @@ export class OpenCodeSupervisor {
     } else if(method==="POST" && session?.[2]==="/prompt") {
       const input=body as {text?:unknown;delivery?:unknown;id?:unknown;resume?:unknown}|undefined;
       if(typeof input?.text!=="string" || !input.text.trim() || Buffer.byteLength(input.text)>65536) throw new Error("Invalid prompt request");
-      if (input.delivery !== undefined && (this.options.allowPrompt !== true || input.delivery !== "steer"
-        || typeof input.id !== "string" || !/^msg_[a-zA-Z0-9_-]{1,128}$/.test(input.id) || input.resume !== false)) {
+      if (input.id !== undefined && (this.options.allowPrompt !== true || typeof input.id !== "string" || !/^msg_[a-zA-Z0-9_-]{1,128}$/.test(input.id))) throw new Error("Invalid message ID");
+      if ((input.delivery !== undefined || input.resume !== undefined) && (input.delivery !== "steer" || !input.id || input.resume !== false)) {
         throw new Error("Invalid prompt delivery");
       }
-      body={text:input.text,...(input.delivery ? {delivery:input.delivery,id:input.id,resume:false} : {})};
+      body={text:input.text,...(input.id ? {id:input.id} : {}),...(input.delivery ? {delivery:input.delivery,resume:false} : {})};
     } else if(body!==undefined) throw new Error("Unexpected request body");
-    const response=await fetch(this.origin+route,{method,headers:{...this.headers(),"content-type":"application/json"},body:body===undefined?undefined:JSON.stringify(body),redirect:"error",signal:AbortSignal.timeout(promptAllowed ? 30000 : 8000)});
+    const response=await fetch(this.origin+route,{method,headers:{...this.headers(),"content-type":"application/json"},body:body===undefined?undefined:JSON.stringify(body),redirect:"error",signal:AbortSignal.timeout(method==="GET" ? 5000 : promptAllowed ? 30000 : 8000)});
     if(!response.ok){await response.body?.cancel();throw new SidecarHttpError(response.status);}
+    if (privateContext && response.body) {
+      const reader = response.body.getReader();
+      const chunks:Uint8Array[] = [];
+      let size = 0;
+      try {
+        for (;;) {
+          const {done,value} = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > 2 * 1024 * 1024) throw new Error("OpenCode context exceeds recovery size limit");
+          chunks.push(value);
+        }
+      } finally { await reader.cancel().catch(()=>{}); reader.releaseLock(); }
+      return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    }
     return response.status===204?undefined:response.json();
   }
   async events(signal:AbortSignal):Promise<Response>{

@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
 import { EngineEventBridge } from "./engineEventBridge";
 import { buildLocalModelConfig } from "./openCodeModelConfig";
+import { recoverCompletedExchange } from "./openCodeRecovery";
 import { OpenCodeSupervisor } from "./openCodeSupervisor";
 import type {RuntimeProbe} from "./openCodeUpdateManager";
 
@@ -72,9 +73,12 @@ export const probeOpenCodeCompatibility: RuntimeProbe = async (candidate, direct
       throw new Error("运行时权限事件协议不兼容");
     }
     await supervisor.request(route+"/permission/"+encodeURIComponent(permission.data.id)+"/reply","POST",{decision:"reject"});
-    await supervisor.request(route+"/prompt","POST",{text:"Compatibility probe"});
+    const messageId="msg_probe_"+randomBytes(12).toString("hex");
+    await supervisor.request(route+"/prompt","POST",{id:messageId,text:"Compatibility probe"});
     await follow;
     if (outcome !== "succeeded" || text !== marker || requests !== 1) throw new Error("运行时 SSE 或 Provider 配置不兼容");
+    const recovered = recoverCompletedExchange(await supervisor.request(route+"/context"),messageId);
+    if (recovered?.outcome !== "succeeded" || recovered.text !== marker) throw new Error("运行时持久会话记录不兼容");
     await supervisor.request(route,"DELETE");
   } finally {
     clearTimeout(timer);

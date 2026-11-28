@@ -16,6 +16,7 @@ fs.mkdirSync(project);
 const checks = [];
 const model = "qwen3:4b";
 const mock = process.argv.includes("--mock");
+const dropCompletion = mock && process.argv.includes("--drop-completion");
 const projectWrite = mock || process.argv.includes("--project-write");
 const outside = path.join(data, "different-project.txt");
 const outsideCanary = "EXTERNAL_" + randomBytes(10).toString("hex");
@@ -26,6 +27,7 @@ let provider;
 let providerUrl = "http://127.0.0.1:11434";
 let modelRequests = 0;
 let toolRequests = 0;
+let nativeShellResult = false;
 const started = Date.now();
 let application;
 
@@ -85,8 +87,20 @@ async function main() {
       const user = request.messages.findLastIndex(message => message.role === "user");
       const thisTurn = request.messages.slice(user + 1);
       if (JSON.stringify(request.messages[user] ?? {}).includes("open-code-task-fixture")) {
-        const result = thisTurn.findLast(message => message.role === "tool");
-        if (result) return res.end(delta({role:"assistant",content:"Calculator patch submitted for independent verification"},null)+delta({},"stop")+"data: [DONE]\n\n");
+        const results = thisTurn.filter(message => message.role === "tool");
+        if (results.length > 1) {
+          nativeShellResult = String(results.at(-1).content).split(/\r?\n/).some(line=>line.trim()==="OPEN_CODE_NATIVE_SHELL_OK");
+          return res.end(delta({role:"assistant",content:"Calculator patch submitted for independent verification"},null)+delta({},"stop")+"data: [DONE]\n\n");
+        }
+        if (results.length === 1) {
+          const shellTool = request.tools?.find(tool=>["shell","bash"].includes(tool.function?.name))?.function;
+          if (!shellTool?.parameters?.properties?.command) return res.destroy();
+          const args = {command:"echo OPEN_CODE_NATIVE_SHELL_OK"};
+          if (shellTool.parameters.properties.description) args.description = "Print fixture marker";
+          res.write(delta({role:"assistant",tool_calls:[{index:0,id:"call_fixture_task_shell",type:"function",
+            function:{name:shellTool.name,arguments:JSON.stringify(args)}}]},null));
+          return res.end(delta({},"tool_calls")+"data: [DONE]\n\n");
+        }
         const tool = request.tools?.find(tool => tool.function?.name === "write")?.function;
         const field = Object.keys(tool?.parameters?.properties ?? {}).find(name => /^(filePath|path|file_path)$/.test(name));
         if (!field) return res.destroy();
@@ -128,6 +142,18 @@ async function main() {
     providerUrl = "http://127.0.0.1:"+provider.address().port;
   }
   const page = await launch();
+  if (dropCompletion) {
+    await application.evaluate((_electron, mainFile) => {
+      const requireFromApp = process.getBuiltinModule("node:module").createRequire(mainFile);
+      const {EngineEventBridge} = requireFromApp("./engineEventBridge.js");
+      const follow = EngineEventBridge.prototype.follow;
+      EngineEventBridge.prototype.follow = function (sessionId, signal, receive) {
+        return follow.call(this,sessionId,signal,event => {
+          if (event.kind !== "text" && event.kind !== "execution-ended") receive(event);
+        });
+      };
+    },path.join(root,"desktop","dist-electron","main.js"));
+  }
   checks.push("Electron connected to isolated data service");
   await application.evaluate(({dialog}, folder) => {
     dialog.showOpenDialog = async () => ({canceled:false, filePaths:[folder]});
@@ -144,7 +170,9 @@ async function main() {
         window.openc.push({type:e.type});
         const allowedEdit = e.payload?.tool === "edit" && /v2-tool\.txt|calculator\.py/.test(JSON.stringify(e.payload?.arguments));
         const ownedWorktree = e.payload?.tool === "git_worktree_create" && /^task-/.test(e.payload?.arguments?.task_name ?? "");
-        if (allowedEdit || ownedWorktree) {
+        const fixtureShell = ["shell","bash"].includes(e.payload?.tool) &&
+          e.payload?.arguments?.resources?.length === 1 && e.payload.arguments.resources[0] === "echo OPEN_CODE_NATIVE_SHELL_OK";
+        if (allowedEdit || ownedWorktree || fixtureShell) {
           void window.localAgent.respondApproval(e.payload.approval_id,"allow_once",e.turn_id).catch(error =>
             window.openc.push({type:"approval.error",message:String(error)}));
         }
@@ -176,7 +204,8 @@ async function main() {
     assert.equal(fs.readFileSync(path.join(project,"v2-tool.txt"),"utf8").trim(),canary);
     checks.push("OpenCode native write waited for one-shot approval, then changed the isolated file");
   }
-  checks.push(mock ? "Official composer streamed through OpenCode and the non-default-port model mock" :
+  checks.push(dropCompletion ? "Missing text and terminal SSE were restored from the current native durable completion" :
+    mock ? "Official composer streamed through OpenCode and the non-default-port model mock" :
     "Official composer streamed a real OpenCode answer via qwen3:4b");
   if (mock) {
     await page.evaluate(() => {window.openc.length=0;});
@@ -201,7 +230,8 @@ async function main() {
     assert(task.verification.every(result=>result.ok));
     assert(task.report.diff.includes("return a + b"));
     assert(fs.readFileSync(path.join(project,"calculator.py"),"utf8").includes("return a - b"));
-    checks.push("Official task IPC used an isolated worktree, a native write, real independent unittest and a verified Git diff");
+    assert(nativeShellResult,"Native shell stdout must be returned to the model after one-shot approval");
+    checks.push("Official Task used isolated Git, native file write and shell, independent unittest and verified Git diff");
   }
   await application.close();
   application = undefined;
@@ -219,8 +249,8 @@ main().then(() => write("PASS"), error => {
 });
 
 function write(status, error) {
-  const report = {status, model, mock, checks, error, elapsed_ms:Date.now()-started, evidence_dir:data};
-  const destination = path.join(reports, mock ? "v2-opencode-desktop-mock.json" : projectWrite ? "v2-opencode-desktop-live-tool.json" : "v2-opencode-desktop-live.json");
+  const report = {status, model, mock, drop_completion:dropCompletion, checks, error, elapsed_ms:Date.now()-started, evidence_dir:data};
+  const destination = path.join(reports, dropCompletion ? "v2-opencode-desktop-recovery.json" : mock ? "v2-opencode-desktop-mock.json" : projectWrite ? "v2-opencode-desktop-live-tool.json" : "v2-opencode-desktop-live.json");
   fs.mkdirSync(path.dirname(destination), {recursive:true});
   fs.writeFileSync(destination, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
