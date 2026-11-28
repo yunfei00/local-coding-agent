@@ -1474,7 +1474,14 @@ class AgentServer:
                 if message_type != "plan.list" and self.active_turns:
                     raise ValueError("Stop the active turn before editing or resuming a plan")
                 plan_id = str(payload.get("plan_id") or "")
-                if message_type == "plan.create":
+                if message_type == "plan.external.resume_context":
+                    if payload.get("confirm_workspace") is not True or payload.get("project_id") != project.id:
+                        raise ValueError("Confirm the workspace for the current project before resuming")
+                    context = plans.external_resume_context(plan_id, thread_id)
+                    await ws.send_json(envelope(
+                        "plan.resumable", context, request_id=request_id, thread_id=thread_id))
+                    return
+                elif message_type == "plan.create":
                     plan_id = plans.create(thread_id, str(payload.get("goal") or ""),
                                            list(payload.get("steps") or []))
                 elif message_type == "plan.step.update":

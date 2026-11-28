@@ -626,3 +626,24 @@ class TaskPlanStore:
     def resumable(self, plan_id: str) -> dict[str, Any]:
         """Return persisted state; never automatically replay mutating tools."""
         return {"plan": self.get(plan_id), "checkpoint": self.latest_checkpoint(plan_id)}
+
+    def external_resume_context(self, plan_id: str, thread_id: str) -> dict[str, Any]:
+        """Return only the saved plan data needed to continue in the native engine."""
+        resume = self.prepare_resume(plan_id)
+        plan, checkpoint, step = resume["plan"], resume["checkpoint"], resume["next_step"]
+        if plan["thread_id"] != thread_id:
+            raise ValueError("Plan belongs to another thread")
+        if not checkpoint or not step or step["state"] == "blocked":
+            raise ValueError("A checkpoint and a recoverable unfinished step are required")
+        unknown = self.db.execute(
+            "SELECT 1 FROM task_plan_executions WHERE plan_id=? AND status IN ('running','interrupted')",
+            (plan_id,),
+        ).fetchone()
+        if unknown:
+            raise ValueError("Review interrupted operations before resuming")
+        return {
+            "checkpoint_id": checkpoint["id"],
+            "goal": plan["goal"],
+            "next_step": {key: step[key] for key in ("id", "description", "verification")},
+            "finished": [s["description"] for s in plan["steps"] if s["state"] in ("completed", "skipped")],
+        }

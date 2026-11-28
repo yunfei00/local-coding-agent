@@ -6,7 +6,18 @@ fs.mkdirSync(output,{recursive:true});
 const workTemp=path.join(output,'runtime-temp');
 fs.mkdirSync(workTemp);
 let nonce='',calls=0,reads=0,readRequested=false;
+const rounds=3;
+const modelResponses=[];
 const fixture=path.join(output,'data','project-fixture','无 Git 工程 含空格','packaged-chat.txt');
+function assertOwnedSidecarsClosed(packagedAgent) {
+ const expected=path.join(path.dirname(path.dirname(packagedAgent)),'opencode','opencode.exe').toLowerCase();
+ const system=process.env.SystemRoot||'C:\\Windows';
+ const shell=path.join(system,'System32','WindowsPowerShell','v1.0','powershell.exe');
+ const output=cp.execFileSync(shell,['-NoProfile','-NonInteractive','-Command',
+  `Get-CimInstance Win32_Process -Filter "Name='opencode.exe'" -ErrorAction Stop | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.ToLowerInvariant() -eq $env:LCA_SMOKE_SIDECAR } | Select-Object -ExpandProperty ProcessId`
+ ],{env:{...process.env,LCA_SMOKE_SIDECAR:expected},encoding:'utf8',timeout:10000,windowsHide:true}).trim();
+ if(output)throw Error('Owned OpenCode sidecar survived application exit: '+output);
+}
 const server=http.createServer((req,res)=>{
  if(req.url.endsWith('/models')){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({data:[{id:'packaged-smoke-model'}]}));return;}
  let body='';req.on('data',data=>body+=data);req.on('end',()=>{
@@ -14,8 +25,10 @@ const server=http.createServer((req,res)=>{
   let p;try{p=JSON.parse(body);}catch{return res.writeHead(400).end();}
   if(p.model!=='packaged-smoke-model'||p.stream!==true)return res.writeHead(400).end();
   calls++;
-  const toolResult=p.messages?.findLast(m=>m.role==='tool'&&String(m.content).includes(nonce));
+  const userIndex=p.messages?.findLastIndex(m=>m.role==='user')??-1;
+  const toolResult=p.messages?.slice(userIndex+1).findLast(m=>m.role==='tool');
   const actual=toolResult && String(toolResult.content).match(/PACKAGED_CHAT_[a-f0-9]{16}/)?.[0];
+  modelResponses.push({tool_result:!!toolResult,matching_canary:actual===nonce,duplicate_read:!toolResult&&readRequested});
   if((toolResult&&actual!==nonce) || (!toolResult&&readRequested))return res.writeHead(422).end();
   const read=p.tools?.find(t=>t.function?.name==='read')?.function;
   const field=Object.keys(read?.parameters?.properties??{}).find(k=>/^(filePath|path|file_path)$/.test(k));
@@ -23,17 +36,17 @@ const server=http.createServer((req,res)=>{
   if(toolResult)reads++;
   else readRequested=true;
   const delta=toolResult?{content:actual}:{tool_calls:[{index:0,id:'owned-read-'+calls,type:'function',function:{name:'read',arguments:JSON.stringify({[field]:fixture})}}]};
-  const event=(content,finish_reason)=>'data: '+JSON.stringify({id:'packaged',object:'chat.completion.chunk',model:p.model,choices:[{index:0,delta:content,finish_reason}]})+'\n\n';
+  const event=(content,finish_reason)=>'data: '+JSON.stringify({id:'packaged-'+calls,object:'chat.completion.chunk',created:Math.floor(Date.now()/1000),model:p.model,choices:[{index:0,delta:content,finish_reason}]})+'\n\n';
   res.writeHead(200,{'Content-Type':'text/event-stream'});
   res.write(event({role:'assistant',...delta},null));
   setTimeout(()=>res.end(event({},toolResult?'stop':'tool_calls')+'data: [DONE]\n\n'),25);
  });
 });
 (async()=>{
- const report={result:'RUNNING',model:'MOCK_LOOPBACK',executable:path.basename(exe),runs:[]};let child;
+ const report={result:'RUNNING',model:'MOCK_LOOPBACK',executable:path.basename(exe),runs:[],model_responses:modelResponses};let child;
  try{
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
-  for(let run=0;run<2;run++){
+  for(let run=0;run<rounds;run++){
    nonce='PACKAGED_CHAT_'+crypto.randomBytes(8).toString('hex');readRequested=false;const marker=path.join(output,'marker-'+run+'.json');
    const env={...process.env,LCA_PACKAGED_SMOKE_FILE:marker,LCA_PACKAGED_CHAT_ACCEPTANCE:'1',LCA_PACKAGED_CHAT_NONCE:nonce,LCA_DATA_DIR:path.join(output,'data'),LCA_DESKTOP_DATA_DIR:path.join(output,'desktop'),LCA_HEADLESS_SMOKE:'1',LCA_PROVIDER:'openai_compatible',LCA_OPENAI_BASE_URL:`http://127.0.0.1:${server.address().port}/v1`,LCA_OPENAI_MODEL:'packaged-smoke-model',LCA_OPENAI_API_KEY:'',LCA_OLLAMA_URL:'http://127.0.0.1:1',LCA_CONTEXT_RESERVED_OUTPUT_TOKENS:'1024'};
    env.TEMP=workTemp;env.TMP=workTemp;
@@ -50,9 +63,10 @@ const server=http.createServer((req,res)=>{
    },120000);child.once('error',e=>{clearTimeout(timer);reject(e);});child.once('exit',code=>{clearTimeout(timer);resolve(code);});});
    child=null;if(exit!==0||!fs.existsSync(marker))throw Error('Package exited '+exit+' before marker; '+errors.join(' '));
    const data=JSON.parse(fs.readFileSync(marker,'utf8'));if(!data.ok||!data.chat_verified||!data.file_verified||!data.packaged||data.engine!=='opencode')throw Error('Package OpenCode chat/file proof failed: '+JSON.stringify(data));
-   report.runs.push({result:'PASS',exit_code:exit,...data});
+   assertOwnedSidecarsClosed(data.agent_executable);
+   report.runs.push({result:'PASS',exit_code:exit,sidecar_cleanup:true,...data});
   }
-  if(calls<4||reads!==2)throw Error('No actual OpenCode tool response across both launches');
+  if(calls!==rounds*2||reads!==rounds)throw Error('Expected one native tool and one final response in every launch');
   report.result='PASS';
  }catch(e){report.result='FAIL';report.error=String(e.stack||e).slice(0,2000);process.exitCode=1;}
  finally{if(child?.pid)cp.spawnSync('taskkill',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});server.closeAllConnections();await new Promise(r=>server.close(r));report.model_requests=calls;report.native_reads=reads;fs.writeFileSync(path.join(output,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));}

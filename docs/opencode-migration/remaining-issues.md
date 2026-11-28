@@ -1,9 +1,9 @@
 # 尚待完成的发布门槛
 
-- Composer 的旧 Plan、Checkpoint 及跨重启续跑尚未全部与 OpenCode 绑定。需要排除误用项目和重复副作用。
+- 历史 Plan 已有项目、会话和检查点校验，恢复仍缺完整的原生步骤/副作用收据和真实跨重启、避免重复修改的验收。
 - Python 独立执行 CLI 和相关回归仍在。桌面数据服务已拒绝其执行入口。
-- 本地与 Mock 场景矩阵和已授权在线模型的实际工程开发尚未全部验收。
+- 在线验收受两个本机配置阻断。`kimi-k3.1-pro` 没有精确模型配置。`qwen4-max` 配置存在，Windows 保护的凭据无法解密。两者均未发出请求。
 - Task 可复用确定性 UIA 断言。原生模型自主 GUI 工具、独立视觉模型及自动修复的产品闭环仍需验收。Tkinter Pane 输入是已知限制。
 - 在线预算保留预留值，实际结算、日志和外部访问边界仍需覆盖。
 - 使用实际官方归档的独立升级与回退已通过。应用原生 HTTPS 直接下载在本机超时，跨版本内部会话迁移仍待验收。
-- 尚待同一提交的 Windows、Ubuntu CI，Setup、Portable、旧版本迁移和 Actions 下载证据。
+- 需要同一提交的 Windows 与 Ubuntu CI，以及 Setup、Portable 各三轮无 SDK 验证和可下载的 Actions Artifact。

@@ -237,7 +237,7 @@ Invoke-DesktopSmoke -Executable $DesktopExe -Name "unpacked"
 $OldSmokeExecutable = $env:LCA_SMOKE_EXECUTABLE
 try {
     $env:LCA_SMOKE_EXECUTABLE = $DesktopExe
-    Invoke-Checked node scripts/validation/desktop-smoke.cjs
+    Invoke-Checked node scripts/validation/desktop-smoke.cjs --product-ui
 } catch {
     $RegressionFailures.Add("Unpacked desktop regression: $($_.Exception.Message)")
 } finally {

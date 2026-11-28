@@ -139,10 +139,9 @@ jobs:
         if: runner.os == 'Windows'
         run: node scripts/validation/opencode/desktop-live.cjs --mock --drop-text
 
-      - name: Actual desktop task and regression smoke
+      - name: Desktop product UI regression
         if: runner.os == 'Windows'
-        run: node scripts/validation/desktop-smoke.cjs
-        continue-on-error: true
+        run: node scripts/validation/desktop-smoke.cjs --product-ui
 
       - name: Retain M2 project execution evidence
         if: always()

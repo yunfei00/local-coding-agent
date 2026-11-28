@@ -2,6 +2,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const http = require("node:http");
+const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { randomBytes } = require("node:crypto");
@@ -14,12 +15,17 @@ const data = fs.mkdtempSync(path.join(reports, "lca-v2-live-"));
 const project = path.join(data, "isolated-project");
 fs.mkdirSync(project);
 const checks = [];
-const model = "qwen3:4b";
+const online = process.argv.find(arg => arg.startsWith("--online="))?.slice(9);
+if (online !== undefined && !["kimi-k3.1-pro","qwen4-max"].includes(online)) {
+  throw new Error("Select an explicitly authorized saved online model");
+}
+const model = online ?? "qwen3:4b";
 const mock = process.argv.includes("--mock");
+if (online && mock) throw new Error("Choose mock or online");
 const dropCompletion = mock && process.argv.includes("--drop-completion");
 const dropText = dropCompletion || (mock && process.argv.includes("--drop-text"));
 const projectWrite = mock || process.argv.includes("--project-write");
-const liveTask = !mock && process.argv.includes("--project-task");
+const liveTask = !mock && (online || process.argv.includes("--project-task"));
 const tunedOrigin = !mock && process.env.LCA_TEST_OLLAMA_ORIGIN;
 const outside = path.join(data, "different-project.txt");
 const outsideCanary = "EXTERNAL_" + randomBytes(10).toString("hex");
@@ -39,6 +45,52 @@ let toolRequests = 0;
 let nativeShellResult = false;
 const started = Date.now();
 let application;
+let onlineProfile;
+let onlineState;
+const usage = new Map();
+
+function seedOnlineProfile() {
+  const source = path.join(testEnv.APPDATA, "local-coding-agent-desktop");
+  onlineState = fs.mkdtempSync(path.join(os.tmpdir(),"lca-online-"));
+  const desktopData = path.join(onlineState,"desktop");
+  fs.mkdirSync(desktopData);
+  const seed = `
+import contextlib, json, pathlib, sqlite3, sys
+from agent.persistence.store import SQLiteStore
+from agent.llm.router import validate_config
+source, dest, model = sys.argv[1:]
+with contextlib.closing(sqlite3.connect((pathlib.Path(source) / "local-coding-agent.sqlite3").as_uri() + "?mode=ro", uri=True)) as db:
+    raw = db.execute("SELECT value FROM settings WHERE key=?", ("models.catalog.v1",)).fetchone()
+catalog = json.loads(raw[0]) if raw else {}
+connections = {c["connection_id"]: c for c in catalog.get("connections", []) if c["enabled"] and c["provider_type"] == "openai_compatible"}
+profiles = [p for p in catalog.get("profiles", []) if p["model_id"] == model and p["connection_id"] in connections]
+if len(profiles) != 1:
+    print("NOT_RUN")
+    sys.exit(0)
+profile = profiles[0]
+connection = connections[profile["connection_id"]]
+if not connection["base_url"].startswith("https://") or not connection["credential_reference"] or profile.get("tool_mode") == "none":
+    print("NOT_RUN")
+    sys.exit(0)
+profile["max_output_tokens"] = min(profile.get("max_output_tokens") or 1024, 1024)
+config = validate_config({"budget": {"api_calls": 8, "global_api_calls": 12, "api_tokens": 2000000, "global_api_tokens": 2000000, "request_seconds": 60, "task_seconds": 240}})
+config["roles"]["executor"]["model_profile_id"] = profile["model_profile_id"]
+with contextlib.closing(SQLiteStore(dest)) as store:
+    store.set_setting("models.catalog.v1", json.dumps({"profiles": [profile], "connections": [connection]}))
+    store.set_setting("orchestration.config", json.dumps(config))
+    store.set_setting("chat.default_profile_id", profile["model_profile_id"])
+print(profile["model_profile_id"] + (" legacy" if connection["credential_reference"] == "legacy-openai" else " protected"))
+`;
+  const selected = execFileSync("uv",["run","python","-c",seed,source,path.join(onlineState,"agent"),model],{cwd:root,env:testEnv,encoding:"utf8"}).trim();
+  if (selected === "NOT_RUN") return false;
+  const [profile, type] = selected.split(" ");
+  assert.match(profile,/^[A-Za-z0-9_-]{1,100}$/);
+  const secretFile = type === "legacy" ? "provider-secrets.json" : "model-secrets.json";
+  if (!fs.existsSync(path.join(source,secretFile))) return false;
+  fs.copyFileSync(path.join(source,secretFile),path.join(desktopData,secretFile));
+  onlineProfile = "profile:"+profile;
+  return true;
+}
 
 async function launch() {
   application = await _electron.launch({
@@ -47,8 +99,8 @@ async function launch() {
     cwd: root,
     timeout: 60_000,
     env: {
-      ...testEnv, LCA_DATA_DIR: path.join(data, "agent"), LCA_DESKTOP_DATA_DIR: path.join(data, "desktop"),
-      LCA_PROVIDER:"ollama", LCA_OLLAMA_URL:providerUrl, LCA_OLLAMA_MODEL:model, LCA_OPENAI_API_KEY:"",
+      ...testEnv, LCA_DATA_DIR: path.join(onlineState ?? data, "agent"), LCA_DESKTOP_DATA_DIR: path.join(onlineState ?? data, "desktop"),
+      LCA_PROVIDER:"ollama", LCA_OLLAMA_URL:providerUrl, LCA_OLLAMA_MODEL:online ? "fixture-never-requested" : model, LCA_OPENAI_API_KEY:"",
     },
   });
   const page = await application.firstWindow();
@@ -66,6 +118,7 @@ async function launch() {
 }
 
 async function main() {
+  if (online && !seedOnlineProfile()) return "NOT_RUN";
   if (mock || liveTask) {
     fs.writeFileSync(path.join(project,"calculator.py"),"def add(a, b):\n    return a - b\n");
     fs.writeFileSync(path.join(project,"test_calculator.py"),"import unittest\nfrom calculator import add\nclass CalculatorTest(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n");
@@ -176,29 +229,33 @@ async function main() {
   await application.evaluate(({dialog}, folder) => {
     dialog.showOpenDialog = async () => ({canceled:false, filePaths:[folder]});
   }, project);
-  await page.evaluate(model => window.localAgent.openProject(model), model);
+  await page.evaluate(model => window.localAgent.openProject(model), onlineProfile ?? model);
   await page.locator(".composer textarea").waitFor();
-  await page.evaluate(() => {
+  await page.exposeFunction("saveGatewayUsage", (turn, count) => usage.set(turn,count));
+  await page.evaluate(online => {
     window.openc = [];
     window.localAgent.onAgentEvent(e => {
       if (e.type.startsWith("turn.") || e.type.startsWith("tool.")) {
         window.openc.push({type:e.type,engine:e.payload?.engine,name:e.payload?.name,message:e.type==="turn.failed"?e.payload?.message:undefined});
       }
+      if (e.type === "turn.metrics") void window.saveGatewayUsage(e.turn_id,e.payload?.execution_summary?.provider_requests);
       if (e.type === "approval.requested") {
         window.openc.push({type:e.type});
         const allowedEdit = e.payload?.tool === "edit" && /v2-tool\.txt|calculator\.py/.test(JSON.stringify(e.payload?.arguments));
         const ownedWorktree = e.payload?.tool === "git_worktree_create" && /^task-/.test(e.payload?.arguments?.task_name ?? "");
         const fixtureShell = ["shell","bash"].includes(e.payload?.tool) &&
-          e.payload?.arguments?.resources?.length === 1 && e.payload.arguments.resources[0] === "echo OPEN_CODE_NATIVE_SHELL_OK";
+          e.payload?.arguments?.resources?.length === 1 &&
+          (online ? /^(python -m unittest( discover)?( -v)?|git (status( --short)?|diff( -- calculator\.py)?))$/.test(e.payload.arguments.resources[0]) :
+            e.payload.arguments.resources[0] === "echo OPEN_CODE_NATIVE_SHELL_OK");
         if (allowedEdit || ownedWorktree || fixtureShell) {
           void window.localAgent.respondApproval(e.payload.approval_id,"allow_once",e.turn_id).catch(error =>
             window.openc.push({type:"approval.error",message:String(error)}));
-        }
+        } else if (online) void window.localAgent.respondApproval(e.payload.approval_id,"deny",e.turn_id);
       }
       if (e.type === "task.updated") window.openc.push({type:e.type,task:e.payload?.task});
     });
-  });
-  if (liveTask) {
+  },Boolean(online));
+  if (liveTask && !online) {
     await checkTask(page);
     return;
   }
@@ -229,7 +286,19 @@ async function main() {
   checks.push(dropCompletion ? "Missing text and terminal SSE were restored from the current native durable completion" :
     dropText ? "Missing text was restored after the live native terminal event" :
     mock ? "Official composer streamed through OpenCode and the non-default-port model mock" :
-    "Official composer streamed a real OpenCode answer via qwen3:4b");
+    `Official composer streamed a real OpenCode answer via ${model}`);
+  if (online) {
+    await page.evaluate(() => { window.openc.length=0; });
+    await input.fill("请复述本会话上条回复中的验收标记。只回复标记，无需工具。");
+    await page.waitForFunction(() => document.querySelector(".send-button")?.disabled === false);
+    await input.press("Enter");
+    await page.waitForFunction(() => window.openc.some(e => ["turn.completed","turn.failed","turn.cancelled"].includes(e.type)),null,{timeout:120_000});
+    const continuation = (await page.evaluate(() => window.openc)).find(e => ["turn.completed","turn.failed","turn.cancelled"].includes(e.type));
+    assert.equal(continuation.type,"turn.completed",continuation.message);
+    await page.locator(".message.agent").last().filter({hasText:canary}).waitFor();
+    checks.push("Online multi-turn reply recovered the previous message's canary");
+    await checkTask(page);
+  }
   if (mock) {
     await page.evaluate(() => {window.openc.length=0;});
     await input.fill("cross-project-check: check the fixture outside the open project");
@@ -253,9 +322,9 @@ async function checkTask(page) {
   const thread = await page.evaluate(async model => {
     const session = await window.localAgent.getProject();
     return session.payload.active_thread?.id ?? (await window.localAgent.createThread(model)).payload.thread.id;
-  },model);
+  },onlineProfile ?? model);
   const goal = liveTask
-    ? "请读取当前隔离工作树中的 calculator.py 并修复 add 的实现，使现有 unittest 通过。请只编辑 calculator.py，继续保留测试预期。程序将在你回复后独立运行测试和检查 Git Diff。"
+    ? "请搜索当前工作树中的 Python 文件，读取 calculator.py 和测试文件。通过 python -m unittest discover -v 复现失败，修复 add，使测试通过，然后重新运行同一命令并检查 git diff。请只编辑 calculator.py，保留测试预期。程序也会独立运行测试和检查 Git Diff。"
     : "open-code-task-fixture: repair calculator.py";
   const taskID = await page.evaluate(async ({threadId,goal,tuned}) => {
     const config={verification_commands:["python -m unittest discover -v"]};
@@ -274,24 +343,28 @@ async function checkTask(page) {
   assert(fs.readFileSync(path.join(project,"calculator.py"),"utf8").includes("return a - b"));
   if (liveTask) {
     assert(events.some(e => e.type === "tool.requested" && e.name === "read"),"The local model must perform an actual source read");
-    checks.push("Real qwen3:4b read and fixed source in the official isolated Task; independent unittest and Git diff passed");
+    checks.push(`Real ${model} read and fixed source in the official isolated Task; independent unittest and Git diff passed`);
   } else {
     assert(nativeShellResult,"Native shell stdout must be returned to the model after one-shot approval");
     checks.push("Official Task used isolated Git, native file write and shell, independent unittest and verified Git diff");
   }
 }
 
-main().then(() => write("PASS"), error => {
+main().then(status => write(status ?? "PASS"), error => {
   write("FAIL", error.message);
   process.exitCode = 1;
 }).finally(async () => {
   if (application) await application.close();
   if (provider) await new Promise(resolve => {provider.close(resolve);provider.closeAllConnections();});
+  if (onlineState) fs.rmSync(onlineState,{recursive:true,force:true});
 });
 
 function write(status, error) {
-  const report = {status, model, mock, drop_completion:dropCompletion, drop_text:dropText, checks, error, elapsed_ms:Date.now()-started, evidence_dir:data};
-  const destination = path.join(reports, dropCompletion ? "v2-opencode-desktop-recovery.json" :
+  const report = {status, model, mock, drop_completion:dropCompletion, drop_text:dropText, checks,
+    diagnostic:status === "NOT_RUN" ? "No unique, enabled HTTPS profile with the exact authorized model and a protected credential reference" : error,
+    elapsed_ms:Date.now()-started, evidence_dir:data,
+    ...(online ? {provider_requests:[...usage.values()].reduce((sum,count)=>sum+(count??0),0),token_usage:"UNKNOWN",cost:"UNKNOWN"} : {})};
+  const destination = path.join(reports, online ? `v2-opencode-online-${online}.json` : dropCompletion ? "v2-opencode-desktop-recovery.json" :
     dropText ? "v2-opencode-desktop-text-recovery.json" : mock ? "v2-opencode-desktop-mock.json" :
     liveTask ? "v2-opencode-desktop-live-task.json" : tunedOrigin ? "v2-opencode-desktop-alternate-ollama.json" :
     projectWrite ? "v2-opencode-desktop-live-tool.json" : "v2-opencode-desktop-live.json");

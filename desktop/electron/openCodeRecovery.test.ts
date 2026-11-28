@@ -23,4 +23,7 @@ it("requires the current admitted message and its own terminal marker", () => {
   expect(recoverCompletedExchange({data:[stale,user,reply,stale]},"msg_other")).toBeUndefined();
   expect(recoverCompletedExchange({data:[stale,user,reply,stale]},user.id)).toEqual({outcome:"succeeded",text:"real reply"});
   expect(recoverCompletedExchange({data:[user,{type:"idle",outcome:"failed"},reply,stale]},user.id)).toEqual({outcome:"failed",text:""});
+  const next = {type:"user",id:"msg_next"};
+  expect(recoverCompletedExchange({data:[user,next,reply,stale]},user.id)).toBeUndefined();
+  expect(recoverCompletedExchange({data:[user,next,reply,stale]},user.id,new Set([next.id]))).toEqual({outcome:"succeeded",text:"real reply"});
 });

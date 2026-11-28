@@ -36,7 +36,7 @@ describe("local model gateway",()=>{
   it("forwards upstream status while only the configured upstream receives its credential", async () => {
     const observed: Array<string | undefined> = [];
     const fixtureCredential = "fixture-provider-key-not-a-credential";
-    const statuses = [401,403,429,500];
+    const statuses = [401,403,500,429];
     const upstream = createServer((request,response) => {
       observed.push(request.headers.authorization);
       request.resume();
@@ -55,13 +55,14 @@ describe("local model gateway",()=>{
     try {
       for (const status of statuses) {
         const response = await call();
-        expect(response.status).toBe(status);
+        expect(response.status).toBe(status === 429 ? 402 : status);
         expect(await response.text()).not.toContain(fixtureCredential);
       }
       const rejected = await call();
-      expect(rejected.status).toBe(429);
-      expect(await rejected.text()).toContain("persisted budget");
+      expect(rejected.status).toBe(402);
+      expect(await rejected.text()).toContain("HTTP 429");
       expect(observed).toEqual(statuses.map(() => "Bearer "+fixtureCredential));
+      expect(gateway.usage().upstreamRequests).toBe(statuses.length);
       expect(JSON.stringify(gateway.usage())).not.toContain(fixtureCredential);
     } finally {
       await gateway.close();

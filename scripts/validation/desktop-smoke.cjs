@@ -10,6 +10,8 @@ const { _electron } = require("../../desktop/node_modules/playwright-core");
 
 const root = path.resolve(__dirname, "../..");
 const reportDir = path.join(root, "validation-reports");
+const productUi = process.argv.includes("--product-ui");
+const reportName = productUi ? "desktop-product-ui.json" : "desktop-smoke.json";
 fs.mkdirSync(reportDir, {recursive: true});
 const data = fs.mkdtempSync(path.join(os.tmpdir(), "lca-ui-"));
 const project = path.join(data, "calculator-project");
@@ -31,6 +33,12 @@ const modelRequests = [];
 const checks = [];
 const skipped = [];
 const errors = [];
+function writeSuccess() {
+  assert.deepEqual(errors, []);
+  const report = JSON.stringify({ok: true, checks, skipped}, null, 2);
+  console.log(report);
+  fs.writeFileSync(path.join(reportDir, reportName), report);
+}
 const provider = http.createServer((req, res) => {
   if (req.url === "/api/tags") {res.writeHead(200, {"Content-Type":"application/json"}); return res.end(JSON.stringify({models:[{name:"gpt-oss:20b"},{name:"task-executor"}]}));}
   if (req.url.endsWith("/models")) {
@@ -150,6 +158,101 @@ async function toggleSettings(page) {
   else await page.getByRole("button",{name:"Settings",exact:true}).click();
 }
 
+async function checkProductSettings(page, restart, screenshot) {
+  // Exercise the actual Settings form, not only the IPC configuration endpoint.
+  await toggleSettings(page);
+  await page.getByRole("button", {name:"Models & Routing", exact:true}).click();
+  await page.getByLabel("Model connection", {exact:true}).waitFor();
+  const profileIds = {};
+  for (const [kind, name, models] of [["ollama","Company Ollama",["task-planner","task-executor"]],["openai_compatible","Company API",["api-reviewer","api-escalation"]]]) {
+    await page.getByRole("button", {name:"Add connection", exact:true}).click();
+    await page.getByLabel("Connection name", {exact:true}).fill(name);
+    await page.getByLabel("Connection provider type", {exact:true}).selectOption(kind);
+    await page.getByLabel("Connection base URL", {exact:true}).fill(`http://127.0.0.1:${provider.address().port}${kind === "ollama" ? "" : "/v1"}`);
+    if (kind === "openai_compatible") {
+      await page.getByLabel("Connection API key", {exact:true}).fill("mock-only-not-a-real-key");
+      await page.getByRole("button", {name:"Save / clear connection key", exact:true}).click();
+      await page.getByText(/Credential and connection reference saved:/).waitFor();
+    }
+    for (const model of models) {
+      await page.getByRole("button", {name:"Manually add model", exact:true}).click();
+      await page.getByLabel("Profile model ID", {exact:true}).fill(model);
+      await page.getByLabel("Profile display name", {exact:true}).fill(model);
+      await page.getByLabel("Profile context window", {exact:true}).fill("65536");
+      // This synthetic API emits <200 tokens. Keep the 30k budget test intact
+      // without reserving an unrelated 8192-token response for tiny fixtures.
+      if(model==='api-reviewer')await page.getByLabel('Profile output limit',{exact:true}).fill('1024');
+      profileIds[model] = await page.getByLabel("Edit model profile", {exact:true}).inputValue();
+    }
+  }
+  const roleChoices = {planner:"task-planner",executor:"task-executor",reviewer:"api-reviewer",escalation:"api-escalation"};
+  await page.getByLabel('Profile output limit',{exact:true}).fill('1024');
+  await page.getByRole('button',{name:'Use coding output limit',exact:true}).click();
+  assert.equal(await page.getByLabel('Profile output limit',{exact:true}).inputValue(),'8192');
+  await page.getByLabel('Profile output limit',{exact:true}).fill('16384');
+  await page.getByRole('button',{name:'Use coding output limit',exact:true}).click();
+  assert.equal(await page.getByLabel('Profile output limit',{exact:true}).inputValue(),'16384');
+  const beforeInvalidLimit = modelRequests.length;
+  await page.getByLabel('Profile output limit',{exact:true}).fill('0');
+  await page.getByRole('button',{name:'Save model configuration',exact:true}).click();
+  await page.getByText(/单次输出上限必须是 64–32768 的整数/).waitFor();
+  assert.equal(modelRequests.length, beforeInvalidLimit);
+  await page.getByLabel('Profile output limit',{exact:true}).fill('8192');
+  for (const [role,name] of Object.entries(roleChoices)) await page.getByLabel(role + " profile", {exact:true}).selectOption(profileIds[name]);
+  await page.getByLabel("Default api_calls",{exact:true}).fill("3");
+  await page.getByLabel("Default api_tokens",{exact:true}).fill("30000");
+  const beforeLongBudget = modelRequests.length;
+  await page.getByRole("button",{name:"Use long task budget",exact:true}).click();
+  assert.equal(await page.getByLabel("Default api_calls",{exact:true}).inputValue(),"200");
+  assert.equal(await page.getByLabel("Default api_tokens",{exact:true}).inputValue(),"10000000");
+  assert.equal(await page.getByLabel("Default global_api_tokens",{exact:true}).inputValue(),"100000000");
+  assert.equal(modelRequests.length,beforeLongBudget,"Editing budget must not send model requests");
+  await page.getByRole("button", {name:"Save model configuration", exact:true}).click();
+  await page.getByText(/^模型配置已保存，(?:API连接验证完成；运行任务快照不变。|运行任务快照不变；未自动探测本地服务。)$/).waitFor();
+  await page.getByRole("button", {name:"Fetch model list (does not verify capabilities)", exact:true}).click();
+  await page.getByRole("button", {name:"Add model: smoke-coder", exact:true}).waitFor();
+  await screenshot("desktop-mixed-provider-settings.png");
+  const persistedRouting = await page.evaluate(async () => (await window.localAgent.taskRequest("", "task.catalog.get")).payload);
+  assert.equal(persistedRouting.catalog.profiles.find(p=>p.model_id==='api-escalation').max_output_tokens,8192);
+  assert.equal(persistedRouting.catalog.profiles.find(p=>p.model_id==='task-executor').max_output_tokens,null);
+  checks.push("Model Settings rejects invalid numeric output limits and saves Ollama blank as null");
+  assert.equal(new Set(Object.values(persistedRouting.config.roles).map(p => p.model_profile_id)).size, 4);
+  assert.equal(persistedRouting.config.budget.api_tokens,10000000);
+  checks.push("Actual Settings long-task preset saves large budgets without changing role bindings or sending model requests");
+  checks.push("Settings creates local/API connections, four model profiles, distinct role bindings and protected key");
+  const beforeDiagnosis = modelRequests.length;
+  await page.getByRole("button", {name:"Test Vision", exact:true}).click();
+  await page.getByText(/配置 PASS · 连接 NOT RUN/).waitFor();
+  assert.equal(modelRequests.length,beforeDiagnosis,"Offline diagnosis must not send model requests");
+  await page.getByLabel("Enable Live Test", {exact:true}).check();
+  await page.getByRole("button", {name:"Test Vision", exact:true}).click();
+  await page.getByText(/配置 PASS · 连接 PASS · 文本 PASS · 视觉 FAIL · 工具 PASS/).waitFor();
+  assert.equal(modelRequests.length-beforeDiagnosis,3);
+  assert((await page.locator('[aria-label="Model connection diagnostics"] pre').innerText()).includes("CAPABILITY_ASSERTION_FAILED"));
+  await page.getByLabel("Enable Live Test", {exact:true}).uncheck();
+  checks.push("M4 Settings diagnostics: offline zero requests, explicit local Live Test sends real JPEG, HTTP200 wrong-image assertion FAIL, text/native functions PASS, exactly three requests");
+  page = await restart();
+  await toggleSettings(page);
+  await page.getByRole("button", {name:"Models & Routing", exact:true}).click();
+  assert.equal(await page.getByLabel("Default api_tokens",{exact:true}).inputValue(),"10000000");
+  for (const [role,name] of Object.entries(roleChoices)) {
+    await page.getByLabel(role + " profile", {exact:true}).waitFor();
+    assert.equal(await page.getByLabel(role + " profile", {exact:true}).inputValue(), profileIds[name]);
+  }
+  await page.getByLabel("Model connection", {exact:true}).selectOption({label:"Company API · openai_compatible"});
+  protectedCredentialSeen = false;
+  await page.getByRole("button", {name:"Fetch model list (does not verify capabilities)", exact:true}).click();
+  await page.getByRole("button", {name:"Add model: smoke-coder", exact:true}).waitFor();
+  const keyStorage = await page.evaluate(async () => (await window.localAgent.taskRequest("", "task.credential.status")).payload.mode);
+  if (keyStorage === "os_protected") {
+    assert(protectedCredentialSeen, "Restart lost the protected per-connection key");
+    assert(!fs.readFileSync(path.join(data,"desktop","model-secrets.json"),"utf8").includes("mock-only-not-a-real-key"));
+  } else skipped.push("OS protected model credentials unavailable; key is session-only as shown in Settings");
+  checks.push("Restart restores four distinct role bindings; protected credential reaches the selected API connection");
+  await toggleSettings(page);
+  return {page, profileIds};
+}
+
 async function main() {
   await new Promise(resolve => provider.listen(0, "127.0.0.1", resolve));
   const env = {...process.env, ELECTRON_RUN_AS_NODE: undefined, LCA_HEADLESS_SMOKE: process.platform === "win32" ? "0" : "1",
@@ -191,6 +294,10 @@ async function main() {
     }
     assert(ready, "Agent did not connect within 30 seconds");
     return page;
+  };
+  const restart = async () => {
+    await application.close();
+    return launch();
   };
   try {
     let page = await launch();
@@ -337,6 +444,7 @@ async function main() {
       if (originalOpenPath) await application.evaluate(({shell}) => {shell.openPath = globalThis.smokeOpenPath;});
     }
     checks.push("Header Open menu resolves only the active backend project; file manager launch mocked");
+    if (!productUi) {
     const beforeProtocolRecovery = modelRequests.length;
     await page.locator(".composer textarea").fill("invalid-json-smoke");
     await page.locator(".composer textarea").press("Enter");
@@ -345,6 +453,7 @@ async function main() {
     assert(!fs.existsSync(path.join(project,"must-not-exist.py")));
     assert.equal(modelRequests.length,beforeProtocolRecovery+2);
     checks.push("Actual HTTP malformed tool batch executes no file write, same-model retry is visible, discarded Unicode partial output is removed and final chat recovers");
+    }
 
     if (process.platform === "win32") {
       const captureTitle="LCA M4 controlled Electron capture";
@@ -394,6 +503,11 @@ async function main() {
     await page.locator(".projects-heading").getByRole("button", {name:"Add project",exact:true}).click();
     await page.getByRole("menuitem", {name:"Add existing folder",exact:true}).click();
     checks.push("Centered New project dialog: cancellation, location picker, collision protection, Git init and registry open");
+    if (productUi) {
+      ({page} = await checkProductSettings(page, restart, screenshot));
+      writeSuccess();
+      return;
+    }
 
     // Reproduce a persisted API model in a thread after switching chat to Ollama.
     // Startup shows the valid local default, but used to send the old API name.
@@ -472,98 +586,9 @@ async function main() {
     }
     checks.push("Real file read and MCP stdio/HTTP calls through the Agent loop");
 
-    // Exercise the actual Settings form, not only the IPC configuration endpoint.
-    await toggleSettings(page);
-    await page.getByRole("button", {name:"Models & Routing", exact:true}).click();
-    await page.getByLabel("Model connection", {exact:true}).waitFor();
-    const profileIds = {};
-    for (const [kind, name, models] of [["ollama","Company Ollama",["task-planner","task-executor"]],["openai_compatible","Company API",["api-reviewer","api-escalation"]]]) {
-      await page.getByRole("button", {name:"Add connection", exact:true}).click();
-      await page.getByLabel("Connection name", {exact:true}).fill(name);
-      await page.getByLabel("Connection provider type", {exact:true}).selectOption(kind);
-      await page.getByLabel("Connection base URL", {exact:true}).fill(`http://127.0.0.1:${provider.address().port}${kind === "ollama" ? "" : "/v1"}`);
-      if (kind === "openai_compatible") {
-        await page.getByLabel("Connection API key", {exact:true}).fill("mock-only-not-a-real-key");
-        await page.getByRole("button", {name:"Save / clear connection key", exact:true}).click();
-        await page.getByText(/Credential and connection reference saved:/).waitFor();
-      }
-      for (const model of models) {
-        await page.getByRole("button", {name:"Manually add model", exact:true}).click();
-        await page.getByLabel("Profile model ID", {exact:true}).fill(model);
-        await page.getByLabel("Profile display name", {exact:true}).fill(model);
-        await page.getByLabel("Profile context window", {exact:true}).fill("65536");
-        // This synthetic API emits <200 tokens. Keep the 30k budget test intact
-        // without reserving an unrelated 8192-token response for tiny fixtures.
-        if(model==='api-reviewer')await page.getByLabel('Profile output limit',{exact:true}).fill('1024');
-        profileIds[model] = await page.getByLabel("Edit model profile", {exact:true}).inputValue();
-      }
-    }
-    const roleChoices = {planner:"task-planner",executor:"task-executor",reviewer:"api-reviewer",escalation:"api-escalation"};
-    await page.getByLabel('Profile output limit',{exact:true}).fill('1024');
-    await page.getByRole('button',{name:'Use coding output limit',exact:true}).click();
-    assert.equal(await page.getByLabel('Profile output limit',{exact:true}).inputValue(),'8192');
-    await page.getByLabel('Profile output limit',{exact:true}).fill('16384');
-    await page.getByRole('button',{name:'Use coding output limit',exact:true}).click();
-    assert.equal(await page.getByLabel('Profile output limit',{exact:true}).inputValue(),'16384');
-    const beforeInvalidLimit = modelRequests.length;
-    await page.getByLabel('Profile output limit',{exact:true}).fill('0');
-    await page.getByRole('button',{name:'Save model configuration',exact:true}).click();
-    await page.getByText(/单次输出上限必须是 64–32768 的整数/).waitFor();
-    assert.equal(modelRequests.length, beforeInvalidLimit);
-    await page.getByLabel('Profile output limit',{exact:true}).fill('8192');
-    for (const [role,name] of Object.entries(roleChoices)) await page.getByLabel(role + " profile", {exact:true}).selectOption(profileIds[name]);
-    await page.getByLabel("Default api_calls",{exact:true}).fill("3");
-    await page.getByLabel("Default api_tokens",{exact:true}).fill("30000");
-    const beforeLongBudget = modelRequests.length;
-    await page.getByRole("button",{name:"Use long task budget",exact:true}).click();
-    assert.equal(await page.getByLabel("Default api_calls",{exact:true}).inputValue(),"200");
-    assert.equal(await page.getByLabel("Default api_tokens",{exact:true}).inputValue(),"10000000");
-    assert.equal(await page.getByLabel("Default global_api_tokens",{exact:true}).inputValue(),"100000000");
-    assert.equal(modelRequests.length,beforeLongBudget,"Editing budget must not send model requests");
-    await page.getByRole("button", {name:"Save model configuration", exact:true}).click();
-    await page.getByText(/^模型配置已保存，(?:API连接验证完成；运行任务快照不变。|运行任务快照不变；未自动探测本地服务。)$/).waitFor();
-    await page.getByRole("button", {name:"Fetch model list (does not verify capabilities)", exact:true}).click();
-    await page.getByRole("button", {name:"Add model: smoke-coder", exact:true}).waitFor();
-    await screenshot("desktop-mixed-provider-settings.png");
-    const persistedRouting = await page.evaluate(async () => (await window.localAgent.taskRequest("", "task.catalog.get")).payload);
-    assert.equal(persistedRouting.catalog.profiles.find(p=>p.model_id==='api-escalation').max_output_tokens,8192);
-    assert.equal(persistedRouting.catalog.profiles.find(p=>p.model_id==='task-executor').max_output_tokens,null);
-    checks.push("Model Settings rejects invalid numeric output limits and saves Ollama blank as null");
-    assert.equal(new Set(Object.values(persistedRouting.config.roles).map(p => p.model_profile_id)).size, 4);
-    assert.equal(persistedRouting.config.budget.api_tokens,10000000);
-    checks.push("Actual Settings long-task preset saves large budgets without changing role bindings or sending model requests");
-    checks.push("Settings creates local/API connections, four model profiles, distinct role bindings and protected key");
-    const beforeDiagnosis = modelRequests.length;
-    await page.getByRole("button", {name:"Test Vision", exact:true}).click();
-    await page.getByText(/配置 PASS · 连接 NOT RUN/).waitFor();
-    assert.equal(modelRequests.length,beforeDiagnosis,"Offline diagnosis must not send model requests");
-    await page.getByLabel("Enable Live Test", {exact:true}).check();
-    await page.getByRole("button", {name:"Test Vision", exact:true}).click();
-    await page.getByText(/配置 PASS · 连接 PASS · 文本 PASS · 视觉 FAIL · 工具 PASS/).waitFor();
-    assert.equal(modelRequests.length-beforeDiagnosis,3);
-    assert((await page.locator('[aria-label="Model connection diagnostics"] pre').innerText()).includes("CAPABILITY_ASSERTION_FAILED"));
-    await page.getByLabel("Enable Live Test", {exact:true}).uncheck();
-    checks.push("M4 Settings diagnostics: offline zero requests, explicit local Live Test sends real JPEG, HTTP200 wrong-image assertion FAIL, text/native functions PASS, exactly three requests");
-    await application.close();
-    page = await launch();
-    await toggleSettings(page);
-    await page.getByRole("button", {name:"Models & Routing", exact:true}).click();
-    assert.equal(await page.getByLabel("Default api_tokens",{exact:true}).inputValue(),"10000000");
-    for (const [role,name] of Object.entries(roleChoices)) {
-      await page.getByLabel(role + " profile", {exact:true}).waitFor();
-      assert.equal(await page.getByLabel(role + " profile", {exact:true}).inputValue(), profileIds[name]);
-    }
-    await page.getByLabel("Model connection", {exact:true}).selectOption({label:"Company API · openai_compatible"});
-    protectedCredentialSeen = false;
-    await page.getByRole("button", {name:"Fetch model list (does not verify capabilities)", exact:true}).click();
-    await page.getByRole("button", {name:"Add model: smoke-coder", exact:true}).waitFor();
-    const keyStorage = await page.evaluate(async () => (await window.localAgent.taskRequest("", "task.credential.status")).payload.mode);
-    if (keyStorage === "os_protected") {
-      assert(protectedCredentialSeen, "Restart lost the protected per-connection key");
-      assert(!fs.readFileSync(path.join(data,"desktop","model-secrets.json"),"utf8").includes("mock-only-not-a-real-key"));
-    } else skipped.push("OS protected model credentials unavailable; key is session-only as shown in Settings");
-    checks.push("Restart restores four distinct role bindings; protected credential reaches the selected API connection");
-    await toggleSettings(page);
+    const settingsResult = await checkProductSettings(page, restart, screenshot);
+    page = settingsResult.page;
+    const {profileIds} = settingsResult;
     const initialChatProfile=await page.getByLabel("Chat model",{exact:true}).inputValue();
     await page.getByLabel("Search chat models",{exact:true}).fill("api-escalation");
     await page.getByLabel("Chat model",{exact:true}).selectOption("profile:"+profileIds["api-escalation"]);
@@ -1268,9 +1293,7 @@ async function main() {
     assert(await page.locator('.model-select option[value="auto"]').count()===1);
     assert(await page.locator('.composer textarea').isEnabled());
     checks.push('v0.8 real Electron Context memory create/edit/persistence across application restart/delete; automatic model option and composer remain available (Mock HTTP only)');
-    assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ok: true, checks, skipped}, null, 2));
-    fs.writeFileSync(path.join(reportDir, "desktop-smoke.json"), JSON.stringify({ok: true, checks, skipped}, null, 2));
+    writeSuccess();
   } catch (error) {
     if (application) {
       const page = application.windows()[0];
@@ -1282,7 +1305,7 @@ async function main() {
       }
     }
     if (fs.existsSync(path.join(data, "desktop", "logs"))) fs.cpSync(path.join(data, "desktop", "logs"), path.join(reportDir, "desktop-smoke-logs"), {recursive: true});
-    fs.writeFileSync(path.join(reportDir, "desktop-smoke.json"), JSON.stringify({ok: false, checks, error: String(error), errors}, null, 2));
+    fs.writeFileSync(path.join(reportDir, reportName), JSON.stringify({ok: false, checks, error: String(error), errors}, null, 2));
     throw error;
   } finally {
     if (application) await application.close().catch(() => {});

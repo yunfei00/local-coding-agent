@@ -2,6 +2,18 @@
 
 记录日期为 2026 年 11 月 28 日。当前仍有发布阻断项。
 
+## PR #40 最终收尾
+
+| 项目 | 本轮证据 |
+| --- | --- |
+| 桌面回归 | 移除 CI 的 `continue-on-error`。项目、窗口和 Settings 断言使用 `desktop-smoke.cjs --product-ui`；OpenCode 流式工具链、独立验收和断流恢复使用 `opencode/desktop-live.cjs --mock` 及两个断流变体。旧 Python 协议的解析重试仅留作历史回归。 |
+| `kimi-k3.1-pro` | NOT RUN。本机保存目录缺少精确匹配的启用配置，API 请求为 0。 |
+| `qwen4-max` | 在线工程 NOT RUN。正式桌面从隔离副本加载该配置时，Windows 保护的凭据无法解密，未向供应商发送请求。 |
+| Windows 打包复现 | 原便携包（`29c26a3`）标准环境三轮通过。无 SDK 模式首轮通过，第二轮已有真实工具回读和原生持久化的成功消息，但产品未显示回答或完成事件。 |
+| Plan 与 Checkpoint | 桌面恢复入口携带实际计划 ID。数据服务确认项目、会话与检查点；中断结果不明、阻塞或无快照时拒绝。恢复提示交由 OpenCode，保留只读权限，旧计划交接时对写入要求一次性审批。 |
+
+在线入口为 `node scripts/validation/opencode/desktop-live.cjs --online=<精确模型ID>`。每个模型最多 12 次实际请求，每轮最多 8 次，单请求最多 60 秒，单次输出最多 1024 Token。HTTP 402/429 立即停止该轮的上游请求。上述两项均未产生 API 调用、Token 或费用。
+
 | 阶段 | 结果 | 命令、耗时及证据 |
 | --- | --- | --- |
 | P0 代码审计 | PASS | [最终审计和基线 CI](final-audit.md) |

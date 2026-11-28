@@ -25,6 +25,8 @@ export async function startCompatibleGateway(model:string,endpoint:CompatibleEnd
   const token=randomBytes(32).toString("hex");
   const deadline=Date.now()+limits.durationMs;
   let requests=0,bytes=0,reserved=0,closed=false;
+  let upstreamRequests=0;
+  let upstreamQuotaStatus: number | undefined;
   let lastStatus:number|undefined;
   let failure:string|undefined;
   const active=new Set<AbortController>();
@@ -38,6 +40,9 @@ export async function startCompatibleGateway(model:string,endpoint:CompatibleEnd
     const expected=Buffer.from("Bearer "+token);
     if(actual.length!==expected.length||!timingSafeEqual(actual,expected))return reject(401);
     if(req.method!=="POST"||req.url!=="/v1/chat/completions")return reject(404);
+    // Return a non-retryable status to the runtime after quota or rate denial.
+    // Subsequent requests never reserve budget or reach the provider.
+    if(upstreamQuotaStatus)return reject(402,`Provider quota/rate limit reached (HTTP ${upstreamQuotaStatus})`);
     if(closed||Date.now()>=deadline||requests>=limits.requests||active.size)return reject(429);
     requests++;
     const controller=new AbortController();active.add(controller);
@@ -70,6 +75,7 @@ export async function startCompatibleGateway(model:string,endpoint:CompatibleEnd
         return reject(429,"Online reservation denied by the persisted budget");
       }
       controller.signal.throwIfAborted();
+      upstreamRequests++;
       const response=await fetch(upstream,{
         method:"POST",headers:{"content-type":"application/json",...(endpoint.apiKey ? {authorization:"Bearer "+endpoint.apiKey} : {})},redirect:"error",signal:controller.signal,
         body:JSON.stringify({model,messages:body.messages,stream:body.stream===true,max_tokens:max,
@@ -79,7 +85,9 @@ export async function startCompatibleGateway(model:string,endpoint:CompatibleEnd
           ...(limits.allowTools?{tools:body.tools,tool_choice:body.tool_choice}:{})})
       });
       if (!response.ok) {
+        if (response.status === 402 || response.status === 429) upstreamQuotaStatus = response.status;
         await response.body?.cancel();
+        if (upstreamQuotaStatus) return reject(402,`Provider quota/rate limit reached (HTTP ${upstreamQuotaStatus})`);
         return reject(response.status,"Provider rejected model request");
       }
       lastStatus=response.status;
@@ -102,7 +110,7 @@ export async function startCompatibleGateway(model:string,endpoint:CompatibleEnd
   await new Promise<void>((resolve,reject)=>{server.once("error",reject);server.listen(0,"127.0.0.1",()=>{server.removeListener("error",reject);resolve();});});
   const address=server.address();
   if(!address||typeof address==="string")throw new Error("Gateway address unavailable");
-  return {port:address.port,token,usage:()=>({requests,bytes,reserved,lastStatus,failure}),close:async()=>{
+  return {port:address.port,token,usage:()=>({requests,upstreamRequests,bytes,reserved,lastStatus,failure}),close:async()=>{
     closed=true;for(const c of active)c.abort();
     await new Promise<void>((resolve,reject)=>{server.close(e=>e?reject(e):resolve());server.closeAllConnections();});
   }};

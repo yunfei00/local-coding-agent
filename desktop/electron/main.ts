@@ -136,7 +136,7 @@ async function maybeCompletePackagedSmoke():Promise<void> {
       const nonce=String(process.env.LCA_PACKAGED_CHAT_NONCE||'');if(!/^PACKAGED_CHAT_[a-f0-9]{16}$/.test(nonce))throw new Error('Invalid owned chat canary');
       const target=path.join(process.env.LCA_DATA_DIR,'project-fixture','无 Git 工程 含空格','packaged-chat.txt');
       writeFileSync(target,nonce,{encoding:'utf8',flag:existsSync(target)?'r+':'wx'});
-      await mainWindow!.webContents.executeJavaScript(`(async()=>{window.packagedSmokeEngine=null;window.localAgent.onAgentEvent(e=>{if(e.type==='turn.completed')window.packagedSmokeEngine=e.payload.engine;});const deadline=Date.now()+15000;while(document.querySelector('.send-button')?.disabled!==false&&Date.now()<deadline){const input=document.querySelector('.composer textarea');if(input&&!input.value){Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,'请用 read 工具完整读取 packaged-chat.txt，并报告原文。');input.dispatchEvent(new Event('input',{bubbles:true}));}await new Promise(r=>setTimeout(r,100));}const button=document.querySelector('.send-button');if(!button||button.disabled)throw Error('Composer unavailable');button.click();})()`);
+      await mainWindow!.webContents.executeJavaScript(`(async()=>{window.packagedSmokeEngine=null;window.packagedSmokeEvents={};window.localAgent.onAgentEvent(e=>{if(e.type.startsWith('turn.')||e.type.startsWith('tool.'))window.packagedSmokeEvents[e.type]=(window.packagedSmokeEvents[e.type]||0)+1;if(e.type==='turn.completed')window.packagedSmokeEngine=e.payload.engine;});const deadline=Date.now()+15000;while(document.querySelector('.send-button')?.disabled!==false&&Date.now()<deadline){const input=document.querySelector('.composer textarea');if(input&&!input.value){Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,'请用 read 工具完整读取 packaged-chat.txt，并报告原文。');input.dispatchEvent(new Event('input',{bubbles:true}));}await new Promise(r=>setTimeout(r,100));}const button=document.querySelector('.send-button');if(!button||button.disabled)throw Error('Composer unavailable');button.click();})()`);
       const deadline=Date.now()+45000;
       while(Date.now()<deadline){
         chatVerified=await mainWindow!.webContents.executeJavaScript(`!![...document.querySelectorAll('.message.agent')].find(e=>e.textContent.includes(${JSON.stringify(nonce)}))&&!document.querySelector('.stop-button')`);
@@ -144,7 +144,10 @@ async function maybeCompletePackagedSmoke():Promise<void> {
       }
       fileVerified=existsSync(target)&&readFileSync(target,'utf8')===nonce;
       engine=await mainWindow!.webContents.executeJavaScript('window.packagedSmokeEngine');
-      if(!chatVerified||!fileVerified||engine!=='opencode')throw new Error(`Packaged composer/chat/file readback not verified (chat=${chatVerified}, file=${fileVerified}, completed=${engine==='opencode'})`);
+      if(!chatVerified||!fileVerified||engine!=='opencode'){
+        const events=await mainWindow!.webContents.executeJavaScript('window.packagedSmokeEvents');
+        throw new Error(`Packaged composer/chat/file readback not verified (chat=${chatVerified}, file=${fileVerified}, completed=${engine==='opencode'}, events=${JSON.stringify(events)})`);
+      }
     }
     writeFileSync(smokeFile,JSON.stringify({ok:true,renderer_ready:true,version:lastAgentReady.version,protocol:lastAgentReady.protocol,
       host:lastAgentReady.host,port:lastAgentReady.port,packaged:app.isPackaged,agent_executable:packagedAgentPath(),
@@ -1699,7 +1702,7 @@ ipcMain.handle("agent:thread-get", async (_event, threadId: string) => {
     { threadId }
   );
 });
-async function startOpenCodeTurn(threadId: string, prompt: string, model?: string, task?:OpenCodeTask): Promise<AgentEnvelope> {
+async function startOpenCodeTurn(threadId: string, prompt: string, model?: string, task?:OpenCodeTask, resumePlanId?:string): Promise<AgentEnvelope> {
   if (openCodeRuntime.bundledVersion()) installedRuntimeUpdater();
   if (runtimeUpdater?.isUpgrading()) throw new Error("OpenCode 正在升级");
   if (shuttingDown || quitInProgress) throw new Error("应用正在关闭");
@@ -1718,6 +1721,17 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
     let gateway: Awaited<ReturnType<typeof startOpenCodeModel>> | undefined;
     let releaseLease: (()=>Promise<void>) | undefined;
     let finalEvent: AgentEnvelope | undefined;
+    const drainEvents = async () => {
+      if (!follow) return;
+      const pendingEvents = follow;
+      follow = undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([pendingEvents, new Promise<void>(resolve => { timer = setTimeout(resolve, 1000); })]);
+      } finally {
+        clearTimeout(timer);
+      }
+    };
     const end = (type:string, message?:string) => {
       finalEvent = {type, request_id:"req_"+randomUUID().replace(/-/g,""), turn_id:turnId, thread_id:threadId,
         timestamp:new Date().toISOString(), payload:{engine:"opencode", ...(message ? {message} : {})}};
@@ -1727,6 +1741,10 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       const projectId = threadRes.payload?.project_id;
       if (typeof projectId !== "string" || (threadRes.payload?.thread as {id?:string})?.id !== threadId) throw new Error("会话归属校验失败");
       entry.projectId = projectId;
+      const resumeContext = resumePlanId ? (await sendRequest("plan.external.resume_context", "plan.resumable", {
+        plan_id:resumePlanId, project_id:projectId, confirm_workspace:true,
+      }, {threadId})).payload : undefined;
+      if (resumePlanId && !resumeContext?.checkpoint_id) throw new Error("未找到可恢复的检查点");
       const [projectRes, catalogRes, permissionRes] = await Promise.all([
         sendRequest("project.get", "project.loaded", {project_id:projectId}, { threadId }),
         sendRequest("task.catalog.get", "task.loaded", {}, { threadId }),
@@ -1735,8 +1753,11 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       const registeredPath = (projectRes.payload?.project as {path?:string; id?:string})?.path;
       if (!registeredPath || !path.isAbsolute(registeredPath) || (projectRes.payload?.project as {id?:string})?.id !== projectId) throw new Error("工程目录无法确认");
       const projectPath = task?.workspace ?? registeredPath;
-      const mode = permissionRes.payload?.mode as OpenCodePermissionMode;
-      if (!["read_only", "workspace", "full_access"].includes(mode)) throw new Error("无法确认执行权限");
+      const savedMode = permissionRes.payload?.mode as OpenCodePermissionMode;
+      if (!["read_only", "workspace", "full_access"].includes(savedMode)) throw new Error("无法确认执行权限");
+      // Historical effects are not native OpenCode tool receipts. Require
+      // one-shot approvals before changing files during a legacy plan handoff.
+      const mode = resumePlanId && savedMode === "full_access" ? "workspace" : savedMode;
       const catalog = (catalogRes as any)?.payload?.catalog;
       const config = task?.config ?? (catalogRes as any)?.payload?.config ?? {};
       const credentials = {...readModelCredentials(), "legacy-openai":currentOpenAIKey() ?? ""};
@@ -1773,6 +1794,7 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
           await openCodeRuntime.updatePermissions(sessionId, mode);
         } catch (error) {
           if (!(error instanceof SidecarHttpError && error.status === 404)) throw error;
+          if (resumePlanId) throw new Error("原 OpenCode 会话已丢失。请先核对检查点和工作区。");
           sessionId = undefined;
         }
       }
@@ -1794,6 +1816,10 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
           effectivePrompt = `Project: ${projectPath}\n\nUser request:\n${prompt}`;
         }
       }
+      if (resumeContext) {
+        effectivePrompt += "\n\n仅继续检查点中的未完成步骤。先读取现状，再决定是否修改。禁止重放已完成、跳过或结果未知的操作。以下是保存的计划上下文：\n"
+          + JSON.stringify(resumeContext);
+      }
       const bridge = openCodeRuntime.bridge(0);
       let streamReady!: () => void;
       const ready = new Promise<void>(resolve => { streamReady = resolve; });
@@ -1814,6 +1840,7 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
             tool_duration_ms: 0,
             tool_failures: toolFailures,
             provider_retries: 0,
+            provider_requests: gateway?.usage().upstreamRequests ?? 0,
             elapsed_ms: Math.max(0, Date.now() - startedAtMs),
             context_token_estimate: usageTotals.total || usageTotals.input,
             context_sources: { input_tokens: usageTotals.input, output_tokens: usageTotals.output, total_tokens: usageTotals.total },
@@ -1829,6 +1856,7 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
         broadcastAgentEvent({ type: "turn.delta", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { delta } });
       };
       follow = bridge.follow(sessionId, entry.controller.signal, (event) => {
+        if (entry.controller.signal.aborted) return;
         if (event.kind === "snapshot") {
           streamReady();
         } else if (event.kind === "text") {
@@ -1922,35 +1950,34 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       let nextReconcile = Date.now() + 3000;
       let reconnectDeadline = Infinity;
       let reconciledTerminal = false;
-      const recover = () => openCodeRuntime.sessionContext(sessionId).then(context=>recoverCompletedExchange(context,messageId)).catch(()=>undefined);
+      const recover = () => openCodeRuntime.sessionContext(sessionId)
+        .then(context=>recoverCompletedExchange(context,messageId,new Set([...entry.appended].map(id=>"msg_"+id))))
+        .catch(()=>undefined);
       while (!finished && Date.now() < timeoutAt && !entry.controller.signal.aborted) {
         if (bridgeFailed && reconnectDeadline === Infinity) reconnectDeadline = Date.now() + 10000;
         if (Date.now() >= reconnectDeadline) break;
         if (Date.now() >= nextReconcile && timeoutAt - Date.now() > 1000) {
           nextReconcile = Date.now() + 5000;
-          const snapshot = await openCodeRuntime.getSession(sessionId).catch(()=>undefined) as {data?:{id?:string;time?:{idle?:number;busy?:number}}}|undefined;
-          const time = snapshot?.data?.time;
-          if (!finished && !entry.controller.signal.aborted && snapshot?.data?.id === sessionId &&
-              typeof time?.idle === "number" && typeof time.busy === "number" && time.idle >= Math.max(startedAtMs,time.busy)) {
-            const recovered = await recover();
-            if (recovered && !finished && !entry.controller.signal.aborted) {
-              terminal = finished = true;
-              reconciledTerminal = true;
-              entry.outcome = recovered.outcome;
-              if (recovered.text.startsWith(assistant)) appendDelta(recovered.text.slice(assistant.length));
-              else {
-                terminalError = "OPENCODE_RECOVERY_TEXT_MISMATCH";
-                entry.outcome = "failed";
-              }
-              entry.controller.abort();
-              break;
+          // The durable prompt ID and its own following idle marker identify this
+          // execution even when the session snapshot or event stream is delayed.
+          const recovered = await recover();
+          if (recovered && !finished && !entry.controller.signal.aborted) {
+            terminal = finished = true;
+            reconciledTerminal = true;
+            entry.outcome = recovered.outcome;
+            if (recovered.text.startsWith(assistant)) appendDelta(recovered.text.slice(assistant.length));
+            else {
+              terminalError = "OPENCODE_RECOVERY_TEXT_MISMATCH";
+              entry.outcome = "failed";
             }
+            entry.controller.abort();
+            break;
           }
         }
         await new Promise((r) => setTimeout(r, 200));
       }
       entry.controller.abort();
-      await follow.catch(() => {});
+      await drainEvents();
       if (!reconciledTerminal && terminal && entry.outcome === "succeeded" && !entry.cancelled) {
         const recovered = await recover();
         if (!entry.cancelled && recovered?.outcome === "succeeded" && recovered.text.startsWith(assistant)) {
@@ -1978,7 +2005,7 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       }
     } finally {
       entry.controller.abort();
-      await follow;
+      await drainEvents();
       await gateway?.close().catch(() => {});
       if (entry.sessionId && (entry.cancelled || !terminal)) {
         await openCodeRuntime.interrupt(entry.sessionId).catch(() => {});
@@ -2013,8 +2040,10 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
 }
 
 ipcMain.handle("agent:turn-start", (_event, threadId: string, prompt: string, model?: string, _unified?: boolean, resume?:{run_id:string;confirm_workspace:boolean}) => {
-  if (resume && resume.confirm_workspace !== true) throw new Error("请确认已检查当前工作区");
-  return startOpenCodeTurn(threadId, prompt, model);
+  if (resume && (resume.confirm_workspace !== true || typeof resume.run_id !== "string" || !resume.run_id.trim())) {
+    throw new Error("请确认已检查当前工作区，并选择要恢复的计划");
+  }
+  return startOpenCodeTurn(threadId, prompt, model, undefined, resume?.run_id);
 });
 async function appendOpenCodeTurn(threadId: string, turnId: string, prompt: string, messageId: string) {
   const turn = activeOpenCodeTurns.get(turnId);
