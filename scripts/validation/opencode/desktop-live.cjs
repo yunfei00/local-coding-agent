@@ -18,6 +18,8 @@ const model = "qwen3:4b";
 const mock = process.argv.includes("--mock");
 const dropCompletion = mock && process.argv.includes("--drop-completion");
 const projectWrite = mock || process.argv.includes("--project-write");
+const liveTask = !mock && process.argv.includes("--project-task");
+const tunedOrigin = !mock && process.env.LCA_TEST_OLLAMA_ORIGIN;
 const outside = path.join(data, "different-project.txt");
 const outsideCanary = "EXTERNAL_" + randomBytes(10).toString("hex");
 if (mock) fs.writeFileSync(outside,outsideCanary);
@@ -25,6 +27,12 @@ const testEnv = Object.fromEntries(Object.entries(process.env).filter(([key])=>!
 let outsideResult;
 let provider;
 let providerUrl = "http://127.0.0.1:11434";
+if (tunedOrigin) {
+  const origin = new URL(tunedOrigin);
+  if (origin.protocol !== "http:" || origin.hostname !== "127.0.0.1" || origin.username || origin.password ||
+      origin.pathname !== "/" || origin.search || origin.hash) throw new Error("The alternate Ollama test service must be on HTTP loopback");
+  providerUrl = origin.origin;
+}
 let modelRequests = 0;
 let toolRequests = 0;
 let nativeShellResult = false;
@@ -57,13 +65,15 @@ async function launch() {
 }
 
 async function main() {
-  if (mock) {
+  if (mock || liveTask) {
     fs.writeFileSync(path.join(project,"calculator.py"),"def add(a, b):\n    return a - b\n");
     fs.writeFileSync(path.join(project,"test_calculator.py"),"import unittest\nfrom calculator import add\nclass CalculatorTest(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n");
     fs.writeFileSync(path.join(project,".gitignore"),"__pycache__/\n");
     for (const argv of [["init","-q","-b","main"],["add","."],["-c","user.name=Fixture","-c","user.email=fixture@example.test","commit","-qm","fixture"]]) {
       execFileSync("git",argv,{cwd:project,env:testEnv});
     }
+  }
+  if (mock) {
     provider = http.createServer(async (req,res) => {
       if (req.method === "GET" && req.url === "/api/tags") {
         res.writeHead(200,{"Content-Type":"application/json"});
@@ -142,6 +152,13 @@ async function main() {
     providerUrl = "http://127.0.0.1:"+provider.address().port;
   }
   const page = await launch();
+  if (tunedOrigin) {
+    await page.evaluate(async () => {
+      const api=window.localAgent;
+      const saved=(await api.taskRequest("","task.settings.get")).payload.config;
+      await api.taskRequest("","task.settings.update",{config:{...saved,budget:{...saved.budget,request_seconds:240,task_seconds:600}}});
+    });
+  }
   if (dropCompletion) {
     await application.evaluate((_electron, mainFile) => {
       const requireFromApp = process.getBuiltinModule("node:module").createRequire(mainFile);
@@ -164,7 +181,7 @@ async function main() {
     window.openc = [];
     window.localAgent.onAgentEvent(e => {
       if (e.type.startsWith("turn.") || e.type.startsWith("tool.")) {
-        window.openc.push({type:e.type,engine:e.payload?.engine, message:e.type==="turn.failed"?e.payload?.message:undefined});
+        window.openc.push({type:e.type,engine:e.payload?.engine,name:e.payload?.name,message:e.type==="turn.failed"?e.payload?.message:undefined});
       }
       if (e.type === "approval.requested") {
         window.openc.push({type:e.type});
@@ -180,6 +197,10 @@ async function main() {
       if (e.type === "task.updated") window.openc.push({type:e.type,task:e.payload?.task});
     });
   });
+  if (liveTask) {
+    await checkTask(page);
+    return;
+  }
   const canary = "LCA" + randomBytes(5).toString("hex");
   const input = page.locator(".composer textarea");
   await input.fill(projectWrite ? "请用 write 工具在当前工程创建一个文件 v2-tool.txt，只写入这一行：" + canary +
@@ -217,27 +238,45 @@ async function main() {
     assert(!outsideResult.includes(outsideCanary),"Out-of-project confidential text reached the provider");
     assert.match(outsideResult, /permission|denied|not allowed|outside/i);
     checks.push("OpenCode blocked a read of a sibling file before its contents reached the model");
-    const thread = await page.evaluate(async () => (await window.localAgent.getProject()).payload.active_thread.id);
-    const taskID = await page.evaluate(async threadId => {
-      const prepared = await window.localAgent.taskRequest(threadId,"task.start",{goal:"open-code-task-fixture: repair calculator.py",config:{verification_commands:["python -m unittest discover -v"]}});
-      return prepared.payload.task.id;
-    },thread);
-    await page.waitForFunction(id => window.openc.some(e => e.type === "task.updated" && e.task?.id === id),taskID,{timeout:60_000});
-    const task = await page.evaluate(id => window.openc.find(e => e.type === "task.updated" && e.task?.id === id).task,taskID);
-    const failures = await page.evaluate(() => window.openc.filter(e=>e.type === "turn.failed").map(e=>e.message));
-    assert.equal(task.status,"awaiting_approval",JSON.stringify({reason:task.reason,verification:task.verification,failures}));
-    assert.notEqual(task.workspace,project);
-    assert(task.verification.every(result=>result.ok));
-    assert(task.report.diff.includes("return a + b"));
-    assert(fs.readFileSync(path.join(project,"calculator.py"),"utf8").includes("return a - b"));
-    assert(nativeShellResult,"Native shell stdout must be returned to the model after one-shot approval");
-    checks.push("Official Task used isolated Git, native file write and shell, independent unittest and verified Git diff");
+    await checkTask(page);
   }
   await application.close();
   application = undefined;
   const restarted = await launch();
   await restarted.locator(".message.agent").filter({hasText:canary}).waitFor();
   checks.push("Assistant message persisted across Electron restart");
+}
+
+async function checkTask(page) {
+  const thread = await page.evaluate(async model => {
+    const session = await window.localAgent.getProject();
+    return session.payload.active_thread?.id ?? (await window.localAgent.createThread(model)).payload.thread.id;
+  },model);
+  const goal = liveTask
+    ? "请读取当前隔离工作树中的 calculator.py 并修复 add 的实现，使现有 unittest 通过。请只编辑 calculator.py，继续保留测试预期。程序将在你回复后独立运行测试和检查 Git Diff。"
+    : "open-code-task-fixture: repair calculator.py";
+  const taskID = await page.evaluate(async ({threadId,goal,tuned}) => {
+    const config={verification_commands:["python -m unittest discover -v"]};
+    if (tuned) config.budget={request_seconds:240,task_seconds:600};
+    const prepared = await window.localAgent.taskRequest(threadId,"task.start",{goal,config});
+    return prepared.payload.task.id;
+  },{threadId:thread,goal,tuned:Boolean(tunedOrigin)});
+  await page.waitForFunction(id => window.openc.some(e => e.type === "task.updated" && e.task?.id === id),taskID,{timeout:liveTask ? 660_000 : 60_000});
+  const events = await page.evaluate(() => window.openc);
+  const task = events.find(e => e.type === "task.updated" && e.task?.id === taskID).task;
+  const failures = events.filter(e=>e.type === "turn.failed").map(e=>e.message);
+  assert.equal(task.status,"awaiting_approval",JSON.stringify({reason:task.reason,verification:task.verification,failures}));
+  assert.notEqual(task.workspace,project);
+  assert(task.verification.length>0 && task.verification.every(result=>result.ok));
+  assert.match(task.report.diff,/return\s+a\s*\+\s*b/);
+  assert(fs.readFileSync(path.join(project,"calculator.py"),"utf8").includes("return a - b"));
+  if (liveTask) {
+    assert(events.some(e => e.type === "tool.requested" && e.name === "read"),"The local model must perform an actual source read");
+    checks.push("Real qwen3:4b read and fixed source in the official isolated Task; independent unittest and Git diff passed");
+  } else {
+    assert(nativeShellResult,"Native shell stdout must be returned to the model after one-shot approval");
+    checks.push("Official Task used isolated Git, native file write and shell, independent unittest and verified Git diff");
+  }
 }
 
 main().then(() => write("PASS"), error => {
@@ -250,7 +289,9 @@ main().then(() => write("PASS"), error => {
 
 function write(status, error) {
   const report = {status, model, mock, drop_completion:dropCompletion, checks, error, elapsed_ms:Date.now()-started, evidence_dir:data};
-  const destination = path.join(reports, dropCompletion ? "v2-opencode-desktop-recovery.json" : mock ? "v2-opencode-desktop-mock.json" : projectWrite ? "v2-opencode-desktop-live-tool.json" : "v2-opencode-desktop-live.json");
+  const destination = path.join(reports, dropCompletion ? "v2-opencode-desktop-recovery.json" : mock ? "v2-opencode-desktop-mock.json" :
+    liveTask ? "v2-opencode-desktop-live-task.json" : tunedOrigin ? "v2-opencode-desktop-alternate-ollama.json" :
+    projectWrite ? "v2-opencode-desktop-live-tool.json" : "v2-opencode-desktop-live.json");
   fs.mkdirSync(path.dirname(destination), {recursive:true});
   fs.writeFileSync(destination, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));

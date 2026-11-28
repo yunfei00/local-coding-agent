@@ -7,6 +7,7 @@
 | 真实完成事件丢失 | `node scripts/validation/opencode/desktop-live.cjs --mock --drop-completion` | 真实 OpenCode、工具和工作树运行，仅在 Electron 测试端丢弃文本和结束事件，校验按本轮消息 ID 恢复 |
 | Ollama | `node scripts/validation/opencode/desktop-live.cjs` | 挑战字串、真实流式完成、重启历史 |
 | Ollama 实际写入 | `node scripts/validation/opencode/desktop-live.cjs --project-write` | 隔离文件实际内容、审批和工具完成 |
+| CPU 上下文 8192 复验 | `powershell.exe -NoProfile -File scripts/validation/opencode/run-local-ollama.ps1 -Scenario Write` | 复用本机已有模型，启动独立环回服务并完整清理；`-Scenario Task` 检查隔离工作树、unittest 和 Diff |
 | OpenCode Task 服务 | `uv run --no-sync python -m unittest discover -s tests -p test_opencode_data_service.py -v` | Git 隔离、真实测试失败并修复、预算拒绝、WinForms 独立断言 |
 | 候选无 SDK | `node scripts/validation/packaged_chat_smoke.cjs <exe> <新建隔离目录> --no-sdk` | 两次启动、环回 HTTP、原生文件读取和执行引擎身份 |
 
