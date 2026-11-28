@@ -5,6 +5,7 @@
   "asset": "opencode-windows-x64.zip",
   "archive_sha256": "f75c16b33b8523fe1ff41e7d97e3ae654a47d59a0e327def24db2d9291bb24be",
   "executable_sha256": "98cb0aa854c7c015cf6febafa7afb872c359bfe5a823a526f3b4fd347a9e9677",
+  "license_sha256": "625f0f619133f89bbbb2abe37369613dfa1885eba1e50d02170deb62bb42cb6b",
   "sdk": "@opencode/sdk",
   "sdk_version": "2.2.6"
 }

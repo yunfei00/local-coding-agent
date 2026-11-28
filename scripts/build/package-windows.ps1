@@ -247,8 +247,11 @@ try {
 Write-Host "[9/11] Smoke test Portable executable..."
 Invoke-DesktopSmoke -Executable $Portable -Name "portable"
 $PortableChat = Join-Path $RepoRoot ('build\packaged-portable-chat-'+[guid]::NewGuid().ToString('N'))
-Invoke-Checked node scripts/validation/packaged_chat_smoke.cjs $Portable $PortableChat
-Copy-Item (Join-Path $PortableChat 'report.json') (Join-Path $RepoRoot 'build\packaged-portable-chat-smoke.json')
+try { Invoke-Checked node scripts/validation/packaged_chat_smoke.cjs $Portable $PortableChat --no-sdk }
+catch { $RegressionFailures.Add("Portable OpenCode chat regression: $($_.Exception.Message)") }
+if (Test-Path (Join-Path $PortableChat 'report.json')) {
+    Copy-Item (Join-Path $PortableChat 'report.json') (Join-Path $RepoRoot 'build\packaged-portable-chat-smoke.json')
+}
 
 Write-Host "[10/11] Silent-install Setup and smoke test installed executable..."
 $ExistingInstall = @("HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*", "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*") | ForEach-Object { Get-ItemProperty -Path $_ -ErrorAction SilentlyContinue } | Where-Object { $_.DisplayName -match '^Local\s*Coding\s*Agent(?:\s|$)' }
@@ -273,8 +276,11 @@ if (Test-Path (Join-Path $UpdateEvidence 'report.json')) {
     Copy-Item (Join-Path $UpdateEvidence 'report.json') (Join-Path $RepoRoot 'build\packaged-updater-smoke.json')
 }
 $SetupChat = Join-Path $RepoRoot ('build\packaged-setup-chat-'+[guid]::NewGuid().ToString('N'))
-Invoke-Checked node scripts/validation/packaged_chat_smoke.cjs $InstalledExe $SetupChat --no-sdk
-Copy-Item (Join-Path $SetupChat 'report.json') (Join-Path $RepoRoot 'build\packaged-setup-chat-smoke.json')
+try { Invoke-Checked node scripts/validation/packaged_chat_smoke.cjs $InstalledExe $SetupChat --no-sdk }
+catch { $RegressionFailures.Add("Setup OpenCode chat regression: $($_.Exception.Message)") }
+if (Test-Path (Join-Path $SetupChat 'report.json')) {
+    Copy-Item (Join-Path $SetupChat 'report.json') (Join-Path $RepoRoot 'build\packaged-setup-chat-smoke.json')
+}
 Invoke-DesktopSmoke -Executable $InstalledExe -Name "setup-no-sdk" -NoSDK
 Copy-Item (Join-Path $RepoRoot 'build\packaged-setup-no-sdk-smoke.json') (Join-Path $RepoRoot 'build\packaged-setup-no-sdk-first-smoke.json')
 Invoke-DesktopSmoke -Executable $InstalledExe -Name "setup-no-sdk" -NoSDK -ReuseData
