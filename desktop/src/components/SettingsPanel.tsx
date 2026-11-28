@@ -154,8 +154,7 @@ export function SettingsPanel({
   useEffect(()=>{if(window.localAgent.getPermission)void window.localAgent.getPermission().then(event=>{setAuthorization(event.payload?.authorization as typeof authorization);setPermissionTask(String(event.payload?.task_key||''));}).catch(()=>{});},[projectId,threadId]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [openCodeProduction, setOpenCodeProduction] = useState(true);
-  useEffect(() => { void window.localAgent.getOpenCodeProductionGate?.().then(r => setOpenCodeProduction(r.enabled === true)).catch(() => {}); }, []);
+  // v2.0.0 RC2: OpenCode gate switch removed; OpenCode is always the formal engine.
 
   const loadRules = async () => {
     try {
@@ -507,22 +506,7 @@ export function SettingsPanel({
                 </button>
               </div>
               <div className="settings-field" style={{ marginTop: 16 }}>
-                <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input
-                    type="checkbox"
-                    checked={openCodeProduction}
-                    onChange={(e) => {
-                      const next = e.target.checked;
-                      setOpenCodeProduction(next);
-                      void window.localAgent.setOpenCodeProductionGate?.(next).then((r) => {
-                        setOpenCodeProduction(r.enabled === true);
-                        setMessage(next ? "OpenCode 开发测试开关已开启（仅开发验证，安全门禁仍需通过）。" : "OpenCode 开发测试开关已关闭。");
-                      }).catch((err) => setError(String(err)));
-                    }}
-                  />
-                  <span>启用 OpenCode 开发测试链路（不稳定）</span>
-                </label>
-                <p className="settings-hint">默认关闭。开启后主聊天在本机尝试走 OpenCode 执行链路；P0 安全/权限证据未完成前不代表正式可发布。</p>
+                <p className="settings-hint">v2.0.0 RC2: OpenCode is the sole formal Agent execution core.</p>
               </div>
             </div>
           ) : null}
