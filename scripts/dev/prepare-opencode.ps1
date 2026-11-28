@@ -3,15 +3,27 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $lock = Get-Content (Join-Path $root 'scripts/validation/opencode/version-lock.json') -Raw | ConvertFrom-Json
 $stage = Join-Path $root 'build/opencode-runtime'
 $temp = Join-Path ([System.IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
+function Get-ArchiveSha256([string]$File) {
+    $stream = [System.IO.File]::OpenRead($File)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return [System.BitConverter]::ToString($sha256.ComputeHash($stream)).Replace('-', '').ToLowerInvariant()
+    } finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
+}
+
 New-Item -ItemType Directory -Path $temp | Out-Null
 try {
     $zip = Join-Path $temp $lock.asset
     Invoke-WebRequest -UseBasicParsing -Uri "$($lock.repository)/releases/download/$($lock.version)/$($lock.asset)" -OutFile $zip
-    if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $lock.archive_sha256) { throw 'OpenCode archive checksum mismatch' }
-    Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $temp 'expanded')
+    if ((Get-ArchiveSha256 $zip) -ne $lock.archive_sha256) { throw 'OpenCode archive checksum mismatch' }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, (Join-Path $temp 'expanded'))
     $bins = @(Get-ChildItem (Join-Path $temp 'expanded') -Recurse -File -Filter 'opencode.exe')
     if ($bins.Count -ne 1) { throw 'Expected exactly one OpenCode executable' }
-    if ((Get-FileHash -LiteralPath $bins[0].FullName -Algorithm SHA256).Hash -ne $lock.executable_sha256) { throw 'OpenCode executable checksum mismatch' }
+    if ((Get-ArchiveSha256 $bins[0].FullName) -ne $lock.executable_sha256) { throw 'OpenCode executable checksum mismatch' }
     $license = Join-Path $temp 'LICENSE'
     Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/anomalyco/opencode/$($lock.commit)/LICENSE" -OutFile $license
     New-Item -ItemType Directory -Force -Path $stage | Out-Null
