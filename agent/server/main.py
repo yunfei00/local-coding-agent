@@ -1478,6 +1478,10 @@ class AgentServer:
                     if payload.get("confirm_workspace") is not True or payload.get("project_id") != project.id:
                         raise ValueError("Confirm the workspace for the current project before resuming")
                     context = plans.external_resume_context(plan_id, thread_id)
+                    if self.store.connection.execute(
+                        "SELECT 1 FROM autonomous_tasks WHERE plan_id=?", (plan_id,)
+                    ).fetchone():
+                        raise ValueError("Resume this plan from the Task panel to preserve its separate worktree")
                     await ws.send_json(envelope(
                         "plan.resumable", context, request_id=request_id, thread_id=thread_id))
                     return

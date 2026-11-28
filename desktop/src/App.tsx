@@ -1759,7 +1759,7 @@ function App() {
           {taskOpen && workspace ? <AutonomousTaskPanel key={workspace.id} threadId={activeThread?.id ?? ""} ensureThread={async goal => (await ensureConversation(goal)).id} running={runningTurnId !== null}
             onClose={() => setTaskOpen(false)} onSettings={() => {setTaskOpen(false); setSettingsOpen(true);}} /> : null}
           {planOpen && activeThread ? (
-            <PlanPanel threadId={activeThread.id} onClose={() => setPlanOpen(false)} />
+            <PlanPanel threadId={activeThread.id} selectedModel={selectedModel} onClose={() => setPlanOpen(false)} />
           ) : null}
           {contextOpen && activeThread ? (
             <ContextPanel

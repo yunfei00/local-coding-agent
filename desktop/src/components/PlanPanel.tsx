@@ -6,7 +6,7 @@ type Step = { id: string; description: string; state: string; verification?: str
   recovery?: {category?:string; summary?:string; action?:string};
   executions?: Array<{call_id: string; tool: string; status: string; exit_code?: number | null; metadata?:{duration_ms?:number;error_code?:string;diagnosis?:{category:string;summary:string;action:string}}}> };
 type Plan = { id: string; goal: string; steps: Step[]; execution?: {calls:number;continuations:number;reserved_tokens:number;elapsed:number;status:string;last_error?:string;working_memory?:WorkingMemory;repository_instructions?:Array<{path:string;sha256:string}>;limits:{model_calls:number;tokens:number;seconds:number;max_continuations:number}} };
-export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: () => void }) {
+export function PlanPanel({ threadId, selectedModel, onClose }: { threadId: string; selectedModel?: string; onClose: () => void }) {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [goal, setGoal] = useState("");
   const [stepsText, setStepsText] = useState("");
@@ -38,17 +38,9 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
       "\nReview workspace changes before proceeding. Previously completed steps will not be requested again.")) return;
     setBusy(true); setError("");
     try {
-      const recovered = await window.localAgent.planRequest(threadId, "plan.recover", {plan_id: plan.id});
-      if (recovered.payload?.autonomous_task_id) {
-        await window.localAgent.taskRequest(threadId,"task.resume",{task_id:plan.id,confirm_workspace:true});
-        onClose(); return;
-      }
-      await window.localAgent.planRequest(threadId, "plan.resume.confirm", {plan_id: plan.id});
       await window.localAgent.startTurn(threadId,
-        "Continue the existing persistent task plan from its first unfinished step: " +
-        next.description + ". First inspect current workspace and checkpoint state. " +
-        "Do not replay completed steps or repeat mutating commands. " +
-        "Run the step verification and report actual evidence.");
+        "检查当前工作区与检查点，并验证保存计划中未完成的步骤。",
+        selectedModel, true, {run_id:plan.id,confirm_workspace:true});
       onClose();
     } catch (cause) { setError(String(cause)); }
     finally { setBusy(false); }
@@ -87,7 +79,7 @@ export function PlanPanel({ threadId, onClose }: { threadId: string; onClose: ()
         {checkpoint ? <pre style={{whiteSpace:"pre-wrap", overflowWrap:"anywhere"}}>{JSON.stringify(checkpoint, null, 2)}</pre> : null}
         {plan.steps.map((step, index) => <div className="context-file-row" key={step.id}>
           <span>{index + 1}. {step.description} — {step.state}</span>
-          {step.state === "blocked" && step.recovery?.summary ? <p role="status">{step.recovery.category}: {step.recovery.summary} 下一步：{step.recovery.action}。使用 Continue plan 安全恢复。</p> : null}
+          {step.state === "blocked" && step.recovery?.summary ? <p role="status">{step.recovery.category}: {step.recovery.summary} 下一步：{step.recovery.action}。处理阻塞并保存检查点后继续。</p> : null}
           {step.state === "pending" ? <>
             <button type="button" disabled={busy} onClick={() => {
               const description = window.prompt("Edit step description", step.description);

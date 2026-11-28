@@ -43,6 +43,7 @@ if (tunedOrigin) {
 let modelRequests = 0;
 let toolRequests = 0;
 let nativeShellResult = false;
+let resumedPlan;
 const started = Date.now();
 let application;
 let onlineProfile;
@@ -149,7 +150,12 @@ async function main() {
       const delta = (content,finish_reason) => "data: "+JSON.stringify({id:"fixture",object:"chat.completion.chunk",model,
         choices:[{index:0,delta:content,finish_reason}]})+"\n\n";
       const user = request.messages.findLastIndex(message => message.role === "user");
+      const requestText = JSON.stringify(request.messages[user] ?? {});
       const thisTurn = request.messages.slice(user + 1);
+      if (requestText.includes("RESUME_CHECKPOINT_FIXTURE")) {
+        resumedPlan = requestText.includes("Verify saved fixture") && requestText.includes("Already wrote fixture") && requestText.includes("checkpoint_id");
+        return res.end(delta({role:"assistant",content:"OPEN_CODE_RESUMED_CHECKPOINT"},null)+delta({},"stop")+"data: [DONE]\n\n");
+      }
       if (JSON.stringify(request.messages[user] ?? {}).includes("open-code-task-fixture")) {
         const results = thisTurn.filter(message => message.role === "tool");
         if (results.length > 1) {
@@ -311,11 +317,52 @@ async function main() {
     checks.push("OpenCode blocked a read of a sibling file before its contents reached the model");
     await checkTask(page);
   }
+  const plan = mock && !dropText ? await page.evaluate(async () => {
+    const api = window.localAgent;
+    const threadId = (await api.getProject()).payload.active_thread.id;
+    const created = (await api.planRequest(threadId,"plan.create",{
+      goal:"RESUME_CHECKPOINT_FIXTURE",
+      steps:[{description:"Already wrote fixture"},{description:"Verify saved fixture"}],
+    })).payload.plans.find(plan=>plan.goal==="RESUME_CHECKPOINT_FIXTURE");
+    await api.planRequest(threadId,"plan.step.update",{plan_id:created.id,step_id:created.steps[0].id,state:"skipped"});
+    await api.planRequest(threadId,"plan.checkpoint",{plan_id:created.id});
+    return {id:created.id,threadId};
+  }) : undefined;
   await application.close();
   application = undefined;
   const restarted = await launch();
   await restarted.locator(".message.agent").filter({hasText:canary}).waitFor();
   checks.push("Assistant message persisted across Electron restart");
+  if (plan) {
+    const fixture = path.join(project,"v2-tool.txt");
+    const written = fs.statSync(fixture).mtimeMs;
+    const before = modelRequests;
+    const outcome = await restarted.evaluate(async ({threadId,id,model}) => {
+      const api = window.localAgent;
+      window.resumeEvents = [];
+      api.onAgentEvent(event => {
+        if (["turn.completed","turn.failed","turn.cancelled"].includes(event.type)) {
+          window.resumeEvents.push({type:event.type,message:event.payload?.message});
+        }
+      });
+      try {
+        await api.startTurn(threadId,"Check the checkpoint",model,true,{run_id:"not-the-owned-plan",confirm_workspace:true});
+        return "unexpected admission";
+      } catch {
+        const turn = await api.startTurn(threadId,"Check the checkpoint",model,true,{run_id:id,confirm_workspace:true});
+        return turn.payload?.engine;
+      }
+    },{...plan,model:await restarted.locator(".model-select").inputValue()});
+    assert.equal(outcome,"opencode");
+    await restarted.waitForFunction(() => window.resumeEvents.length > 0);
+    const terminal = await restarted.evaluate(() => window.resumeEvents[0]);
+    assert.equal(terminal.type,"turn.completed",terminal.message);
+    await restarted.locator(".message.agent").filter({hasText:"OPEN_CODE_RESUMED_CHECKPOINT"}).waitFor();
+    assert.equal(modelRequests-before,1,"Only the verified checkpoint was admitted");
+    assert(resumedPlan,"The model must receive the saved goal, next step and finished steps");
+    assert.equal(fs.statSync(fixture).mtimeMs,written);
+    checks.push("Restart resumed the verified checkpoint with OpenCode and left the earlier file write untouched");
+  }
 }
 
 async function checkTask(page) {
@@ -351,6 +398,11 @@ async function checkTask(page) {
 }
 
 main().then(status => write(status ?? "PASS"), error => {
+  if (online && ![...usage.values()].some(count=>count>0) &&
+      /Cannot decrypt model credentials|Protected model credentials unavailable/.test(error.message)) {
+    write("NOT_RUN","Windows protected model credentials could not be read");
+    return;
+  }
   write("FAIL", error.message);
   process.exitCode = 1;
 }).finally(async () => {
@@ -360,10 +412,11 @@ main().then(status => write(status ?? "PASS"), error => {
 });
 
 function write(status, error) {
+  const requests = [...usage.values()].reduce((sum,count)=>sum+(count??0),0);
   const report = {status, model, mock, drop_completion:dropCompletion, drop_text:dropText, checks,
-    diagnostic:status === "NOT_RUN" ? "No unique, enabled HTTPS profile with the exact authorized model and a protected credential reference" : error,
+    diagnostic:error ?? (status === "NOT_RUN" ? "No unique, enabled HTTPS profile with the exact authorized model and a protected credential reference" : undefined),
     elapsed_ms:Date.now()-started, evidence_dir:data,
-    ...(online ? {provider_requests:[...usage.values()].reduce((sum,count)=>sum+(count??0),0),token_usage:"UNKNOWN",cost:"UNKNOWN"} : {})};
+    ...(online ? {provider_requests:requests,token_usage:status==="NOT_RUN"?0:"UNKNOWN",cost:status==="NOT_RUN"?0:"UNKNOWN"} : {})};
   const destination = path.join(reports, online ? `v2-opencode-online-${online}.json` : dropCompletion ? "v2-opencode-desktop-recovery.json" :
     dropText ? "v2-opencode-desktop-text-recovery.json" : mock ? "v2-opencode-desktop-mock.json" :
     liveTask ? "v2-opencode-desktop-live-task.json" : tunedOrigin ? "v2-opencode-desktop-alternate-ollama.json" :

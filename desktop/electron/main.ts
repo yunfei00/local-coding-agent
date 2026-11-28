@@ -1709,6 +1709,14 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
   if (activeOpenCodeTurns.size || (preparingOpenCodeTask && !task)) throw new Error("已有 OpenCode 执行占用工作区，请等待或停止。");
   if (typeof prompt !== "string" || !prompt.trim() || Buffer.byteLength(prompt) > 48000) throw new Error("请输入有效任务内容");
   if (!openCodeRuntime.resolveBinary()) throw new Error("未找到锁定的 OpenCode 运行时，请检查安装完整性。");
+  const resumeThread = resumePlanId ? await sendRequest("thread.get", "thread.loaded", {thread_id:threadId}, {threadId}) : undefined;
+  const resumeContext = resumePlanId ? (await sendRequest("plan.external.resume_context", "plan.resumable", {
+    plan_id:resumePlanId, project_id:resumeThread?.payload?.project_id, confirm_workspace:true,
+  }, {threadId})).payload : undefined;
+  if (resumePlanId && !resumeContext?.checkpoint_id) throw new Error("未找到可恢复的检查点");
+  if (resumePlanId && (shuttingDown || quitInProgress || activeOpenCodeTurns.size || preparingOpenCodeTask)) {
+    throw new Error("执行状态已变化，请重新确认后继续。");
+  }
   const turnId = "turn_" + randomUUID().replace(/-/g, "");
   const startedAt = new Date().toISOString();
   broadcastAgentEvent({ type: "turn.started", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: startedAt, payload: { engine: "opencode" } });
@@ -1737,14 +1745,10 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
         timestamp:new Date().toISOString(), payload:{engine:"opencode", ...(message ? {message} : {})}};
     };
     try {
-      const threadRes = await sendRequest("thread.get", "thread.loaded", { thread_id: threadId }, { threadId });
+      const threadRes = resumeThread ?? await sendRequest("thread.get", "thread.loaded", { thread_id: threadId }, { threadId });
       const projectId = threadRes.payload?.project_id;
       if (typeof projectId !== "string" || (threadRes.payload?.thread as {id?:string})?.id !== threadId) throw new Error("会话归属校验失败");
       entry.projectId = projectId;
-      const resumeContext = resumePlanId ? (await sendRequest("plan.external.resume_context", "plan.resumable", {
-        plan_id:resumePlanId, project_id:projectId, confirm_workspace:true,
-      }, {threadId})).payload : undefined;
-      if (resumePlanId && !resumeContext?.checkpoint_id) throw new Error("未找到可恢复的检查点");
       const [projectRes, catalogRes, permissionRes] = await Promise.all([
         sendRequest("project.get", "project.loaded", {project_id:projectId}, { threadId }),
         sendRequest("task.catalog.get", "task.loaded", {}, { threadId }),
