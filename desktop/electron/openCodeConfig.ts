@@ -38,7 +38,8 @@ export function buildOpenCodeConfig(options: {
     if (!connection) continue;
     const providerId = sanitizeId(connection.connection_id);
     const provider = providers[providerId] ?? {
-      package: "@opencode/ai/providers/openai-compatible",
+      package: connection.provider_type === "openai_compatible" && /^(kimi-k3|kimi-k3\.1-pro)$/i.test(profile.model_id)
+        ? "@opencode/ai/providers/moonshot/chat" : "@opencode/ai/providers/openai-compatible",
       settings: { baseURL: normalizeBaseUrl(connection) },
       models: {},
     };
@@ -84,8 +85,9 @@ function sanitizeModelKey(modelId: string): string {
 }
 
 function normalizeBaseUrl(connection: Connection): string {
+  const url = new URL(connection.base_url);
   const base = connection.base_url.replace(/\/+$/, "");
-  return base.endsWith("/v1") ? base : `${base}/v1`;
+  return url.pathname === "/" ? `${base}/v1` : base;
 }
 
 function resolveCredential(connection: Connection, credentials: Record<string, string>): string | undefined {
@@ -150,18 +152,22 @@ export async function startOpenCodeModel(catalog: ModelCatalog, config: TaskConf
   const maxOutput = limits.output ?? 2048;
   const budget = config.budget ?? {};
   const online = connection.provider_type === "openai_compatible";
+  if (online && connection.credential_reference && !provider.settings.apiKey) {
+    throw new Error("当前连接的受保护 API 凭据不可用，请在保存该连接的 Windows 用户账户下检查 Settings。");
+  }
   if (online && !reserveOnline) throw new Error("在线模型需要持久化预算服务");
   const requests = online ? Math.min(budget.api_calls ?? 0, (budget.global_api_calls ?? 0) - (globalUsage.api_calls ?? 0), 32) : 32;
   const reserveTokens = online ? Math.min(budget.api_tokens ?? 0, (budget.global_api_tokens ?? 0) - (globalUsage.reserved_tokens ?? 0)) : 2_000_000;
   if (requests < 1 || reserveTokens <= maxOutput) throw new Error("BUDGET_EXHAUSTED：执行预算耗尽");
   const durationMs = Math.min((budget.task_seconds ?? 600) * 1000, 600_000);
   const gateway = await startCompatibleGateway(profile.model_id, {baseUrl:provider.settings.baseURL, apiKey:provider.settings.apiKey}, {
-    requests, reserveTokens, inputBytes:Math.min(2_000_000,reserveTokens), maxOutput, durationMs,
+    requests, reserveTokens, inputBytes:2_000_000, maxOutput, durationMs,
     requestMs:Math.min((budget.request_seconds ?? 120) * 1000,durationMs),
     temperature: profile.temperature ?? undefined, allowTools: profile.tool_mode !== "none",
     reasoningEffort: connection.provider_type === "ollama" && profile.model_id === "qwen3:4b" ? "none" : undefined,
     reserve:online ? reserveOnline : undefined,
   });
   provider.settings = {baseURL:`http://127.0.0.1:${gateway.port}/v1`,apiKey:gateway.token};
-  return {configContent:JSON.stringify(spec), model:{providerID,id:profile.model_id}, durationMs, close:gateway.close, usage:gateway.usage, online};
+  return {configContent:JSON.stringify(spec), model:{providerID,id:profile.model_id}, durationMs, close:gateway.close, usage:gateway.usage, online,
+    taggedThinking: connection.provider_type === "ollama" && profile.model_id === "qwen3:4b"};
 }

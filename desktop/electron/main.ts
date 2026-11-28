@@ -18,6 +18,7 @@ import {OpenCodeUpdateManager} from "./openCodeUpdateManager";
 import {probeOpenCodeCompatibility} from "./openCodeCompatibility";
 import { isScopedResource, type OpenCodePermissionMode } from "./openCodePermissions";
 import { recoverCompletedExchange } from "./openCodeRecovery";
+import { OpenCodeAnswer } from "./openCodeAnswer";
 import {
   app,
   BrowserWindow,
@@ -1764,15 +1765,22 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       const mode = resumePlanId && savedMode === "full_access" ? "workspace" : savedMode;
       const catalog = (catalogRes as any)?.payload?.catalog;
       const config = task?.config ?? (catalogRes as any)?.payload?.config ?? {};
-      const credentials = {...readModelCredentials(), "legacy-openai":currentOpenAIKey() ?? ""};
       const taskProfile = task?.config.roles?.executor?.model_profile_id;
       const threadModel = (threadRes.payload?.thread as {active_model?:string})?.active_model;
       const selectedProfileId = selectOpenCodeProfile(catalog, taskProfile ? "profile:"+taskProfile : model ?? threadModel, catalogRes.payload?.chat_default, config);
-      if (task?.opencode_local_only && !catalog.connections.some((connection:any) =>
-        connection.provider_type === "ollama" && catalog.profiles.some((profile:any) =>
-          profile.model_profile_id === selectedProfileId && profile.connection_id === connection.connection_id))) {
+      const profile = catalog.profiles.find((item:any) => item.model_profile_id === selectedProfileId);
+      const connection = catalog.connections.find((item:any) => item.connection_id === profile?.connection_id);
+      if (!connection) throw new Error("当前模型缺少连接配置");
+      if (task?.opencode_local_only && connection.provider_type !== "ollama") {
         throw new Error("当前 Task 仅允许 Ollama，请明确选择本地模型");
       }
+      let credentials: Record<string,string>;
+      try { credentials = {...readModelCredentials()}; }
+      catch (error) {
+        if (connection.provider_type === "openai_compatible" && connection.credential_reference !== "legacy-openai") throw error;
+        credentials = {};
+      }
+      credentials["legacy-openai"] = currentOpenAIKey() ?? "";
       entry.controller.signal.throwIfAborted();
       releaseLease = await acquireEngineLease(process.env.LCA_DATA_DIR || app.getPath("userData"));
       gateway = await startOpenCodeModel(catalog, config, credentials, selectedProfileId,
@@ -1832,12 +1840,19 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       const startedAtMs = Date.now();
       let modelSteps = 0;
       let toolFailures = 0;
+      let firstOutputMs: number | undefined;
+      let firstOutputAt: number | undefined;
+      let admittedAt = Date.now();
+      let reasoningLength = 0;
+      const taggedThinking = gateway.taggedThinking;
+      let answer = new OpenCodeAnswer(taggedThinking);
+      let answerMessageId: string | undefined;
       const usageTotals = { input: 0, output: 0, total: 0 };
       const modelLabel = String(model?.startsWith("profile:") ? model.slice("profile:".length) : (model || (catalogRes as any)?.payload?.chat_default || "opencode"));
       const emitMetrics = () => {
         broadcastAgentEvent({ type: "turn.metrics", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: {
           provider: "opencode",
-          model: modelLabel,
+          model: gateway?.model.id ?? modelLabel,
           execution_summary: {
             model_steps: modelSteps,
             tool_calls: toolCalls.size,
@@ -1845,11 +1860,23 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
             tool_failures: toolFailures,
             provider_retries: 0,
             provider_requests: gateway?.usage().upstreamRequests ?? 0,
+            first_output_ms: firstOutputMs,
+            observed_output_tokens_per_second: firstOutputAt !== undefined && usageTotals.output > 0
+              ? usageTotals.output / (Math.max(1, handledOutputAt-firstOutputAt)/1000) : undefined,
             elapsed_ms: Math.max(0, Date.now() - startedAtMs),
             context_token_estimate: usageTotals.total || usageTotals.input,
             context_sources: { input_tokens: usageTotals.input, output_tokens: usageTotals.output, total_tokens: usageTotals.total },
           },
         } });
+      };
+      let handledOutputAt = Date.now();
+      const markOutput = () => {
+        handledOutputAt = Date.now();
+        if (firstOutputAt === undefined) {
+          firstOutputAt = handledOutputAt;
+          firstOutputMs = Math.max(0,firstOutputAt-admittedAt);
+          emitMetrics();
+        }
       };
       emitMetrics();
       let bridgeFailed = false;
@@ -1859,12 +1886,44 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
         assistant += delta;
         broadcastAgentEvent({ type: "turn.delta", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: turnId, thread_id: threadId, timestamp: new Date().toISOString(), payload: { delta } });
       };
+      const emitReasoning = (delta: string) => {
+        const allowed=delta.slice(0,Math.max(0,16000-reasoningLength));
+        if (!allowed) return;
+        reasoningLength+=allowed.length;
+        broadcastAgentEvent({type:"turn.reasoning.delta",thread_id:threadId,turn_id:turnId,payload:{delta:allowed}});
+      };
+      const consumeAnswer = (delta:string, finish=false) => {
+        const fragment=answer.push(delta,finish);
+        emitReasoning(fragment.reasoning);
+        appendDelta(fragment.text);
+      };
+      const selectAnswer = (id?:string) => {
+        if (id && answerMessageId && id!==answerMessageId) {
+          consumeAnswer("",true);
+          answer = new OpenCodeAnswer(taggedThinking);
+        }
+        if (id) answerMessageId=id;
+      };
       follow = bridge.follow(sessionId, entry.controller.signal, (event) => {
         if (entry.controller.signal.aborted) return;
         if (event.kind === "snapshot") {
           streamReady();
         } else if (event.kind === "text") {
-          appendDelta(String((event.payload as any)?.delta ?? ""));
+          markOutput();
+          const {delta,messageId}=event.payload as {delta:string;messageId?:string};
+          selectAnswer(messageId);
+          consumeAnswer(delta);
+        } else if (event.kind === "reasoning") {
+          markOutput();
+          const {delta,messageId}=event.payload as {delta:string;messageId?:string};
+          selectAnswer(messageId);
+          answer.separatedReasoning();
+          emitReasoning(delta);
+        } else if (event.kind === "followup-delivered") {
+          const id = String((event.payload as any)?.id ?? "").replace(/^msg_/,"");
+          if (entry.appended.has(id)) broadcastAgentEvent({
+            type:"turn.followup.applied",thread_id:threadId,turn_id:turnId,payload:{message_ids:[id]},
+          });
         } else if (event.kind === "usage") {
           const t = ((event.payload as any)?.tokens ?? event.payload ?? {}) as any;
           const inp = Number(t.input_tokens ?? t.input ?? t.prompt_tokens ?? 0) || 0;
@@ -1949,13 +2008,15 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       entry.controller.signal.throwIfAborted();
       if (bridgeFailed) throw new Error("OpenCode 事件流未连接");
       const messageId = "msg_"+turnId;
+      admittedAt = Date.now();
       await openCodeRuntime.prompt(sessionId, effectivePrompt,{id:messageId});
       const timeoutAt = Date.now() + gateway.durationMs;
       let nextReconcile = Date.now() + 3000;
       let reconnectDeadline = Infinity;
-      let reconciledTerminal = false;
+      let durableCompletion: ReturnType<typeof recoverCompletedExchange>;
       const recover = () => openCodeRuntime.sessionContext(sessionId)
-        .then(context=>recoverCompletedExchange(context,messageId,new Set([...entry.appended].map(id=>"msg_"+id))))
+        .then(context=>recoverCompletedExchange(context,messageId,new Set([...entry.appended].map(id=>"msg_"+id)),
+          text=>new OpenCodeAnswer(taggedThinking).push(text,true).text))
         .catch(()=>undefined);
       while (!finished && Date.now() < timeoutAt && !entry.controller.signal.aborted) {
         if (bridgeFailed && reconnectDeadline === Infinity) reconnectDeadline = Date.now() + 10000;
@@ -1967,13 +2028,8 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
           const recovered = await recover();
           if (recovered && !finished && !entry.controller.signal.aborted) {
             terminal = finished = true;
-            reconciledTerminal = true;
+            durableCompletion = recovered;
             entry.outcome = recovered.outcome;
-            if (recovered.text.startsWith(assistant)) appendDelta(recovered.text.slice(assistant.length));
-            else {
-              terminalError = "OPENCODE_RECOVERY_TEXT_MISMATCH";
-              entry.outcome = "failed";
-            }
             entry.controller.abort();
             break;
           }
@@ -1982,10 +2038,14 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
       }
       entry.controller.abort();
       await drainEvents();
-      if (!reconciledTerminal && terminal && entry.outcome === "succeeded" && !entry.cancelled) {
-        const recovered = await recover();
+      if (!entry.cancelled) consumeAnswer("",true);
+      if (terminal && entry.outcome === "succeeded" && !entry.cancelled) {
+        const recovered = durableCompletion ?? await recover();
         if (!entry.cancelled && recovered?.outcome === "succeeded" && recovered.text.startsWith(assistant)) {
           appendDelta(recovered.text.slice(assistant.length));
+        } else if (durableCompletion && !entry.cancelled) {
+          terminalError = "OPENCODE_RECOVERY_TEXT_MISMATCH";
+          entry.outcome = "failed";
         }
       }
       if (assistant) await sendRequest("turn.record_external", "turn.recorded", { project_id:projectId, role: "assistant", content: assistant.slice(0,200000) }, { threadId });
@@ -1994,9 +2054,13 @@ async function startOpenCodeTurn(threadId: string, prompt: string, model?: strin
         end("turn.cancelled");
       } else if (!finished || entry.outcome !== "succeeded") {
         const usage = gateway.usage();
-        const diagnostic = [terminalError, usage.lastStatus && `model relay HTTP ${usage.lastStatus}`, usage.failure, `requests=${usage.requests}`].filter(Boolean).join(" / ");
+        const diagnostic = [terminalError, usage.lastStatus && `model relay HTTP ${usage.lastStatus}`, usage.failure,
+          `requests=${usage.upstreamRequests}`, usage.requests !== usage.upstreamRequests && `relay_attempts=${usage.requests}`].filter(Boolean).join(" / ");
         const msg = Date.now() >= timeoutAt && !finished ? "OpenCode 执行超时" : bridgeFailed ? "OpenCode 连接中断或状态无法确认" : `OpenCode 执行失败 (${diagnostic})`;
         end("turn.failed",msg);
+      } else if (!task && !assistant.trim() && !toolCalls.size) {
+        entry.outcome="failed";
+        end("turn.failed","模型已结束，但未返回正式回复。请检查输出 Token 上限。");
       } else {
         end("turn.completed");
       }

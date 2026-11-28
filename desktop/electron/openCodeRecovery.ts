@@ -12,7 +12,8 @@ export async function inspectOriginalSession(source:Transport,id:string){
  return {sessionId:id,outcome,active:Object.prototype.hasOwnProperty.call(active,id),verified:false as const,canResume:false as const,requiresConfirmation:true as const};
 }
 
-export function recoverCompletedExchange(context:unknown, messageId:string, appended: ReadonlySet<string> = new Set()) {
+export function recoverCompletedExchange(context:unknown, messageId:string, appended: ReadonlySet<string> = new Set(),
+  normalizeAnswer: (text:string)=>string = text=>text) {
   const messages = record(context).data;
   if (!Array.isArray(messages) || messages.length > 10000) return;
   const start = messages.findIndex(message=>message?.type === "user" && message.id === messageId);
@@ -26,9 +27,12 @@ export function recoverCompletedExchange(context:unknown, messageId:string, appe
       return;
     }
     if (message?.type !== "assistant" || !Array.isArray(message.content)) continue;
+    let answer = "";
     for (const part of message.content) {
-      if (part?.type === "text" && typeof part.text === "string") text += part.text;
-      if (text.length > 200000) return;
+      if (part?.type === "text" && typeof part.text === "string") answer += part.text;
+      if (answer.length > 200000) return;
     }
+    text += normalizeAnswer(answer);
+    if (text.length > 200000) return;
   }
 }

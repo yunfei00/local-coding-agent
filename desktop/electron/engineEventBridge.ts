@@ -3,7 +3,7 @@ import { readEngineEvents, type RawEngineEvent } from "./openCodeEvents";
 import { EngineEventDeduper } from "./engineEventDeduper";
 export type EngineEvent = {
   engine:"opencode"; sessionId:string;
-  kind:"text"|"usage"|"tool"|"execution-ended"|"snapshot"|"disconnected"|"approval"|"diff";
+  kind:"text"|"reasoning"|"followup-delivered"|"usage"|"tool"|"execution-ended"|"snapshot"|"disconnected"|"approval"|"diff";
   payload:unknown;
 };
 type RecordValue = Record<string,unknown>;
@@ -17,8 +17,13 @@ export function translateEngineEvent(raw:RawEngineEvent,sessionId:string):Engine
   const type=event.type;
   if(type==="session.text.delta"){
     const delta=data.delta ?? data.text;
-    if(typeof delta==="string")return {...base,kind:"text",payload:{delta}};
+    if(typeof delta==="string")return {...base,kind:"text",payload:{delta,
+      ...(typeof data.assistantMessageID === "string" ? {messageId:data.assistantMessageID} : {})}};
   }
+  if(type==="session.reasoning.delta" && typeof data.delta === "string")
+    return {...base,kind:"reasoning",payload:{delta:data.delta,messageId:data.assistantMessageID}};
+  if(type==="session.inbox.delivered" && typeof data.inboxID === "string")
+    return {...base,kind:"followup-delivered",payload:{id:data.inboxID}};
   if(type==="session.usage.updated")return {...base,kind:"usage",payload:{tokens:data.tokens}};
   if(type.startsWith("session.tool.") && !type.includes(".input.")){
     return {...base,kind:"tool",payload:summarizeToolEvent(type,data)};
@@ -38,7 +43,7 @@ export function translateEngineEvent(raw:RawEngineEvent,sessionId:string):Engine
     return {...base,kind:"diff",payload:{type, diff: data.diff ?? data.files ?? data.changes ?? data}};
   }
   if(["session.execution.succeeded","session.execution.failed","session.execution.interrupted"].includes(type))
-    return {...base,kind:"execution-ended",payload:{outcome:type.split(".").pop(),verified:false}};
+    return {...base,kind:"execution-ended",payload:{outcome:type.split(".").pop(),verified:false,error:data.error}};
   if(type==="session.error")
     return {...base,kind:"execution-ended",payload:{outcome:"failed",verified:false,error:data.error ?? data.message}};
 }

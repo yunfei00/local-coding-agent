@@ -69,4 +69,76 @@ describe("local model gateway",()=>{
       await new Promise<void>(resolve=>{upstream.close(()=>resolve());upstream.closeAllConnections();});
     }
   });
+
+  it("bounds each request independently while retaining cumulative byte telemetry and budget", async () => {
+    const seen: number[] = [];
+    const upstream = createServer(async (request,response) => {
+      for await (const _ of request) { /* Read the complete body. */ }
+      response.end("{}");
+    });
+    await new Promise<void>(resolve=>upstream.listen(0,"127.0.0.1",resolve));
+    const port = (upstream.address() as {port:number}).port;
+    const gateway = await startLocalModelGateway("qwen4-max",port,{
+      requests:8,inputBytes:512,maxOutput:64,durationMs:5000,reserveTokens:2100,
+      reserve:async bytes=>{seen.push(bytes);},
+    });
+    const call = (count:number) => fetch(`http://127.0.0.1:${gateway.port}/v1/chat/completions`,{
+      method:"POST",headers:{authorization:"Bearer "+gateway.token},
+      body:JSON.stringify({model:"qwen4-max",messages:[{role:"user",content:"x".repeat(count)}]}),
+    });
+    try {
+      for (const count of [300,310,320,330]) {
+        const result=await call(count);
+        expect(result.status).toBe(200);
+        await result.text();
+      }
+      const oversized=await call(512);
+      expect(oversized.status).toBe(413);
+      expect(await oversized.text()).toContain("512");
+      const denied=await call(300);
+      expect(denied.status).toBe(429);
+      expect(await denied.text()).toContain("budget");
+      expect(gateway.usage().bytes).toBeGreaterThan(512*4);
+      expect(gateway.usage().upstreamRequests).toBe(4);
+      expect(seen).toHaveLength(4);
+    } finally {
+      await gateway.close();
+      await new Promise<void>(resolve=>{upstream.close(()=>resolve());upstream.closeAllConnections();});
+    }
+  });
+
+  it("sends the exact Kimi ID and completion fields and exposes only bounded protocol diagnostics", async () => {
+    const seen: Record<string,unknown>[] = [];
+    const secret = "test-secret-should-not-appear";
+    const upstream = createServer(async (request,response) => {
+      let raw = "";
+      for await (const chunk of request) raw += String(chunk);
+      expect(request.url).toBe("/configured/v2/chat/completions");
+      seen.push(JSON.parse(raw));
+      response.writeHead(400,{"content-type":"application/json"});
+      response.end(JSON.stringify({error:{code:"invalid_parameter",param:"reasoning_content",
+        message:`reasoning_content is required. Echoed private request: ${secret}`}}));
+    });
+    await new Promise<void>(resolve=>upstream.listen(0,"127.0.0.1",resolve));
+    const port = (upstream.address() as {port:number}).port;
+    const gateway=await startCompatibleGateway("kimi-k3.1-pro",{baseUrl:`http://127.0.0.1:${port}/configured/v2`,apiKey:secret},
+      {requests:2,inputBytes:4096,maxOutput:128,durationMs:5000,allowTools:true,temperature:0.3});
+    const message={role:"assistant",content:"之前的答复",reasoning_content:"historical reasoning"};
+    try {
+      const response=await fetch(`http://127.0.0.1:${gateway.port}/v1/chat/completions`,{method:"POST",
+        headers:{authorization:"Bearer "+gateway.token},body:JSON.stringify({model:"kimi-k3.1-pro",messages:[message],
+          max_tokens:500,reasoning_effort:"none",thinking:{type:"disabled"},top_p:0.1,stream:true,tool_choice:"auto"})});
+      expect(response.status).toBe(400);
+      const report=await response.text();
+      expect(report).toContain("code=invalid_parameter");
+      expect(report).toContain("param=reasoning_content");
+      expect(report).not.toContain(secret);
+      expect(report).not.toContain("Echoed");
+      expect(seen[0]).toEqual({model:"kimi-k3.1-pro",messages:[message],stream:true,max_completion_tokens:128,
+        reasoning_effort:"low",tool_choice:"auto"});
+    } finally {
+      await gateway.close();
+      await new Promise<void>(resolve=>{upstream.close(()=>resolve());upstream.closeAllConnections();});
+    }
+  });
 });

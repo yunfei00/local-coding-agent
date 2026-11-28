@@ -39,11 +39,11 @@ export class OpenCodeChat {
           const translated=translateEngineEvent(frame,id);
           if(translated)onEvent?.(translated);
           if(event.type==="session.tool.success")hasToolSuccess=true;
-          if(event.type==="session.text.delta"){
-            const delta=event.data.delta??event.data.text;
+          if(translated?.kind==="text"){
+            const delta=(translated.payload as {delta?:unknown}).delta;
             if(typeof delta==="string"){hasText ||= !!delta.trim();onText(delta);}
           }
-          const outcome=event.type?.match(/^session\.execution\.(succeeded|failed|interrupted)$/)?.[1] as ChatResult["outcome"]|undefined;
+          const outcome=translated?.kind==="execution-ended" ? (translated.payload as {outcome:ChatResult["outcome"]}).outcome : undefined;
           if(outcome){
             admitted=false;
             return {outcome:outcome==="succeeded"&&!hasText&&!(completion==="tool-or-text"&&hasToolSuccess)?"failed":outcome,verified:false};

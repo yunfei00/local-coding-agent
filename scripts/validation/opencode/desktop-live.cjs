@@ -24,6 +24,8 @@ const mock = process.argv.includes("--mock");
 if (online && mock) throw new Error("Choose mock or online");
 const dropCompletion = mock && process.argv.includes("--drop-completion");
 const dropText = dropCompletion || (mock && process.argv.includes("--drop-text"));
+const chatMatrix = !mock && process.argv.includes("--chat-matrix");
+const preflight = !!online && process.argv.includes("--preflight-only");
 const projectWrite = mock || process.argv.includes("--project-write");
 const liveTask = !mock && (online || process.argv.includes("--project-task"));
 const tunedOrigin = !mock && process.env.LCA_TEST_OLLAMA_ORIGIN;
@@ -44,6 +46,7 @@ let modelRequests = 0;
 let toolRequests = 0;
 let nativeShellResult = false;
 let resumedPlan;
+const kimiWire = [];
 const started = Date.now();
 let application;
 let onlineProfile;
@@ -142,6 +145,18 @@ async function main() {
       let raw = "";
       for await (const chunk of req) raw += chunk;
       const request = JSON.parse(raw);
+      if (!dropText && request.model==="kimi-k3.1-pro" && request.stream) {
+        kimiWire.push({
+          correct_limit: request.max_completion_tokens>0 && request.max_tokens===undefined,
+          compatible: request.temperature===undefined && request.thinking===undefined && request.reasoning_effort==="low",
+          replayed: request.messages.some(message=>message.role==="assistant" && message.reasoning_content==="SYNTHETIC KIMI REASONING"),
+        });
+        const part = (delta, finish_reason) => "data: "+JSON.stringify({id:"kimi-fixture-"+kimiWire.length,
+          object:"chat.completion.chunk",model:request.model,choices:[{index:0,delta,finish_reason}]})+"\n\n";
+        res.writeHead(200,{"Content-Type":"text/event-stream"});
+        return res.end(part({role:"assistant",reasoning_content:"SYNTHETIC KIMI REASONING"},null)
+          +part({content:"KIMI_NATIVE_REPLY_"+kimiWire.length},null)+part({},"stop")+"data: [DONE]\n\n");
+      }
       const transcript = JSON.stringify(request.messages);
       const canary = transcript.match(/LCA[a-f0-9]{10}/)?.[0];
       if (request.model !== model || !request.stream) return res.writeHead(400).end();
@@ -205,14 +220,20 @@ async function main() {
           function:{name:write.name,arguments:JSON.stringify({[pathField]:path.join(project,"v2-tool.txt"),content:canary})}}]},null));
         return res.end(delta({},"tool_calls")+"data: [DONE]\n\n");
       }
-      res.write(delta({role:"assistant",content:"收到 "},null));
+      const legacyPrefix = !dropText && requestText.includes("v2-tool.txt") ? "SYNTHETIC QWEN REASONING\n</think>\n" : "";
+      res.write(delta({role:"assistant",content:legacyPrefix+"收到 "},null));
       setTimeout(() => res.end(delta({content:canary},null)+delta({},"stop")+"data: [DONE]\n\n"),100);
     });
     await new Promise(resolve => provider.listen(0,"127.0.0.1",resolve));
     providerUrl = "http://127.0.0.1:"+provider.address().port;
   }
   const page = await launch();
-  if (tunedOrigin) {
+  if (preflight) {
+    const status = await page.evaluate(async () => (await window.localAgent.taskRequest("","task.credential.status")).payload);
+    checks.push(status.mode === "os_protected" ? "Electron OS protected vault is readable" : "Electron credential storage is session-only");
+    return "NOT_RUN";
+  }
+  if (tunedOrigin || (chatMatrix && !online)) {
     await page.evaluate(async () => {
       const api=window.localAgent;
       const saved=(await api.taskRequest("","task.settings.get")).payload.config;
@@ -237,14 +258,13 @@ async function main() {
   }, project);
   await page.evaluate(model => window.localAgent.openProject(model), onlineProfile ?? model);
   await page.locator(".composer textarea").waitFor();
-  await page.exposeFunction("saveGatewayUsage", (turn, count) => usage.set(turn,count));
+  await attachUsage(page);
   await page.evaluate(online => {
     window.openc = [];
     window.localAgent.onAgentEvent(e => {
       if (e.type.startsWith("turn.") || e.type.startsWith("tool.")) {
         window.openc.push({type:e.type,engine:e.payload?.engine,name:e.payload?.name,message:e.type==="turn.failed"?e.payload?.message:undefined});
       }
-      if (e.type === "turn.metrics") void window.saveGatewayUsage(e.turn_id,e.payload?.execution_summary?.provider_requests);
       if (e.type === "approval.requested") {
         window.openc.push({type:e.type});
         const allowedEdit = e.payload?.tool === "edit" && /v2-tool\.txt|calculator\.py/.test(JSON.stringify(e.payload?.arguments));
@@ -279,6 +299,12 @@ async function main() {
   assert.equal(result.engine, "opencode");
   assert(events.some(e => e.type === "turn.delta"));
   assert((await page.locator(".message.agent").last().innerText()).includes(canary));
+  if (!mock && !online) {
+    const displayed = await page.locator(".message.agent").last().innerText();
+    assert(!/<\/?think>/.test(displayed),"Ollama reasoning markup leaked into the formal reply");
+    assert([...usage.values()].some(metric=>metric.model===model && metric.requests>0),"Expected a real request admitted under the selected model ID");
+    checks.push("Formal renderer excluded raw thinking tags and identified the actual Ollama model");
+  }
   if (projectWrite) {
     if (mock) {
       assert.equal(toolRequests,1,"Mock must direct one native file write");
@@ -293,7 +319,14 @@ async function main() {
     dropText ? "Missing text was restored after the live native terminal event" :
     mock ? "Official composer streamed through OpenCode and the non-default-port model mock" :
     `Official composer streamed a real OpenCode answer via ${model}`);
-  if (online) {
+  if (chatMatrix) {
+    assert((await input.isEnabled()));
+    for (const n of [2,3,4,5]) {
+      await sendChat(page,`这是第 ${n} 轮。只回复标记 ${canary}R${n}，不要调用工具。`,`${canary}R${n}`);
+      checks.push(`Real Chinese chat turn ${n} completed and Send returned`);
+    }
+    await checkChatTools(page);
+  } else if (online) {
     await page.evaluate(() => { window.openc.length=0; });
     await input.fill("请复述本会话上条回复中的验收标记。只回复标记，无需工具。");
     await page.waitForFunction(() => document.querySelector(".send-button")?.disabled === false);
@@ -306,6 +339,11 @@ async function main() {
     await checkTask(page);
   }
   if (mock) {
+    if (!dropText) {
+      assert.equal(await page.locator(".message.agent").filter({hasText:"SYNTHETIC QWEN REASONING"}).count(),0);
+      assert(await page.getByText("模型思考",{exact:true}).count()>0);
+      checks.push("Legacy Ollama unlabelled reasoning stays out of the formal reply");
+    }
     await page.evaluate(() => {window.openc.length=0;});
     await input.fill("cross-project-check: check the fixture outside the open project");
     await page.waitForFunction(() => document.querySelector(".send-button")?.disabled === false);
@@ -317,7 +355,7 @@ async function main() {
     checks.push("OpenCode blocked a read of a sibling file before its contents reached the model");
     await checkTask(page);
   }
-  const plan = mock && !dropText ? await page.evaluate(async () => {
+  const plan = mock && !dropText ? await page.evaluate(async origin => {
     const api = window.localAgent;
     const threadId = (await api.getProject()).payload.active_thread.id;
     const created = (await api.planRequest(threadId,"plan.create",{
@@ -326,11 +364,18 @@ async function main() {
     })).payload.plans.find(plan=>plan.goal==="RESUME_CHECKPOINT_FIXTURE");
     await api.planRequest(threadId,"plan.step.update",{plan_id:created.id,step_id:created.steps[0].id,state:"skipped"});
     await api.planRequest(threadId,"plan.checkpoint",{plan_id:created.id});
+    const {catalog,config}=(await api.taskRequest(threadId,"task.catalog.get")).payload;
+    catalog.connections.push({connection_id:"kimi-fixture",display_name:"Kimi fixture",enabled:true,
+      provider_type:"openai_compatible",base_url:origin+"/v1",credential_reference:null});
+    catalog.profiles.push({model_profile_id:"kimi-fixture-profile",connection_id:"kimi-fixture",model_id:"kimi-k3.1-pro",
+      display_name:"Kimi fixture",tool_mode:"auto",temperature:0.2});
+    await api.taskRequest(threadId,"task.catalog.update",{catalog,config});
     return {id:created.id,threadId};
-  }) : undefined;
+  },providerUrl) : undefined;
   await application.close();
   application = undefined;
   const restarted = await launch();
+  await attachUsage(restarted);
   await restarted.locator(".message.agent").filter({hasText:canary}).waitFor();
   checks.push("Assistant message persisted across Electron restart");
   if (plan) {
@@ -362,7 +407,85 @@ async function main() {
     assert(resumedPlan,"The model must receive the saved goal, next step and finished steps");
     assert.equal(fs.statSync(fixture).mtimeMs,written);
     checks.push("Restart resumed the verified checkpoint with OpenCode and left the earlier file write untouched");
+    const chooser = restarted.locator(".model-select");
+    const priorModel = await chooser.inputValue();
+    await chooser.selectOption("profile:kimi-fixture-profile");
+    await sendChat(restarted,"Kimi 第一轮", "KIMI_NATIVE_REPLY_1");
+    await sendChat(restarted,"Kimi 第二轮", "KIMI_NATIVE_REPLY_2");
+    assert.equal(kimiWire.length,2);
+    assert(kimiWire.every(item=>item.correct_limit && item.compatible));
+    assert(kimiWire[1].replayed,"Native Moonshot adapter must retain assistant reasoning on the wire");
+    assert.equal(await restarted.locator(".message.agent").filter({hasText:"SYNTHETIC KIMI REASONING"}).count(),0);
+    assert(await restarted.getByText("模型思考",{exact:true}).count()>0);
+    await chooser.selectOption(priorModel);
+    await restarted.locator(".project-new-chat").first().click();
+    await chooser.selectOption("profile:kimi-fixture-profile");
+    await sendChat(restarted,"新会话切换到 Kimi", "KIMI_NATIVE_REPLY_3");
+    assert.equal(kimiWire.length,3);
+    assert(!kimiWire[2].replayed,"New thread must not reuse Kimi history from another thread");
+    checks.push("Real OpenCode same-thread/new-thread switched model ID, preserved Kimi reasoning on the wire and separated it in the renderer");
   }
+}
+
+async function attachUsage(page) {
+  await page.exposeFunction("recordProviderMetric",(turn,metric)=>{ usage.set(turn,metric); });
+  await page.evaluate(() => window.localAgent.onAgentEvent(e=>{
+    if (e.type==="turn.metrics") {
+      const m=e.payload?.execution_summary;
+      void window.recordProviderMetric(e.turn_id,{model:e.payload?.model,requests:m?.provider_requests,
+        first_output_ms:m?.first_output_ms,tokens_per_second:m?.observed_output_tokens_per_second});
+    }
+  }));
+}
+
+async function sendChat(page,prompt,answer) {
+  await page.evaluate(() => {
+    if (!window.matrixEvents) {
+      window.matrixEvents=[];
+      window.localAgent.onAgentEvent(e=>{
+        if (["turn.completed","turn.failed","turn.cancelled"].includes(e.type)) window.matrixEvents.push(e);
+      });
+    }
+    window.matrixEvents.length=0;
+  });
+  const input=page.locator(".composer textarea");
+  await input.fill(prompt);
+  await page.waitForFunction(() => document.querySelector(".send-button")?.disabled === false);
+  await input.press("Enter");
+  await page.waitForFunction(() => window.matrixEvents.length>0,null,{timeout:630_000});
+  const terminal=await page.evaluate(()=>window.matrixEvents[0]);
+  assert.equal(terminal.type,"turn.completed",terminal.payload?.message);
+  if (answer) await page.locator(".message.agent").last().filter({hasText:answer}).waitFor();
+  await page.locator(".send-button").waitFor();
+}
+
+async function checkChatTools(page) {
+  const tag="FILE_"+randomBytes(6).toString("hex");
+  fs.writeFileSync(path.join(project,"source.txt"),tag);
+  await sendChat(page,"必须调用 read 读取 source.txt，最终只回复其中的标记，不要猜测。",tag);
+  checks.push("Read exact code from a real fixture through product chat");
+  for (const marker of ["FIRST","SECOND"]) {
+    await sendChat(page,`使用工具把工作区 v2-tool.txt 的全部内容改为一行 ${marker}，不存在就创建。完成后报告结果。`);
+    assert.equal(fs.readFileSync(path.join(project,"v2-tool.txt"),"utf8").trim(),marker);
+    checks.push(`Real file contents verified after ${marker==="FIRST"?"creation":"modification"}`);
+  }
+  await sendChat(page,"必须调用终端工具运行 echo OPEN_CODE_NATIVE_SHELL_OK，然后报告真实标准输出。","OPEN_CODE_NATIVE_SHELL_OK");
+  const shell = await page.evaluate(()=>window.openc.some(event=>event.type==="tool.requested" && ["shell","bash"].includes(event.name)));
+  assert(shell,"Shell claim needs actual native tool event");
+  checks.push("Executed native shell command and received actual stdout");
+  if (online) await checkTask(page);
+  await checkCancellation(page);
+}
+
+async function checkCancellation(page) {
+  await page.evaluate(()=>{window.openc.length=0;});
+  await page.locator(".composer textarea").fill("慢慢撰写较长的中文说明。");
+  await page.locator(".composer textarea").press("Enter");
+  await page.waitForFunction(()=>window.openc.some(event=>["turn.reasoning.delta","turn.delta","turn.failed"].includes(event.type)),null,{timeout:300_000});
+  await page.locator(".stop-button").click();
+  await page.waitForFunction(()=>window.openc.some(event=>event.type==="turn.cancelled"),null,{timeout:30_000});
+  await page.locator(".send-button").waitFor();
+  checks.push("Cancelled an actual streaming model response and Send returned");
 }
 
 async function checkTask(page) {
@@ -398,7 +521,7 @@ async function checkTask(page) {
 }
 
 main().then(status => write(status ?? "PASS"), error => {
-  if (online && ![...usage.values()].some(count=>count>0) &&
+  if (online && ![...usage.values()].some(metric=>metric.requests>0) &&
       /Cannot decrypt model credentials|Protected model credentials unavailable/.test(error.message)) {
     write("NOT_RUN","Windows protected model credentials could not be read");
     return;
@@ -412,14 +535,14 @@ main().then(status => write(status ?? "PASS"), error => {
 });
 
 function write(status, error) {
-  const requests = [...usage.values()].reduce((sum,count)=>sum+(count??0),0);
+  const requests = [...usage.values()].reduce((sum,metric)=>sum+(metric.requests??0),0);
   const report = {status, model, mock, drop_completion:dropCompletion, drop_text:dropText, checks,
     diagnostic:error ?? (status === "NOT_RUN" ? "No unique, enabled HTTPS profile with the exact authorized model and a protected credential reference" : undefined),
-    elapsed_ms:Date.now()-started, evidence_dir:data,
+    elapsed_ms:Date.now()-started, evidence_dir:data, native_gateway_turns:[...usage.values()],
     ...(online ? {provider_requests:requests,token_usage:status==="NOT_RUN"?0:"UNKNOWN",cost:status==="NOT_RUN"?0:"UNKNOWN"} : {})};
   const destination = path.join(reports, online ? `v2-opencode-online-${online}.json` : dropCompletion ? "v2-opencode-desktop-recovery.json" :
     dropText ? "v2-opencode-desktop-text-recovery.json" : mock ? "v2-opencode-desktop-mock.json" :
-    liveTask ? "v2-opencode-desktop-live-task.json" : tunedOrigin ? "v2-opencode-desktop-alternate-ollama.json" :
+    chatMatrix ? "v2-opencode-desktop-chat-matrix.json" : liveTask ? "v2-opencode-desktop-live-task.json" : tunedOrigin ? "v2-opencode-desktop-alternate-ollama.json" :
     projectWrite ? "v2-opencode-desktop-live-tool.json" : "v2-opencode-desktop-live.json");
   fs.mkdirSync(path.dirname(destination), {recursive:true});
   fs.writeFileSync(destination, JSON.stringify(report, null, 2));
