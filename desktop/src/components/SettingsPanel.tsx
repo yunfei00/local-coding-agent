@@ -1,4 +1,5 @@
 import {UpdateSettings} from './UpdateSettings';
+import {OpenCodeUpdateSettings} from './OpenCodeUpdateSettings';
 import { MCPSettingsSection } from "./MCPSettingsSection";
 import { ModelSettingsSection } from "./ModelSettingsSection";
 import { useEffect, useMemo, useState } from "react";
@@ -154,6 +155,7 @@ export function SettingsPanel({
   useEffect(()=>{if(window.localAgent.getPermission)void window.localAgent.getPermission().then(event=>{setAuthorization(event.payload?.authorization as typeof authorization);setPermissionTask(String(event.payload?.task_key||''));}).catch(()=>{});},[projectId,threadId]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // v2.0.0 RC2: OpenCode gate switch removed; OpenCode is always the formal engine.
 
   const loadRules = async () => {
     try {
@@ -504,10 +506,13 @@ export function SettingsPanel({
                   Reset runtime settings
                 </button>
               </div>
+              <div className="settings-field" style={{ marginTop: 16 }}>
+                <p className="settings-hint">v2.0.0 RC2: OpenCode is the sole formal Agent execution core.</p>
+              </div>
             </div>
           ) : null}
 
-          {tab === "about" ? <div className="settings-section"><h2>关于</h2><UpdateSettings/><button onClick={()=>void window.localAgent.backupData().then(event=>setMessage('备份已保存：'+String(event.payload?.path))).catch(error=>setError(String(error)))}>备份应用数据</button></div> : null}
+          {tab === "about" ? <div className="settings-section"><h2>关于</h2><UpdateSettings/><OpenCodeUpdateSettings/><button onClick={()=>void window.localAgent.backupData().then(event=>setMessage('备份已保存：'+String(event.payload?.path))).catch(error=>setError(String(error)))}>备份应用数据</button></div> : null}
 
           {tab === "provider" ? <div className="settings-section"><h2>Provider Connections</h2><p>连接与模型统一由 Models &amp; Routing 管理。旧配置和凭据继续保留兼容。</p><button onClick={() => setTab("models")}>Manage model connections</button></div> : null}
 

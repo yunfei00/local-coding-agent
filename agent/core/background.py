@@ -3,7 +3,21 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+from pathlib import Path
 import time
+from agent.core.engine_lease import EngineLeaseOccupied
+
+
+def workspace_overlap(left, right):
+    if not left or not right:
+        return False
+    a = os.path.normcase(str(Path(left).resolve()))
+    b = os.path.normcase(str(Path(right).resolve()))
+    try:
+        return os.path.commonpath((a, b)) in (a, b)
+    except ValueError:
+        return False
 
 
 class BackgroundJobs:
@@ -67,19 +81,31 @@ class BackgroundJobs:
 
     async def run(self, ident, operation, *, claims=None, maximum=1):
         from agent.core.workflow import scheduling_conflict
+        if os.environ.get('LCA_DATA_DIR'):
+            maximum = 1  # Shared cross-process lease is intentionally exclusive.
         claims={**(claims or {}),'maximum':maximum}
         def available():
             if maximum>1 and self.running_claims:
                 from agent.desktop.resources import require_resources,MIB
                 try:require_resources(minimum_available=2560*MIB,minimum_commit=2560*MIB)
                 except Exception:return False
-            return (len(self.running_claims)<maximum and all(c['maximum']>len(self.running_claims) and not scheduling_conflict(claims,c) for c in self.running_claims.values()))
+            return (len(self.running_claims)<maximum and all(c['maximum']>len(self.running_claims) and not scheduling_conflict(claims,c) and not workspace_overlap(claims.get('workspace'),c.get('workspace')) for c in self.running_claims.values()))
         try:
             async with self.condition:
                 await self.condition.wait_for(available)
                 self.running_claims[ident]=claims
-            self.update(ident,'running')
-            await operation()
+            from agent.core.engine_lease import engine_lease
+            data_dir = os.environ.get("LCA_DATA_DIR")
+            if data_dir:
+                with engine_lease(data_dir):
+                    self.update(ident,'running')
+                    await operation()
+            else:
+                self.update(ident,'running')
+                await operation()
+        except EngineLeaseOccupied:
+            self.update(ident,'paused','其他引擎占用执行权；未执行工具，请确认后手动恢复')
+            raise
         except asyncio.CancelledError:
             self.update(ident,'paused','任务中断；保留原执行账本和 Checkpoint')
             raise

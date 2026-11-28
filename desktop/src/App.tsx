@@ -1,3 +1,5 @@
+import {ProjectDiffDialog} from "./components/ProjectDiffDialog";
+import {ProjectSearchDialog} from "./components/ProjectSearchDialog";
 import {FirstRunCard} from './components/FirstRunCard';
 import {UnifiedProgress,useUnifiedProgress} from './components/UnifiedProgress';
 import {
@@ -115,7 +117,7 @@ const sameChat = (a:ChatLocation | undefined, b:ChatLocation) => a?.projectId ==
 
 type ChatItem = {
   id: string;
-  role: "user" | "agent" | "system" | "tool";
+  role: "user" | "agent" | "system" | "tool" | "reasoning";
   text: string;
   tool?: ToolView;
   trace?: TurnTrace;
@@ -222,6 +224,24 @@ function resultObject(value: unknown): Record<string, unknown> {
 }
 
 function App() {
+  const [projectDiffOpen,setProjectDiffOpen]=useState(false);
+  const [projectSearchOpen,setProjectSearchOpen]=useState(false);
+  const [engineStatus, setEngineStatus] = useState<Awaited<ReturnType<NonNullable<Window["localAgent"]["getEngineStatus"]>>> | null>(null);
+  useEffect(() => {
+    let disposed = false;
+    const refresh = async () => {
+      try {
+        const result = await window.localAgent.getEngineStatus?.();
+        if (!disposed && result) setEngineStatus(result);
+      } catch {
+        if (!disposed) setEngineStatus(null);
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 5000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, []);
+
   const [status, setStatus] = useState<Status>(initialStatus);
   const [provider, setProvider] = useState<ProviderStatus | null>(null);
   const [permissionMode, setPermissionMode] =
@@ -258,7 +278,6 @@ function App() {
   const [projectThreadCache, setProjectThreadCache] = useState<Record<string, ThreadRecord[]>>({});
   const [workspace, setWorkspace] = useState<ProjectInfo | null>(null);
   const [selectedModel, setSelectedModel] = useState("");
-  const [allowModelFallback,setAllowModelFallback]=useState(false);
   const [modelSearch,setModelSearch] = useState("");
   const [modelIdentity,setModelIdentity] = useState("");
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
@@ -588,6 +607,14 @@ function App() {
           }
           return [...current, { id, role: "agent", text: delta }];
         });
+        return;
+      }
+      if (event.type === "turn.reasoning.delta" && event.turn_id) {
+        const id = "reasoning:"+event.turn_id;
+        const delta = String(event.payload?.delta ?? "");
+        setItems(current => current.some(item=>item.id===id)
+          ? current.map(item=>item.id===id ? {...item,text:(item.text+delta).slice(0,16000)} : item)
+          : [...current,{id,role:"reasoning",text:delta.slice(0,16000)}]);
         return;
       }
 
@@ -929,6 +956,7 @@ function App() {
         return;
       }
       if (event.type === "turn.completed" && event.turn_id) {
+        setFollowupNotice(null);
         setApprovals((current) =>
           current.filter((item) => item.turnId !== event.turn_id)
         );
@@ -962,6 +990,7 @@ function App() {
       }
 
       if (event.type === "turn.cancelled" && event.turn_id) {
+        setFollowupNotice(null);
         setApprovals((current) =>
           current.filter((item) => item.turnId !== event.turn_id)
         );
@@ -980,6 +1009,7 @@ function App() {
       }
 
       if (event.type === "turn.failed" && event.turn_id) {
+        setFollowupNotice(null);
         setApprovals((current) =>
           current.filter((item) => item.turnId !== event.turn_id)
         );
@@ -1397,20 +1427,20 @@ function App() {
         const retry=followupRetryRef.current;
         const id=retry?.owner===inputOwner && retry.prompt===prompt ? retry.id : crypto.randomUUID();
         followupRetryRef.current={owner:inputOwner,prompt,id};
+        setFollowupNotice('追加需求已提交，等待 OpenCode 确认送达。');
         if(conversationTasks.active)await window.localAgent.taskRequest(boundThread.id,'task.append',{task_id:conversationTasks.active.id,prompt,message_id:id});
         else await window.localAgent.appendTurn(boundThread.id,runningTurnId!,prompt,id);
         followupRetryRef.current=undefined;
-        setFollowupNotice('追加需求已排队，将在完整工具批次结束后的下一次模型请求前生效。');
       }else{
-        const started = await window.localAgent.startTurn(boundThread.id,prompt,selectedModel,true,undefined,{allow_fallback:allowModelFallback});
-        if (started.turn_id) setRunningTurnId(started.turn_id);
+        await window.localAgent.startTurn(boundThread.id,prompt,selectedModel,true);
       }
       setInput(current => current.trim() === prompt ? "" : current);
     } catch (error) {
       inputDrafts.current.set(workspace.id + ":" + (boundThread?.id ?? "draft"), prompt);
       setInput(current => current || prompt);
       setUiError(String(error));
-      if(!appending)setRunningTurnId(null);
+      if(appending)setFollowupNotice(null);
+      else setRunningTurnId(null);
       setItems(current => current.filter(item => item.id !== userItemId));
     } finally {
       sendingRef.current = false;
@@ -1456,6 +1486,11 @@ function App() {
             <button type="button" aria-label="Toggle sidebar" title="Toggle sidebar" aria-controls="project-sidebar" aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed(value => !value)}><Icon name="sidebar" /></button>
           </div>
           <nav className="app-menubar" role="menubar" aria-label="Application menu">
+            <ActionMenu label="引擎" className="app-menu-button" menuBarItem actions={[
+              {label:"工程 Git 差异",disabled:!window.localAgent.readProjectDiff||Boolean(runningTurnId),onSelect:()=>setProjectDiffOpen(true)},
+              {label:"工程搜索",disabled:!window.localAgent.searchProject||Boolean(runningTurnId),onSelect:()=>setProjectSearchOpen(true)},
+              {label:"OpenCode " + (engineStatus?.engines.find(engine=>engine.id==="opencode")?.version ?? "v2.2.6") + (engineStatus ? "（当前）" : "（状态未确认）"), disabled:true, onSelect:()=>{}}
+            ]}>引擎</ActionMenu>
             <ActionMenu label="文件" className="app-menu-button" menuBarItem actions={[
               {label:"添加现有文件夹…", disabled:status.state !== "ready" || Boolean(runningTurnId), onSelect:() => void openProject()},
               {label:"新建项目…", disabled:status.state !== "ready" || Boolean(runningTurnId), onSelect:() => setNewProjectOpen(true)},
@@ -1637,7 +1672,12 @@ function App() {
           ) : (
             <div className="message-list">
               {items.map((item) =>
-                item.trace ? <ExecutionSummary key={item.id} trace={item.trace} /> : item.role === "tool" && item.tool ? (
+                item.trace ? <ExecutionSummary key={item.id} trace={item.trace} /> : item.role === "reasoning" ? (
+                  <details key={item.id} className="message system">
+                    <summary>模型思考</summary>
+                    <MessageContent text={item.text} markdown={false} />
+                  </details>
+                ) : item.role === "tool" && item.tool ? (
                   <ToolCard key={item.id} tool={item.tool} />
                 ) : (
                   <div key={item.id} className={"message " + item.role}>
@@ -1692,12 +1732,8 @@ function App() {
             if (!activeThread || runningTurnId ||
                 !window.confirm('请先核对项目文件、Diff 和中断日志。确认继续原任务的未完成步骤？已完成操作不会自动重放。')) return;
             void (async()=>{
-              if(planId){
-                const recovery=await window.localAgent.planRequest(activeThread.id,'plan.recover',{plan_id:planId});
-                if(recovery.payload?.autonomous_task_id){await window.localAgent.taskRequest(activeThread.id,'task.resume',{task_id:planId,confirm_workspace:true});return;}
-              }
-              const result=await window.localAgent.startTurn(activeThread.id,'继续原始需求，只完成当前未完成步骤；先检查现状，保留已完成操作，重新验证并用中文报告。',selectedModel,true,{run_id:unifiedRun.recovery_plan_id || unifiedRun.id,confirm_workspace:true});
-              if(result.turn_id)setRunningTurnId(result.turn_id);
+              if(!planId) throw new Error('没有可绑定的历史计划，请先核对工作区和执行记录。');
+              await window.localAgent.startTurn(activeThread.id,'继续原始需求，只完成当前未完成步骤；先检查现状，保留已完成操作，重新验证并用中文报告。',selectedModel,true,{run_id:planId,confirm_workspace:true});
             })().catch(error=>setUiError(String(error)));
           }}/>:null}
           {!taskOpen && conversationTasks.task ? <ConversationTask task={conversationTasks.task}
@@ -1738,7 +1774,7 @@ function App() {
           {taskOpen && workspace ? <AutonomousTaskPanel key={workspace.id} threadId={activeThread?.id ?? ""} ensureThread={async goal => (await ensureConversation(goal)).id} running={runningTurnId !== null}
             onClose={() => setTaskOpen(false)} onSettings={() => {setTaskOpen(false); setSettingsOpen(true);}} /> : null}
           {planOpen && activeThread ? (
-            <PlanPanel threadId={activeThread.id} onClose={() => setPlanOpen(false)} />
+            <PlanPanel threadId={activeThread.id} selectedModel={selectedModel} onClose={() => setPlanOpen(false)} />
           ) : null}
           {contextOpen && activeThread ? (
             <ContextPanel
@@ -1824,7 +1860,6 @@ function App() {
                   <option value="">No models</option>
                 )}
               </select>
-              {selectedModel!=='auto'?<label className="model-fallback-toggle"><input type="checkbox" checked={allowModelFallback} disabled={runningTurnId!==null} onChange={e=>setAllowModelFallback(e.target.checked)}/>允许模型自动回退</label>:null}
               <span className="composer-hints">
                 {modelIdentity ? <span title={modelIdentity}>{modelIdentity}</span> : null}
                 {contextLabel ? (
@@ -1891,6 +1926,8 @@ function App() {
           />
         ) : null}
       </main>
+      {projectDiffOpen ? <ProjectDiffDialog onClose={()=>setProjectDiffOpen(false)}/> : null}
+      {projectSearchOpen ? <ProjectSearchDialog onClose={()=>setProjectSearchOpen(false)}/> : null}
       {renamingThread ? <RenameThreadDialog title={renamingThread.thread.title} onSave={commitThreadRename} onClose={() => {
         const trigger = renamingThread.trigger;
         setRenamingThread(null);

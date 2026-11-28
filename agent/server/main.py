@@ -131,7 +131,8 @@ class AgentServer:
     MAX_CONSECUTIVE_TOOL_FAILURES = 4
     MODEL_RETRY_ATTEMPTS = 2
 
-    def __init__(self, token: str) -> None:
+    def __init__(self, token: str, *, data_service: bool = False) -> None:
+        self.data_service = data_service
         self.token = token
         self.store = SQLiteStore()
         from agent.core.runtime_events import RuntimeLedger
@@ -263,7 +264,7 @@ class AgentServer:
                         )
                         continue
 
-                    if data['type'] in {'task.model.diagnostic','plan.operation.review'}:
+                    if data['type'] in {'task.model.diagnostic', 'plan.operation.review', 'task.external.prepare', 'task.external.finish'}:
                         diagnostic = asyncio.create_task(self.handle_message(ws, data, owned_turns))
                         diagnostic_requests.add(diagnostic)
                         diagnostic.add_done_callback(diagnostic_requests.discard)
@@ -713,7 +714,11 @@ class AgentServer:
                     self.permissions.set_mode(self.authorizations.load()['global'])
                     self._sync_workspace_permissions()
                 data=self.authorizations.load();current=self._current_permission_task()
-                policy=self.authorizations.effective(self.projects.active.id if self.projects.active else None,current) if self.store.get_setting(self.authorizations.KEY) else self.permissions
+                requested_project = payload.get('project_id') if message_type == 'permission.get' else None
+                permission_project = self.projects.get(requested_project) if requested_project else self.projects.active
+                if requested_project and not permission_project:
+                    raise ValueError('项目不存在')
+                policy=self.authorizations.effective(permission_project.id if permission_project else None,current if not requested_project else None) if self.store.get_setting(self.authorizations.KEY) else self.permissions
                 await ws.send_json(envelope('permission.changed' if message_type=='permission.set' else 'permission.loaded',
                     {'mode':policy.mode.value,'available_modes':self.permissions.available_modes,'authorization':data,'task_key':current,
                      'canonical_target':target if message_type=='permission.set' else None},request_id=request_id))
@@ -1038,6 +1043,12 @@ class AgentServer:
                     request_id=request_id,
                 )
             )
+            return
+
+        if self.data_service and message_type in {
+            "turn.start", "turn.append", "task.start", "task.resume", "task.continue", "task.append",
+        }:
+            await self.send_error(ws, "OPENCODE_REQUIRED", "桌面执行由 OpenCode 运行时负责", request_id=request_id)
             return
 
         if message_type.startswith("task."):
@@ -1463,7 +1474,18 @@ class AgentServer:
                 if message_type != "plan.list" and self.active_turns:
                     raise ValueError("Stop the active turn before editing or resuming a plan")
                 plan_id = str(payload.get("plan_id") or "")
-                if message_type == "plan.create":
+                if message_type == "plan.external.resume_context":
+                    if payload.get("confirm_workspace") is not True or payload.get("project_id") != project.id:
+                        raise ValueError("Confirm the workspace for the current project before resuming")
+                    context = plans.external_resume_context(plan_id, thread_id)
+                    if self.store.connection.execute(
+                        "SELECT 1 FROM autonomous_tasks WHERE plan_id=?", (plan_id,)
+                    ).fetchone():
+                        raise ValueError("Resume this plan from the Task panel to preserve its separate worktree")
+                    await ws.send_json(envelope(
+                        "plan.resumable", context, request_id=request_id, thread_id=thread_id))
+                    return
+                elif message_type == "plan.create":
                     plan_id = plans.create(thread_id, str(payload.get("goal") or ""),
                                            list(payload.get("steps") or []))
                 elif message_type == "plan.step.update":
@@ -1623,6 +1645,24 @@ class AgentServer:
                 await ws.send_json(envelope('turn.appended',{'message_id':identifier,'queued':True,'boundary':'当前完整工具批次结束后的下一次模型请求前'},request_id=request_id,thread_id=thread_id,turn_id=turn_id))
             except ValueError as exc:
                 await self.send_error(ws,'FOLLOWUP_REJECTED',str(exc),request_id=request_id,thread_id=thread_id,turn_id=turn_id)
+            return
+
+        if message_type == "turn.record_external":
+            # Controlled internal hook for OpenCode-routed turns; persists message to thread history.
+            thread_id = str(data.get("thread_id") or payload.get("thread_id") or "")
+            project_id = payload.get("project_id")
+            project = self.projects.get(project_id) if project_id else self.projects.active
+            thread = project.state.get_thread(thread_id) if project else None
+            if not project or not thread:
+                await self.send_error(ws, "THREAD_NOT_FOUND", "Thread not found.", request_id=request_id, thread_id=thread_id or None)
+                return
+            role = str(payload.get("role") or "")
+            content = payload.get("content")
+            if role not in {"user", "assistant"} or not isinstance(content, str) or len(content) > 200000:
+                await self.send_error(ws, "INVALID_MESSAGE", "Invalid external message.", request_id=request_id, thread_id=thread_id)
+                return
+            project.state.append_message(thread_id, role=role, content=content)
+            await ws.send_json(envelope("turn.recorded", {"role": role}, request_id=request_id, thread_id=thread_id))
             return
 
         if message_type == "turn.start":
@@ -1863,8 +1903,26 @@ class AgentServer:
                             'code': 'AGENT_INTERNAL_ERROR', 'message': '执行发生内部错误，查看诊断与检查点。',
                             'recoverable': True,
                         }, thread_id=thread_id, turn_id=turn_id))
+            async def scheduled_execution():
+                from agent.core.engine_lease import EngineLeaseOccupied
+                try:
+                    await self.background.run(turn_id, execute_turn,
+                        claims=claims if background else {'workspace': str(project.workspace.root.resolve()), 'gui': True},
+                        maximum=parallel if background else 1)
+                except EngineLeaseOccupied:
+                    if background:
+                        execution = self.queued_execution(turn_id)
+                        if execution:
+                            self.runtime_ledger.transition(execution,'paused',turn_id,reason='其他引擎占用执行权；未执行工具，请确认后手动恢复')
+                    output = self.background if background else ws
+                    with suppress(ConnectionResetError, RuntimeError):
+                        await output.send_json(envelope('turn.failed', {
+                            'code': 'ENGINE_EXECUTION_BLOCKED',
+                            'message': '执行权不可用，请确认其他引擎已停止后重试。',
+                            'recoverable': True,
+                        }, thread_id=thread_id, turn_id=turn_id))
             task = asyncio.create_task(
-                self.background.run(turn_id,execute_turn,claims=claims,maximum=parallel) if background else execute_turn(),
+                scheduled_execution(),
                 name=turn_id,
             )
             self.active_turns[turn_id] = task
@@ -4647,9 +4705,9 @@ class AgentServer:
         )
 
 
-async def run(host: str, port: int) -> None:
+async def run(host: str, port: int, *, data_service: bool = False) -> None:
     token = secrets.token_urlsafe(24)
-    server = AgentServer(token)
+    server = AgentServer(token, data_service=data_service)
     app = web.Application()
     stop_event = asyncio.Event()
     app["stop_event"] = stop_event
@@ -4694,6 +4752,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Local Coding Agent server")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0)
+    parser.add_argument("--data-service", action="store_true")
     parser.add_argument("--restore-backup")
     parser.add_argument("--inspect-backup")
     return parser.parse_args()
@@ -4712,7 +4771,7 @@ def main() -> None:
     with DataLock(default_data_dir()):
         if args.restore_backup:
             print(json.dumps(restore_backup(args.restore_backup,default_data_dir()),ensure_ascii=False));return
-        asyncio.run(run(args.host, args.port))
+        asyncio.run(run(args.host, args.port, data_service=args.data_service))
 
 
 if __name__ == "__main__":

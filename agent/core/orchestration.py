@@ -56,6 +56,7 @@ class TaskService:
         self.runtime.recover()
         self.running: dict[str, str] = {}
         self.stop_reasons: dict[str, str] = {}
+        self.external_verifications: dict[str, tuple[asyncio.Task, str | None]] = {}
         self.provider_factory_override = None  # Dependency injection for deterministic tests.
         self.credentials = {}  # Memory only; Electron safeStorage owns persistence.
         from agent.core.model_diagnostics import ModelDiagnostics
@@ -121,6 +122,10 @@ class TaskService:
         thread_id = str(data.get("thread_id") or payload.get("thread_id") or "")
         project = self.server.projects.active
         try:
+            if kind.startswith("task.external."):
+                project = next((item for item in self.server.projects.list_projects() if item.state.get_thread(thread_id)), None)
+                if project is None or (payload.get("project_id") and payload["project_id"] != project.id):
+                    raise ValueError("OpenCode task thread does not belong to the specified workspace")
             if kind == "task.credentials.update":
                 values = payload.get("credentials")
                 if not isinstance(values, dict) or any(not isinstance(k, str) or not k.startswith("connection-") or not isinstance(v, str) or len(v) > 16000 for k, v in values.items()):
@@ -274,6 +279,55 @@ class TaskService:
                     result={'runtimes':runtimes,'background_jobs':self.server.background.list(thread_id),'active_turn_ids':[tid for tid,turn in self.server.active_turns.items() if not turn.done() and self.server.active_turn_threads.get(tid)==thread_id and tid not in self.server.disconnected_turns]}
                 elif kind == "task.list":
                     result = {"tasks": [self.public(t) for t in self.runtime.list(thread_id)]}
+                elif kind in {"task.external.prepare", "task.external.finish"}:
+                    if not self.server.data_service:
+                        raise ValueError("External task service requires the desktop data service")
+                    from agent.core.opencode_tasks import finish_task, prepare_task
+                    handler = prepare_task if kind.endswith(".prepare") else finish_task
+                    result = {"task": self.public(await handler(self, ws, project, thread_id, payload))}
+                elif kind == "task.external.reserve":
+                    if not self.server.data_service:
+                        raise ValueError("External reservation requires the desktop data service")
+                    from agent.core.opencode_tasks import reserve_online_request
+                    reserve_online_request(self, thread_id, payload)
+                    result = {"reserved": True}
+                elif kind == "task.external.stop":
+                    if not self.server.data_service:
+                        raise ValueError("External stop requires the desktop data service")
+                    task = self.runtime.get(payload["task_id"])
+                    if task["thread_id"] != thread_id or task.get("engine") != "opencode":
+                        raise ValueError("OpenCode task is not owned by this thread")
+                    verification = self.external_verifications.get(task["id"])
+                    if verification and verification[1] is None:
+                        status = "paused" if payload.get("pause") is True else "cancelled"
+                        self.external_verifications[task["id"]] = (verification[0], status)
+                        verification[0].cancel()
+                    result = {"stopping": verification is not None}
+                elif kind == "task.external.shell_check":
+                    if not self.server.data_service:
+                        raise ValueError("Shell checks require the desktop data service")
+                    from agent.permissions.policy import explicit_git_intent, project_command_risk
+
+                    commands, goal = payload.get("commands"), payload.get("goal")
+                    if (not isinstance(commands, list) or not 1 <= len(commands) <= 20
+                            or any(not isinstance(command, str) or not 1 <= len(command) <= 2000 for command in commands)
+                            or not isinstance(goal, str) or len(goal) > 48000):
+                        raise ValueError("Shell approval requires the complete command")
+                    workspace = project.workspace
+                    if payload.get("task_id"):
+                        task = self.runtime.get(payload["task_id"])
+                        if task["thread_id"] != thread_id or task.get("engine") != "opencode":
+                            raise ValueError("Shell approval does not belong to this task")
+                        from agent.core.opencode_tasks import managed_workspace
+                        workspace = (await managed_workspace(self, task, project)).workspace
+                    for command in commands:
+                        risk = project_command_risk(workspace, command)
+                        if not risk:
+                            continue
+                        action = {"git_commit": "commit", "git_publish": "push"}.get(risk[0])
+                        if risk[0] in {"system_protection", "system_admin"} or (action and not explicit_git_intent(goal, action)):
+                            raise ValueError("OpenCode shell action is blocked by the workspace policy")
+                    result = {"allowed": True}
                 elif kind == "task.start":
                     if any(not t.done() for t in self.server.active_turns.values()):
                         raise ValueError("Pause or stop the active task first")
@@ -442,7 +496,24 @@ class TaskService:
         turn_id = new_id("turn")
         self.running[task["id"]] = turn_id
         owned_turns.add(turn_id)
-        running = asyncio.create_task(self.run(ws, task["id"], project, turn_id), name=turn_id)
+        # Hold the source workspace for the entire autonomous lifecycle,
+        # including managed worktree creation, verification and cleanup.
+        async def execute():
+            await self.run(ws, task["id"], project, turn_id)
+        async def scheduled():
+            from agent.core.engine_lease import EngineLeaseOccupied
+            try:
+                await self.server.background.run(turn_id, execute,
+                    claims={"workspace": str(project.workspace.root.resolve()), "gui": True},
+                    maximum=1)
+            except EngineLeaseOccupied:
+                reason = "其他引擎占用执行权；未执行工具，请确认后手动恢复"
+                self.runtime.transition(task["id"], "paused", reason)
+                self.running.pop(task["id"], None)
+                with suppress(ConnectionResetError, RuntimeError):
+                    await ws.send_json(envelope("task.updated", {"task": self.public(self.runtime.get(task["id"]))}, thread_id=task["thread_id"], turn_id=turn_id))
+                    await ws.send_json(envelope("turn.failed", {"code": "ENGINE_EXECUTION_BLOCKED", "message": reason, "recoverable": True}, thread_id=task["thread_id"], turn_id=turn_id))
+        running = asyncio.create_task(scheduled(), name=turn_id)
         self.server.active_turns[turn_id] = running
         self.server.active_turn_threads[turn_id] = task["thread_id"]
         running.add_done_callback(lambda _: self.server.forget_turn(turn_id))

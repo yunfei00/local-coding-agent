@@ -7,6 +7,11 @@ on:
       - "feature/**"
   pull_request:
 
+# Cancel superseded CI on the same branch (including PR/push duplicates).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   checks:
     name: Core checks
@@ -117,9 +122,26 @@ jobs:
         working-directory: desktop
         run: npm run build
 
-      - name: Actual desktop task and regression smoke
+      - name: Stage pinned OpenCode runtime
         if: runner.os == 'Windows'
-        run: node scripts/validation/desktop-smoke.cjs
+        shell: pwsh
+        run: ./scripts/dev/prepare-opencode.ps1
+
+      - name: OpenCode product loopback smoke
+        if: runner.os == 'Windows'
+        run: node scripts/validation/opencode/desktop-live.cjs --mock
+
+      - name: OpenCode product reconciliation after lost completion events
+        if: runner.os == 'Windows'
+        run: node scripts/validation/opencode/desktop-live.cjs --mock --drop-completion
+
+      - name: OpenCode product reconciliation after lost text events
+        if: runner.os == 'Windows'
+        run: node scripts/validation/opencode/desktop-live.cjs --mock --drop-text
+
+      - name: Desktop product UI regression
+        if: runner.os == 'Windows'
+        run: node scripts/validation/desktop-smoke.cjs --product-ui
 
       - name: Retain M2 project execution evidence
         if: always()
@@ -151,4 +173,15 @@ jobs:
         with:
           name: m5-electron-evidence-${{ matrix.os }}
           path: validation-reports/m5-electron-e2e.json
+          if-no-files-found: ignore
+
+      - name: Retain OpenCode product acceptance summaries
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-product-evidence-windows
+          path: |
+            validation-reports/v2-opencode-desktop-mock.json
+            validation-reports/v2-opencode-desktop-recovery.json
+            validation-reports/v2-opencode-desktop-text-recovery.json
           if-no-files-found: ignore

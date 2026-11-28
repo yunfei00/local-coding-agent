@@ -2,11 +2,39 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 
 from agent.task_plans import TaskPlanStore
 
 
 class TaskPlanStoreTests(unittest.TestCase):
+    def test_external_resume_requires_same_thread_checkpoint_and_review(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "state.db")
+            db = sqlite3.connect(path)
+            store = TaskPlanStore(db)
+            plan = store.create("owner", "Repair", [
+                {"description": "Inspect"}, {"description": "Fix", "verification": "Run tests"},
+            ])
+            first, second = store.get(plan)["steps"]
+            store.update_step(plan, first["id"], "completed", [{"tool": "read_file", "ok": True}])
+            with self.assertRaisesRegex(ValueError, "checkpoint"):
+                store.external_resume_context(plan, "owner")
+            checkpoint = store.checkpoint(plan, "stopped", files_changed=["private path"])
+            db.close()
+            with closing(sqlite3.connect(path)) as restored:
+                store = TaskPlanStore(restored)
+                with self.assertRaisesRegex(ValueError, "another thread"):
+                    store.external_resume_context(plan, "other")
+                context = store.external_resume_context(plan, "owner")
+                self.assertEqual(context["checkpoint_id"], checkpoint)
+                self.assertEqual(context["next_step"]["id"], second["id"])
+                self.assertEqual(context["finished"], ["Inspect"])
+                self.assertNotIn("private path", str(context))
+                store.update_step(plan, second["id"], "blocked")
+                with self.assertRaisesRegex(ValueError, "recoverable"):
+                    store.external_resume_context(plan, "owner")
+
     def test_restart_and_evidence_gate(self):
         with tempfile.TemporaryDirectory() as folder:
             path = os.path.join(folder, "state.db")

@@ -14,6 +14,25 @@ declare global {
   interface Window {
     localAgent: {
       platform: string;
+      readProjectDiff?: ()=>Promise<{status:string;unstaged:string;staged:string}>;
+      searchProject?: (query:string,mode:"file"|"text")=>Promise<{hits:{file:string;line?:number;text?:string}[];truncated:boolean;skipped:number}>;
+      cancelProjectSearch?: ()=>Promise<void>;
+      sendLocalChatNext?: (message:string)=>Promise<void>;
+      endLocalChat?: ()=>Promise<void>;
+      listOpenCodeTasks?: ()=>Promise<{id:string;engine:"opencode";model:string;status:string;startedAt:string;endedAt?:string;events:number;verified:false}[]>;
+      listSharedLocalProfiles?: ()=>Promise<{id:string;label:string;model:string;port:number;baseUrl:string;context:number;maxOutput:number}[]>;
+      discoverOllamaModels?: (port:number)=>Promise<string[]>;
+      diagnoseHistorySession?: (id:string,source?:"task")=>Promise<{sessionId:string;outcome:string;active:boolean;canResume:false;verified:false}|null>;
+      listLocalChatHistory?: ()=>Promise<{id:string;model:string;createdAt:string;messages:string[];output:string;status:string;sessionId?:string;storageId?:string}[]>;
+      runLocalChat?: (input:{model:string;prompt:string;port:number;followup?:string;messages?:string[];saveHistory?:boolean;profileId?:string;interactive?:boolean;fixtureTools?:boolean})=>Promise<{outcome:string;sessionId?:string;verified?:false;fixtureRoot?:string}>;
+      onLocalChatProgress?: (handler:(progress:unknown)=>void)=>()=>void;
+      cancelLocalChat?: (id?:string)=>Promise<void>;
+      onLocalChatDelta?: (handler:(delta:string)=>void)=>()=>void;
+      runEngineDiagnostic?: () => Promise<{status:string;sessionId?:string}>;
+      getEngineStatus?: () => Promise<{selected: "legacy" | "opencode"; engines: Array<{id: "legacy" | "opencode"; available: boolean; version?: string; reason?: string}>}>;
+      checkOpenCodeUpdate: () => Promise<{current:string;latest:string|null}>;
+      installOpenCodeUpdate: () => Promise<{current:string}>;
+      restoreBundledOpenCode: () => Promise<{current:string}>;
       setWindowTheme: (theme: "light" | "dark") => Promise<void>;
       menuAction: (action: string) => Promise<void>;
       openProjectFolder: (projectId?:string) => Promise<void>;

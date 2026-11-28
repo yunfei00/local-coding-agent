@@ -1,3 +1,4 @@
+import {OpenCodeTaskList} from "./OpenCodeTaskList";
 import {useEffect, useState} from "react";
 import {RecentExecutions} from "./RecentExecutions";
 import {TaskEvidence} from "./TaskEvidence";
@@ -166,6 +167,7 @@ export function AutonomousTaskPanel({threadId, ensureThread, running, onClose, o
         {task.report.review ? <details><summary>完成报告与 Git 审查</summary><p>{task.report.review}</p><p>{task.report.git_approval}</p><pre>{task.report.diff || "无已跟踪文件差异"}</pre><button onClick={() => void window.localAgent.copyText(JSON.stringify(task, null, 2))}>复制任务报告</button></details> : null}
         {task.status === "awaiting_approval" ? <button disabled={busy || running} onClick={() => void request("task.approve", {task_id:task.id})}>接受已验证报告</button> : null}
       </section>)}
+      <OpenCodeTaskList />
       {diagnostic ? <section className="context-section" aria-label="任务诊断 report"><h3>任务诊断</h3><p>诊断信息不包含提示词、用户文件内容和密钥；报告同时保存在应用数据目录。</p><button onClick={() => void window.localAgent.copyText(JSON.stringify(diagnostic.json, null, 2))}>复制诊断 JSON</button><button onClick={() => void window.localAgent.copyText(diagnostic.markdown)}>复制诊断 Markdown</button><pre className="task-json">{JSON.stringify(diagnostic.json, null, 2)}</pre></section> : null}
     </div>
   </aside>;

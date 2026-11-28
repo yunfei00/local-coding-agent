@@ -1,3 +1,9 @@
+## v2.0.0 OpenCode 候选版
+
+候选分支 `feature/opencode-engine-migration` 的桌面聊天和工作区任务使用内置 OpenCode。Python 提供项目、历史、模型配置与独立验收。当前状态见 [实际验收](docs/opencode-migration/acceptance-results.md) 和 [发布阻断项](docs/opencode-migration/remaining-issues.md)。
+
+桌面产品回归使用 `node scripts/validation/desktop-smoke.cjs --product-ui` 与 `node scripts/validation/opencode/desktop-live.cjs --mock`。在线验收须显式选择已授权的保存模型，例如 `node scripts/validation/opencode/desktop-live.cjs --online=qwen4-max`，会消耗现有额度。
+
 ## v1.0 Windows x64
 
 v1.0提供一次完全访问授权、Windows x64 Setup/Portable、数据保护与方案A手动更新。在线代码/GUI分项证据继续有效；当前Windows实装及最终发布状态见验收报告，不将未执行组合或干净系统标为通过。[验收状态](docs/v1.0/acceptance-report.md)。
@@ -10,7 +16,7 @@ v1.0沿用原Unified Runtime、依赖工作流、逻辑四角色、独立审查�
 
 更新源码：`uv sync --locked`、`npm --prefix desktop ci`、`npm run desktop:build`，再运行 `npm run dev`。完整退出旧桌面与后端后再启动。设置中的“自主工作流 · 角色与模板”支持角色模型、有限修复和并行上限；缺省沿用聊天模型，新设置用于新工作流，旧任务保留快照。
 
-回归命令：`uv run --locked python -m unittest discover -s tests -v`、`npm run desktop:typecheck`、`npm run desktop:test`、`npm run desktop:build`、`node scripts/validation/desktop-smoke.cjs`。真实验证须显式执行 `scripts/validation/unified_live.py --live`，可能消耗额度；Mock Smoke 不代表在线模型通过。
+历史 v1.0 回归入口包括 Python unittest、桌面测试与旧 `desktop-smoke.cjs` 协议链路。v2.0 请使用本文开头的桌面产品回归入口。
 
 ## 历史阶段记录
 

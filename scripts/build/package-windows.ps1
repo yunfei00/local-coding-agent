@@ -225,13 +225,21 @@ $BundledAgent = Join-Path $RepoRoot "desktop\release\win-unpacked\resources\agen
 foreach ($Required in @($Installer, $Portable, $DesktopExe, $BundledAgent)) {
     if (-not (Test-Path $Required)) { throw "Expected package artifact was not created: $Required" }
 }
+$ChecksumFile = Join-Path $RepoRoot "desktop\release\SHA256SUMS.txt"
+@($Installer, $Portable) | ForEach-Object {
+    $Hash = Get-FileHash $_ -Algorithm SHA256
+    "$($Hash.Hash.ToLowerInvariant())  $([System.IO.Path]::GetFileName($_))"
+} | Set-Content -Path $ChecksumFile -Encoding ascii
+$RegressionFailures = [System.Collections.Generic.List[string]]::new()
 
 Write-Host "[8/11] Smoke test unpacked Desktop + bundled Agent..."
 Invoke-DesktopSmoke -Executable $DesktopExe -Name "unpacked"
 $OldSmokeExecutable = $env:LCA_SMOKE_EXECUTABLE
 try {
     $env:LCA_SMOKE_EXECUTABLE = $DesktopExe
-    Invoke-Checked node scripts/validation/desktop-smoke.cjs
+    Invoke-Checked node scripts/validation/desktop-smoke.cjs --product-ui
+} catch {
+    $RegressionFailures.Add("Unpacked desktop regression: $($_.Exception.Message)")
 } finally {
     if ($null -eq $OldSmokeExecutable) { Remove-Item Env:LCA_SMOKE_EXECUTABLE -ErrorAction SilentlyContinue } else { $env:LCA_SMOKE_EXECUTABLE = $OldSmokeExecutable }
 }
@@ -239,8 +247,11 @@ try {
 Write-Host "[9/11] Smoke test Portable executable..."
 Invoke-DesktopSmoke -Executable $Portable -Name "portable"
 $PortableChat = Join-Path $RepoRoot ('build\packaged-portable-chat-'+[guid]::NewGuid().ToString('N'))
-Invoke-Checked node scripts/validation/packaged_chat_smoke.cjs $Portable $PortableChat
-Copy-Item (Join-Path $PortableChat 'report.json') (Join-Path $RepoRoot 'build\packaged-portable-chat-smoke.json')
+try { Invoke-Checked node scripts/validation/packaged_chat_smoke.cjs $Portable $PortableChat --no-sdk }
+catch { $RegressionFailures.Add("Portable OpenCode chat regression: $($_.Exception.Message)") }
+if (Test-Path (Join-Path $PortableChat 'report.json')) {
+    Copy-Item (Join-Path $PortableChat 'report.json') (Join-Path $RepoRoot 'build\packaged-portable-chat-smoke.json')
+}
 
 Write-Host "[10/11] Silent-install Setup and smoke test installed executable..."
 $ExistingInstall = @("HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*", "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*") | ForEach-Object { Get-ItemProperty -Path $_ -ErrorAction SilentlyContinue } | Where-Object { $_.DisplayName -match '^Local\s*Coding\s*Agent(?:\s|$)' }
@@ -253,14 +264,23 @@ $InstalledExe = Join-Path $InstallDir "LocalCodingAgent.exe"
 if (-not (Test-Path $InstalledExe)) { throw "Setup did not create expected executable: $InstalledExe" }
 Invoke-DesktopSmoke -Executable $InstalledExe -Name "setup"
 $PermissionEvidence = Join-Path $RepoRoot ('validation-reports\v10-installed-permissions-'+[guid]::NewGuid().ToString('N'))
-Invoke-Checked node scripts/validation/v10-permission-desktop.cjs $InstalledExe $PermissionEvidence
-Copy-Item (Join-Path $PermissionEvidence 'report.json') (Join-Path $RepoRoot 'build\packaged-permission-smoke.json')
+try { Invoke-Checked node scripts/validation/v10-permission-desktop.cjs $InstalledExe $PermissionEvidence }
+catch { $RegressionFailures.Add("Installed permission regression: $($_.Exception.Message)") }
+if (Test-Path (Join-Path $PermissionEvidence 'report.json')) {
+    Copy-Item (Join-Path $PermissionEvidence 'report.json') (Join-Path $RepoRoot 'build\packaged-permission-smoke.json')
+}
 $UpdateEvidence = Join-Path $RepoRoot ('validation-reports\v10-plan-a-installed-'+[guid]::NewGuid().ToString('N'))
-Invoke-Checked node scripts/validation/v10-plan-a-desktop.cjs $InstalledExe $UpdateEvidence
-Copy-Item (Join-Path $UpdateEvidence 'report.json') (Join-Path $RepoRoot 'build\packaged-updater-smoke.json')
+try { Invoke-Checked node scripts/validation/v10-plan-a-desktop.cjs $InstalledExe $UpdateEvidence }
+catch { $RegressionFailures.Add("Installed application updater regression: $($_.Exception.Message)") }
+if (Test-Path (Join-Path $UpdateEvidence 'report.json')) {
+    Copy-Item (Join-Path $UpdateEvidence 'report.json') (Join-Path $RepoRoot 'build\packaged-updater-smoke.json')
+}
 $SetupChat = Join-Path $RepoRoot ('build\packaged-setup-chat-'+[guid]::NewGuid().ToString('N'))
-Invoke-Checked node scripts/validation/packaged_chat_smoke.cjs $InstalledExe $SetupChat --no-sdk
-Copy-Item (Join-Path $SetupChat 'report.json') (Join-Path $RepoRoot 'build\packaged-setup-chat-smoke.json')
+try { Invoke-Checked node scripts/validation/packaged_chat_smoke.cjs $InstalledExe $SetupChat --no-sdk }
+catch { $RegressionFailures.Add("Setup OpenCode chat regression: $($_.Exception.Message)") }
+if (Test-Path (Join-Path $SetupChat 'report.json')) {
+    Copy-Item (Join-Path $SetupChat 'report.json') (Join-Path $RepoRoot 'build\packaged-setup-chat-smoke.json')
+}
 Invoke-DesktopSmoke -Executable $InstalledExe -Name "setup-no-sdk" -NoSDK
 Copy-Item (Join-Path $RepoRoot 'build\packaged-setup-no-sdk-smoke.json') (Join-Path $RepoRoot 'build\packaged-setup-no-sdk-first-smoke.json')
 Invoke-DesktopSmoke -Executable $InstalledExe -Name "setup-no-sdk" -NoSDK -ReuseData
@@ -292,12 +312,6 @@ foreach ($Canary in $DefaultDataCanaries) {
 Remove-BuildArtifact $InstallDir
 
 Write-Host "[11/11] Write and verify SHA256 checksums..."
-$ChecksumFile = Join-Path $RepoRoot "desktop\release\SHA256SUMS.txt"
-@($Installer, $Portable) | ForEach-Object {
-    $Hash = Get-FileHash $_ -Algorithm SHA256
-    "$($Hash.Hash.ToLowerInvariant())  $([System.IO.Path]::GetFileName($_))"
-} | Set-Content -Path $ChecksumFile -Encoding ascii
-
 $ChecksumLines = @(Get-Content $ChecksumFile | Where-Object { $_.Trim() })
 if ($ChecksumLines.Count -ne 2) { throw "SHA256SUMS.txt must contain exactly Setup and Portable." }
 foreach ($Line in $ChecksumLines) {
@@ -316,4 +330,5 @@ Write-Host "Installer: $Installer"
 Write-Host "Portable:  $Portable"
 Write-Host "Agent:     $BundledAgent"
 Write-Host "Checksums: $ChecksumFile"
+if ($RegressionFailures.Count) { throw ($RegressionFailures -join [Environment]::NewLine) }
 Write-Host "===== WINDOWS PACKAGE BUILD PASSED ====="
