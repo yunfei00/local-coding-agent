@@ -8,6 +8,7 @@ import os
 import platform
 import re
 import secrets
+import shutil
 import sqlite3
 import sys
 from time import perf_counter
@@ -952,30 +953,47 @@ class AgentServer:
             return
 
         if message_type == "mcp.list":
-            await ws.send_json(
-                envelope(
-                    "mcp.listed",
-                    self.mcp_runtime.public_payload(),
-                    request_id=request_id,
-                )
-            )
+            await ws.send_json(envelope("mcp.listed", self.mcp_runtime.public_payload(), request_id=request_id))
             return
 
-        if message_type in {
-            "mcp.upsert",
-            "mcp.delete",
-            "mcp.refresh",
-            "mcp.secrets",
-        }:
-            if any(not task.done() for task in self.active_turns.values()):
-                await self.send_error(
-                    ws,
-                    "TURN_RUNNING",
-                    "Stop the active turn before changing MCP configuration.",
-                    request_id=request_id,
-                )
-                return
+        if message_type == "mcp.history":
+            server_id = str(payload.get("server_id") or "").strip() or None
+            await ws.send_json(envelope("mcp.history", {"history": self.mcp_runtime.get_call_history(server_id), **self.mcp_runtime.public_payload()}, request_id=request_id))
+            return
 
+        if message_type == "mcp.export":
+            servers = [s.to_public_dict() for s in self.mcp_settings.list()]
+            await ws.send_json(envelope("mcp.exported", {"mcpServers": servers, "exported_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()}, request_id=request_id))
+            return
+
+        if message_type == "mcp.env":
+            def _which(name):
+                p = shutil.which(name)
+                return {"name": name, "available": bool(p), "path": p}
+            opencode = _which("opencode")
+            payload_env = {
+                "platform": platform.platform(),
+                "python": sys.version.split()[0],
+                "tools": [_which("node"), _which("npm"), _which("npx"), _which("uv"), _which("git"), opencode],
+            }
+            await ws.send_json(envelope("mcp.env", payload_env, request_id=request_id))
+            return
+
+        if message_type == "mcp.templates":
+            templates = [
+                {"id":"everything","name":"Everything (official test server)","transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-everything@2.4.0"],"enabled":False,"trusted":False,"timeout_seconds":60,"server_permission":"ask","tool_permissions":{},"note":"Official MCP test server. Pin version for reproducibility."},
+                {"id":"context7","name":"Context7","transport":"stdio","command":"npx","args":["-y","@upstash/context7-mcp@latest"],"enabled":False,"trusted":False,"timeout_seconds":60,"server_permission":"ask","tool_permissions":{},"note":"Docs lookup. Verify package/version before enabling."},
+                {"id":"playwright","name":"Playwright","transport":"stdio","command":"npx","args":["-y","@playwright/mcp@latest"],"enabled":False,"trusted":False,"timeout_seconds":120,"server_permission":"ask","tool_permissions":{},"note":"Browser automation. Requires local browser/runtime; verify before enabling."},
+                {"id":"github","name":"GitHub","transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-github@latest"],"enabled":False,"trusted":False,"timeout_seconds":60,"server_permission":"ask","tool_permissions":{},"note":"Repo management. Configure token via protected secret env; verify package/version."},
+                {"id":"custom","name":"Custom MCP","transport":"stdio","command":"","args":[],"enabled":False,"trusted":False,"timeout_seconds":30,"server_permission":"ask","tool_permissions":{},"note":"User-defined MCP server."},
+            ]
+            await ws.send_json(envelope("mcp.templates", {"templates": templates}, request_id=request_id))
+            return
+
+        if message_type in {"mcp.upsert","mcp.delete","mcp.refresh","mcp.secrets","mcp.connect","mcp.disconnect","mcp.reconnect","mcp.import"}:
+            if message_type in {"mcp.upsert","mcp.delete","mcp.secrets","mcp.refresh","mcp.import"} and any(not task.done() for task in self.active_turns.values()):
+                await self.send_error(ws, "TURN_RUNNING", "Stop the active turn before changing MCP configuration.", request_id=request_id)
+                return
             try:
                 if message_type == "mcp.upsert":
                     raw_config = payload.get("server")
@@ -983,10 +1001,7 @@ class AgentServer:
                         raise ValueError("server must be an object.")
                     server_config = self.mcp_settings.upsert(raw_config)
                     await self.mcp_runtime.refresh()
-                    result_payload = {
-                        "server": server_config.to_public_dict(),
-                        **self.mcp_runtime.public_payload(),
-                    }
+                    result_payload = {"server": server_config.to_public_dict(), **self.mcp_runtime.public_payload()}
                     response_type = "mcp.changed"
                 elif message_type == "mcp.delete":
                     server_id = str(payload.get("server_id") or "").strip()
@@ -1005,39 +1020,46 @@ class AgentServer:
                     await self.mcp_runtime.refresh()
                     result_payload = self.mcp_runtime.public_payload()
                     response_type = "mcp.changed"
+                elif message_type == "mcp.connect":
+                    server_id = str(payload.get("server_id") or "").strip()
+                    if not server_id: raise ValueError("server_id is required.")
+                    await self.mcp_runtime.connect_server(server_id)
+                    result_payload = self.mcp_runtime.public_payload()
+                    response_type = "mcp.changed"
+                elif message_type == "mcp.disconnect":
+                    server_id = str(payload.get("server_id") or "").strip()
+                    if not server_id: raise ValueError("server_id is required.")
+                    await self.mcp_runtime.disconnect_server(server_id)
+                    result_payload = self.mcp_runtime.public_payload()
+                    response_type = "mcp.changed"
+                elif message_type == "mcp.reconnect":
+                    server_id = str(payload.get("server_id") or "").strip()
+                    if not server_id: raise ValueError("server_id is required.")
+                    await self.mcp_runtime.reconnect_server(server_id)
+                    result_payload = self.mcp_runtime.public_payload()
+                    response_type = "mcp.changed"
+                elif message_type == "mcp.import":
+                    raw = payload.get("servers")
+                    if not isinstance(raw, list):
+                        raise ValueError("servers must be an array.")
+                    for item in raw:
+                        if isinstance(item, dict):
+                            self.mcp_settings.upsert(item)
+                    await self.mcp_runtime.refresh()
+                    result_payload = self.mcp_runtime.public_payload()
+                    response_type = "mcp.changed"
                 else:
                     await self.mcp_runtime.refresh()
                     result_payload = self.mcp_runtime.public_payload()
                     response_type = "mcp.refreshed"
             except ValueError as exc:
-                await self.send_error(
-                    ws,
-                    "MCP_CONFIG_INVALID",
-                    str(exc),
-                    request_id=request_id,
-                )
+                await self.send_error(ws, "MCP_CONFIG_INVALID", str(exc), request_id=request_id)
                 return
             except Exception as exc:
-                self._record_diagnostic_error(
-                    "MCP_RUNTIME_ERROR",
-                    str(exc),
-                    source="mcp",
-                )
-                await self.send_error(
-                    ws,
-                    "MCP_RUNTIME_ERROR",
-                    str(exc),
-                    request_id=request_id,
-                )
+                self._record_diagnostic_error("MCP_RUNTIME_ERROR", str(exc), source="mcp")
+                await self.send_error(ws, "MCP_RUNTIME_ERROR", str(exc), request_id=request_id)
                 return
-
-            await ws.send_json(
-                envelope(
-                    response_type,
-                    result_payload,
-                    request_id=request_id,
-                )
-            )
+            await ws.send_json(envelope(response_type, result_payload, request_id=request_id))
             return
 
         if message_type.startswith("task."):
@@ -1050,25 +1072,11 @@ class AgentServer:
             try:
                 pending = self.approvals.respond(approval_id, decision)
             except ValueError as exc:
-                await self.send_error(
-                    ws,
-                    "INVALID_APPROVAL_DECISION",
-                    str(exc),
-                    request_id=request_id,
-                    turn_id=data.get("turn_id"),
-                )
+                await self.send_error(ws, "INVALID_APPROVAL_DECISION", str(exc), request_id=request_id, turn_id=data.get("turn_id"))
                 return
-
             if not pending:
-                await self.send_error(
-                    ws,
-                    "APPROVAL_NOT_FOUND",
-                    "Approval request is no longer pending.",
-                    request_id=request_id,
-                    turn_id=data.get("turn_id"),
-                )
+                await self.send_error(ws, "APPROVAL_NOT_FOUND", "Approval request is no longer pending.", request_id=request_id, turn_id=data.get("turn_id"))
                 return
-
             execution=self.active_executions.get(pending.turn_id)
             if execution and execution.data.get('unified'):
                 from agent.core.workflow import workflow_state
@@ -1078,18 +1086,16 @@ class AgentServer:
                 self.runtime_ledger.transition(execution,runtime['phase'],pending.turn_id)
                 sink=self.background if pending.turn_id in self.background_turns else ws
                 await sink.send_json(envelope('agent.runtime.updated',{'runtime':dict(runtime)},thread_id=pending.thread_id,turn_id=pending.turn_id))
-            await ws.send_json(
-                envelope(
-                    "approval.resolved",
-                    {
-                        "approval_id": approval_id,
-                        "decision": decision,
-                    },
-                    request_id=request_id,
-                    thread_id=pending.thread_id,
-                    turn_id=pending.turn_id,
-                )
-            )
+            await ws.send_json(envelope("approval.resolved", {"approval_id": approval_id, "decision": decision}, request_id=request_id, thread_id=pending.thread_id, turn_id=pending.turn_id))
+            return
+
+        if message_type == "approval.cancel":
+            approval_id = str(payload.get("approval_id") or "")
+            pending = self.approvals.cancel(approval_id)
+            if not pending:
+                await self.send_error(ws, "APPROVAL_NOT_FOUND", "Approval request is no longer pending.", request_id=request_id, turn_id=data.get("turn_id"))
+                return
+            await ws.send_json(envelope("approval.resolved", {"approval_id": approval_id, "decision": "cancelled", "cancelled": True}, request_id=request_id, thread_id=pending.thread_id, turn_id=pending.turn_id))
             return
 
         if message_type in {"project.open", "project.create"}:

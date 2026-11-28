@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
+from datetime import datetime, timezone
 from typing import Any
 
 from agent.core.diagnostics import redact_text
@@ -24,6 +26,8 @@ class MCPRuntime:
         self.adapters: list[MCPToolAdapter] = []
         self.last_errors: dict[str, str] = {}
         self._refresh_lock = asyncio.Lock()
+        self.call_history: list[dict[str, Any]] = []
+        self._call_history_max = 200
 
     def set_secrets(
         self,
@@ -41,6 +45,24 @@ class MCPRuntime:
             if values:
                 next_values[str(server_id)] = values
         self.secret_env = next_values
+
+    def record_call(self, entry: dict[str, Any]) -> None:
+        safe = dict(entry)
+        for k in ("arguments", "result", "error"):
+            if k in safe:
+                try:
+                    safe[k] = redact_text(str(safe[k]), exact_secrets=self.exact_secrets(), max_chars=2000)
+                except Exception:
+                    safe[k] = "<unavailable>"
+        self.call_history.append(safe)
+        if len(self.call_history) > self._call_history_max:
+            self.call_history = self.call_history[-self._call_history_max:]
+
+    def get_call_history(self, server_id: str | None = None) -> list[dict[str, Any]]:
+        items = list(self.call_history)
+        if server_id:
+            items = [i for i in items if i.get("server_id") == server_id]
+        return items
 
     def _enabled(self) -> list[MCPStoredServer]:
         return [
@@ -69,6 +91,10 @@ class MCPRuntime:
                 self.client,
                 descriptors,
                 trusted=item.trusted,
+                server_permission=item.server_permission,
+                tool_permissions=item.tool_permissions or {},
+                call_recorder=self.record_call,
+                server_id=item.id,
             )
         except MCPClientError as exc:
             self.last_errors[item.id] = exc.message
@@ -105,6 +131,51 @@ class MCPRuntime:
 
             for project in self.projects.list_projects():
                 self.apply_to_project(project)
+
+    def _find(self, server_id: str) -> MCPStoredServer | None:
+        for item in self.settings.list():
+            if item.id == server_id:
+                return item
+        return None
+
+    def _remove_server_adapters(self, server_name: str) -> None:
+        self.adapters = [a for a in self.adapters if a.server_name != server_name]
+        self._clear_project_tools()
+        for project in self.projects.list_projects():
+            self.apply_to_project(project)
+
+    async def connect_server(self, server_id: str) -> None:
+        item = self._find(server_id)
+        if not item:
+            raise ValueError(f"Unknown MCP server: {server_id}")
+        if not item.enabled:
+            raise ValueError("MCP server is disabled.")
+        # ensure config exists
+        try:
+            self.client.status(item.name)
+        except Exception:
+            try:
+                self.client.add_config(item.to_client_config(secret_env=self.secret_env.get(item.id)))
+            except Exception:
+                pass
+        self._remove_server_adapters(item.name)
+        self.adapters.extend(await self._connect_server(item))
+        for project in self.projects.list_projects():
+            self.apply_to_project(project)
+
+    async def disconnect_server(self, server_id: str) -> None:
+        item = self._find(server_id)
+        if not item:
+            raise ValueError(f"Unknown MCP server: {server_id}")
+        try:
+            await self.client.disconnect(item.name)
+        except Exception:
+            pass
+        self._remove_server_adapters(item.name)
+
+    async def reconnect_server(self, server_id: str) -> None:
+        await self.disconnect_server(server_id)
+        await self.connect_server(server_id)
 
     async def close(self) -> None:
         await self.client.disconnect_all()
@@ -154,6 +225,7 @@ class MCPRuntime:
                         "remote_tool": adapter.remote_name,
                         "read_only": bool(metadata.get("read_only")),
                         "risk": metadata.get("risk"),
+                        "permission": metadata.get("permission_override") or item.server_permission or "ask",
                     }
                 )
 
@@ -181,6 +253,7 @@ class MCPRuntime:
                 len(item.get("tools") or [])
                 for item in servers
             ),
+            "call_history": list(self.call_history[-100:]),
         }
 
     def diagnostic_payload(self) -> dict[str, Any]:

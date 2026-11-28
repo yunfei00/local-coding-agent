@@ -15,8 +15,10 @@ from agent.desktop.runtime import NAMES as DESKTOP_TOOLS, public_arguments
 
 class PermissionMode(StrEnum):
     READ_ONLY = "read_only"
+    APPROVAL = "approval"
     WORKSPACE = "workspace"
     FULL_ACCESS = "full_access"
+    RESTRICTED = "restricted"
 
 
 READ_ONLY_TOOLS = {
@@ -270,13 +272,17 @@ class PermissionPolicy:
         for name in all_tools:
             item = metadata.get(name) or {}
             if item.get("source") == "mcp":
-                if self.mode == PermissionMode.READ_ONLY:
-                    if item.get("trusted") and item.get("read_only"):
+                if self.mode in {PermissionMode.READ_ONLY, PermissionMode.RESTRICTED}:
+                    if item.get("trusted") and item.get("read_only") and self._mcp_tool_allowed(name, item):
                         visible.append(name)
-                else:
+                elif self._mcp_tool_allowed(name, item):
                     visible.append(name)
                 continue
 
+            if self.mode == PermissionMode.RESTRICTED:
+                if name in READ_ONLY_TOOLS and self._tool_allowed(name):
+                    visible.append(name)
+                continue
             allowed = (
                 READ_ONLY_TOOLS
                 if self.mode == PermissionMode.READ_ONLY
@@ -285,6 +291,24 @@ class PermissionPolicy:
             if name in allowed:
                 visible.append(name)
         return sorted(visible)
+
+    def _tool_allowed(self, tool_name: str) -> bool:
+        # RESTRICTED default whitelist: read-only inspection tools only.
+        restricted_allow = {
+            "knowledge_search","project_memory_search","environment_diagnose",
+            "file_exists","list_directory","read_file","search_files",
+            "git_status","git_ci_status","git_diff","git_log","git_branches",
+        }
+        return tool_name in restricted_allow
+
+    def _mcp_tool_allowed(self, tool_name: str, metadata: dict[str, Any]) -> bool:
+        # Hook for per-tool/service overrides; default allow unless explicitly denied by config.
+        override = metadata.get("permission_override")
+        if override == "deny":
+            return False
+        if self.mode == PermissionMode.RESTRICTED:
+            return override == "allow"
+        return True
 
     def evaluate(
         self,
@@ -306,6 +330,8 @@ class PermissionPolicy:
         if tool_name in DESKTOP_TOOLS:
             if self.mode == PermissionMode.READ_ONLY:
                 return PermissionVerdict(False, reason="Desktop tools require explicit desktop consent outside Read Only mode", risk="read_only")
+            if self.mode == PermissionMode.RESTRICTED:
+                return PermissionVerdict(False, reason="Desktop tools are blocked in Restricted mode (company whitelist).", risk="restricted")
             target = str(arguments.get('window_id') or 'current-session-enumeration')
             share = bool(arguments.get('share_with_model'))
             risk = bool(arguments.get('confirm_risk')) or arguments.get('method') == 'coordinate' or tool_name == 'desktop_keypress'
@@ -320,6 +346,10 @@ class PermissionPolicy:
                 reason += '此为风险确认、坐标回退或按键动作，需要本次新审批，不复用之前授权。'
                 key += ':fresh:' + json.dumps(public_arguments(tool_name,arguments), sort_keys=True,ensure_ascii=False)
             return PermissionVerdict(True, True, reason, key, 'desktop_fresh' if risk else 'desktop')
+        if self.mode == PermissionMode.RESTRICTED and metadata.get("source") != "mcp" and not self._tool_allowed(tool_name):
+            return PermissionVerdict(allowed=False, reason=f"{tool_name} is blocked in Restricted mode (company whitelist).", risk="restricted")
+        if metadata.get("source") == "mcp" and self.mode == PermissionMode.RESTRICTED and metadata.get("permission_override") != "allow":
+            return PermissionVerdict(allowed=False, reason="MCP tool is blocked in Restricted mode unless explicitly whitelisted.", risk="restricted")
         if metadata.get("source") != "mcp" and self.mode == PermissionMode.READ_ONLY and tool_name not in READ_ONLY_TOOLS:
             return PermissionVerdict(allowed=False, reason=f"{tool_name} is disabled in Read Only mode.", risk="read_only")
         if tool_name=='environment_repair':
@@ -329,19 +359,27 @@ class PermissionPolicy:
             read_only = bool(metadata.get("read_only"))
             risk = str(metadata.get("risk") or "mcp_mutating")
             server = str(metadata.get("server") or "unknown")
+            override = str(metadata.get("permission_override") or "").lower()
+
+            if override == "deny":
+                return PermissionVerdict(allowed=False, reason=f"MCP tool denied by permission policy ({server}/{tool_name}).", risk="mcp_denied")
 
             if self.mode == PermissionMode.READ_ONLY:
+                if override == "allow" and read_only:
+                    return PermissionVerdict(allowed=True)
                 if trusted and read_only:
                     return PermissionVerdict(allowed=True)
                 return PermissionVerdict(
                     allowed=False,
                     reason=(
                         "MCP tool is not available in Read Only mode unless "
-                        "its server is trusted and the tool is locally classified "
-                        "as read-only."
+                        "it is classified read-only and explicitly allowed/trusted."
                     ),
                     risk="read_only",
                 )
+
+            if override == "allow":
+                return PermissionVerdict(allowed=True)
 
             if trusted and read_only:
                 return PermissionVerdict(allowed=True)
@@ -554,4 +592,7 @@ class PermissionPolicy:
                     risk=risk,
                 )
 
+        if self.mode == PermissionMode.APPROVAL and tool_name not in READ_ONLY_TOOLS:
+            fingerprint = json.dumps({"tool": tool_name, "arguments": arguments}, sort_keys=True, ensure_ascii=False, default=str)
+            return PermissionVerdict(allowed=True, requires_approval=True, reason="Approval mode requires confirmation before mutating/executing actions.", approval_key="approval:" + fingerprint, risk="approval_mode")
         return PermissionVerdict(allowed=True)

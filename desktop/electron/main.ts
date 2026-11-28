@@ -1469,17 +1469,42 @@ ipcMain.handle(
 );
 ipcMain.handle("agent:mcp-refresh", async () => {
   await syncMcpSecretsToAgent();
-  const event = await sendRequest(
-    "mcp.refresh",
-    "mcp.refreshed",
-    {},
-    {},
-    45_000
-  );
-  return {
-    event,
-    secrets: mcpSecretStatuses()
-  };
+  const event = await sendRequest("mcp.refresh", "mcp.refreshed", {}, {}, 45_000);
+  return { event, secrets: mcpSecretStatuses() };
+});
+ipcMain.handle("agent:mcp-connect", async (_event, serverId: string) => {
+  await syncMcpSecretsToAgent();
+  const event = await sendRequest("mcp.connect", "mcp.changed", { server_id: serverId }, {}, 45_000);
+  return { event, secrets: mcpSecretStatuses() };
+});
+ipcMain.handle("agent:mcp-disconnect", async (_event, serverId: string) => {
+  const event = await sendRequest("mcp.disconnect", "mcp.changed", { server_id: serverId }, {}, 45_000);
+  return { event, secrets: mcpSecretStatuses() };
+});
+ipcMain.handle("agent:mcp-reconnect", async (_event, serverId: string) => {
+  await syncMcpSecretsToAgent();
+  const event = await sendRequest("mcp.reconnect", "mcp.changed", { server_id: serverId }, {}, 45_000);
+  return { event, secrets: mcpSecretStatuses() };
+});
+ipcMain.handle("agent:mcp-history", async (_event, serverId?: string) => {
+  const event = await sendRequest("mcp.history", "mcp.history", serverId ? { server_id: serverId } : {}, {}, 20_000);
+  return { event, secrets: mcpSecretStatuses() };
+});
+ipcMain.handle("agent:mcp-export", async () => {
+  const event = await sendRequest("mcp.export", "mcp.exported", {}, {}, 20_000);
+  return { event };
+});
+ipcMain.handle("agent:mcp-import", async (_event, servers: Record<string, unknown>[]) => {
+  const event = await sendRequest("mcp.import", "mcp.changed", { servers }, {}, 45_000);
+  return { event, secrets: mcpSecretStatuses() };
+});
+ipcMain.handle("agent:mcp-env", async () => {
+  const event = await sendRequest("mcp.env", "mcp.env", {}, {}, 20_000);
+  return { event };
+});
+ipcMain.handle("agent:mcp-templates", async () => {
+  const event = await sendRequest("mcp.templates", "mcp.templates", {}, {}, 20_000);
+  return { event };
 });
 
 ipcMain.handle(
@@ -1588,6 +1613,16 @@ ipcMain.handle(
     );
   }
 );
+ipcMain.handle("agent:approval-cancel", async (_event, approvalId: string, turnId?: string) => {
+  const pending = pendingOpenCodeApprovals.get(approvalId);
+  if (pending) {
+    pendingOpenCodeApprovals.delete(approvalId);
+    await openCodeRuntime.replyPermission(pending.sessionId, pending.requestId, "reject").catch(() => {});
+    broadcastAgentEvent({ type: "approval.resolved", request_id: "req_" + randomUUID().replace(/-/g, ""), turn_id: pending.turnId, thread_id: pending.threadId, timestamp: new Date().toISOString(), payload: { approval_id: approvalId, decision: "cancelled", cancelled: true, engine: "opencode" } });
+    return { ok: true };
+  }
+  return sendRequest("approval.cancel", "approval.resolved", { approval_id: approvalId }, turnId ? { turnId } : {});
+});
 ipcMain.handle("agent:project-open", async (_event, model?: string) => {
   const selection = await dialog.showOpenDialog({
     properties: ["openDirectory"],

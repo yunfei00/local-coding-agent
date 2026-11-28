@@ -52,6 +52,8 @@ type Draft = {
   enabled: boolean;
   trusted: boolean;
   timeout_seconds: number;
+  server_permission: "allow" | "ask" | "deny";
+  toolPermissionsText: string;
 };
 
 const emptyDraft = (): Draft => ({
@@ -64,7 +66,9 @@ const emptyDraft = (): Draft => ({
   secretKeysText: "",
   enabled: true,
   trusted: false,
-  timeout_seconds: 30
+  timeout_seconds: 30,
+  server_permission: "ask",
+  toolPermissionsText: "{}",
 });
 
 function readServers(event: AgentEnvelope): McpServer[] {
@@ -84,7 +88,9 @@ function toDraft(server: McpServer): Draft {
     secretKeysText: (server.secret_env_keys ?? []).join(", "),
     enabled: server.enabled,
     trusted: server.trusted,
-    timeout_seconds: server.timeout_seconds ?? 30
+    timeout_seconds: server.timeout_seconds ?? 30,
+    server_permission: ((server as any).server_permission as any) || "ask",
+    toolPermissionsText: JSON.stringify((server as any).tool_permissions ?? {}, null, 2),
   };
 }
 
@@ -125,6 +131,7 @@ export function MCPSettingsSection({ running }: { running: boolean }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<any[]>([]);
 
   const selected = useMemo(
     () => servers.find((item) => item.id === draft.id) ?? null,
@@ -205,6 +212,8 @@ export function MCPSettingsSection({ running }: { running: boolean }) {
           ...Object.keys(secretValues ?? {})
         ])
       );
+      let toolPermissions: Record<string,string> = {};
+      try { toolPermissions = parseObject(draft.toolPermissionsText || "{}", "Tool permissions") as any; } catch { toolPermissions = {}; }
       const server = {
         ...(draft.id ? { id: draft.id } : {}),
         name: draft.name.trim(),
@@ -228,7 +237,9 @@ export function MCPSettingsSection({ running }: { running: boolean }) {
         secret_env_keys: secretKeys,
         enabled: draft.enabled,
         trusted: draft.trusted,
-        timeout_seconds: draft.timeout_seconds
+        timeout_seconds: draft.timeout_seconds,
+        server_permission: draft.server_permission,
+        tool_permissions: toolPermissions,
       };
       const result = await window.localAgent.upsertMcpServer(
         server,
@@ -274,20 +285,73 @@ export function MCPSettingsSection({ running }: { running: boolean }) {
   };
 
   const refresh = async () => {
-    if (running || busy) {
-      return;
-    }
-    setBusy(true);
-    setError(null);
+    if (running || busy) return;
+    setBusy(true); setError(null);
+    try { const result = await window.localAgent.refreshMcpServers(); applyResult(result); setMessage("MCP connections refreshed."); }
+    catch (nextError) { setError(String(nextError)); }
+    finally { setBusy(false); }
+  };
+  const connectServer = async () => {
+    if (!draft.id || busy) return;
+    setBusy(true); setError(null);
+    try { const result = await window.localAgent.connectMcpServer(draft.id); applyResult(result, draft.id); setMessage("MCP server connected."); }
+    catch (e) { setError(String(e)); } finally { setBusy(false); }
+  };
+  const disconnectServer = async () => {
+    if (!draft.id || busy) return;
+    setBusy(true); setError(null);
+    try { const result = await window.localAgent.disconnectMcpServer(draft.id); applyResult(result, draft.id); setMessage("MCP server disconnected."); }
+    catch (e) { setError(String(e)); } finally { setBusy(false); }
+  };
+  const reconnectServer = async () => {
+    if (!draft.id || busy) return;
+    setBusy(true); setError(null);
+    try { const result = await window.localAgent.reconnectMcpServer(draft.id); applyResult(result, draft.id); setMessage("MCP server reconnected."); }
+    catch (e) { setError(String(e)); } finally { setBusy(false); }
+  };
+  const loadHistory = async () => {
+    setBusy(true); setError(null);
+    try { const result = await window.localAgent.getMcpHistory(draft.id); setHistory((result.event.payload?.history as any[]) || []); applyResult(result, draft.id); }
+    catch (e) { setError(String(e)); } finally { setBusy(false); }
+  };
+  const exportServers = async () => {
+    setBusy(true); setError(null);
     try {
-      const result = await window.localAgent.refreshMcpServers();
+      const result = await window.localAgent.exportMcpServers();
+      const blob = JSON.stringify(result.event.payload ?? {}, null, 2);
+      await window.localAgent.copyText(blob);
+      setMessage("MCP config exported to clipboard (JSON).");
+    } catch (e) { setError(String(e)); } finally { setBusy(false); }
+  };
+  const importServers = async () => {
+    setBusy(true); setError(null);
+    try {
+      const raw = window.prompt("Paste MCP JSON array or {mcpServers:[...]}");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const servers = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.mcpServers) ? parsed.mcpServers : [];
+      if (!servers.length) throw new Error("No servers found in JSON.");
+      const result = await window.localAgent.importMcpServers(servers);
       applyResult(result);
-      setMessage("MCP connections refreshed.");
-    } catch (nextError) {
-      setError(String(nextError));
-    } finally {
-      setBusy(false);
-    }
+      setMessage("MCP config imported.");
+    } catch (e) { setError(String(e)); } finally { setBusy(false); }
+  };
+  const checkEnv = async () => {
+    setBusy(true); setError(null);
+    try { const r = await window.localAgent.getMcpEnv(); const tools = (r.event.payload?.tools as any[]||[]).map((t:any)=>`:`).join(", "); setMessage(`Env: `); }
+    catch (e) { setError(String(e)); } finally { setBusy(false); }
+  };
+  const loadTemplates = async () => {
+    setBusy(true); setError(null);
+    try {
+      const r = await window.localAgent.getMcpTemplates();
+      const templates = (r.event.payload?.templates as any[]) || [];
+      const pick = window.prompt("Template id: " + templates.map(t=>t.id).join(", "));
+      const t = templates.find(x=>x.id===pick);
+      if (!t) return;
+      setDraft({ id: undefined, name: t.name, transport: t.transport, command: t.command||"", argsText: (t.args||[]).join("\n"), url: t.url||"", envText: "{}", secretKeysText: "", enabled: !!t.enabled, trusted: !!t.trusted, timeout_seconds: t.timeout_seconds||30, server_permission: t.server_permission||"ask", toolPermissionsText: JSON.stringify(t.tool_permissions||{}, null, 2) });
+      setMessage(`Template loaded: . Review and click Add server.`);
+    } catch (e) { setError(String(e)); } finally { setBusy(false); }
   };
 
   const selectedSecret = draft.id ? secrets[draft.id] : undefined;
@@ -303,21 +367,12 @@ export function MCPSettingsSection({ running }: { running: boolean }) {
           </p>
         </div>
         <div className="settings-inline-actions">
-          <button
-            type="button"
-            className="settings-secondary"
-            disabled={busy || running}
-            onClick={() => void refresh()}
-          >
-            {busy ? "Working…" : "Refresh"}
-          </button>
-          <button
-            type="button"
-            disabled={busy || running}
-            onClick={createNew}
-          >
-            New server
-          </button>
+          <button type="button" className="settings-secondary" disabled={busy || running} onClick={() => void refresh()}>{busy ? "Working..." : "Refresh"}</button>
+          <button type="button" className="settings-secondary" disabled={busy || running} onClick={() => void checkEnv()}>Env</button>
+          <button type="button" className="settings-secondary" disabled={busy || running} onClick={() => void loadTemplates()}>Templates</button>
+          <button type="button" className="settings-secondary" disabled={busy || running} onClick={() => void exportServers()}>Export</button>
+          <button type="button" className="settings-secondary" disabled={busy || running} onClick={() => void importServers()}>Import</button>
+          <button type="button" disabled={busy || running} onClick={createNew}>New server</button>
         </div>
       </div>
 
@@ -601,15 +656,27 @@ export function MCPSettingsSection({ running }: { running: boolean }) {
             </div>
           ) : null}
 
+          <label className="settings-field">
+            <span>Server permission</span>
+            <select value={draft.server_permission} disabled={busy || running} onChange={(e)=>setDraft(c=>({...c,server_permission:e.target.value as any}))}>
+              <option value="allow">Allow</option>
+              <option value="ask">Ask</option>
+              <option value="deny">Deny</option>
+            </select>
+          </label>
+          <label className="settings-field">
+            <span>Tool permissions ? JSON (remote_tool: allow/ask/deny)</span>
+            <textarea className="mcp-textarea" value={draft.toolPermissionsText} disabled={busy || running} onChange={(e)=>setDraft(c=>({...c,toolPermissionsText:e.target.value}))} />
+          </label>
+          <div className="settings-inline-actions">
+            <button type="button" className="settings-secondary" disabled={busy || running || !draft.id} onClick={() => void connectServer()}>Connect</button>
+            <button type="button" className="settings-secondary" disabled={busy || running || !draft.id} onClick={() => void disconnectServer()}>Disconnect</button>
+            <button type="button" className="settings-secondary" disabled={busy || running || !draft.id} onClick={() => void reconnectServer()}>Reconnect</button>
+            <button type="button" className="settings-secondary" disabled={busy || running} onClick={() => void loadHistory()}>History</button>
+          </div>
           <div className="mcp-trust-note">
-            <strong>
-              {draft.trusted ? "Trusted server" : "Untrusted by default"}
-            </strong>
-            <p>
-              Trusted does not mean unrestricted. Only tools that declare
-              read-only behavior and pass the local name-risk check can run
-              without approval. Unknown or mutating tools remain gated.
-            </p>
+            <strong>{draft.trusted ? "Trusted server" : "Untrusted by default"}</strong>
+            <p>Trusted does not mean unrestricted. Only tools that declare read-only behavior and pass the local name-risk check can run without approval. Unknown or mutating tools remain gated. Server/tool permission overrides are also enforced.</p>
           </div>
 
           {selected?.status?.effective_command ? (
@@ -639,6 +706,14 @@ export function MCPSettingsSection({ running }: { running: boolean }) {
             </div>
           ) : null}
 
+          {history.length > 0 ? (
+            <div className="mcp-tool-preview">
+              <strong>Call history (recent)</strong>
+              {history.slice(-20).reverse().map((h, i) => (
+                <div key={i}><code>{String(h.tool||"")}</code><span>{String(h.status||"")} {h.duration_ms!=null?`${h.duration_ms}ms`:""}</span></div>
+              ))}
+            </div>
+          ) : null}
           <div className="settings-bottom-actions">
             <button
               type="button"
